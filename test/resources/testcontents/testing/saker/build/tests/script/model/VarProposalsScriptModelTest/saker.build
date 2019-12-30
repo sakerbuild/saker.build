@@ -1,0 +1,29 @@
+$Unassigned;
+$MapVar = {
+	Field: 
+}
+$ListVar = [
+
+]
+$LiteralVar = 123
+var(TaskVar) = tv
+
+$;
+$L;
+$Li;
+$T;
+
+
+var(Li)
+global(gl)
+global()
+
+build{
+	example.task(
+		EnumParam1: static(enumvar)
+	)
+
+}
+static(enumvar) = 
+static(enumvar) = F
+static(enumvar) = FIRST

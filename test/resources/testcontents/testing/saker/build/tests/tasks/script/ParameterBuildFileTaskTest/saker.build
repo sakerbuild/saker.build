@@ -1,0 +1,28 @@
+build(
+	out result,
+	out fixedres,
+	out defres,
+	out localres,
+	out localmodres,
+) {
+	$result = include(
+		Path: second.build,
+		input: "baseinput{test.TestInput()}",
+	)[result]
+	$fixedres = include(
+		Path: second.build,
+		input: fixed,
+	)[result] 
+	$defres = include(
+		Path: second.build,
+	)[result] 
+	
+	$localres = include(Target: local)[result]
+	$localmodres = include(Target: local, input: mod)[result]
+}
+local(
+	out result,
+	in input = localdef,
+)  {
+	$result = "loc{$input}"
+}

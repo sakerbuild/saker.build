@@ -1,0 +1,18 @@
+example.task()[RetField1][RetField2]
+
+{
+	RetValue: example.task(),
+	RetValue1: example.task()[RetField1],
+	RetValue2: example.task()[RetField1][RetField2],
+}[RetValue1];
+
+example.task(MapParam1: include(subscripter)[mapp1])
+
+subscripter(
+	out mapp1
+){
+	$mapp1 = $x ? { 
+		Field1: asd
+	} : { }
+	$mapp1[Field1]
+}

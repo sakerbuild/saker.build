@@ -1,0 +1,6 @@
+build(
+	out directout = example.task(),
+	out assigned,
+){
+	$assigned = example.task()
+}

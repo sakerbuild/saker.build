@@ -1,0 +1,21 @@
+compile(
+	in buildconfig,
+	in JDK = jdk8,
+	
+	out javac,
+)  {
+	$JavaCompileOptions = $buildconfig[javajdkoptions]
+	$javac = saker.java.compile(
+		SourceDirectories: [ 
+			src, 
+		],
+		ClassPath: [
+			saker.java.classpath.bundle(nest.dependency.resolve(
+				saker.java.testing-api,
+				Filters: nest.dependency.filter.compile(CompileTransitive: false)
+			)),
+		],
+		Identifier: "testrunner-{$JDK}",
+		CompilerOptions: $JavaCompileOptions,
+	)
+}

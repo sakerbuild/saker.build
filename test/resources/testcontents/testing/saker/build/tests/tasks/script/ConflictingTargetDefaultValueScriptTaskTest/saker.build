@@ -1,0 +1,15 @@
+dualdefault(
+	in param = 1,
+	out param = 1,
+) {
+}
+indefault(
+	in paramx = 3,
+	out paramx,
+) {
+}
+outdefault(
+	in paramx,
+	out paramx = 4,
+) {
+}

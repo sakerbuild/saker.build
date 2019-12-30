@@ -1,0 +1,17 @@
+compile(
+	in buildconfig,
+	in JDK = jdk8,
+	in TestUtilsClassPath,
+	
+	out javac,
+)  {
+	$JavaCompileOptions = $buildconfig[javajdkoptions]
+	$javac = saker.java.compile(
+		SourceDirectories: [ 
+			src, 
+		],
+		ClassPath: $TestUtilsClassPath,
+		Identifier: "tests-{$JDK}",
+		CompilerOptions: $JavaCompileOptions,
+	)
+}

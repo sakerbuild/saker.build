@@ -1,0 +1,10 @@
+first(
+	out output = {
+		Field1: f1,
+	},
+){
+}
+use() {
+	$opt = include(first)[output]
+	example.task(MapParam1: $opt)
+}

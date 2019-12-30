@@ -1,0 +1,3 @@
+unnamed.paramed(firstparam)
+alias.paramed.withgeneric(aliasparam)
+alias.paramed.withgeneric(Alias: aliasparam)

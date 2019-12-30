@@ -1,0 +1,19 @@
+build(
+	in input,
+	in taskresin = example.task(),
+	in fieldin = {
+		Field1: $field1
+	},
+){
+	example.task(MapParam1: $input)
+	example.task(MapParam1: $unassigned)
+	
+	example.task(MapParam1: $hop)
+	example.task(MapParam1: $fieldin)
+	
+	$hop = $secondhop
+	$secondhop = $thirdhop
+	
+	$taskresin
+	$field1 = f1
+}

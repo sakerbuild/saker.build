@@ -1,0 +1,556 @@
+# UPDATE saker.build.meta.Versions when updating this version value
+global(saker.build.VERSION) = "0.8.0"
+
+global(VERSION_saker.apiextract) = "0.8.0"
+global(VERSION_sipka.syntax.parser) = "0.8.0"
+global(VERSION_sipka.cmdline) = "0.8.0"
+static(TargetJDKVersions) = [
+	{
+		Id: jdk8,
+		Major: 8,
+	},
+	{
+		Id: jdk9,
+		Major: 9,
+	},
+]
+
+compile(
+	in buildconfig = include(Target: _configure, testing: false, apidocumenting: false)[buildconfig],
+	
+	out versionedcompile,
+	out compilebyjdkmajor,
+	
+	out idesupportcompile,
+) {
+
+	$versionedcompile = foreach $jdk in static(TargetJDKVersions)
+		with $tparty, $core, $internal, $launching {
+		$tparty = include(
+			Target: compile,
+			buildconfig: $buildconfig,
+			Path: thirdparty/thirdparty.build,
+			JDK: $jdk[Id],
+		)
+		$core = include(
+			Target: compile,
+			buildconfig: $buildconfig,
+			Path: core/core.build,
+			JDK: $jdk[Id],
+			CompileClassPath: $tparty[javac],
+		)[javac]
+		$internal = include(
+			Target: compile,
+			buildconfig: $buildconfig,
+			Path: internal/internal.build,
+			JDK: $jdk[Id],
+			CorePass: $core,
+		)
+		$launching = include(
+			Target: compile,
+			buildconfig: $buildconfig,
+			Path: launching/launching.build,
+			JDK: $jdk[Id],
+			CorePass: $core,
+		)[javac]
+	}: [{
+			JDK: $jdk,
+			CorePass: $core,
+			InternalParser: $internal[parser],
+			LaunchingPass: $launching,
+			ThirdPartyJavac: $tparty[javac],
+		}]
+	$compilebyjdkmajor = foreach $item in $versionedcompile: { $item[JDK][Major]: $item }
+	
+	$idesupportcompile = include(
+		compile,
+		buildconfig: $buildconfig,
+		Path: support/ide/idesupport.build,
+		JDK: jdk8,
+		classpath: [
+			$compilebyjdkmajor[8][CorePass],
+		],
+	)
+}
+export(
+	in buildconfig = include(Target: _configure, testing: false, apidocumenting: false)[buildconfig],
+	
+	out compile,
+	out Path = $jar[Path],
+) {
+	$compile = include(
+		Target: compile,
+		buildconfig: $buildconfig,
+	)
+	
+	$multireleasecontents = foreach $jdksplit in $compile[versionedcompile] : {
+		$jdksplit[JDK][Major] : {
+			Resources: [
+				{
+					Directory: [
+						$jdksplit[CorePass][ClassDirectory],
+						$jdksplit[ThirdPartyJavac][ClassDirectory],
+					],
+					Resources: [
+						saker/**/*.class,
+					],
+				},
+				{
+					Directory: $jdksplit[LaunchingPass][ClassDirectory],
+					Resources: saker/**/*.class,
+					TargetDirectory: internal/launching,
+				},
+				{
+					Directory: [
+						$jdksplit[InternalParser][ClassDirectory],
+					],
+					Resources: saker/**/*.class,
+					TargetDirectory: internal/scripting,
+				},
+			] + ($buildconfig[testing] 
+					? [{
+						Directory: [
+							$jdksplit[CorePass][ClassDirectory],
+						],
+						Resources: testing/**/*.class,
+					}]
+					: []
+				)
+			,
+		}
+	}
+	
+	$jar = saker.jar.create(
+		Output: $buildconfig[testing] 
+				? saker.build-test.jar 
+				: saker.build.jar,
+		Resources: [
+			{
+				Directory: resources/core/public,
+				Resources: **,
+			},
+			{
+				Directory: resources/core/internal,
+				Resources: **,
+				TargetDirectory: internal,
+			},
+		],
+		Includes: [
+			{
+				Archive: nest.bundle.download("sipka.cmdline-runtime-v{ global(VERSION_sipka.cmdline) }")[BundlePaths][0],
+				Resources: sipka/cmdline/runtime/**/*.class,
+				TargetDirectory: internal/launching,
+			},
+			{
+				Archive: nest.bundle.download("sipka.syntax.parser-v{ global(VERSION_sipka.syntax.parser) }")[BundlePaths][0],
+				Resources: **/*.class,
+				TargetDirectory: internal/scripting,
+			},
+		],
+		MultiReleaseContents: $multireleasecontents,
+		Manifest: {
+			MainAttributes: {
+				Nest-Bundle-Format-Version: 1,
+				Nest-Bundle-Identifier: "saker.build{ $buildconfig[testing] ? "-test" : "" }-v{ global(saker.build.VERSION) }",
+				Nest-Bundle-Source: "saker.build-sources-v{ global(saker.build.VERSION) }",
+				Saker-Build-Version: global(saker.build.VERSION),
+			},
+		},
+	)
+}
+exportide(
+	in buildconfig = include(Target: _configure, testing: false, apidocumenting: false)[buildconfig],
+
+	out idesupportjar,
+	out export = include(export, buildconfig: $buildconfig),
+){
+	$idesupportjar = saker.jar.create(
+		Output: saker.build-ide.jar,
+		Resources: [
+			{
+				Directory: $export[compile][idesupportcompile][javac][ClassDirectory],
+				Resources: **/*.class,
+			}
+		],
+		Manifest: {
+			MainAttributes: {
+				Nest-Bundle-Format-Version: 1,
+				Nest-Bundle-Identifier: "saker.build-ide-v{ global(saker.build.VERSION) }",
+				Nest-Bundle-Source: "saker.build-sources-v{ global(saker.build.VERSION) }",
+			},
+		},
+	)
+}
+apicompile(
+	in buildconfig = include(Target: _configure, testing: false, apidocumenting: true)[buildconfig],
+	
+	out compile,
+) {
+	$compile = include(compile, buildconfig: $buildconfig)
+}
+apiexport(
+	in buildconfig = include(Target: _configure, testing: false, apidocumenting: true)[buildconfig],
+	
+	out jar,
+){
+	$compile = include(apicompile, buildconfig: $buildconfig)[compile]
+	$jar = saker.jar.create(
+		Output: saker.build-api.jar,
+		Resources: [
+			{
+				Directory: "{$compile[compilebyjdkmajor][8][CorePass][ResourceDirectory]}/API_OUTPUT",
+				Resources: **,
+			},
+			{
+				Directory: "{$compile[compilebyjdkmajor][8][ThirdPartyJavac][ResourceDirectory]}/API_OUTPUT",
+				Resources: **,
+			},
+		],
+		Manifest: {
+			MainAttributes: {
+				Nest-Bundle-Format-Version: 1,
+				Nest-Bundle-Identifier: "saker.build-api-v{ global(saker.build.VERSION) }",
+				Nest-Bundle-Source: "saker.build-sources-v{ global(saker.build.VERSION) }",
+			},
+		},
+	)
+}
+testexport(
+	in buildconfig = include(Target: _configure, testing: true, apidocumenting: false)[buildconfig],
+	
+	out export,
+	out runnercompile,
+	out testutilscompile,
+	
+	out runnerjar,
+	out testutilsjar,
+	out testscompile,
+){
+	$export = include(
+		Target: export,
+		buildconfig: $buildconfig,
+	)
+	$runnercompile = include(
+		Target: compile,
+		Path: test/runner/runner.build,
+		buildconfig: $buildconfig,
+	)
+	$testutilscompile = include(
+		Target: compile,
+		Path: test/utils/utils.build,
+		TestRunnerPass: $runnercompile[javac],
+		CorePass: $export[compile][compilebyjdkmajor][8][CorePass],
+		buildconfig: $buildconfig,
+	)
+	
+	$runnerjar = saker.jar.create(
+		Output: saker.build-test-runner.jar,
+		Resources: [
+			{
+				Directory: $runnercompile[javac][ClassDirectory],
+				Resources: **,
+			}
+		],
+		Manifest: {
+			MainAttributes: {
+				Nest-Bundle-Format-Version: 1,
+				Nest-Bundle-Identifier: "saker.build-test-runner-v{ global(saker.build.VERSION) }",
+				Nest-Bundle-Source: "saker.build-sources-v{ global(saker.build.VERSION) }",
+			},
+		},
+	)
+	$testutilsjar = saker.jar.create(
+		Output: saker.build-test-utils.jar,
+		Resources: [
+			{
+				Directory: $testutilscompile[javac][ClassDirectory],
+				Resources: **,
+			}
+		],
+		Manifest: {
+			MainAttributes: {
+				Nest-Bundle-Format-Version: 1,
+				Nest-Bundle-Identifier: "saker.build-test-utils-v{ global(saker.build.VERSION) }",
+				Nest-Bundle-Source: "saker.build-sources-v{ global(saker.build.VERSION) }",
+			},
+		},
+	)
+	
+	$testscompile = include(
+		Target: compile,
+		Path: test/tests/tests.build,
+		TestUtilsClassPath: $testutilscompile[javac],
+		buildconfig: $buildconfig,
+	)
+}
+exportsources(
+	in export,
+	out sourcejar,
+) {
+	$sourcejar = saker.jar.create(
+		Output: saker.build-sources.jar,
+		Resources: [
+			{
+				Directory: [
+					core/common,
+					core/jdk8/,
+					core/test/api/common/,
+					core/test/api/enabled/,
+					launching/common/,
+					thirdparty/asm/,
+					thirdparty/rmi/api/src/,
+					thirdparty/rmi/impl/src/,
+					thirdparty/utils/common/,
+					thirdparty/utils/jdk8/,
+					internal/common/parser/,
+					support/ide/common/,
+					test/runner/src/,
+					test/utils/src/,
+					$export[compile][compilebyjdkmajor][8][LaunchingPass][SourceGenDirectory],
+				],
+				Resources: **/*.java,
+			},
+			{
+				Directory: native/,
+				Resources: **,
+				TargetDirectory: native,
+			}
+		],
+		Manifest: {
+			MainAttributes: {
+				Nest-Bundle-Format-Version: 1,
+				Nest-Bundle-Identifier: "saker.build-sources-v{ global(saker.build.VERSION) }",
+			},
+		},
+	)
+}
+exportall(
+	out bundlepaths = [
+		$export[Path],
+		$exportide[idesupportjar][Path],
+		$apiexport[jar][Path],
+		$testexport[export][Path],
+		$testexport[runnerjar][Path],
+		$testexport[testutilsjar][Path],
+		$exportsources[sourcejar][Path],
+	],
+) {
+	$export = include(export)
+	$apiexport = include(apiexport)
+	$testexport = include(testexport)
+	$exportide = include(exportide)
+	$exportsources = include(exportsources, export: $export)
+}
+install() {
+	$exportall = include(exportall)
+	nest.local.install($exportall[bundlepaths])
+}
+upload(){
+	$export = include(export, Path: saker.build)
+	include(Path: secret/secrets.build)
+	nest.server.upload(
+		Bundles: $export[bundlepaths],
+		APIKey: global(saker.build.UPLOAD_API_KEY),
+		APISecret: global(saker.build.UPLOAD_API_SECRET),
+		Overwrite: true,
+	)
+}
+test(
+	in buildconfig = include(Target: _configure, testing: true, apidocumenting: false)[buildconfig],
+	in testclasses = [
+		testing.saker.build.tests.**.*Test
+	],
+	in jre = saker.java.sdk(8),
+	
+	out export,
+) {
+	$testexport = include(
+		Target: testexport,
+		buildconfig: $buildconfig,
+	)
+	$export = $testexport[export]
+
+	$runnercompile = $testexport[runnercompile]
+	
+	$testutilscompile = $testexport[testutilscompile]
+	
+	$runnerjar = $testexport[runnerjar]
+	$testutilsjar = $testexport[testutilsjar]
+	
+	$testscompile = $testexport[testscompile]
+	
+	$test = saker.java.test(
+		TestRunnerClassPath: [
+			$runnercompile[javac][ClassDirectory],
+		],
+		ClassPath: [
+			$export[Path],
+		],
+		TestClassPath: [
+			$testscompile[javac][ClassDirectory],
+			$testutilscompile[javac][ClassDirectory],
+		],
+		DependencyClassPath: [
+			$export[compile][compilebyjdkmajor][8][InternalParser],
+			$export[compile][compilebyjdkmajor][8][CorePass]
+		],
+		TestInvokerClass: testing.saker.SakerJavaTestingInvoker,
+		TestClasses: $testclasses,
+		NonDeterministicTests: [
+			**,
+		],
+		TestInvokerParameters: {
+			SakerJarPath: std.file.mirror($export[Path]),
+			#20 sec
+			TimeoutMillis: 20000,
+			TestsBaseBuildDirectory: std.file.mirror.path(std.file.place(test/build)),
+		},
+		IgnoreFileChanges: [
+			std.file.place(test/build),
+			$export[Path],
+		],
+		#ProcessJVMParameters: [ "-agentlib:jdwp=transport=dt_socket,address=localhost:5432,server=y,suspend=y,quiet=y" ],
+		MaxJVMCount: 1,
+		FailFast: true,
+		AbortOnFail: true,
+		JavaSDK: $jre,
+		Verbose: true,
+	)
+}
+testjava9(){
+	include(
+		test, 
+		jre: saker.java.sdk(9),
+		testclasses: [
+			**.JavaToolsTest,
+		],
+	)
+}
+testjava10(){
+	include(
+		test, 
+		jre: saker.java.sdk(10),
+		testclasses: [
+			**.JavaToolsTest,
+		],
+	)
+}
+testjava11(){
+	include(
+		test, 
+		jre: saker.java.sdk(11),
+	)
+}
+testjava12(){
+	include(
+		test, 
+		jre: saker.java.sdk(12),
+		testclasses: [
+			**.JavaToolsTest,
+		],
+	)
+}
+testwatcher(
+) {
+	include(
+		test, 
+		testclasses: [
+			**.watcher.**.*Test
+		],
+	)
+}
+
+
+_getdocprocessoroptions(
+	in basepackages,
+	in identifier,
+	in apidocumenting,
+	in excludepackages = "",
+	in warndoc = true,
+	
+	out options,
+){
+	$options = $apidocumenting ? {
+		Identifier: $identifier,
+		AnnotationProcessors: {
+			Processor: saker.java.processor.bundle(
+				Bundle: "saker.apiextract-processor-v{ global(VERSION_saker.apiextract) }",
+				Class: saker.apiextract.processor.ApiExtractProcessor
+			),
+			Aggregating: true,
+			SuppressWarnings: [ 
+				LastRoundGeneration,
+			],
+			Options: {
+				saker.apiextract.base_packages: $basepackages,
+				saker.apiextract.warn_doc: $warndoc,
+				saker.apiextract.exclude_packages: $excludepackages,
+			},
+		}
+	} : { }
+}
+
+_configure(
+	in testing,
+	in apidocumenting,
+	
+	out buildconfig,
+) {
+	if $testing {
+		$testingid = -testing
+		if $apidocumenting {
+			abort("API documenting and testing configuration conflict.")
+		}
+	} else {
+		$testingid = ""
+	}
+	if $apidocumenting {
+		$apiid = "-apidoc"
+	} else {
+		$apiid = ""
+	}
+	$buildconfig = {
+		testing: $testing,
+		testingid: $testingid,
+		apiid: {
+			jdk8: $apiid,
+			jdk9: "",
+		},
+		apidocumenting: $apidocumenting,
+		javajdkoptions: [
+			{
+				Identifier: jdk8,
+				SDKs: {
+					Java: saker.java.sdk(8),
+				},
+			},
+			{
+				Identifier: jdk9,
+				SDKs: {
+					Java: saker.java.sdk(9),
+				},
+			},
+			{
+				Identifier: jdk10,
+				SDKs: {
+					Java: saker.java.sdk(10),
+				},
+			},
+			{
+				Identifier: jdk11,
+				SDKs: {
+					Java: saker.java.sdk(11),
+				},
+			},
+			{
+				ClassPath: [
+					saker.java.classpath.bundle(Bundles: "saker.apiextract-api-v{ global(VERSION_saker.apiextract) }"),
+				],
+				SourceVersion: RELEASE_8,
+			},
+			include(_getdocprocessoroptions, apidocumenting: $apidocumenting, identifier: core-jdk8, basepackages: "saker.build", excludepackages: "saker.build.thirdparty")[options],
+			include(_getdocprocessoroptions, apidocumenting: $apidocumenting, identifier: thirdparty-jdk8, basepackages: "saker.build.thirdparty", warndoc: false)[options],
+			include(_getdocprocessoroptions, apidocumenting: $apidocumenting, identifier: launching-jdk8, basepackages: "saker.build")[options],
+		],
+	}
+}

@@ -1,0 +1,5 @@
+build(
+	out list = [sa, sb],
+	out num = 10,
+) {
+}

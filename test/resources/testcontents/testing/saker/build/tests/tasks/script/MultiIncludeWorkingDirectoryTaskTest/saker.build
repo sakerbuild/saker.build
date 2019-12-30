@@ -1,0 +1,13 @@
+build(
+	out nowd = include(target)[path],
+	out subwd = include(target, WorkingDirectory: sub)[path],
+	
+	out nowdres = include(target)[resolvepath],
+	out subwdres = include(target, WorkingDirectory: sub)[resolvepath],
+) {
+}
+target(
+	out path = path(),
+	out resolvepath = path(resolve),	
+){
+}

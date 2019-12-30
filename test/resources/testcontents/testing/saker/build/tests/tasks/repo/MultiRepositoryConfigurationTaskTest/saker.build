@@ -1,0 +1,10 @@
+build(
+	out out1 = test.task1(),
+	out out2 = test.task2(),
+){
+}
+repoidentified(
+	out out1 = test.task@repo1(),
+	out out2 = test.task@repo2(),
+){
+}

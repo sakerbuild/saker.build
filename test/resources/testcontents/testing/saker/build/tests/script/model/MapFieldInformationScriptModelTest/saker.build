@@ -1,0 +1,18 @@
+example.task(MapParam1: {
+	Field1: f1,
+	Field2: f2,
+})
+example.task-q1(MapParam1: {
+	Field1: q1f1,
+	Field2: q1f2,
+})
+example.task-q1-q2(MapParam1: {
+	Field1: q1q2f1,
+	Field2: q1q2f2,
+})
+
+example.task-q1-{$var}(MapParam1: {
+	Field1: q1varf1,
+	Field2: q1varf2,
+})
+

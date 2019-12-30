@@ -1,0 +1,15 @@
+first(
+	in finparam1,
+	in finparam2
+) {
+}
+second(
+	in sinparam1,
+	in sinparam2,
+) {
+	include(first,)
+	include(first, fin)
+	include(first, finparam1)
+	
+	include(first, finparam1: 1)
+}

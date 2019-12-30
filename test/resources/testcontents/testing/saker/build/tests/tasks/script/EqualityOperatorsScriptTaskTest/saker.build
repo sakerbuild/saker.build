@@ -1,0 +1,28 @@
+build(
+	out a = 1 == 3,
+	out b = 1 != 3,
+	out c = 1 == 1,
+	out d = 1 != -2,
+	out e = 1 == $second[num],
+	out f = 10 == $second[num],
+	out g = $second[num] == $second[num],
+	out h = $second[num] != $second[num],
+	
+	out i = 1 == 1 == true,
+	out j = 1 == 2 == false,
+	
+	out l = [1, 2] == [1, 2],
+	out m = { K:1 } == { K:1 },
+	out num = 2 == (1 << 1),
+	
+	out alltrues = [
+		1 == 0x1,
+		1 != [1],
+		{ } != { K: v },
+		literal == literal,
+		literal6 == "literal{ 2 * 3}",
+		null == null,
+	]
+) {
+	$second = include(Path: second.build)
+}

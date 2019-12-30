@@ -1,0 +1,21 @@
+_1(
+	out out,
+) {
+	$out = test.my.task(test)
+}
+
+_2_noin(
+	out out,
+) {
+	$out = test.my.task()
+}
+_2_nullin(
+	out out,
+) {
+	$out = test.my.task(null)
+}
+_2_str(
+	out out,
+) {
+	$out = test.my.task(str)
+}

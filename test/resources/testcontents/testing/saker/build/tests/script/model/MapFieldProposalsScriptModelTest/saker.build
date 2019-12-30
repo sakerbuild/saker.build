@@ -1,0 +1,24 @@
+example.task(
+	MapParam1: {
+		#nokey
+		: ,
+		F: ,
+		
+	}
+)
+
+example.task(
+	MapParam1: $mapvar
+)
+$mapvar = {
+}
+
+example.task(
+	MapParam1: $deduced[Element]
+)
+
+$deduced = {
+	Element: {
+		
+	}
+}

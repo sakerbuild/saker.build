@@ -1,0 +1,4 @@
+$fail = test.failer(test.failer(2))
+$user = test.user($fail)
+
+$fail3 = test.failer($fail)

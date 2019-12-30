@@ -1,0 +1,43 @@
+build(
+	out integral = 123,
+	out floating = 1.23,
+	out negint = -123,
+	out posint = +123,
+	out hex = 0x123aF,
+	out exp = 1234.5E-6,
+	out nan = NaN,
+	out truebool1 = true,
+	out truebool2 = TRUe,
+	out falsebool1 = false,
+	out falsebool2 = FALSe,
+	
+	out lit = lit,
+	out strlit = "strlit",
+	out unicode = "\u1234",
+	out oct1 = "\1",
+	out oct2 = "\12",
+	out oct3 = "\123",
+	out oct4 = "\1234",
+	
+	out compound = "comp{ 1 + 2 }",
+	
+	out escapes = "\ \t\r\b\n\r\f\'\"\\",
+	out compoundescapes = "\ \t\r\b\n\r\f\'\"\\{ 2 * 4 }\ \t\r\b\n\r\f\'\"\\\{",
+	
+	out multiline = "first
+second
+third",
+	
+	# greater than Long.MAX_VALUE 9223372036854775807
+	out bigint = 123456789012345678901234567890,
+	out bighex = 0xfffffffffffffffffffff,
+	
+	out longmaxint = 9223372036854775807,
+	out longmaxintp1 = 9223372036854775808,
+	out longminint = -9223372036854775808,
+	out longminintm1 = -9223372036854775809,
+	
+	out op1 = 123 + 456,
+	out op2 = 123+456,
+) {
+}

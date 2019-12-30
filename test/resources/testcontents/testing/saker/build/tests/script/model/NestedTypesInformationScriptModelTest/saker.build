@@ -1,0 +1,14 @@
+example.task(MapParam1: {
+	MapField3: {
+		Nest1: n1,
+	},
+	ListField4: [
+		{
+			Nest2: n2,
+		}
+	],
+	#test passing single item to a collection
+	ListField4: {
+		Nest2: n3,
+	},
+})

@@ -1,0 +1,10 @@
+build(
+	out second,
+) {
+	$second = include(build, Path: second.build, SecondParam: $unassigned)[Result]
+}
+unassignedoutput(
+	out second,
+){
+	$second = include(Target: unassignout, Path: second.build, Input: 123)[AssignedResult]
+}

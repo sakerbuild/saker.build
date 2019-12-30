@@ -1,0 +1,15 @@
+missingparen {
+();
+}
+missingsubsc {
+$var = { a:x };
+$var[];
+}
+missingif{
+if $ {
+}
+}
+
+
+normal {
+}

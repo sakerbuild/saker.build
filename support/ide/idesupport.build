@@ -1,0 +1,17 @@
+compile(
+	in buildconfig,
+	in JDK,
+	in classpath,
+	
+	out javac,
+){
+	$JavaCompileOptions = $buildconfig[javajdkoptions]
+	$javac = saker.java.compile(
+		SourceDirectories:[
+			common
+		],
+		ClassPath: $classpath,
+		Identifier: "ide.support-{$JDK}{ $buildconfig[testingid] }{ $buildconfig[apiid][$JDK] }",
+		CompilerOptions: $JavaCompileOptions,
+	)
+}

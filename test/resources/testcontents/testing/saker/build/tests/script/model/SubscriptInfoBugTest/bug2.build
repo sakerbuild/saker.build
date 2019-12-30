@@ -1,0 +1,17 @@
+first(
+	out opt
+){
+	$opt
+	$opt[MapField3][Nest1]
+}
+second(
+	out opt2
+){
+	$opt2 = {
+		Field: include(first)[opt]
+	}
+}
+third(){
+	$opt2 = include(second)[opt2][Field]
+	example.task(MapParam1: $opt2)
+}

@@ -1,0 +1,25 @@
+build(
+	in InParam1,
+	in InParam2,
+	
+	out OutEnum,
+	out OutDefEnum = THIRD,
+) {
+	$InParam1[Enum]
+	$InParam2[RetField1]
+	
+	$OutEnum = SECOND
+}
+enuser(
+	in InEnum,
+) {
+	example.task(EnumParam1: $InEnum)
+}
+$en = { Enum: FIRST}
+include(build, Path: saker.build, InParam1: $en, InParam2: example.task())
+example.task(EnumParam1: $en[Enum])
+
+example.task(EnumParam1: include(Target: build)[OutEnum])
+example.task(EnumParam1: include(build, Path: saker.build)[OutDefEnum])
+
+include(enuser, InEnum: FOURTH)

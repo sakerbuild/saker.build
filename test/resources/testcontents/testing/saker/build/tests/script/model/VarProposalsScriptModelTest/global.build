@@ -1,0 +1,3 @@
+global(globalenumvar) = FIRST;
+global(globalnumvar) = 123;
+global(aglobalvar) = "abc";

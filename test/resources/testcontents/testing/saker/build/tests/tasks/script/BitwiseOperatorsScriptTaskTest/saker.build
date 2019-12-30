@@ -1,0 +1,21 @@
+build(
+	out aa = 3 & 2,
+	out ab = 3 & -2,
+	out ac = 1 & 2 & 3,
+	out ad = 7 & $second[num],
+	out ae = $second[num] & $second[num],
+	
+	out oa = 3 | 2,
+	out ob = 3 | -2,
+	out oc = 1 | 2 | 3,
+	out od = 7 | $second[num],
+	out oe = $second[num] | $second[num],
+	
+	out xa = 3 ^ 2,
+	out xb = 3 ^ -2,
+	out xc = 1 ^ 2 ^ 3,
+	out xd = 7 ^ $second[num],
+	out xe = $second[num] ^ $second[num],
+) {
+	$second = include(Path: second.build)
+}

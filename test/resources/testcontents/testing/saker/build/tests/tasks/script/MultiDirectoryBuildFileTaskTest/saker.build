@@ -1,0 +1,6 @@
+build(
+	out sub, 
+	out subout = "suboutval{ $sub[output] }", 
+) {
+	$sub = include(Path: dir/subsaker.build)
+}

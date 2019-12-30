@@ -1,0 +1,30 @@
+static(VarA) = 123
+if static(condition) {
+	static(condres) = 111
+} else {
+	static(condres) = 222
+}
+
+build(
+	out a = static(VarA),
+	out condres = static(condres),
+) {
+	static(condition) = false
+}
+including(
+	out a = static(VarA),
+	out set = static(VarSet),
+	out condres = static(condres),
+){
+	include(setter)
+	static(condition) = false
+}
+setter{
+	static(VarSet) = set
+}
+feedbacker(
+	out a = static(VarA),
+	out condres = static(condres),
+){
+	static(condition) = true
+}

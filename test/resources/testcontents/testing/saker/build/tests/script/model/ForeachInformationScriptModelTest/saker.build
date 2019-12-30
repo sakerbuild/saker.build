@@ -1,0 +1,30 @@
+# make sure the external variables are not considered
+$item = 123
+$item = {
+	RetField1: abc
+}
+$item = [1, 2, 3]
+foreach $item in [example.task()] {
+	$item[RetField1]
+}
+foreach $item in [example.task()] 
+	with $local = $item {
+	$local[RetField1]
+}
+foreach $item in [example.task()] 
+	with $assignedlocal {
+	$assignedlocal[RetField1]
+	$assignedlocal = $item
+}
+
+$envar = THIRD
+foreach $en in [FIRST, SECOND, $envar] {
+	example.task(EnumParam1: $en)
+}
+
+foreach $key, $val in { Key: FOURTH } {
+	example.task(EnumParam1: $val)	
+}
+foreach $key, $val in { FIFTH: value } {
+	example.task(EnumParam1: $key)
+}

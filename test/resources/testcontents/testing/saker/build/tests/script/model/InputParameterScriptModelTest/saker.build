@@ -1,0 +1,9 @@
+build(
+	in input = {
+		Field1: f1,
+	},
+	in uninitinput,
+){
+	example.task(MapParam1: $input)	
+	example.task(MapParam1: $uninitinput)
+}

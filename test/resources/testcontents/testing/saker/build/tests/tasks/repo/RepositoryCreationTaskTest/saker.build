@@ -1,0 +1,5 @@
+use(
+	out res,
+){
+	$res = test.task()
+}

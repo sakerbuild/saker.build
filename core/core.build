@@ -1,0 +1,18 @@
+compile(
+	in buildconfig,
+	in JDK,
+	in CompileClassPath,
+	
+	out javac,
+) {
+	$JavaCompileOptions = $buildconfig[javajdkoptions]
+	$javac = saker.java.compile(
+		SourceDirectories: [
+			common, "{$JDK}", 
+			test/api/common, "test/api/{ $buildconfig[testing] ? "enabled" : "disabled" }",
+		],
+		ClassPath: $CompileClassPath,
+		Identifier: "core-{$JDK}{ $buildconfig[testingid] }{ $buildconfig[apiid][$JDK] }",
+		CompilerOptions: $JavaCompileOptions,
+	)
+}

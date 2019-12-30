@@ -1,0 +1,15 @@
+build(
+	out var,
+) {
+	$var = include(
+		build,
+		Path: other.build,
+		Input: in,
+	)
+}
+
+test {
+	foreach $item in include(build)[var][result] : [
+		"{$item}"
+	]
+}

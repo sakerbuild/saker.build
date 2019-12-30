@@ -1,0 +1,30 @@
+example.task(
+	EnumParam1: {
+		Element: FIRST,
+	}[Element],
+)
+
+example.task(
+	EnumParam1: {
+		Nested: {
+			Retrieval: SECOND,
+		},
+	}[Nested][Retrieval],
+)
+
+example.task(
+	EnumParam1: {
+		VarNest1: {
+			Vared: THIRD,
+		},
+		VarNest2: {
+			Vared: FOURTH,
+		},
+		VarNest3: {
+			Vared: NONEXISTENT,
+		},
+		: {
+			Vared: VARNAMED,
+		},
+	}[$var][Vared],
+)

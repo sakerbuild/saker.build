@@ -1,0 +1,5 @@
+example.task(
+	PathParam1: ,
+	FileParam1: ,
+	DirectoryParam1: ,
+)

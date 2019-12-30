@@ -1,0 +1,35 @@
+package testing.saker.build.tests.script.model;
+
+import saker.build.scripting.model.ScriptSyntaxModel;
+import testing.saker.SakerTest;
+
+@SakerTest
+public class NestedTypesInformationScriptModelTest extends ScriptModelTestCase {
+
+	@Override
+	protected void runTest() throws Throwable {
+		String filedata = files.getAllBytes(DEFAULT_BUILD_FILE).toString();
+		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
+		model.createModel(null);
+
+		exhaustiveTokenInformationRetrieve(model);
+
+		assertFieldInfos(filedata, model, "Nest1", "n1", "doc_example.task_MapParam1_MapField3_");
+		assertFieldInfos(filedata, model, "Nest2", "n2", "doc_example.task_MapParam1_ListField4_");
+		assertFieldInfos(filedata, model, "Nest2", "n3", "doc_example.task_MapParam1_ListField4_");
+	}
+
+	private static void assertFieldInfos(String filedata, ScriptSyntaxModel model, String fieldname, String fid,
+			String prefix) throws AssertionError {
+		//start of region, end of region, inside region
+		assertFieldInfosWithIndex(filedata, model, fieldname, fid, 0, prefix);
+		assertFieldInfosWithIndex(filedata, model, fieldname, fid, fieldname.length(), prefix);
+		assertFieldInfosWithIndex(filedata, model, fieldname, fid, fieldname.length() / 2, prefix);
+	}
+
+	private static void assertFieldInfosWithIndex(String filedata, ScriptSyntaxModel model, String fieldname,
+			String fid, int idx, String prefix) throws AssertionError {
+		assertEquals(getInformationsAtOffset(model, indexOf(filedata, fieldname + ": " + fid) + idx),
+				setOf(prefix + fieldname));
+	}
+}

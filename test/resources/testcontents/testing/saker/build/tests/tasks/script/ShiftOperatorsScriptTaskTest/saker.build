@@ -1,0 +1,14 @@
+build(
+	out a = 0xF << 2,
+	out b = 0xF >> -2,
+	out d = 0xF << 2 << 2,
+	out e = 1 << $second[num],
+	out f = $second[num] << $second[num],
+	out g = -5 >> 1,
+	out extend = 1 << 80,
+	out negextend = 1 >> -80,
+	out tonegshift = 1 << 63,
+	out tonegshift2 = 1 << 62,
+) {
+	$second = include(Path: second.build)
+}

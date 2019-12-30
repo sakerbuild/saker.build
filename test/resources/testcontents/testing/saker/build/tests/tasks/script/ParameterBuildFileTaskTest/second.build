@@ -1,0 +1,6 @@
+build(
+	out result,
+	in input = defval,
+) {
+	$result = "modified{$input}"
+}

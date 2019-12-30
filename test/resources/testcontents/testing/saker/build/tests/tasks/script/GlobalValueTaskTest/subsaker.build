@@ -1,0 +1,5 @@
+subbuild(
+	out output,
+) {
+	$output = global(GLOB)
+}

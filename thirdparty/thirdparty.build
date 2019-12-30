@@ -1,0 +1,22 @@
+compile(
+	in buildconfig,
+	in JDK,
+	
+	out javac,
+) {
+	$javac = saker.java.compile(
+		SourceDirectories:[
+			asm/src/,
+			rmi/api/src/,
+			rmi/impl/src/,
+			utils/common/,
+			"utils/{ $JDK }"
+		],
+		Identifier: "thirdparty-{$JDK}{ $buildconfig[apiid][$JDK] }{ $buildconfig[testingid] }",
+		SuppressWarnings: [
+			#the warnings for third party libraries should not be displayed, as we're not actively maintaining it
+			JavacCompilationWarning,
+		],
+		CompilerOptions: $buildconfig[javajdkoptions],
+	)
+}

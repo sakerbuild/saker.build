@@ -1,0 +1,8 @@
+directconflict(
+	out map
+) {
+	$map = {
+		Key: strval1,
+		Key: strval2,
+	}
+}

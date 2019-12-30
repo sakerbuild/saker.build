@@ -1,0 +1,5 @@
+$res1 = foreach $item in [FIRST, SECOND] : [$item]
+example.task(EnumParam1: $res1[0])
+
+$res2 = foreach $item in [FIRST, SECOND] : { key: $item }
+example.task(EnumParam1: $res2[key])

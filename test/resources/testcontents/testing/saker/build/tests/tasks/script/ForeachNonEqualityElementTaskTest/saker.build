@@ -1,0 +1,4 @@
+$iter = test.iterable()
+foreach $item in $iter {
+	print($item)
+}

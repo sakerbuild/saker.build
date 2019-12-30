@@ -1,0 +1,31 @@
+loopvars {
+	foreach $i in [1, 2] {
+		foreach $i in [3, 4] {
+		
+		}	
+	}
+}
+looplocal{
+	foreach $i in [1, 2] {
+		foreach $j in [3, 4] with $i {
+		
+		}	
+	}
+}
+locals {
+	foreach $i in [1, 2] with $local {
+		foreach $j in [3, 4] with $local {
+		
+		}	
+	}
+}
+outerlocal {
+	foreach $i in [1, 2] with $j {
+		foreach $j in [3, 4] {
+		
+		}	
+	}
+}
+successful {
+	# just do nothing, to ensure that a target can be run even if there are invalid foreach declarations in a script
+}

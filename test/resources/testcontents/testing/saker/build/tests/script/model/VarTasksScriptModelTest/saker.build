@@ -1,0 +1,17 @@
+example.task(
+	EnumParam1: var(enumvar),
+)
+example.task(
+	EnumParam1: static(statenumvar),
+)
+example.task(
+	EnumParam1: global(globalenumvar),
+)
+var(enumvar) = FIRST;
+
+target {
+	#make sure the outside var is not visible from a target
+	var(enumber) = SECOND;
+	
+	static(statenumvar) = THIRD;
+}
