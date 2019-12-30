@@ -1,0 +1,20 @@
+build(
+	in InParam1 = FIRST,
+	in InParam2 = {
+		Enum: SECOND,
+	},
+	in InParam3 = example.task(EnumParam1: $EnParam),
+	
+	out OutParam1 = THIRD,
+	out OutParam2 = example.task(EnumParam1: $EnParam),
+	
+	in EnParam = FOURTH,
+) {
+	example.task(EnumParam1: $InParam1)
+	example.task(EnumParam1: $InParam2[Enum])
+	
+	example.task(EnumParam1: $OutParam1)
+	
+	$InParam3[RetField1]
+	$OutParam2[RetField1]
+}

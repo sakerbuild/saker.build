@@ -1,0 +1,11 @@
+_get(
+	out output = {
+	}
+) {
+}
+build{
+	$output = include(_get)[output] 
+	test.pseudo.task(
+		Input: $output,
+	) 
+} 

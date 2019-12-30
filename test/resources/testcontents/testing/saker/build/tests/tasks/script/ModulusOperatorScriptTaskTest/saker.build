@@ -1,0 +1,18 @@
+build(
+	out a = 1 % 3,
+	out b = 1 % -3,
+	out c = 1.2 % 3.4,
+	out d = -1.2 % -3.4 % 5.6,
+	out e = 1 % $second[num],
+	out f = $second[num] % $second[num],
+	
+	out g = 20 % 6,
+	out h = 3.4 % 1.4,
+	out i = 3 % 1.4,
+	out j = 3.1 % 2,
+	out k = -5 % 3,
+	out l = 5 % -3,
+	out m = -5 % -3,
+) {
+	$second = include(Path: second.build)
+}

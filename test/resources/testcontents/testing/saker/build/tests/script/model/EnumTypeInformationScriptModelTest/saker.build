@@ -1,0 +1,16 @@
+example.task(
+	EnumParam1: FIRST,
+	MapParam1: {
+		EnumField5: SECOND,
+	},
+)
+
+example.task(
+	ListEnumParam1: THIRD,
+)
+
+example.task(
+	ListEnumParam1: [
+		FOURTH,
+	],
+)

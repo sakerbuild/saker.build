@@ -1,0 +1,38 @@
+global(globallist) = [1, 2, 3]
+build(
+	out strlist = [a, b, c],
+	out strlistappend = $strlist + [d],
+	out strlistprepend = ["0"] + $strlist,
+	out strlistconcat = $strlist + $strlist2,
+	out directlistconcat = [a, b] + ["1", "2"],
+	
+	out strlistforeach = foreach $item in $strlist : "{$item}x",
+	out strlistappendforeach = foreach $item in $strlistappend : "{$item}",
+	out strlistprependforeach = foreach $item in $strlistprepend : "{$item}",
+	out strlistconcatforeach = foreach $item in $strlistconcat : "{$item}",
+	out directlistconcatforeach = foreach $item in $directlistconcat : "{$item}",
+	
+	out strlistsecond = $strlist + $second[list],
+	out listsecond = ["1", "2"] + $second[list],
+	out strlistsecondforeach = foreach $item in $strlistsecond : "{$item}",
+	out listsecondforeach = foreach $item in $listsecond : "{$item}",
+	
+	out globallistout = foreach $item in global(globallist) : "{$item}",
+	
+	out list1 = foreach $item in [1, 2]: [$item],
+	out list2 = foreach $item in [1, 2]: [$item, $item + 1],
+	
+	out repeating = foreach $item in [1, 1, 2]: [$item + 1],
+	out indexes = foreach $item in [1, 1, 2]: [$item.index],
+	
+	out maplist = foreach $k, $v in { K1: v1, K2: v2}: [$k, $v],
+	
+	out foreachpluslist = foreach $item in [1, 2] : [$item * 2] + [3], 
+) {
+	$strlist2 = [x, y, z]
+	$second = include(Path: second.build)
+}
+
+recurringkeys{
+	foreach $item in [k1, k2, k2] : {$item: val}
+}

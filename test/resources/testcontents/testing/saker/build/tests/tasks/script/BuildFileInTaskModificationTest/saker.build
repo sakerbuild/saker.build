@@ -1,0 +1,7 @@
+build {
+	sequence([
+		include(succeed, Path: second.build),
+		test.Replace(),
+		include(succeedagain, Path: second.build),
+	])
+}

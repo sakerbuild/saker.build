@@ -1,0 +1,13 @@
+build(
+	in SecondParam,
+	
+	out Result = 3 * 6,
+) {
+}
+unassignout(
+	in Input,
+	out Result,
+	out AssignedResult,
+){
+	$AssignedResult = $Input
+}

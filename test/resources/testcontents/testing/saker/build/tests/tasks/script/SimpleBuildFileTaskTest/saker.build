@@ -1,0 +1,53 @@
+build {
+	"asd{a}other{b}"
+	"asd{x}"
+	"xlit{$x}"
+	"literal{$lvar}"
+	$var = 4
+	($lvar = $var)
+	$x = $var2 = 3
+	
+	$list = [first, 2, 3]
+	
+	$first = 1st
+	
+	$idx = $list[0]
+	
+	"assigned{$idx}"
+	
+	"2xass{$$idx}"
+	
+	$map = {
+		MapKey: "mapkey{$dyn}"
+	}
+	
+	$frres = foreach $item in [1fos,dyn,3v] {
+		$$item = "inforeach{$item}"
+	}: [ "listres{$item}" ]
+	
+	"frlit{$frres[0]}"
+	
+	foreach $item in $list {
+		"listiter{$item}"
+	}
+	
+	$frsimple = foreach $item in [1,2,3] : [ "sim{$item}" ]
+	
+	#simplelit{$frsimple[0]}
+	"simplefr{$frsimple}"
+	
+	"dynamic{$dyn}"
+	
+	"keylit{$map[MapKey]}"
+	
+	"inlinestring{$dyn}"
+	
+	#some.task(Parameter = parameter{$dyn})
+	
+	if false {
+		$branchvar = true
+	}else{
+		$branchvar = false
+	}
+	$branched = "val{$brancvar}"
+}

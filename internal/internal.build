@@ -1,0 +1,36 @@
+compile(
+	in buildconfig,
+	in JDK,
+	in CorePass,
+	
+	out parser,
+){
+	$JavaCompileOptions = $buildconfig[javajdkoptions]
+	$parser = include(
+		Target: compileparser,
+		JDK: $JDK,
+		CorePass: $CorePass,
+		buildconfig: $buildconfig,
+	)[javac]
+}
+compileparser(
+	in buildconfig,
+	in JDK,
+	in CorePass,
+	
+	out javac,
+){
+	$JavaCompileOptions = $buildconfig[javajdkoptions]
+	$javac = saker.java.compile(
+		SourceDirectories: [
+			common/parser,
+			"{$JDK}/parser",
+		],
+		ClassPath: [ 
+			$CorePass,
+			saker.java.classpath.bundle(nest.dependency.resolve("sipka.syntax.parser-v{ global(VERSION_sipka.syntax.parser) }")),
+		],
+		Identifier: "internal-parser-{$JDK}{ $buildconfig[testingid] }{ $buildconfig[apiid][$JDK] }",
+		CompilerOptions: $JavaCompileOptions,
+	)
+}

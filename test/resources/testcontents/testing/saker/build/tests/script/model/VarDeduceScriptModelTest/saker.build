@@ -1,0 +1,21 @@
+example.task(
+	EnumParam1: $enumvar,
+)
+$enumvar = FIRST;
+
+example.task(MapParam1: {
+	MapField3: $mapfield3var,
+})
+$mapfield3var = {
+	Nest1: n1,
+}
+
+example.task(
+	EnumParam1: $enumsubscriptvar[EnumSubscript],
+)
+$enumsubscriptvar = {
+	EnumSubscript: SECOND,
+}
+
+$taskresvar = example.task();
+$taskretfieldvar = $taskresvar[RetField1];

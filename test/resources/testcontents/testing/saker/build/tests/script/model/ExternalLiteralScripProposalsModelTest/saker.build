@@ -1,0 +1,21 @@
+example.task(
+	ExtLiteralParam1: 
+)
+example.task(
+	ExtLiteralParam1: EXT_S
+)
+example.task(
+	ExtLiteralParam1: $usedvar
+)
+$usedvar = ;
+$usedvar = EXT_S;
+
+example.task(
+	ExtLiteralParam1: $mapvar[Element]
+)
+$mapvar = {
+	Element: 
+}
+$mapvar = {
+	Element: EXT_S 
+}

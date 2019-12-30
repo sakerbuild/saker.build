@@ -1,0 +1,9 @@
+customtask(CustomParam1: 1, CustomParam2: 2, CusParam3: 3)
+
+customtask()
+customtask(Cus)
+customtask(Cust)
+
+customtask(x, )
+customtask(x, Cus)
+customtask(x, Cust)

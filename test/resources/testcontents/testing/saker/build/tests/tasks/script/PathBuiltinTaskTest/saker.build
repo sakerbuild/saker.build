@@ -1,0 +1,15 @@
+build(
+	out wd = path(),
+	out rel = path(abc),
+	out abs = path(/home/user),
+	out sec,
+	out secabs,
+	
+	out varpath = path($pathvar)
+){
+	$secinclude = include(Path: dir/second.build) 
+	$sec = $secinclude[secrel]
+	$secabs = $secinclude[secabs]
+	
+	$pathvar = varpath
+}

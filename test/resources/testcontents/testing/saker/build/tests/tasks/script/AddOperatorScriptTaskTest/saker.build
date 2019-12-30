@@ -1,0 +1,19 @@
+build(
+	out strlist = [a, b, c],
+	out strlistappend = $strlist + [d],
+	out strlistprepend = ["0"] + $strlist,
+	out strlistconcat = $strlist + $strlist2,
+	out directlistconcat = [a, b] + ["1", "2"],
+	
+	out strlistsecond = $strlist + $second[list],
+	out listsecond = ["1", "2"] + $second[list],
+	
+	out addition = 1 + 3,
+	out floatadd = 1.2 + 3.4,
+	out floatintadd = 1 + 2.3,
+	out intsecondadd = 1 + $second[num],
+	out secondsecondadd = $second[num] + $second[num],
+) {
+	$strlist2 = [x, y, z]
+	$second = include(Path: second.build)
+}

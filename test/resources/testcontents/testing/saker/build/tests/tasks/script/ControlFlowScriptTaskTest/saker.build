@@ -1,0 +1,68 @@
+iftest(
+	out out,
+) {
+	if test.IfInput() {
+		$out = true
+	} else {
+		$out = false
+	}
+}
+constantiftest(
+	out out,
+) {
+	if true {
+		$out = constantiftrue
+	} else { $out = constantiffalse; }
+}
+ternarytest(
+	out out = test.IfInput() ? true : false,
+){
+}
+constantternarytest(
+	out out = true ? constantternarytrue : constantternaryfalse,
+){
+}
+foreachlist(
+	out out1,
+	out out2,
+) {
+	foreach $item in [1, 2] {
+		$"out{ $item }" = $item
+	}
+}
+foreachvarlist(
+	out out1,
+	out out2,
+) {
+	$list = [1, 2]
+	foreach $item in $list {
+		$"out{ $item }" = $item
+	}
+}
+foreachinputlist(
+	out out1,
+	out out2,
+) {
+	foreach $item in test.ForeachList() {
+		$"out{ $item }" = $item
+	}
+}
+foreachlistresult(
+	out out
+)  {
+	$out = foreach $item in [1, 2] : [
+		$item + 1
+	]
+}
+foreachconcatresult(
+	out out
+)  {
+	$out = foreach $item in [1, 2] : "{ $item }"
+}
+foreachmapresult(
+	out out
+)  {
+	$out = foreach $item in [1, 2] : {
+		"key{ $item }": $item,
+	}
+}

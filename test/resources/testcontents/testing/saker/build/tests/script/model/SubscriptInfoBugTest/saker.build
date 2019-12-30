@@ -1,0 +1,20 @@
+getopts(
+	out options,
+){
+	$options[Field1]
+	$options = {
+		Field1: asd,
+	}
+}
+
+configure(
+) {
+	$config = {
+		field: [
+			include(getopts)[options]
+		]
+	}
+	example.task(
+		ListMapParam1: $config[field],
+	)
+}

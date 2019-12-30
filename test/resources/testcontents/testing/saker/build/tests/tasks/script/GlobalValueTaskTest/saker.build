@@ -1,0 +1,6 @@
+build(
+	out value, 
+) {
+	global(GLOB) = "123"
+	$value = include(Path: subsaker.build)[output]
+}

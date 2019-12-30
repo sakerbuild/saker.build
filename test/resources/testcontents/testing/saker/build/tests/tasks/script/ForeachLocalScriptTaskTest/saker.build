@@ -1,0 +1,57 @@
+build(
+	out result,
+) {
+	$result = foreach $item in [{a: 1, b: 2}, {a: 11, b: 22}] with $sum = $item[a] + $item[b]: [
+		$sum
+	]
+}
+nested(
+	out result,
+) {
+	$result = foreach $item in [{a: 1, b: 2}, {a: 11, b: 22}] with $sublist = [ $item[a], $item[b] ]: [
+		foreach $subitem in $sublist with $sum = $subitem : [
+			$sum
+		]
+	]
+}
+lateinit(
+	out result,
+) {
+	$result = foreach $item in [{a: 1, b: 3}, {a: 11, b: 33}] with $sum {
+		$sum = $item[a] + $item[b]
+	}: [
+		$sum
+	]
+}
+mixed(
+	out result,
+) {
+	$result = foreach $item in [{a: 1, b: 4}, {a: 11, b: 44}] with $sum {
+		foreach $thesum in [ $item[a] + $item[b] ] {
+			# this loop is only executed once, so the assignment is valid for the outer local
+			$sum = $thesum
+		} 
+	}: [
+		$sum
+	]
+}
+calclocal(
+	out result,
+){
+	# to check that a dereferenced computed literal assign the variable, not the foreach local
+	foreach $item in [1] with $result{
+		$"result" = $item
+	}
+}
+multisamelocals{
+	foreach $item in [1, 2] with $mlocal {
+		$mlocal = $item
+	}: "{ $mlocal }"
+	foreach $item in [1, 1] with $mlocal {
+		$mlocal = $item
+	}: "{ $mlocal }"
+	
+	foreach $item in [1, 1] with $mlocal {
+		$mlocal = $item
+	}: "{ $mlocal + 3 }"
+}

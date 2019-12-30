@@ -1,0 +1,12 @@
+test2(
+	out outparam,
+){
+	$outparam = {
+		field: CONTENT
+	}
+}
+test3(
+){
+	$inc = include(test2)[outparam]#add
+	print($inc)
+}

@@ -1,0 +1,487 @@
+language tasks_lang {
+	regex TARGET_NAME_REGEX "[a-zA-Z_][a-zA-Z0-9_]*";
+	regex VARIABLE_NAME_REGEX "[a-zA-Z_][a-zA-Z0-9_]*";
+	regex TASK_NAME_REGEX "[a-zA-Z_]+[.a-zA-Z0-9_]*";
+	regex REPOSITORY_NAME_REGEX "[a-zA-Z_][a-zA-Z_0-9]*";
+	regex PARAMETER_NAME "[a-zA-Z_][a-zA-Z0-9_]*";
+	regex TARGET_OUTPUT_NAME "[a-zA-Z_][a-zA-Z0-9_]*";
+	
+	firstorder general_step;
+	
+	value linecomment {
+		skip "((?!###)#)" 1;
+		matches "[^\n\r]+" *;
+	}
+	value multilinecomment {
+		skip "###" 1;
+		matches "([^#])|((?!###)#)" *;
+		skip "###|$" 1;
+	}
+	
+	anyorder WHITESPACE {
+		skip "([\s]+)" *;
+		include linecomment *;
+		include multilinecomment *;	
+	}
+	anyorder NB_WHITESPACE {
+		skip "([ \t\x0B\f]+)" *;
+		include linecomment *;
+		include multilinecomment *;	
+	}
+	
+	value expression;
+	value nooperator_expression;
+	value expression_placeholder {
+		include WHITESPACE *;
+		include expression ?;
+	}
+	value nb_expression_placeholder {
+		include NB_WHITESPACE *;
+		include expression ?;
+	}
+	value nooperator_expression_placeholder {
+		include WHITESPACE *;
+		include nooperator_expression as expression ?;
+	}
+	
+	value marker(regex pattern) {
+		skip pattern 1;
+	}
+	
+	value parentheses {
+		include marker as paren_start("\(") 1;
+		include expression_placeholder 1;
+		include WHITESPACE *;
+		include marker as paren_end("\)") 1;
+	}
+	
+	value task_identifier {
+		matches TASK_NAME_REGEX 1;
+		value qualifier *{
+			skip "-" 1;
+			firstorder ?{
+				value qualifier_inline_expression 1{
+					include marker as exp_start("\{") 1;
+					include expression_placeholder 1;
+					include WHITESPACE *;
+					include marker as exp_end("\}") 1;
+				}
+				value qualifier_literal 1{
+					matches "[a-zA-Z0-9_.]+" +;
+				}
+			}
+		}
+		value repository_identifier ?{
+			include WHITESPACE *;
+			skip "@" 1;
+			include WHITESPACE *;
+			matches REPOSITORY_NAME_REGEX 1;
+		}
+	}
+	
+	value param_name {
+		include WHITESPACE *;
+		value param_name_content ?{
+			matches PARAMETER_NAME 1;
+		}
+	}
+	
+	value parameter {
+		include param_name 1;
+		value param_content ?{
+			include WHITESPACE *;
+			include marker as param_eq(":") 1;
+			include expression_placeholder 1;
+		}
+	}
+	
+	value first_parameter {
+		inorder ?{
+			include param_name 1;
+			include WHITESPACE *;
+			include marker as param_eq(":") 1;
+		}
+		value param_content 1 {
+			include expression_placeholder 1;
+		}
+	}
+	
+	value paramlist {
+		include marker as params_start("\(") 1;
+		include first_parameter 1;
+		inorder *{
+			include WHITESPACE *;
+			skip "," 1;
+			include parameter 1;
+		}
+		include WHITESPACE *;
+		include marker as params_end("\)") 1;
+	}
+	
+	inorder expression_proto(occurrence operator_occurr) {
+		firstorder 1{
+			include parentheses 1;
+			value list 1{
+				include marker as list_boundary("\[") 1;
+				include expression_placeholder as list_element 1;
+				inorder * {
+					include WHITESPACE *;
+					skip "," 1;
+					include expression_placeholder as list_element 1;
+				}
+				include WHITESPACE *;
+				include marker as list_boundary("\]") 1;
+			}
+			value map 1{
+				include marker as map_boundary("\{") 1;
+				value map_element 1 {
+					include expression_placeholder as map_key 1;
+					inorder ?{
+						include WHITESPACE *;
+						include marker as map_element_separator(":") 1;
+						include expression_placeholder as map_val 1;
+					}
+				}
+				inorder * {
+					include WHITESPACE *;
+					skip "," 1;
+					include map_element 1;
+				}
+				include WHITESPACE *;
+				include marker as map_boundary("\}") 1;
+			}
+			value dereference 1{
+				skip "\$" 1;
+				value operator_subject ?{
+					include expression_proto(0) 1;
+				}
+			}
+			value unary 1 {
+				matches "[!~\-]" 1;
+				value operator_subject ?{
+					include expression_proto(0) 1;
+				}
+			}
+			value stringliteral 1{
+				skip "\"" 1;
+				anyorder *{
+					non-empty value stringliteral_content * {
+						anyorder + {
+							matches "\\." *;
+							matches "[^\\\\{\"]+" *;
+						}
+					}
+					value inline_expression * {
+						skip "\{" 1;
+						include expression_placeholder 1;		
+						include WHITESPACE *;
+						skip "\}" 1;
+					}
+				}
+				skip "\"" 1;
+			}
+			value foreach 1{
+				skip "foreach" 1;
+				include WHITESPACE +;
+				inorder ?{
+					value loopvar 1 {
+						skip "\$" 1;
+						matches VARIABLE_NAME_REGEX 1;
+					}
+					inorder * {
+						inorder * {
+							skip "," 1;
+							include WHITESPACE *;
+						}
+						include loopvar 1;		
+					}
+					include WHITESPACE +;
+				}
+				skip "in" 1;
+				include WHITESPACE +;
+				include expression_placeholder as iterable 1;
+				
+				value foreach_locals ? {
+					include WHITESPACE +;
+					skip "with" 1;
+					include WHITESPACE +;
+					
+					value localvar 1 {
+						skip "\$" 1;
+						matches VARIABLE_NAME_REGEX 1;
+						value local_initializer ? {
+							include WHITESPACE *;
+							skip "=" 1;
+							include expression_placeholder 1;			
+						}
+					}
+					inorder * {
+						anyorder * {
+							skip "," 1;
+							include WHITESPACE *;
+						}
+						include localvar 1;		
+					}
+					anyorder * {
+						skip "," 1;
+						include WHITESPACE *;
+					}
+				}
+				
+				inorder foreach_expressions {
+					include WHITESPACE *;
+					include marker as foreach_block_start("\{") 1;
+					value foreach_statement_block 1 {
+						anyorder * {
+							include WHITESPACE *;
+							value foreach_substep * {
+								include general_step 1;
+							}
+						}
+					}
+					include marker as foreach_block_end("\}") 1;
+				}
+				inorder foreach_value {
+					include WHITESPACE *;
+					include marker as foreach_result_start(":") 1;
+					include WHITESPACE *;
+					include nooperator_expression_placeholder as value_expression 1;
+				}
+				
+				firstorder ? {
+					inorder 1 {
+						include foreach_expressions 1;
+						include foreach_value 1;
+					}
+					include foreach_expressions 1;
+					include foreach_value 1;
+				}
+			}
+			value task 1{
+				include task_identifier 1;
+				include NB_WHITESPACE *;
+				include paramlist 1;
+			}
+			value literal 1{
+				value literal_content 1 {
+					matches "[^,\(\)\[\]\{\}:;\s]+" +;
+				}
+			}
+		}
+		firstorder operators operator_occurr {
+			value subscript 1 {
+				include NB_WHITESPACE *;
+				skip "\[" 1;
+				include expression_placeholder 1;
+				include WHITESPACE *;
+				skip "\]" 1;
+			}
+			value equalityop 1{
+				include WHITESPACE *;
+				matches "[!=]=" 1;
+				include nb_expression_placeholder as expression_placeholder 1;
+			}
+			value assignment 1 {
+				include WHITESPACE *;
+				include marker as assign_operator_eq("=") 1;
+				include nb_expression_placeholder as expression_placeholder 1;
+			}
+			value shiftop 1{
+				include WHITESPACE *;
+				matches "<<|>>" 1;
+				include nb_expression_placeholder as expression_placeholder 1;
+			}
+			value comparison 1 {
+				include WHITESPACE *;
+				matches "[<>]=?" 1;
+				include nb_expression_placeholder as expression_placeholder 1;
+			}
+			value addop 1 {
+				include WHITESPACE *;
+				matches "[\+\-]" 1;
+				include nb_expression_placeholder as expression_placeholder 1;
+			}
+			value multop 1 {
+				include WHITESPACE *;
+				matches "[\*\/%]" 1;
+				include nb_expression_placeholder as expression_placeholder 1;
+			}
+			value boolop 1 {
+				include WHITESPACE *;
+				matches "\|\||&&" 1;
+				include nb_expression_placeholder as expression_placeholder 1;
+			}
+			value bitop 1 {
+				include WHITESPACE *;
+				matches "[&\^|]" 1;
+				include nb_expression_placeholder as expression_placeholder 1;
+			}
+			value ternary 1 {
+				include WHITESPACE *;
+				skip "\?" 1;
+				include nb_expression_placeholder as exp_true 1;
+				include WHITESPACE *;
+				inorder ?{
+					skip ":" 1;
+					include nb_expression_placeholder as exp_false 1;
+				}
+			}
+		}
+	}
+	
+	value expression {
+		include expression_proto(*) 1;
+	}
+	value nooperator_expression {
+		include expression_proto(0) 1;
+	}
+	
+	value EXPRESSION_CLOSING {
+		firstorder 1 {
+			skip "[\t ]*(;|\z|\r\n?|\n)" 1;
+			skip "[\t ]*(?=#)" 1;
+		}
+	}
+	
+	value commas {
+		anyorder 1{
+			skip "," 1;
+			include WHITESPACE *;
+		}
+	}
+	
+	value expression_step {
+		include expression as expression_content 1;
+		include EXPRESSION_CLOSING 1;	
+	}
+	
+	value condition_step {
+		skip "if" 1;
+		include WHITESPACE +;
+		include expression_placeholder as condition_expression 1;
+		include WHITESPACE *;
+		include marker as true_branch_start("\{") 1;
+		value condition_true_statement_block 1 {
+			anyorder * {
+				include WHITESPACE *;
+				value true_step * {
+					include general_step 1;
+				}
+			}
+		}
+		include marker as true_branch_end("\}") 1;
+		inorder ? {
+			include WHITESPACE *;
+			skip "else" 1;
+			include WHITESPACE *;
+			include marker as false_branch_start("\{") 1;
+			value condition_false_statement_block 1 {
+				anyorder * {
+					include WHITESPACE *;
+					value false_step * {
+						include general_step 1;
+					}
+				}
+			}
+			include marker as false_branch_end("\}") 1;
+		}
+	}
+	
+	firstorder general_step {
+		include condition_step 1;
+		include expression_step 1;
+	}
+	
+	value target_name {
+		value target_name_content 1 {
+			matches TARGET_NAME_REGEX 1;
+		}
+	}
+	
+	value target_parameter_name {
+		matches TARGET_OUTPUT_NAME 1;
+	}
+	
+	inorder task_target_parameter {
+		include WHITESPACE *;
+		firstorder 1 {
+			value out_parameter 1{
+				include marker as parameter_directive("out") 1;
+				include WHITESPACE +;
+				skip "\$" ?;
+				include target_parameter_name 1;
+				value init_value ? {
+					include WHITESPACE *;
+					include marker as target_param_eq("=") 1;
+					include WHITESPACE *;
+					include expression_placeholder 1;
+				}
+			}
+			value in_parameter 1{
+				include marker as parameter_directive("in") 1;
+				include WHITESPACE +;
+				skip "\$" ?;
+				include target_parameter_name 1;
+				value init_value ?{
+					include WHITESPACE *;
+					include marker as target_param_eq("=") 1;
+					include WHITESPACE *;
+					include expression_placeholder 1;
+				}
+			}
+		}
+	}
+	
+	value task_target {
+		value target_names 1{
+			include target_name 1;
+			inorder * {
+				include WHITESPACE *;
+				skip "," 1;
+				include WHITESPACE *;
+				include target_name 1;
+			}
+		}
+		inorder ? {
+			include WHITESPACE *;
+			include marker as target_params_start("\(") 1;
+			include task_target_parameter ?;
+			inorder * {
+				include WHITESPACE *;
+				skip "," 1;
+				include task_target_parameter ?;
+			}
+			include WHITESPACE *;
+			include marker as target_params_end("\)") 1;
+		}
+		inorder 1 {
+			include WHITESPACE *;
+			include marker as target_block_start("\{") 1;
+			value task_statement_block 1 {
+				anyorder * {
+					include WHITESPACE *;
+					value task_step * {
+						include general_step 1;
+					}
+				}
+			}
+			include WHITESPACE *;
+			include marker as target_block_end("\}") 1;
+		}
+	}
+	
+	value global_expression_step {
+		include general_step 1;
+	}
+	
+	anyorder * {
+		value global_step_scope + {
+			include WHITESPACE *;
+		}
+		
+		firstorder ? {
+			include task_target 1;
+			include global_expression_step 1;
+		}
+	}
+}

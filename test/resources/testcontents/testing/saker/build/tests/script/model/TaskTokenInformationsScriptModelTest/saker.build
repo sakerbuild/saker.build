@@ -1,0 +1,12 @@
+example.task()
+example.task-q1()
+example.task-q2()
+example.task-q1-q2()
+other.task()
+other.task-q1()
+other.task-qx()
+unknown.task()
+
+example.task-{$var}()
+example.task-q1-{$var}()
+

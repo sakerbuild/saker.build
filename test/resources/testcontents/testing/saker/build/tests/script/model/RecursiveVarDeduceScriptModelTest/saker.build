@@ -1,0 +1,17 @@
+$var = {
+	Field: $var,
+}
+
+$var = [ $var ];
+$var = $var + $var;
+$var = "{$var}";
+$var = asd[$var];
+$var = $var[X];
+$var = $var;
+
+$varref = $var;
+$var = $varref;
+
+static(svar) = static(svar);
+static(svar) = static(svar)[Y];
+static(svar) = static(svar) + 3;

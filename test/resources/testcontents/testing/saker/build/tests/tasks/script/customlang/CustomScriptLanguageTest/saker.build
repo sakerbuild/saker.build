@@ -1,0 +1,3 @@
+build{
+	include(Path: custom.customlang)
+}

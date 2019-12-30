@@ -1,0 +1,5 @@
+build(
+	out secrel = path(sec),
+	out secabs = path(/sec/abs),
+){
+}

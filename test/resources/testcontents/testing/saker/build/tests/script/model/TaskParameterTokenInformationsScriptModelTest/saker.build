@@ -1,0 +1,9 @@
+example.task(SimpleParam1: sp1, SimpleParam2: sp2, Unknown: un)
+example.task-q1(SimpleParam1: q1sp1, SimpleParam2: q1sp2)
+example.task-q1-q2(SimpleParam1: q1q2sp1, SimpleParam2: q1q2sp2)
+
+example.task-q1-{$var}(SimpleParam1: q1varsp1, SimpleParam2: q1varsp2)
+
+#test nested correct doc resolution
+example.task(SimpleParam1: example.task(SimpleParam2: sp1sp2))
+

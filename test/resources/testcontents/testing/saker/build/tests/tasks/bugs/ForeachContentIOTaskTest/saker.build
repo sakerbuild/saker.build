@@ -1,0 +1,4 @@
+build(){
+	foreach $i in [{ },{ },] {
+	}
+}

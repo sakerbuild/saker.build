@@ -1,0 +1,34 @@
+compile(
+	in buildconfig,
+	in JDK,
+	in CorePass,
+	in JavaCompileOptions = $buildconfig[javajdkoptions],
+	
+	out javac,
+) {
+	$javac = saker.java.compile(
+		SourceDirectories: [
+			common, "{$JDK}",
+		],
+		ClassPath: [
+			saker.java.classpath.bundle("sipka.cmdline-api-v{ global(VERSION_sipka.cmdline) }"),
+			saker.java.classpath.bundle("sipka.cmdline-runtime-v{ global(VERSION_sipka.cmdline) }"),
+			$CorePass,
+		],
+		AnnotationProcessors: {
+			Processor: saker.java.processor.bundle(
+				Bundle: "sipka.cmdline-processor-v{ global(VERSION_sipka.cmdline) }",
+				Class: sipka.cmdline.processor.CommandLineProcessor,
+			),
+			Aggregating: false,
+			SuppressWarnings: [ 
+				LastRoundGeneration,
+			],
+			Options: {
+				sipka.cmdline.help.generate.reference: true,
+			},
+		},
+		Identifier: "launching-{$JDK}{ $buildconfig[testingid] }{ $buildconfig[apiid][$JDK] }",
+		CompilerOptions: $JavaCompileOptions,
+	)
+}

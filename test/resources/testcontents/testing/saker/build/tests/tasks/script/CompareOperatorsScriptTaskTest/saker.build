@@ -1,0 +1,18 @@
+build(
+	out la = 1 < 3,
+	out lb = 1 <= 3,
+	out lc = 2 < 2,
+	out ld = 2 <= 2,
+	out le = 3 < 1,
+	out lf = 3 <= 1,
+	
+	out ga = 1 > 3,
+	out gb = 1 >= 3,
+	out gc = 2 > 2,
+	out gd = 2 >= 2,
+	out ge = 3 > 1,
+	out gf = 3 >= 1,
+	
+) {
+	$second = include(Path: second.build)
+}

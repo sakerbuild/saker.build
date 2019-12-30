@@ -1,0 +1,62 @@
+example.task(
+	EnumParam1: ,
+	MapParam1: {
+		EnumField5: ,
+		
+	},
+)
+example.task(
+	EnumParam1: F,
+)
+
+$taskres = example.task();
+$taskres[][];
+
+{
+	MapField1: {
+		Inner1: 123
+	},
+	MapField2: {
+		Inner2: 
+	},
+#maptest
+}[][]
+
+example.task(
+	MapParam1: $mpvar[MpField]
+)
+$mpvar[MpField][]
+$mpvar[M]
+#mpvarmpfield
+$mpvar[]
+$mpvar[][MapField3][]
+
+example.task(
+	EnumParam1: {
+		EnumVarField: $indirectenumvar,
+	}[EnumVarField],
+)
+example.task(
+	EnumParam1: $directenumvar,
+)
+$directenumvar = ;
+$indirectenumvar = ;
+
+
+example.task(
+	MapParam1: {
+		ListField4: [
+			{
+				N: n1,
+			}
+		],
+	}
+)
+example.task(
+	MapParam1: {
+		#test passing single item to a collection
+		ListField4: {
+			N: n2,
+		},
+	}
+)

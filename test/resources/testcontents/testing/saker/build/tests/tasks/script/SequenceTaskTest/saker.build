@@ -1,0 +1,14 @@
+use() {
+	sequence([
+		waiter.task(3),
+		waiter.task(2),
+		waiter.task(1),
+	])
+	sequence([
+		these,
+		are,
+		some,
+		literals,
+		123,
+	])
+}

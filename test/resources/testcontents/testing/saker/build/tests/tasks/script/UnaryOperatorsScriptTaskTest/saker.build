@@ -1,0 +1,47 @@
+build(
+	out var,
+	
+	out negnumlit = -1,
+	out negfloatlit = -1.5,
+	out negnegnumlit = --1,
+	out neglit = -flag,
+	out negtruelit = -true,
+	out negnulllit = -null,
+	out negstrlit = -"str",
+	out negcpstrlit = -"str{ xx }",
+	
+	out negnumvar = -$numvar,
+	out negsecondnum = -$second[num],
+	out negmapnum = -{ Key: 9 }[Key],
+	
+	out bitnegnumlit = ~1,
+	out bitnegnegnumlit = ~~1,
+	out bitneglit = ~flag,
+	out bitnegtruelit = ~true,
+	out bitnegnulllit = ~null,
+	out bitnegstrlit = ~"str",
+	out bitnegcpstrlit = ~"str{ xx }",
+	
+	out bitnegnumvar = ~$numvar,
+	out bitnegsecondnum = ~$second[num],
+	out bitnegmapnum = ~{ Key: 9 }[Key],
+	
+	out boolnegtrue = !true,
+	out boolnegfalse = !false,
+	out boolnegnegfalse = !!false,
+	out boolnegnegtrue = !!true,
+	out boolneglit = !flag,
+	out boolnegnulllit = !null,
+	out boolnegstrlit = !"str",
+	out boolnegcpstrlit = !"str{ xx }",
+	
+	out boolnegboolvar = !$boolvar,
+	out boolnegsecondbool = !$second[bool],
+	out boolnegmapbool = !{ Key: true }[Key],
+) {
+	$second = include(Path: second.build)
+	
+	$var = var
+	$numvar = 5
+	$boolvar = true
+}

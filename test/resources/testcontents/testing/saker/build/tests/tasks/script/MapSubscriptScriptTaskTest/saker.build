@@ -1,0 +1,47 @@
+build(
+	out str,
+	out var1,
+	out var2,
+) {
+	$var1name = varkey
+	$var2name = varkey
+	$map = {
+		Key: strval,
+		$var1name: var1val,
+		$var2name: var2val,
+	}
+	$str = $map[Key]
+	$var1 = $map[$var1name]
+	$var2 = $map[$var2name]
+}
+
+conflict(
+	out map
+)  {
+	$var1name = varkey
+	$var2name = varkey
+	$map = {
+		Key: strval,
+		$var1name: var1val,
+		$var2name: var2val,
+	}
+}
+
+nokeyunused(
+	out nokeyout,
+){
+	$map = {
+		Key1: 1
+	}
+	$nokeyout = $map[NoKey]
+}
+
+nokeyout(
+	out output,
+){
+	$map = {
+		Key1: 1,
+		Key2: path(),
+	}
+	$output = $map[NoKey]
+}

@@ -1,0 +1,14 @@
+$v1 = EXT_SIMPLE_LITERAL;
+$v2 = EXT_OBJECT_LITERAL;
+
+example.task(
+	ExtLiteralParam1: EXT_SIMPLE_LITERAL 
+)
+example.task(
+	ExtLiteralParam1: EXT_OBJECT_LITERAL 
+)
+
+example.task(
+	ExtLiteralParam1: $usedvar 
+)
+$usedvar = EXT_SIMPLE_LITERAL;

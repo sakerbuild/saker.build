@@ -1,0 +1,43 @@
+build(
+	out maplist,
+	out list,
+){
+	$maplist = {
+		List: [
+			test.lit.a(),
+			b,
+			c,
+		],
+	}
+	$list = $maplist[List]
+	test.consume.list($maplist[List])
+	test.consume.list($list)
+	$omap = include(creator)[outmap]
+	$olist = include(creator)[olist]
+	test.consume.list($omap[List])
+	include(tester, list: $omap[List])
+	test.consume.list($olist)
+	include(tester, list: $olist)
+}
+creator(
+	out outmap,
+	out olist,
+){
+	$outmap = {
+		List: [
+			test.lit.a(),
+			b,
+			c,
+		],
+	}
+	$olist = [
+		test.lit.a(),
+		b,
+		c,
+	]
+}
+tester(
+	in list
+){
+	test.consume.list($list)
+}

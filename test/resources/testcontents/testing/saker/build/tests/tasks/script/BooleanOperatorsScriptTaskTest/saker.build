@@ -1,0 +1,14 @@
+build(
+	out a = true || false,
+	out b = true && false,
+	out c = true && true,
+	out d = false && false,
+	out e = false || false,
+	out f = false || $second[bool],
+	out g = true && $second[bool],
+	out h = false && true || false,
+	out i = true && false || false,
+	out j = false && false || true,
+) {
+	$second = include(Path: second.build)
+}

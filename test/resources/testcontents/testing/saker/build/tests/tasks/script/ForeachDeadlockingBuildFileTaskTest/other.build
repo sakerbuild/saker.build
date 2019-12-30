@@ -1,0 +1,10 @@
+build(
+	in Input,
+	
+	out result,
+) {
+	$theelement = theelemvalue
+	$result = [
+		$theelement,
+	]
+}
