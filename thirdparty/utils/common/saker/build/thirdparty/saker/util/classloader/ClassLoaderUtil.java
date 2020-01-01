@@ -12,6 +12,7 @@ import java.util.jar.JarFile;
 import javax.annotation.processing.Processor;
 
 import saker.apiextract.api.ExcludeApi;
+import saker.build.thirdparty.saker.util.classloader.ClassLoaderAccessor;
 
 /**
  * Utility class containing functions related to {@linkplain ClassLoader class loaders}.

@@ -139,7 +139,7 @@ public interface ByteSink extends Closeable, Flushable {
 		if (os instanceof ByteSink) {
 			return (ByteSink) os;
 		}
-		return new ObjectOutputByteSink(os);
+		return new ObjectOutputByteSinkImpl(os);
 	}
 
 	/**

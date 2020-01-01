@@ -203,7 +203,7 @@ public interface ByteSource extends Closeable {
 		if (is instanceof ByteSource) {
 			return (ByteSource) is;
 		}
-		return new ObjectInputByteSource(is);
+		return new ObjectInputByteSourceImpl(is);
 	}
 
 	/**

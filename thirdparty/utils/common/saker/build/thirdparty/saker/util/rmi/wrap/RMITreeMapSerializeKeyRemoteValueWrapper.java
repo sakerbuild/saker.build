@@ -3,11 +3,12 @@ package saker.build.thirdparty.saker.util.rmi.wrap;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.TreeMap;
 
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
+
+import java.util.TreeMap;
 
 /**
  * {@link RMIWrapper} implementation that writes a {@link Map} instance and reads them as {@link TreeMap} instances.

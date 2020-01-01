@@ -12,7 +12,7 @@ import saker.build.thirdparty.saker.util.ArrayUtils;
  * 
  * @see DataInputUnsyncByteArrayInputStream
  */
-public class DataOutputUnsyncByteArrayOutputStream extends UnsyncByteArrayOutputStream implements DataOutput {
+public class DataOutputUnsyncByteArrayOutputStream extends UnsyncByteArrayOutputStream implements DataOutputByteSink {
 
 	/**
 	 * Creates a new instance with the default buffer size.

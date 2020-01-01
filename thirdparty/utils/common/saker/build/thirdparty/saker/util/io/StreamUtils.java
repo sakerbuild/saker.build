@@ -488,7 +488,7 @@ public class StreamUtils {
 		if (output instanceof OutputStream) {
 			return (OutputStream) output;
 		}
-		return new ObjectOutputByteSink(output);
+		return new ObjectOutputByteSinkImpl(output);
 	}
 
 	/**
@@ -510,7 +510,7 @@ public class StreamUtils {
 		if (input instanceof InputStream) {
 			return (InputStream) input;
 		}
-		return new ObjectInputByteSource(input);
+		return new ObjectInputByteSourceImpl(input);
 	}
 
 	/**
@@ -533,7 +533,7 @@ public class StreamUtils {
 		if (os == null) {
 			return null;
 		}
-		return new DataOutputByteSink(os);
+		return new DataOutputByteSinkImpl(os);
 	}
 
 	/**
