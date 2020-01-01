@@ -1,9 +1,6 @@
 package saker.build.runtime.execution;
 
-import java.io.Externalizable;
 import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectOutput;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
@@ -20,7 +17,11 @@ import saker.build.runtime.params.ExecutionRepositoryConfiguration;
 import saker.build.runtime.params.ExecutionScriptConfiguration;
 import saker.build.task.TaskProgressMonitor;
 import saker.build.task.cluster.TaskInvokerFactory;
+import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
+import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
+import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
+import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.thirdparty.saker.util.DateUtils;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -28,10 +29,8 @@ import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 
-public final class ExecutionParametersImpl implements Externalizable, ExecutionParameters {
-	//TODO make this class RMI transferrable, but not externalizable
-	private static final long serialVersionUID = 1L;
-
+@RMIWrap(ExecutionParametersImpl.ParametersRMIWrapper.class)
+public final class ExecutionParametersImpl implements ExecutionParameters {
 	private ByteSink outStream;
 	private ByteSink errStream;
 	private ByteSource inputStream;
@@ -295,71 +294,6 @@ public final class ExecutionParametersImpl implements Externalizable, ExecutionP
 		this.buildDataCache = buildCache;
 	}
 
-	@Override
-	public void writeExternal(ObjectOutput out) throws IOException {
-		out.writeObject(buildDirectory);
-		out.writeObject(mirrorDirectory);
-
-		out.writeObject(errStream);
-		out.writeObject(outStream);
-		out.writeObject(inputStream);
-
-		out.writeBoolean(requiresIDEConfiguration);
-
-		out.writeObject(pathConfiguration);
-		out.writeObject(repositoryConfiguration);
-		out.writeObject(scriptConfiguration);
-
-		out.writeObject(progressMonitor);
-
-		out.writeObject(buildDataCache);
-		out.writeBoolean(publishCachedTasks);
-
-		out.writeObject(secretInputReader);
-		out.writeObject(userPrompHandler);
-		out.writeObject(databaseConfiguration);
-
-		SerialUtils.writeExternalCollection(out, taskInvokerFactories);
-		SerialUtils.writeExternalCollection(out, protectionWriteEnabledDirectories);
-		SerialUtils.writeExternalMap(out, userParameters);
-
-		out.writeLong(deadlockPollingFrequencyMillis);
-	}
-
-	@Override
-	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-		buildDirectory = (SakerPath) in.readObject();
-		mirrorDirectory = (SakerPath) in.readObject();
-
-		errStream = (ByteSink) in.readObject();
-		outStream = (ByteSink) in.readObject();
-		inputStream = (ByteSource) in.readObject();
-
-		requiresIDEConfiguration = in.readBoolean();
-
-		pathConfiguration = (ExecutionPathConfiguration) in.readObject();
-		repositoryConfiguration = (ExecutionRepositoryConfiguration) in.readObject();
-		scriptConfiguration = (ExecutionScriptConfiguration) in.readObject();
-
-		progressMonitor = (ExecutionProgressMonitor) in.readObject();
-		if (RMIConnection.isRemoteObject(progressMonitor)) {
-			progressMonitor = new TimedPollingProgressMonitor(progressMonitor);
-		}
-
-		buildDataCache = (BuildDataCache) in.readObject();
-		publishCachedTasks = in.readBoolean();
-
-		secretInputReader = (SecretInputReader) in.readObject();
-		userPrompHandler = (BuildUserPromptHandler) in.readObject();
-		databaseConfiguration = (DatabaseConfiguration) in.readObject();
-
-		taskInvokerFactories = SerialUtils.readExternalImmutableList(in);
-		protectionWriteEnabledDirectories = SerialUtils.readExternalImmutableList(in);
-		userParameters = SerialUtils.readExternalImmutableLinkedHashMap(in);
-
-		deadlockPollingFrequencyMillis = in.readLong();
-	}
-
 	private static class TimedPollingProgressMonitor implements ExecutionProgressMonitor {
 		private final ExecutionProgressMonitor subject;
 		private volatile boolean cancelled = false;
@@ -399,4 +333,91 @@ public final class ExecutionParametersImpl implements Externalizable, ExecutionP
 		}
 	}
 
+	protected static class ParametersRMIWrapper implements RMIWrapper {
+		private ExecutionParametersImpl params;
+
+		public ParametersRMIWrapper() {
+		}
+
+		public ParametersRMIWrapper(ExecutionParametersImpl params) {
+			this.params = params;
+		}
+
+		@Override
+		public void writeWrapped(RMIObjectOutput out) throws IOException {
+			out.writeObject(params.buildDirectory);
+			out.writeObject(params.mirrorDirectory);
+
+			out.writeObject(params.errStream);
+			out.writeObject(params.outStream);
+			out.writeObject(params.inputStream);
+
+			out.writeBoolean(params.requiresIDEConfiguration);
+
+			out.writeObject(params.pathConfiguration);
+			out.writeObject(params.repositoryConfiguration);
+			out.writeObject(params.scriptConfiguration);
+
+			out.writeObject(params.progressMonitor);
+
+			out.writeObject(params.buildDataCache);
+			out.writeBoolean(params.publishCachedTasks);
+
+			out.writeObject(params.secretInputReader);
+			out.writeObject(params.userPrompHandler);
+			out.writeObject(params.databaseConfiguration);
+
+			SerialUtils.writeExternalCollection(out, params.taskInvokerFactories);
+			SerialUtils.writeExternalCollection(out, params.protectionWriteEnabledDirectories);
+			SerialUtils.writeExternalMap(out, params.userParameters);
+
+			out.writeLong(params.deadlockPollingFrequencyMillis);
+		}
+
+		@Override
+		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
+			params = new ExecutionParametersImpl();
+			params.buildDirectory = (SakerPath) in.readObject();
+			params.mirrorDirectory = (SakerPath) in.readObject();
+
+			params.errStream = (ByteSink) in.readObject();
+			params.outStream = (ByteSink) in.readObject();
+			params.inputStream = (ByteSource) in.readObject();
+
+			params.requiresIDEConfiguration = in.readBoolean();
+
+			params.pathConfiguration = (ExecutionPathConfiguration) in.readObject();
+			params.repositoryConfiguration = (ExecutionRepositoryConfiguration) in.readObject();
+			params.scriptConfiguration = (ExecutionScriptConfiguration) in.readObject();
+
+			params.progressMonitor = (ExecutionProgressMonitor) in.readObject();
+			if (RMIConnection.isRemoteObject(params.progressMonitor)) {
+				params.progressMonitor = new TimedPollingProgressMonitor(params.progressMonitor);
+			}
+
+			params.buildDataCache = (BuildDataCache) in.readObject();
+			params.publishCachedTasks = in.readBoolean();
+
+			params.secretInputReader = (SecretInputReader) in.readObject();
+			params.userPrompHandler = (BuildUserPromptHandler) in.readObject();
+			params.databaseConfiguration = (DatabaseConfiguration) in.readObject();
+
+			params.taskInvokerFactories = SerialUtils.readExternalImmutableList(in);
+			params.protectionWriteEnabledDirectories = SerialUtils.readExternalImmutableList(in);
+			params.userParameters = SerialUtils.readExternalImmutableLinkedHashMap(in);
+
+			params.deadlockPollingFrequencyMillis = in.readLong();
+		}
+
+		@Override
+		public Object resolveWrapped() {
+			return params;
+		}
+
+		@Override
+		public Object getWrappedObject() {
+			throw new UnsupportedOperationException();
+		}
+
+	}
 }
