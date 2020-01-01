@@ -475,9 +475,9 @@ _getdocprocessoroptions(
 		AnnotationProcessors: {
 			Processor: saker.java.processor.bundle(
 				Bundle: "saker.apiextract-processor-v{ global(VERSION_saker.apiextract) }",
-				Class: saker.apiextract.processor.ApiExtractProcessor
+				Class: saker.apiextract.processor.ApiExtractProcessor,
+				Aggregating: true,
 			),
-			Aggregating: true,
 			SuppressWarnings: [ 
 				LastRoundGeneration,
 			],
