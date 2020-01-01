@@ -3,10 +3,9 @@ package saker.build.thirdparty.saker.util.io;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.ObjectInput;
 import java.nio.CharBuffer;
 
-class NullInputStream extends InputStream implements ObjectInput, ByteSource, Readable {
+class NullInputStream extends InputStream implements ObjectInputByteSource, Readable {
 	public static final NullInputStream INSTANCE = new NullInputStream();
 
 	private NullInputStream() {

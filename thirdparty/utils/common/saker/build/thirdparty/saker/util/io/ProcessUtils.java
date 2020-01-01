@@ -1,5 +1,7 @@
 package saker.build.thirdparty.saker.util.io;
 
+import saker.build.thirdparty.saker.util.io.ProcessDestroyer;
+
 /**
  * Utility class containing functions regarding process manipulation.
  *
