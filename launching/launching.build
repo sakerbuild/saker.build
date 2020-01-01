@@ -19,8 +19,8 @@ compile(
 			Processor: saker.java.processor.bundle(
 				Bundle: "sipka.cmdline-processor-v{ global(VERSION_sipka.cmdline) }",
 				Class: sipka.cmdline.processor.CommandLineProcessor,
+				Aggregating: false,				
 			),
-			Aggregating: false,
 			SuppressWarnings: [ 
 				LastRoundGeneration,
 			],
