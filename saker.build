@@ -134,6 +134,10 @@ export(
 				Resources: **,
 				TargetDirectory: internal,
 			},
+			{
+				Files: LICENSE,
+				TargetDirectory: META-INF,
+			},
 		],
 		Includes: [
 			{
