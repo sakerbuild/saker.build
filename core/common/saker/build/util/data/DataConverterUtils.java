@@ -476,7 +476,6 @@ public class DataConverterUtils {
 				e.printStackTrace();
 				return false;
 			} catch (IllegalAccessException e) {
-				e.printStackTrace();
 				throw new AssertionError(e);
 			}
 			if (!ReflectUtils.annotationValuesEqual(val, hisValue)) {
@@ -884,9 +883,11 @@ public class DataConverterUtils {
 		//XXX cache the instantiated converters
 		try {
 			return ReflectUtils.newInstance(convertertype);
-		} catch (InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException
-				| NoSuchMethodException | SecurityException e) {
+		} catch (InstantiationException | IllegalAccessException | IllegalArgumentException | NoSuchMethodException
+				| SecurityException e) {
 			throw new ConversionFailedException("Failed to instantiate data converter class.", e);
+		} catch (InvocationTargetException e) {
+			throw new ConversionFailedException("Failed to instantiate data converter class.", e.getCause());
 		}
 	}
 
@@ -1511,9 +1512,12 @@ public class DataConverterUtils {
 							try {
 								return ReflectUtils.invokeMethod((Object) null, contextedvalueof, value,
 										conversioncontext);
-							} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+							} catch (IllegalAccessException | IllegalArgumentException e) {
 								excs = IOUtils.collectExc(excs, new ConversionFailedException(
 										"Failed to convert using: " + contextedvalueof, e));
+							} catch (InvocationTargetException e) {
+								excs = IOUtils.collectExc(excs, new ConversionFailedException(
+										"Failed to convert using: " + contextedvalueof, e.getCause()));
 							}
 						}
 					} catch (NoSuchMethodException | SecurityException e) {
@@ -1546,10 +1550,14 @@ public class DataConverterUtils {
 				if (perfectvalueofmatch != null) {
 					try {
 						return ReflectUtils.invokeMethod((Object) null, perfectvalueofmatch, value);
-					} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+					} catch (IllegalAccessException | IllegalArgumentException e) {
 						excs = IOUtils.collectExc(excs, new ConversionFailedException(
 								"Failed to convert using perfect valueOf match: " + perfectvalueofmatch, e));
+					} catch (InvocationTargetException e) {
+						excs = IOUtils.collectExc(excs, new ConversionFailedException(
+								"Failed to convert using perfect valueOf match: " + perfectvalueofmatch, e.getCause()));
 					}
+
 					//continue, check the primitivized version
 				}
 				Class<?> primitivizedvalueclass = ReflectUtils.primitivize(valueclass);
@@ -1557,10 +1565,14 @@ public class DataConverterUtils {
 				if (primitivizedperfectvalueofmatch != null) {
 					try {
 						return ReflectUtils.invokeMethod((Object) null, primitivizedperfectvalueofmatch, value);
-					} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+					} catch (IllegalAccessException | IllegalArgumentException e) {
 						excs = IOUtils.collectExc(excs, new ConversionFailedException(
 								"Failed to convert using perfect valueOf match: " + primitivizedperfectvalueofmatch,
 								e));
+					} catch (InvocationTargetException e) {
+						excs = IOUtils.collectExc(excs, new ConversionFailedException(
+								"Failed to convert using perfect valueOf match: " + primitivizedperfectvalueofmatch,
+								e.getCause()));
 					}
 				}
 				if (perfectvalueofmatch != null || primitivizedperfectvalueofmatch != null) {
@@ -1667,9 +1679,12 @@ public class DataConverterUtils {
 				if (targetclass.isAssignableFrom(totargetmethod.getReturnType())) {
 					try {
 						return ReflectUtils.invokeMethod(value, totargetmethod);
-					} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+					} catch (IllegalAccessException | IllegalArgumentException e) {
 						excs = IOUtils.collectExc(excs,
 								new ConversionFailedException("Failed to convert using: " + totargetmethod, e));
+					} catch (InvocationTargetException e) {
+						excs = IOUtils.collectExc(excs, new ConversionFailedException(
+								"Failed to convert using: " + totargetmethod, e.getCause()));
 					}
 				} else {
 					//types are not assignable. is the target class is an interface
@@ -1678,9 +1693,12 @@ public class DataConverterUtils {
 						try {
 							return adaptInterface(conversioncontext.getBaseClassLoader(),
 									ReflectUtils.invokeMethod(value, totargetmethod));
-						} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+						} catch (IllegalAccessException | IllegalArgumentException e) {
 							excs = IOUtils.collectExc(excs,
 									new ConversionFailedException("Failed to convert using: " + totargetmethod, e));
+						} catch (InvocationTargetException e) {
+							excs = IOUtils.collectExc(excs, new ConversionFailedException(
+									"Failed to convert using: " + totargetmethod, e.getCause()));
 						}
 					} else {
 						excs = IOUtils.collectExc(excs,

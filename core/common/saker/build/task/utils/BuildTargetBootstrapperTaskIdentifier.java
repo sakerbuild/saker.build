@@ -21,9 +21,12 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.NavigableMap;
 
+import com.sun.corba.se.impl.orbutil.ObjectUtility;
+
 import saker.build.exception.InvalidPathFormatException;
 import saker.build.file.path.SakerPath;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 
 final class BuildTargetBootstrapperTaskIdentifier implements Externalizable, TaskIdentifier {
@@ -127,7 +130,7 @@ final class BuildTargetBootstrapperTaskIdentifier implements Externalizable, Tas
 	public String toString() {
 		return getClass().getSimpleName() + "[" + (buildFilePath != null ? "buildFilePath=" + buildFilePath + ", " : "")
 				+ (buildTargetName != null ? "buildTargetName=" + buildTargetName + ", " : "")
-				+ (parameters != null ? "parameters=" + parameters + ", " : "")
+				+ (!ObjectUtils.isNullOrEmpty(parameters) ? "parameters=" + parameters + ", " : "")
 				+ (workingDirectory != null ? "workingDirectory=" + workingDirectory + ", " : "")
 				+ (buildDirectory != null ? "buildDirectory=" + buildDirectory : "") + "]";
 	}

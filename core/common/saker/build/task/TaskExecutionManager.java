@@ -4109,7 +4109,8 @@ public class TaskExecutionManager {
 
 	private static void checkSameFactories(TaskIdentifier taskid, TaskFactory<?> factoryfromfuture,
 			TaskFactory<?> factoryforstartingtask) {
-		//factory from the future may be null, so call equals on the starting task factory, as that is verified
+		//the factory from the future should not ever be null, as if it was, then we should've succeeded the initialization
+		//anyway, call the equals on the starting task factory as we know that that is never null.
 		if (!factoryforstartingtask.equals(factoryfromfuture)) {
 			throw new TaskIdentifierConflictException(
 					"Different factories: " + factoryfromfuture + " and " + factoryforstartingtask, taskid);
