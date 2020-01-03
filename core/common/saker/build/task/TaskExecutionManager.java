@@ -2748,7 +2748,6 @@ public class TaskExecutionManager {
 		}
 
 		private static final FutureState FUTURE_STATE_UNSTARTED = new FutureState(STATE_UNSTARTED);
-		private static final FutureState FUTURE_STATE_DEADLOCKED = new FutureState(STATE_RESULT_DEADLOCKED);
 
 		@SuppressWarnings("rawtypes")
 		private static final AtomicReferenceFieldUpdater<TaskExecutionManager.ManagerTaskFutureImpl, FutureState> ARFU_futureState = AtomicReferenceFieldUpdater
@@ -3109,7 +3108,11 @@ public class TaskExecutionManager {
 							context.getTaskId());
 				}
 				//XXX we shouldn't call getcapabilities here, but get an invocation configuration instance for the future
-				Set<String> capabilities = s.getFactory().getCapabilities();
+				TaskFactory<?> sfactory = s.getFactory();
+				if (sfactory == null) {
+					throw new AssertionError("Internal build system consistency error.");
+				}
+				Set<String> capabilities = sfactory.getCapabilities();
 				if (!capabilities.contains(TaskFactory.CAPABILITY_SHORT_TASK)) {
 					throw new IllegalTaskOperationException(
 							"A short capable task can only wait for other short capable tasks. (Waiting for: " + taskId
@@ -3614,7 +3617,8 @@ public class TaskExecutionManager {
 		protected void deadlocked() {
 			FutureState s = this.futureState;
 			while (s.state == STATE_UNSTARTED || s.state == STATE_EXECUTING || s.state == STATE_INITIALIZING) {
-				if (ARFU_futureState.compareAndSet(this, s, FUTURE_STATE_DEADLOCKED)) {
+				if (ARFU_futureState.compareAndSet(this, s,
+						new FactoryFutureState(STATE_RESULT_DEADLOCKED, s.getFactory()))) {
 					for (WaiterThreadHandle t; (t = waitingThreads.poll()) != null;) {
 						LockSupport.unpark(t.get());
 					}

@@ -350,7 +350,7 @@ install() {
 	nest.local.install($exportall[bundlepaths])
 }
 upload(){
-	$export = include(export, Path: saker.build)
+	$export = include(exportall, Path: saker.build)
 	include(Path: secret/secrets.build)
 	nest.server.upload(
 		Bundles: $export[bundlepaths],
