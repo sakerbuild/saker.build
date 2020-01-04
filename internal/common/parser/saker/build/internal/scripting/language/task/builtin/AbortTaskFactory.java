@@ -72,7 +72,7 @@ public class AbortTaskFactory extends SelfSakerTaskFactory {
 						messageid);
 			}
 			if (messagestr != null) {
-				SakerLog.error().out(taskcontext).println(messagestr);
+				SakerLog.error().taskScriptPosition(taskcontext).println(messagestr);
 			}
 			Throwable abortexc = messagestr == null ? new BuildAbortedException()
 					: new BuildAbortedException(messagestr);
