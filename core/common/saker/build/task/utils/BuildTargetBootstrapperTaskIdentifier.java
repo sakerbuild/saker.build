@@ -21,8 +21,6 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.NavigableMap;
 
-import com.sun.corba.se.impl.orbutil.ObjectUtility;
-
 import saker.build.exception.InvalidPathFormatException;
 import saker.build.file.path.SakerPath;
 import saker.build.task.identifier.TaskIdentifier;
