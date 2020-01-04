@@ -126,13 +126,8 @@ export(
 				: saker.build.jar,
 		Resources: [
 			{
-				Directory: resources/core/public,
+				Directory: resources/core,
 				Resources: **,
-			},
-			{
-				Directory: resources/core/internal,
-				Resources: **,
-				TargetDirectory: internal,
 			},
 			{
 				Files: LICENSE,
