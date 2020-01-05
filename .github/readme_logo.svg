@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="70mm" height="100mm" version="1.1" viewBox="0 0 70 100" xmlns="http://www.w3.org/2000/svg">
+ <defs>
+  <linearGradient id="linearGradient4612" x1="104.01" x2="7.4285" y1="138.81" y2="230.97" gradientUnits="userSpaceOnUse">
+   <stop stop-color="#0185b6" offset="0"/>
+   <stop stop-color="#fff" offset="1"/>
+  </linearGradient>
+  <linearGradient id="linearGradient4614" x1="85.451" x2="129.36" y1="132.56" y2="31.741" gradientUnits="userSpaceOnUse">
+   <stop stop-color="#0aaad2" offset="0"/>
+   <stop stop-color="#fff" offset="1"/>
+  </linearGradient>
+  <linearGradient id="linearGradient4616" x1="104.87" x2="201.52" y1="138.46" y2="208.83" gradientUnits="userSpaceOnUse">
+   <stop stop-color="#019cc8" offset="0"/>
+   <stop stop-color="#fff" stop-opacity=".99448" offset="1"/>
+  </linearGradient>
+  <linearGradient id="linearGradient6200" x1="77.375" x2="194.09" y1="164.23" y2="57.983" gradientUnits="userSpaceOnUse">
+   <stop stop-color="#14b4dc" offset="0"/>
+   <stop stop-color="#fff" offset="1"/>
+  </linearGradient>
+ </defs>
+ <g transform="translate(-70 -98.474)">
+  <path d="m105 198.47-35-70 67.618 1.0974z" fill="url(#linearGradient4612)"/>
+  <path d="m105 138.47-35-10 35-30c11.397 13.426 10.287 26.751 0 40z" fill="url(#linearGradient4614)"/>
+  <path d="m105 198.47v-65l35-5-35 70z" fill="url(#linearGradient4616)"/>
+  <path d="m105 138.47v-40l35 30z" fill="url(#linearGradient6200)"/>
+ </g>
+</svg>
