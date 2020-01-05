@@ -1,4 +1,4 @@
-# saker.build system
+# ![](.github/readme_logo.svg) saker.build system
 
 Saker.build is a language agnostic build system that focuses on extensibility and scalable incremental builds. It supports distributing build tasks over multiple build machines, rebuilding only the smallest possible part of the project, and can scale for tens of thousands of source files.
 
