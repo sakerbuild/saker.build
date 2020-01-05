@@ -169,7 +169,11 @@ exportide(
 			{
 				Directory: $export[compile][idesupportcompile][javac][ClassDirectory],
 				Resources: **/*.class,
-			}
+			},
+			{
+				Files: LICENSE,
+				TargetDirectory: META-INF,
+			},
 		],
 		Manifest: {
 			MainAttributes: {
@@ -202,6 +206,10 @@ apiexport(
 			},
 			{
 				Directory: "{$compile[compilebyjdkmajor][8][ThirdPartyJavac][ResourceDirectory]}/API_OUTPUT",
+				Resources: **,
+			},
+			{
+				Directory: resources/lgpl/,
 				Resources: **,
 			},
 		],
@@ -248,7 +256,11 @@ testexport(
 			{
 				Directory: $runnercompile[javac][ClassDirectory],
 				Resources: **,
-			}
+			},
+			{
+				Directory: resources/lgpl/,
+				Resources: **,
+			},
 		],
 		Manifest: {
 			MainAttributes: {
@@ -264,7 +276,11 @@ testexport(
 			{
 				Directory: $testutilscompile[javac][ClassDirectory],
 				Resources: **,
-			}
+			},
+			{
+				Files: LICENSE,
+				TargetDirectory: META-INF,
+			},
 		],
 		Manifest: {
 			MainAttributes: {
@@ -313,7 +329,11 @@ exportsources(
 				Directory: native/,
 				Resources: **,
 				TargetDirectory: native,
-			}
+			},
+			{
+				Files: LICENSE,
+				TargetDirectory: META-INF,
+			},
 		],
 		Manifest: {
 			MainAttributes: {
