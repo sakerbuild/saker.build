@@ -2,7 +2,7 @@
 
 Saker.build is a language agnostic build system that focuses on extensibility and scalable incremental builds. It supports distributing build tasks over multiple build machines, rebuilding only the smallest possible part of the project, and can scale for tens of thousands of source files.
 
-Saker.build uses its own scripting language for defining the build process and loads the build tasks from the configured task repositories. It integrates well with the Eclipse IDE and provides [unmatched performance for Java builds](https://saker.build/saker.java.compiler/doc/performancecomparison.html "Performance comparison | saker.java.compiler").
+Saker.build uses its own scripting language for defining the build process and loads the build tasks from the configured task repositories. It integrates well with the [Eclipse IDE](Eclipse plugin | saker.build) and provides [unmatched performance for Java builds](https://saker.build/saker.java.compiler/doc/performancecomparison.html "Performance comparison | saker.java.compiler").
 
 Visit [https://saker.build](https://saker.build "Saker.build system") for more information.
 
