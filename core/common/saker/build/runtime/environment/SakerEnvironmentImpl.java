@@ -222,13 +222,14 @@ public final class SakerEnvironmentImpl implements Closeable {
 		if (interrupted) {
 			Thread.currentThread().interrupt();
 		}
-		BuildTaskExecutionResultImpl res = thread.buildResult;
-		if (res == null) {
-			res = BuildTaskExecutionResultImpl.createInitializationFailed(
-					new AssertionError("Internal error, failed to retrieve result from executor thread."));
-		}
-		for (Iterator<Throwable> it = uncaughtexceptions.clearAndIterator(); it.hasNext();) {
-			res.addException(it.next());
+		Function<Iterable<? extends Throwable>, BuildTaskExecutionResult> resultcreator = thread.resultCreator;
+		BuildTaskExecutionResult res;
+		if (resultcreator == null) {
+			res = initializationFailedBuildResultCreator(
+					new AssertionError("Internal error, failed to retrieve result from executor thread."))
+							.apply(uncaughtexceptions.clearAndIterable());
+		} else {
+			res = resultcreator.apply(uncaughtexceptions.clearAndIterable());
 		}
 		return res;
 	}
@@ -694,7 +695,7 @@ public final class SakerEnvironmentImpl implements Closeable {
 		private final TaskFactory<R> taskFactory;
 		private final TaskIdentifier taskId;
 
-		protected BuildTaskExecutionResultImpl buildResult;
+		protected Function<Iterable<? extends Throwable>, BuildTaskExecutionResult> resultCreator;
 
 		public TaskRunnerThread(ThreadGroup group, SakerEnvironmentImpl environment, ExecutionParametersImpl parameters,
 				SakerProjectCache project, TaskIdentifier taskid, TaskFactory<R> task) {
@@ -707,7 +708,8 @@ public final class SakerEnvironmentImpl implements Closeable {
 			this.project = project;
 		}
 
-		protected BuildTaskExecutionResultImpl runWithContext(ExecutionContextImpl context) {
+		protected Function<Iterable<? extends Throwable>, BuildTaskExecutionResult> runWithContext(
+				ExecutionContextImpl context) {
 			Throwable exc = null;
 			try {
 				context.executeTask(taskId, taskFactory);
@@ -717,21 +719,38 @@ public final class SakerEnvironmentImpl implements Closeable {
 			BuildTaskResultDatabase results = context.getResultDatabase();
 			TaskResultCollectionImpl taskresults = context.getResultCollection();
 			if (exc != null) {
-				return BuildTaskExecutionResultImpl.createFailed(results, taskresults, exc, taskId);
+				Throwable fexc = exc;
+				return uncaughtexceptions -> {
+					for (Throwable ue : uncaughtexceptions) {
+						fexc.addSuppressed(ue);
+					}
+					return BuildTaskExecutionResultImpl.createFailed(results, taskresults, fexc, taskId);
+				};
 			}
-			return BuildTaskExecutionResultImpl.createSuccessful(results, taskresults, taskId);
+			return uncaughtexceptions -> {
+				Iterator<? extends Throwable> it = uncaughtexceptions.iterator();
+				if (!it.hasNext()) {
+					return BuildTaskExecutionResultImpl.createSuccessful(results, taskresults, taskId);
+				}
+				RuntimeException uncaughtholder = new RuntimeException("Uncaught exceptions during build execution.");
+				do {
+					uncaughtholder.addSuppressed(it.next());
+				} while (it.hasNext());
+				return BuildTaskExecutionResultImpl.createSuccessful(results, taskresults, taskId, uncaughtholder);
+			};
 		}
 
 		@Override
 		public void run() {
+			Throwable initexc = null;
 			ExecutionContextImpl context;
 			try {
 				context = new ExecutionContextImpl(environment, parameters);
 			} catch (Exception e) {
-				buildResult = BuildTaskExecutionResultImpl.createInitializationFailed(e);
+				resultCreator = initializationFailedBuildResultCreator(e);
 				return;
 			} catch (Throwable e) {
-				buildResult = BuildTaskExecutionResultImpl.createInitializationFailed(e);
+				resultCreator = initializationFailedBuildResultCreator(e);
 				throw e;
 			}
 			try {
@@ -740,31 +759,42 @@ public final class SakerEnvironmentImpl implements Closeable {
 					try {
 						context.initialize(project);
 					} catch (Exception e) {
-						buildResult = BuildTaskExecutionResultImpl.createInitializationFailed(e);
+						initexc = IOUtils.addExc(initexc, e);
 						//don't run
 						break run_block;
+					} catch (Throwable e) {
+						initexc = IOUtils.addExc(initexc, e);
+						throw e;
 					}
-					buildResult = runWithContext(context);
+					resultCreator = runWithContext(context);
 				}
 			} finally {
 				try {
 					context.close();
+					if (initexc != null) {
+						resultCreator = initializationFailedBuildResultCreator(initexc);
+					}
 				} catch (Exception e) {
-					if (buildResult == null) {
-						buildResult = BuildTaskExecutionResultImpl.createInitializationFailed(e);
-					} else {
-						buildResult.addException(e);
-					}
+					initexc = IOUtils.addExc(initexc, e);
+					resultCreator = initializationFailedBuildResultCreator(initexc);
 				} catch (Throwable e) {
-					if (buildResult == null) {
-						buildResult = BuildTaskExecutionResultImpl.createInitializationFailed(e);
-					} else {
-						buildResult.addException(e);
-					}
+					initexc = IOUtils.addExc(initexc, e);
+					resultCreator = initializationFailedBuildResultCreator(initexc);
 					throw e;
 				}
 			}
 		}
+
+	}
+
+	protected static Function<Iterable<? extends Throwable>, BuildTaskExecutionResult> initializationFailedBuildResultCreator(
+			Throwable e) {
+		return uncaughtexcs -> {
+			for (Throwable ue : uncaughtexcs) {
+				e.addSuppressed(ue);
+			}
+			return BuildTaskExecutionResultImpl.createInitializationFailed(e);
+		};
 	}
 
 	private static void throwRemoteTask(Object executable) throws IllegalArgumentException {

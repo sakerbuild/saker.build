@@ -42,6 +42,7 @@ public class BuildTaskExecutionResultImpl implements BuildTaskExecutionResult {
 	private TaskResultCollection resultCollection;
 	private ScriptExceptionInformationResolver scriptInformationResolver;
 	private Throwable exception;
+	private ScriptPositionedExceptionView exceptionView;
 
 	protected BuildTaskExecutionResultImpl(ResultKind resultKind) {
 		this.resultKind = resultKind;
@@ -50,6 +51,7 @@ public class BuildTaskExecutionResultImpl implements BuildTaskExecutionResult {
 	public static BuildTaskExecutionResultImpl createInitializationFailed(Throwable exc) {
 		BuildTaskExecutionResultImpl result = new BuildTaskExecutionResultImpl(ResultKind.INITIALIZATION_ERROR);
 		result.exception = exc;
+		result.exceptionView = result.createPositionedExceptionView(exc);
 		return result;
 	}
 
@@ -60,15 +62,25 @@ public class BuildTaskExecutionResultImpl implements BuildTaskExecutionResult {
 		result.exception = exc;
 		result.scriptInformationResolver = new ScriptExceptionInformationResolver(
 				taskresultdatabase.getScriptInformationProviders(), resultcollection, roottaskid);
+
+		result.exceptionView = result.createPositionedExceptionView(exc);
 		return result;
 	}
 
 	public static BuildTaskExecutionResultImpl createSuccessful(BuildTaskResultDatabase taskresultdatabase,
 			TaskResultCollectionImpl resultcollection, TaskIdentifier roottaskid) {
+		return createSuccessful(taskresultdatabase, resultcollection, roottaskid, null);
+	}
+
+	public static BuildTaskExecutionResultImpl createSuccessful(BuildTaskResultDatabase taskresultdatabase,
+			TaskResultCollectionImpl resultcollection, TaskIdentifier roottaskid, Exception exc) {
 		BuildTaskExecutionResultImpl result = new BuildTaskExecutionResultImpl(ResultKind.SUCCESSFUL);
 		result.resultCollection = resultcollection;
 		result.scriptInformationResolver = new ScriptExceptionInformationResolver(
 				taskresultdatabase.getScriptInformationProviders(), resultcollection, roottaskid);
+
+		result.exception = exc;
+		result.exceptionView = result.createPositionedExceptionView(exc);
 		return result;
 	}
 
@@ -84,21 +96,18 @@ public class BuildTaskExecutionResultImpl implements BuildTaskExecutionResult {
 
 	@Override
 	public ExceptionView getExceptionView() {
-		if (exception == null) {
-			return null;
-		}
-		return ExceptionView.create(exception);
+		return exceptionView;
 	}
 
 	@Override
 	public ScriptPositionedExceptionView getPositionedExceptionView() {
-		if (exception == null) {
-			return null;
-		}
-		return createPositionedExceptionView(exception);
+		return exceptionView;
 	}
 
 	private ScriptPositionedExceptionView createPositionedExceptionView(Throwable e) {
+		if (e == null) {
+			return null;
+		}
 		if (scriptInformationResolver == null) {
 			return ScriptPositionedExceptionView.create(e);
 		}
@@ -108,14 +117,6 @@ public class BuildTaskExecutionResultImpl implements BuildTaskExecutionResult {
 	@Override
 	public Throwable getException() {
 		return exception;
-	}
-
-	public void addException(Throwable e) {
-		if (this.exception == null) {
-			this.exception = e;
-		} else {
-			this.exception.addSuppressed(e);
-		}
 	}
 
 	private static class ScriptExceptionInformationResolver {
