@@ -4650,6 +4650,7 @@ public class ObjectUtils {
 	 * @return The created set that contains the elements in the iterator.
 	 * @throws NullPointerException
 	 *             If the iterator is <code>null</code>.
+	 * @since saker.util 0.8.1
 	 */
 	public static <E> ConcurrentSkipListSet<E> createConcurrentSkipListSetFromSortedIterator(Iterator<? extends E> it)
 			throws NullPointerException {
@@ -4674,6 +4675,7 @@ public class ObjectUtils {
 	 * @return The created set that contains the elements in the iterator.
 	 * @throws NullPointerException
 	 *             If the iterator is <code>null</code>.
+	 * @since saker.util 0.8.1
 	 */
 	public static <E> ConcurrentSkipListSet<E> createConcurrentSkipListSetFromSortedIterator(Iterator<? extends E> it,
 			Comparator<? super E> comparator) throws NullPointerException {

@@ -51,7 +51,7 @@ public class Versions {
 	/**
 	 * The patch version of the Saker.build system release.
 	 * <p>
-	 * The patch verison changes when bugfixes are added to the implementation.
+	 * The patch version changes when bugfixes are added to the implementation.
 	 * 
 	 * @see <a href="https://semver.org/">https://semver.org/</a>
 	 */
@@ -64,6 +64,71 @@ public class Versions {
 	 */
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
 	public static final String VERSION_STRING_FULL = VERSION_MAJOR + "." + VERSION_MINOR + "." + VERSION_PATCH;
+
+	/**
+	 * The major version of the saker.util library that is included under the <code>saker.build.thirdparty</code>
+	 * package.
+	 * 
+	 * @since saker.build 0.8.1
+	 */
+	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
+	public static final int THIRDPARTY_SAKER_UTIL_VERSION_MAJOR = 0;
+	/**
+	 * The minor version of the saker.util library that is included under the <code>saker.build.thirdparty</code>
+	 * package.
+	 * 
+	 * @since saker.build 0.8.1
+	 */
+	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
+	public static final int THIRDPARTY_SAKER_UTIL_VERSION_MINOR = 8;
+	/**
+	 * The patch version of the saker.util library that is included under the <code>saker.build.thirdparty</code>
+	 * package.
+	 * 
+	 * @since saker.build 0.8.1
+	 */
+	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
+	public static final int THIRDPARTY_SAKER_UTIL_VERSION_PATCH = 0;
+	/**
+	 * The full version of the saker.util library that is included under the <code>saker.build.thirdparty</code> package
+	 * string in the format of
+	 * <code>&lt;{@link #THIRDPARTY_SAKER_UTIL_VERSION_MAJOR major}&gt;.&lt;{@link #THIRDPARTY_SAKER_UTIL_VERSION_MINOR minor}&gt;.&lt;{@link #THIRDPARTY_SAKER_UTIL_VERSION_PATCH patch}&gt;</code>
+	 */
+	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
+	public static final String THIRDPARTY_SAKER_UTIL_VERSION_FULL = THIRDPARTY_SAKER_UTIL_VERSION_MAJOR + "."
+			+ THIRDPARTY_SAKER_UTIL_VERSION_MINOR + "." + THIRDPARTY_SAKER_UTIL_VERSION_PATCH;
+	/**
+	 * The major version of the saker.rmi library that is included under the <code>saker.build.thirdparty</code>
+	 * package.
+	 * 
+	 * @since saker.build 0.8.1
+	 */
+	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
+	public static final int THIRDPARTY_SAKER_RMI_VERSION_MAJOR = 0;
+	/**
+	 * The minor version of the saker.rmi library that is included under the <code>saker.build.thirdparty</code>
+	 * package.
+	 * 
+	 * @since saker.build 0.8.1
+	 */
+	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
+	public static final int THIRDPARTY_SAKER_RMI_VERSION_MINOR = 8;
+	/**
+	 * The patch version of the saker.rmi library that is included under the <code>saker.build.thirdparty</code>
+	 * package.
+	 * 
+	 * @since saker.build 0.8.1
+	 */
+	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
+	public static final int THIRDPARTY_SAKER_RMI_VERSION_PATCH = 0;
+	/**
+	 * The full version of the saker.rmi library that is included under the <code>saker.build.thirdparty</code> package
+	 * string in the format of
+	 * <code>&lt;{@link #THIRDPARTY_SAKER_RMI_VERSION_MAJOR major}&gt;.&lt;{@link #THIRDPARTY_SAKER_RMI_VERSION_MINOR minor}&gt;.&lt;{@link #THIRDPARTY_SAKER_RMI_VERSION_PATCH patch}&gt;</code>
+	 */
+	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
+	public static final String THIRDPARTY_SAKER_RMI_VERSION_FULL = THIRDPARTY_SAKER_RMI_VERSION_MAJOR + "."
+			+ THIRDPARTY_SAKER_RMI_VERSION_MINOR + "." + THIRDPARTY_SAKER_RMI_VERSION_PATCH;
 
 	private Versions() {
 		throw new UnsupportedOperationException();
