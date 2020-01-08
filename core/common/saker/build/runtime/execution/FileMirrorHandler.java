@@ -122,7 +122,6 @@ public class FileMirrorHandler {
 	private Path executeMirroring(SakerPath filesakerpath, SakerFile file, DirectoryVisitPredicate synchpredicate,
 			Path mirrorDirectoryPath, ContentDescriptor filecontents) throws IOException {
 		Path mirrorpath = getMirrorPathFor(filesakerpath, mirrorDirectoryPath);
-		System.out.println("FileMirrorHandler.executeMirroring() " + filesakerpath + " -> " + mirrorpath);
 		LocalFileProvider localfiles = LocalFileProvider.getInstance();
 		ProviderHolderPathKey mirrorpathkey = localfiles.getPathKey(mirrorpath);
 		synchronizeToPath(file, synchpredicate, mirrorpathkey, filecontents);
