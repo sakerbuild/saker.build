@@ -30,6 +30,7 @@ public abstract class ClusterBuildTestCase extends CollectingMetricEnvironmentTe
 	public void executeRunning() throws Exception {
 		CollectingTestMetric tm = new CollectingTestMetric();
 		TestFlag.set(tm);
+		assertEmpty(tm.getLoadedClassPaths());
 		super.executeRunning();
 		assertEmpty(tm.getLoadedClassPaths());
 	}

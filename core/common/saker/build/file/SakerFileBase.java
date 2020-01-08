@@ -62,7 +62,7 @@ public abstract class SakerFileBase implements SakerFile {
 	 * <p>
 	 * <code>null</code> if the file was not yet attached to a parent.
 	 * <p>
-	 * The reference to {@link RemovedMarkerSakerDirectory#INSTANCE} if the file was removed from a parent.
+	 * The reference to {@link MarkerSakerDirectory#REMOVED_FROM_PARENT} if the file was removed from a parent.
 	 * <p>
 	 * In any other case the reference to the parent directory.
 	 */
@@ -109,7 +109,7 @@ public abstract class SakerFileBase implements SakerFile {
 
 	private SakerDirectoryBase getParentImpl() {
 		SakerDirectoryBase p = parent;
-		if (p == RemovedMarkerSakerDirectory.INSTANCE) {
+		if (p == MarkerSakerDirectory.REMOVED_FROM_PARENT) {
 			return null;
 		}
 		return p;

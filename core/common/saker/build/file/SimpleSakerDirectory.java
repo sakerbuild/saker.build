@@ -16,7 +16,7 @@
 package saker.build.file;
 
 import java.util.Collections;
-import java.util.Map;
+import java.util.NavigableMap;
 
 final class SimpleSakerDirectory extends SakerDirectoryBase {
 	SimpleSakerDirectory(String name) {
@@ -27,7 +27,7 @@ final class SimpleSakerDirectory extends SakerDirectoryBase {
 	}
 
 	@Override
-	protected Map<String, SakerFileBase> populateImpl() {
+	protected NavigableMap<String, SakerFileBase> populateImpl() {
 		return Collections.emptyNavigableMap();
 	}
 

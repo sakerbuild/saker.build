@@ -20,7 +20,6 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collections;
-import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.TreeMap;
@@ -133,7 +132,7 @@ public class ProviderPathSakerDirectory extends SakerDirectoryBase {
 	}
 
 	@Override
-	protected Map<String, SakerFileBase> populateImpl() {
+	protected NavigableMap<String, SakerFileBase> populateImpl() {
 		try {
 			NavigableMap<String, ContentHandleAttributes> direntries = contentDatabase
 					.discoverDirectoryChildrenAttributes(SakerPathFiles.getPathKey(fileProvider, realPath));

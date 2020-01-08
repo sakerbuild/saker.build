@@ -30,6 +30,18 @@ import testing.saker.build.tests.CollectingTestMetric;
 
 @SakerTest
 public class MultiRepositoryConfigurationTaskTest extends CollectingMetricEnvironmentTestCase {
+
+	@Override
+	public void executeRunning() throws Exception {
+		//there was some leftover classpath from this test so we perform these checks here too
+		//doesn't alway happen
+		CollectingTestMetric tm = new CollectingTestMetric();
+		TestFlag.set(tm);
+		assertEmpty(tm.getLoadedClassPaths());
+		super.executeRunning();
+		assertEmpty(tm.getLoadedClassPaths());
+	}
+
 	@Override
 	protected void runTestImpl() throws Throwable {
 		CollectingTestMetric tm = new CollectingTestMetric();

@@ -18,15 +18,16 @@ package saker.build.file;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.function.Predicate;
 
@@ -35,6 +36,7 @@ import saker.build.file.content.DirectoryContentDescriptor;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
@@ -69,7 +71,7 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		Objects.requireNonNull(file, "file");
 		SakerFileBase basef = (SakerFileBase) file;
 		if (!internal_casParent(basef, null, this)) {
-			if (internal_getParent(basef) == RemovedMarkerSakerDirectory.INSTANCE) {
+			if (internal_getParent(basef) == MarkerSakerDirectory.REMOVED_FROM_PARENT) {
 				throw new IllegalStateException("File was already removed from its parent: " + file);
 			}
 			throw new IllegalStateException("File already has a parent: " + file);
@@ -79,7 +81,9 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = getTrackedFiles();
 		SakerFileBase prev = trackedfiles.put(filename, basef);
 		if (prev != null) {
-			internal_casParent(prev, this, RemovedMarkerSakerDirectory.INSTANCE);
+			if (prev != MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+				internal_casParent(prev, this, MarkerSakerDirectory.REMOVED_FROM_PARENT);
+			}
 		}
 		if (internal_getParent(basef) != this) {
 			//the parent of the file was concurrently changed
@@ -92,32 +96,12 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		return prev;
 	}
 
-	private SakerFileBase putIfAbsentImpl(ConcurrentNavigableMap<String, SakerFileBase> trackedfiles,
-			SakerFileBase file) {
-		String filename = file.getName();
-		if (populatedState == POPULATED_STATE_POPULATED) {
-			return trackedfiles.putIfAbsent(filename, file);
-		}
-		//not populated so populate the file with the name
-		SakerFileBase populated = populateSingle(filename);
-		if (populated == null) {
-			//no file would be populated, can use putIfAbsent accordingly
-			return trackedfiles.putIfAbsent(filename, file);
-		}
-		SakerFileBase.internal_setParent(populated, this);
-		SakerFileBase prev = trackedfiles.putIfAbsent(filename, populated);
-		if (prev != null) {
-			return prev;
-		}
-		return populated;
-	}
-
 	@Override
 	public SakerFile addIfAbsent(SakerFile file) throws NullPointerException, IllegalStateException {
 		Objects.requireNonNull(file, "file");
 		SakerFileBase basef = (SakerFileBase) file;
 		if (!internal_casParent(basef, null, this)) {
-			if (internal_getParent(basef) == RemovedMarkerSakerDirectory.INSTANCE) {
+			if (internal_getParent(basef) == MarkerSakerDirectory.REMOVED_FROM_PARENT) {
 				throw new IllegalStateException("File was already removed from its parent: " + file);
 			}
 			throw new IllegalStateException("File already has a parent: " + file);
@@ -145,7 +129,7 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		Objects.requireNonNull(file, "file");
 		SakerFileBase basef = (SakerFileBase) file;
 		if (!internal_casParent(basef, null, this)) {
-			if (internal_getParent(basef) == RemovedMarkerSakerDirectory.INSTANCE) {
+			if (internal_getParent(basef) == MarkerSakerDirectory.REMOVED_FROM_PARENT) {
 				throw new IllegalStateException("File was already removed from its parent: " + file);
 			}
 			throw new IllegalStateException("File already has a parent: " + file);
@@ -193,13 +177,18 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		//a concurrent map needs to be constructed, as if the tracked files are modified during the construction of the result map, then
 		//    the result map will probably be invalid, as linear time sorted construction might fail
 		//we don't want to iterate over the children and call .put() for each of them as it will be slower for lot of files 
-		return new ConcurrentSkipListMap<>(getTrackedFiles());
+		ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = getTrackedFiles();
+		Iterator<Entry<String, SakerFileBase>> it = trackedfiles.entrySet().iterator();
+		return ObjectUtils
+				.createConcurrentSkipListMapFromSortedIterator(new PopulatedNotPresentFileOmittingEntryIterator(it));
 	}
 
 	public NavigableSet<String> getChildrenNames() {
 		ensurePopulated();
 		//constructing concurrent set, see .getChildren() comment
-		return new ConcurrentSkipListSet<>(getTrackedFiles().navigableKeySet());
+		ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = getTrackedFiles();
+		return ObjectUtils.createConcurrentSkipListSetFromSortedIterator(
+				new PopulatedNotPresentFileOmittingNameIterator(trackedfiles.entrySet().iterator()));
 	}
 
 	public NavigableMap<SakerPath, SakerFile> getFilesRecursiveByPath(SakerPath basepath) {
@@ -277,58 +266,36 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 			//synchronize so no population is being done concurrently
 			populatedState = POPULATED_STATE_POPULATED;
 		}
-		if (files.isEmpty()) {
-			return;
-		}
 		while (true) {
 			Entry<String, SakerFileBase> first = files.pollFirstEntry();
 			if (first == null) {
 				break;
 			}
 			SakerFileBase file = first.getValue();
-			internal_casParent(file, this, RemovedMarkerSakerDirectory.INSTANCE);
+			internal_casParent(file, this, MarkerSakerDirectory.REMOVED_FROM_PARENT);
 		}
 	}
 
 	@Override
 	public boolean isEmpty() {
 		ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = getTrackedFiles();
-		if (!trackedfiles.isEmpty()) {
-			return false;
+		for (SakerFileBase f : trackedfiles.values()) {
+			if (f != MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+				return false;
+			}
 		}
 		ensurePopulated();
-		return trackedfiles.isEmpty();
+		for (SakerFileBase f : trackedfiles.values()) {
+			if (f != MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	public boolean isPopulated() {
 		return populatedState == POPULATED_STATE_POPULATED;
 	}
-
-//	public final void populate() {
-//		// forced populate request
-//		synchronized (getTrackedFiles()) {
-//			executePopulation();
-//		}
-//	}
-//
-//	public final SakerFile populate(String name) {
-//		SakerFile got = get(name);
-//		if (got != null) {
-//			return got;
-//		}
-//		// forced populate request
-//		ConcurrentNavigableMap<String, SakerFileBase> populatedfiles = getTrackedFiles();
-//		SakerFileBase pop = populateSingle(name);
-//		if (pop == null) {
-//			return null;
-//		}
-//		SakerFileBase.internal_setParent(pop, this);
-//		SakerFile prev = populatedfiles.putIfAbsent(name, pop);
-//		if (prev != null) {
-//			return prev;
-//		}
-//		return pop;
-//	}
 
 	public void ensurePopulated() {
 		if (populatedState != POPULATED_STATE_POPULATED) {
@@ -349,28 +316,32 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		return this.trackedFiles;
 	}
 
-	protected abstract Map<String, SakerFileBase> populateImpl();
+	protected abstract NavigableMap<String, SakerFileBase> populateImpl();
 
 	protected abstract SakerFileBase populateSingleImpl(String name);
 
 	private final SakerFileBase populateSingle(String name) {
 		AIFU_populatedState.compareAndSet(this, POPULATED_STATE_UNPOPULATED, POPULATED_STATE_PARTIALLY_POPULATED);
-		//TODO if there was no file found, then we should populate the whole directory so the absence of the file is stored accordingly
 		return this.populateSingleImpl(name);
 	}
 
 	protected final void remove(SakerFileBase file) {
-		if (!internal_casParent(file, this, RemovedMarkerSakerDirectory.INSTANCE)) {
+		if (!internal_casParent(file, this, MarkerSakerDirectory.REMOVED_FROM_PARENT)) {
 			//file is not attached to this directory
 			//do not throw an exception, as this can be called concurrently and can result in unexpected exceptions
 			return;
 		}
-		//we need to populate the directory so the file removal is actually noted as it being removed
-		//if we dont populate, then a new get() call with the file name would repopulate the removed file
-		ensurePopulated();
 		ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = getTrackedFiles();
 		String filename = file.getName();
-		trackedfiles.remove(filename, file);
+		if (populatedState == POPULATED_STATE_POPULATED) {
+			trackedfiles.remove(filename, file);
+		} else {
+			boolean replaced = trackedfiles.replace(filename, file, MarkerSakerDirectory.POPULATED_NOT_PRESENT);
+			if (replaced && populatedState == POPULATED_STATE_POPULATED) {
+				//if the populated state changed meanwhile. let's not keep the marker in the map
+				trackedfiles.remove(filename, MarkerSakerDirectory.POPULATED_NOT_PRESENT);
+			}
+		}
 		//if we failed to remove the file that means that it has been already overwritten. this is fine. 
 	}
 
@@ -416,40 +387,108 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		return false;
 	}
 
+	private SakerFileBase putIfAbsentImpl(ConcurrentNavigableMap<String, SakerFileBase> trackedfiles,
+			SakerFileBase file) {
+		String filename = file.getName();
+		SakerFileBase result;
+		if (populatedState == POPULATED_STATE_POPULATED) {
+			result = trackedfiles.compute(filename, (k, v) -> {
+				if (v == null || v == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+					return file;
+				}
+				return v;
+			});
+		} else {
+			result = trackedfiles.compute(filename, (k, v) -> {
+				//XXX this function may be called multiple times, but the population call should be at most once. LazySupplier?
+
+				if (v != null && v != MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+					//already present
+					return v;
+				}
+				SakerFileBase populated = populateSingle(filename);
+				if (populated == null) {
+					return file;
+				}
+				SakerFileBase.internal_setParent(populated, this);
+				return populated;
+			});
+		}
+		if (result == file) {
+			//the file was put in place. no previous, return null.
+			return null;
+		}
+		return result;
+	}
+
 	private void executePopulation() {
-		Map<String, SakerFileBase> files = this.populateImpl();
+		Map<String, SakerFileBase> populatedfiles = this.populateImpl();
 		ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = getTrackedFiles();
 
-		if (!files.isEmpty()) {
-			for (Entry<String, SakerFileBase> entry : files.entrySet()) {
+		if (!populatedfiles.isEmpty()) {
+			for (Entry<String, SakerFileBase> entry : populatedfiles.entrySet()) {
 				SakerFileBase file = entry.getValue();
 				SakerFileBase.internal_setParent(file, this);
 				String filename = entry.getKey();
-				trackedfiles.putIfAbsent(filename, file);
+				trackedfiles.compute(filename, (k, v) -> {
+					if (v == null) {
+						return file;
+					}
+					if (v == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+						//if v == MarkerSakerDirectory.POPULATED_NOT_PRESENT
+						//  then we return null to remove the mapping, as we already noticed that the file was not present
+						//  for population. this population call shouldn't add it back
+						return null;
+					}
+					return v;
+				});
 			}
 		}
 		populatedState = POPULATED_STATE_POPULATED;
+		for (Iterator<SakerFileBase> it = trackedfiles.values().iterator(); it.hasNext();) {
+			SakerFileBase f = it.next();
+			if (f == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+				it.remove();
+			}
+		}
 	}
 
 	private SakerFileBase getImpl(String name) {
-		ConcurrentNavigableMap<String, SakerFileBase> files = getTrackedFiles();
-		SakerFileBase got = files.get(name);
+		ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = getTrackedFiles();
+		SakerFileBase got = trackedfiles.get(name);
 		if (got != null) {
+			if (got == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+				return null;
+			}
 			return got;
 		}
 		if (populatedState == POPULATED_STATE_POPULATED) {
 			//there is a race condition while getting the file and checking if populated
 			//so check again just in case
-			return files.get(name);
+			got = trackedfiles.get(name);
+			if (got == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+				return null;
+			}
+			return got;
 		}
 		SakerFileBase populated = populateSingle(name);
 		if (populated != null) {
 			SakerFileBase.internal_setParent(populated, this);
-			SakerFileBase prev = files.putIfAbsent(name, populated);
+			SakerFileBase prev = trackedfiles.putIfAbsent(name, populated);
 			if (prev != null) {
+				if (prev == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+					return null;
+				}
 				return prev;
 			}
 			return populated;
+		}
+		SakerFileBase prev = trackedfiles.putIfAbsent(name, MarkerSakerDirectory.POPULATED_NOT_PRESENT);
+		if (prev != null) {
+			if (prev == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+				return null;
+			}
+			return prev;
 		}
 		return null;
 	}
@@ -469,8 +508,13 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		final ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = getTrackedFiles();
 		do {
 			if (existing == null) {
-				SakerFileBase prev = trackedfiles.putIfAbsent(name, add);
-				if (prev == null) {
+				SakerFileBase prev = trackedfiles.compute(name, (k, v) -> {
+					if (v == null || v == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+						return add;
+					}
+					return v;
+				});
+				if (prev == add) {
 					//successfully inserted
 					return add;
 				}
@@ -481,7 +525,7 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 			//next is non-null and not a directory
 			boolean success = trackedfiles.replace(name, existing, add);
 			if (success) {
-				internal_casParent(existing, this, RemovedMarkerSakerDirectory.INSTANCE);
+				internal_casParent(existing, this, MarkerSakerDirectory.REMOVED_FROM_PARENT);
 				return add;
 			}
 			existing = getImpl(name);
@@ -504,8 +548,13 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		SakerFileBase.internal_setParent(add, this);
 
 		final ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = getTrackedFiles();
-		SakerFileBase prev = trackedfiles.putIfAbsent(name, add);
-		if (prev == null) {
+		SakerFileBase prev = trackedfiles.compute(name, (k, v) -> {
+			if (v == null || v == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+				return add;
+			}
+			return v;
+		});
+		if (prev == add) {
 			//successfully inserted
 			return add;
 		}
@@ -535,8 +584,10 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 			ffilepredicate = filepredicate;
 		}
 		ensurePopulated();
-		//XXX use thread pool and not smart parallel
 		for (SakerFileBase file : getTrackedFiles().values()) {
+			if (file == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+				continue;
+			}
 			String fname = file.getName();
 			if (file instanceof SakerDirectory) {
 				SakerDirectoryBase childdir = (SakerDirectoryBase) file;
@@ -565,39 +616,84 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 				}
 			}
 		}
-//		ThreadUtils.smartParallel(getTrackedFiles().values(), file -> {
-//			String fname = file.getName();
-//			if (file instanceof SakerDirectory) {
-//				SakerDirectoryBase childdir = (SakerDirectoryBase) file;
-//				boolean visitdir = ffilepredicate.visitDirectory(fname, childdir);
-//				DirectoryVisitPredicate dirvisitor = ffilepredicate.directoryVisitor(fname, childdir);
-//				if (!visitdir && dirvisitor == null) {
-//					return null;
-//				}
-//
-//				SakerPath subdirpath = dirpath.resolve(fname);
-//				if (visitdir) {
-//					result.put(subdirpath, file);
-//				}
-//				if (dirvisitor != null) {
-//					if (childdir.isPopulated()) {
-//						childdir.collectFilesRecursiveImpl(subdirpath, result, dirvisitor);
-//					} else {
-//						return () -> {
-//							childdir.collectFilesRecursiveImpl(subdirpath, result, dirvisitor);
-//						};
-//					}
-//				}
-//			} else {
-//				if (ffilepredicate.visitFile(fname, file)) {
-//					result.put(dirpath.resolve(fname), file);
-//				}
-//			}
-//			return null;
-//		});
 	}
 
 	private static IOException unsupportedIO() {
 		return new IOException("unsupported for directories.");
+	}
+
+	private static class PopulatedNotPresentFileOmittingEntryIterator
+			implements Iterator<Entry<String, SakerFileBase>> {
+		private Iterator<Entry<String, SakerFileBase>> it;
+		private Entry<String, SakerFileBase> next;
+
+		public PopulatedNotPresentFileOmittingEntryIterator(Iterator<Entry<String, SakerFileBase>> it) {
+			this.it = it;
+			moveToNext();
+		}
+
+		private void moveToNext() {
+			next = null;
+			while (it.hasNext()) {
+				Entry<String, SakerFileBase> n = it.next();
+				if (n.getValue() == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+					continue;
+				}
+				next = n;
+				break;
+			}
+		}
+
+		@Override
+		public boolean hasNext() {
+			return next != null;
+		}
+
+		@Override
+		public Entry<String, SakerFileBase> next() {
+			Entry<String, SakerFileBase> n = next;
+			if (n == null) {
+				throw new NoSuchElementException();
+			}
+			moveToNext();
+			return n;
+		}
+	}
+
+	private static class PopulatedNotPresentFileOmittingNameIterator implements Iterator<String> {
+		private Iterator<Entry<String, SakerFileBase>> it;
+		private String next;
+
+		public PopulatedNotPresentFileOmittingNameIterator(Iterator<Entry<String, SakerFileBase>> it) {
+			this.it = it;
+			moveToNext();
+		}
+
+		private void moveToNext() {
+			next = null;
+			while (it.hasNext()) {
+				Entry<String, SakerFileBase> n = it.next();
+				if (n.getValue() == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+					continue;
+				}
+				next = n.getKey();
+				break;
+			}
+		}
+
+		@Override
+		public boolean hasNext() {
+			return next != null;
+		}
+
+		@Override
+		public String next() {
+			String n = next;
+			if (n == null) {
+				throw new NoSuchElementException();
+			}
+			moveToNext();
+			return n;
+		}
 	}
 }

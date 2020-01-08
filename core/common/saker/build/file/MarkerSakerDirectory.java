@@ -16,23 +16,29 @@
 package saker.build.file;
 
 import java.util.Collections;
-import java.util.Map;
+import java.util.NavigableMap;
 
 import saker.build.file.content.ContentDatabase;
 import saker.build.file.path.SakerPath;
 import saker.build.file.path.SakerPath.Builder;
 
-class RemovedMarkerSakerDirectory extends SakerDirectoryBase {
-	public static final RemovedMarkerSakerDirectory INSTANCE = new RemovedMarkerSakerDirectory();
+class MarkerSakerDirectory extends SakerDirectoryBase {
+	public static final SakerDirectoryBase REMOVED_FROM_PARENT = new MarkerSakerDirectory();
+	public static final SakerDirectoryBase POPULATED_NOT_PRESENT = new MarkerSakerDirectory();
 
-	RemovedMarkerSakerDirectory() {
+	static {
+		//we can't set this in the constructor as that would cause out-of-order initialization of REMOVED_FROM_PARENT
+		internal_setParent(REMOVED_FROM_PARENT, REMOVED_FROM_PARENT);
+		internal_setParent(POPULATED_NOT_PRESENT, REMOVED_FROM_PARENT);
+	}
+	
+	MarkerSakerDirectory() {
 		super(null, (Void) null);
 		populatedState = POPULATED_STATE_POPULATED;
-		internal_setParent(this, this);
 	}
 
 	@Override
-	protected Map<String, SakerFileBase> populateImpl() {
+	protected NavigableMap<String, SakerFileBase> populateImpl() {
 		return Collections.emptyNavigableMap();
 	}
 
