@@ -36,6 +36,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
@@ -4625,6 +4626,58 @@ public class ObjectUtils {
 	public static <E> TreeSet<E> createTreeSetFromSortedIterator(Iterator<? extends E> it, int size,
 			Comparator<? super E> comparator) throws NullPointerException {
 		return new TreeSet<>(new FakeSortedSet<>(ObjectUtils.onceIterable(it), size, comparator));
+	}
+
+	/**
+	 * Creates a {@link ConcurrentSkipListSet} based on the sorted elements in the argument iterator.
+	 * <p>
+	 * The elements iterated by the iterator <b>must</b> be
+	 * {@linkplain ObjectUtils#isStrictlySorted(Iterable, Comparator) stricly ordered} by natural order.
+	 * <p>
+	 * The above requirements are not checked by this function. Violating the above requirements will result in the
+	 * returned set not working properly.
+	 * <p>
+	 * Same as:
+	 * 
+	 * <pre>
+	 * createConcurrentSkipListSetFromSortedIterator(it, null);
+	 * </pre>
+	 * 
+	 * @param <E>
+	 *            The element type.
+	 * @param it
+	 *            The iterator for the elements.
+	 * @return The created set that contains the elements in the iterator.
+	 * @throws NullPointerException
+	 *             If the iterator is <code>null</code>.
+	 */
+	public static <E> ConcurrentSkipListSet<E> createConcurrentSkipListSetFromSortedIterator(Iterator<? extends E> it)
+			throws NullPointerException {
+		return createConcurrentSkipListSetFromSortedIterator(it, null);
+	}
+
+	/**
+	 * Creates a {@link ConcurrentSkipListSet} based on the sorted elements in the argument iterator.
+	 * <p>
+	 * The elements iterated by the iterator <b>must</b> be
+	 * {@linkplain ObjectUtils#isStrictlySorted(Iterable, Comparator) stricly ordered} by the argument comparator.
+	 * <p>
+	 * The above requirements are not checked by this function. Violating the above requirements will result in the
+	 * returned set not working properly.
+	 * 
+	 * @param <E>
+	 *            The element type.
+	 * @param it
+	 *            The iterator for the elements.
+	 * @param comparator
+	 *            The comparator defining the order of the elements or <code>null</code> to use the natural order.
+	 * @return The created set that contains the elements in the iterator.
+	 * @throws NullPointerException
+	 *             If the iterator is <code>null</code>.
+	 */
+	public static <E> ConcurrentSkipListSet<E> createConcurrentSkipListSetFromSortedIterator(Iterator<? extends E> it,
+			Comparator<? super E> comparator) throws NullPointerException {
+		return new ConcurrentSkipListSet<>(new FakeSortedSet<>(ObjectUtils.onceIterable(it), 0, comparator));
 	}
 
 	/**
