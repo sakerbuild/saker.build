@@ -1,5 +1,7 @@
 # [<img src=".github/readme_logo.svg" height="64" alt="saker.build system">](https://saker.build "Saker.build system")
 
+![Build status](https://img.shields.io/azure-devops/build/sakerbuild/9de21fc8-f935-48f9-bd0a-666d204cbdcb/15/master)
+
 Saker.build is a language agnostic build system that focuses on extensibility and scalable incremental builds. It supports distributing build tasks over multiple build machines, rebuilding only the smallest possible part of the project, and can scale for tens of thousands of source files.
 
 Saker.build uses its own scripting language for defining the build process and loads the build tasks from the configured task repositories. It integrates well with the [Eclipse IDE](https://saker.build/saker.build/doc/eclipseplugin.html "Eclipse plugin | saker.build") and provides [unmatched performance for Java builds](https://saker.build/saker.java.compiler/doc/performancecomparison.html "Performance comparison | saker.java.compiler").

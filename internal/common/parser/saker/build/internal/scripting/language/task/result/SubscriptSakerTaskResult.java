@@ -22,12 +22,15 @@ import java.io.ObjectOutput;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 
 import saker.build.internal.scripting.language.exc.OperandExecutionException;
@@ -46,6 +49,7 @@ import saker.build.task.utils.StructuredMapTaskResult;
 import saker.build.task.utils.StructuredObjectTaskResult;
 import saker.build.task.utils.StructuredTaskResult;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
+import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.StringUtils;
@@ -55,6 +59,10 @@ import saker.build.util.data.DataConverterUtils;
 
 public class SubscriptSakerTaskResult implements SakerTaskResult, ComposedStructuredTaskResult {
 	private static final long serialVersionUID = 1L;
+
+	private static final Set<Class<?>> GETTER_METHOD_VALID_ARGUMENT_TYPES = ImmutableUtils
+			.makeImmutableLinkedHashSet(new Class<?>[] { Number.class, BigInteger.class, BigDecimal.class, long.class,
+					double.class, int.class, float.class, short.class, byte.class, String.class, Object.class });
 
 	private TaskIdentifier subjectTaskId;
 	private TaskIdentifier indexTaskId;
@@ -117,7 +125,7 @@ public class SubscriptSakerTaskResult implements SakerTaskResult, ComposedStruct
 		}
 		TaskResultDependencyHandle subjectdephandle = results.getTaskResultDependencyHandle(subjectTaskId);
 		Object subjectvalue = subjectdephandle.get();
-		List<Throwable> getcauses;
+		List<Throwable> getcauses = null;
 		String idxname;
 		while (true) {
 			if (subjectvalue == null) {
@@ -293,33 +301,47 @@ public class SubscriptSakerTaskResult implements SakerTaskResult, ComposedStruct
 						subjectTaskId);
 			}
 
-			getcauses = new ArrayList<>();
+			List<Method> validgetmethods = new ArrayList<>();
+			//we use any of the get(X) methods that we find, in sorted order for determinism.
 			for (Method m : subjectvalue.getClass().getMethods()) {
 				if (!isValidGetSubscriptMethod(m)) {
 					continue;
 				}
-				Object convertedindex;
-				try {
-					convertedindex = DataConverterUtils.convert(indexvalue, m.getGenericParameterTypes()[0]);
-				} catch (ConversionFailedException e) {
-					getcauses.add(e);
-					continue;
-				}
-				try {
-					Object methodresult = m.invoke(subjectvalue, convertedindex);
-					addAlwaysChangeDetector(subjectdephandle);
-					if (methodresult instanceof StructuredTaskResult) {
-						return structuredreturner.apply((StructuredTaskResult) methodresult);
-					}
-					return realreturner.apply(methodresult);
-				} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-					getcauses.add(e);
-					continue;
-				}
+				validgetmethods.add(m);
 			}
-			if (!getcauses.isEmpty()) {
-				addAlwaysChangeDetector(subjectdephandle);
-				break;
+			if (!validgetmethods.isEmpty()) {
+				validgetmethods.sort((l, r) -> {
+					int lidx = ObjectUtils.indexOfIterable(GETTER_METHOD_VALID_ARGUMENT_TYPES,
+							l.getParameterTypes()[0]);
+					int ridx = ObjectUtils.indexOfIterable(GETTER_METHOD_VALID_ARGUMENT_TYPES,
+							r.getParameterTypes()[0]);
+					return Integer.compare(lidx, ridx);
+				});
+				getcauses = new ArrayList<>();
+				for (Method m : validgetmethods) {
+					Object convertedindex;
+					try {
+						convertedindex = DataConverterUtils.convert(indexvalue, m.getGenericParameterTypes()[0]);
+					} catch (ConversionFailedException e) {
+						getcauses.add(e);
+						continue;
+					}
+					try {
+						Object methodresult = m.invoke(subjectvalue, convertedindex);
+						addAlwaysChangeDetector(subjectdephandle);
+						if (methodresult instanceof StructuredTaskResult) {
+							return structuredreturner.apply((StructuredTaskResult) methodresult);
+						}
+						return realreturner.apply(methodresult);
+					} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+						getcauses.add(e);
+						continue;
+					}
+				}
+				if (!getcauses.isEmpty()) {
+					addAlwaysChangeDetector(subjectdephandle);
+					break;
+				}
 			}
 			if (subjectvalue instanceof SakerTaskResult) {
 				TaskResultDependencyHandle ndephandle = ((SakerTaskResult) subjectvalue).getDependencyHandle(results,
@@ -355,8 +377,10 @@ public class SubscriptSakerTaskResult implements SakerTaskResult, ComposedStruct
 		OperandExecutionException exc = new OperandExecutionException("Failed to subscript: "
 				+ subjectvalue.getClass().getName() + " as: " + subjectvalue + " with index: " + idxname,
 				subjectTaskId);
-		for (Throwable e : getcauses) {
-			exc.addSuppressed(e);
+		if (!ObjectUtils.isNullOrEmpty(getcauses)) {
+			for (Throwable e : getcauses) {
+				exc.addSuppressed(e);
+			}
 		}
 		throw exc;
 	}
@@ -378,16 +402,10 @@ public class SubscriptSakerTaskResult implements SakerTaskResult, ComposedStruct
 			return false;
 		}
 		Class<?> argtype = m.getParameterTypes()[0];
-		if (argtype.isAssignableFrom(Number.class)) {
-			return true;
+		if (!GETTER_METHOD_VALID_ARGUMENT_TYPES.contains(argtype)) {
+			return false;
 		}
-		if (argtype == int.class || argtype == long.class || argtype == short.class || argtype == byte.class) {
-			return true;
-		}
-		if (argtype == String.class) {
-			return true;
-		}
-		return false;
+		return true;
 	}
 
 	private static final Object DEFAULT_NOT_PRESENT_INSTANCE = new Object();

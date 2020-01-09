@@ -19,7 +19,7 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
-import java.util.Arrays;
+import java.util.function.Supplier;
 
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.SakerLog;
@@ -166,51 +166,54 @@ public class StandardIOFormatterTest extends CollectingMetricEnvironmentTestCase
 
 	@Override
 	protected void runTestImpl() throws Throwable {
-		String ls = System.lineSeparator();
+		Supplier<String> msgsupplier = () -> out.toString().replace("\n", "\\n").replace("\r", "\\r");
+		String ls = "\r\n";
 		runTask("main", new PrintingTask(null, "printed"));
-		assertTrue(!out.toString().contains("[task][task]"));
-		assertTrue(out.toString().contains("[task]printed"));
+		assertTrue(!out.toString().contains("[task][task]"), msgsupplier);
+		assertTrue(out.toString().contains("[task]printed"), msgsupplier);
 
 		runTask("main", new PrintingTask(null, "l1\nl2"));
-		assertTrue(!out.toString().contains("[task][task]"));
-		assertTrue(out.toString().contains("[task]l1\n[task]l2"));
+		assertTrue(!out.toString().contains("[task][task]"), msgsupplier);
+		assertTrue(out.toString().contains("[task]l1\n[task]l2"), msgsupplier);
 
 		runTask("main", new PrintingTask(null, "\nl1\nl2"));
-		assertTrue(!out.toString().contains("[task][task]"));
-		assertTrue(out.toString().contains("[task]\n[task]l1\n[task]l2"));
+		assertTrue(!out.toString().contains("[task][task]"), msgsupplier);
+		assertTrue(out.toString().contains("[task]\n[task]l1\n[task]l2"), msgsupplier);
 
 		runTask("main", new PrintingTask(null, "l1\r"));
-		assertTrue(!out.toString().contains("[task][task]"));
-		assertTrue(out.toString().contains("[task]l1\r"));
+		assertTrue(!out.toString().contains("[task][task]"), msgsupplier);
+		assertTrue(out.toString().contains("[task]l1\r"), msgsupplier);
 
 		runTask("main", new PrintingTask(null, "l1" + ls));
-		assertTrue(!out.toString().contains("[task][task]"));
-		assertTrue(out.toString().contains("[task]l1" + ls));
+		assertTrue(!out.toString().contains("[task][task]"), msgsupplier);
+		assertTrue(out.toString().contains("[task]l1" + ls), msgsupplier);
 
 		runTask("main", new PrintingTask(null, "l1\r" + ls));
-		assertTrue(!out.toString().contains("[task][task]"));
-		assertTrue(out.toString().contains("[task]l1\r[task]" + ls));
+		assertTrue(!out.toString().contains("[task][task]"), msgsupplier);
+		assertTrue(out.toString().contains("[task]l1\r[task]" + ls), msgsupplier);
 
 		runTask("main", new PrintingTask("bset", null));
-		System.out.println(Arrays.toString(out.toByteArray()));
-		System.out.println(out.toString());
-		assertTrue(!out.toString().contains("[task][task]"));
-		assertTrue(out.toString().equals("bset\n"));
+		assertTrue(!out.toString().contains("[task][task]"), msgsupplier);
+		assertTrue(out.toString().equals("bset\n"), msgsupplier);
 
 		runTask("main", new PrintingTask("bset", "aset"));
-		assertTrue(!out.toString().contains("[task][task]"));
-		assertTrue(out.toString().equals("bset\n[task]aset\n"));
+		assertTrue(!out.toString().contains("[task][task]"), msgsupplier);
+		assertTrue(out.toString().equals("bset\n[task]aset\n"), msgsupplier);
 
 		runTask("main", new PrintingTask(null, "aset"));
-		assertTrue(!out.toString().contains("[task][task]"));
-		assertTrue(out.toString().equals("[task]aset\n"));
+		assertTrue(!out.toString().contains("[task][task]"), msgsupplier);
+		assertTrue(out.toString().equals("[task]aset\n"), msgsupplier);
 
 		runTask("main", new PrintingTask(null, null));
-		assertTrue(!out.toString().contains("[task][task]"));
-		assertTrue(out.toString().equals(""));
+		assertTrue(!out.toString().contains("[task][task]"), msgsupplier);
+		assertTrue(out.toString().equals(""), msgsupplier);
 
+		String sysls = System.lineSeparator();
+		//as the pre and post messages are printed using System.out.println, use the system line separator there
 		runTask("regr", new JavacRegressionTask());
-		assertTrue(out.toString().equals("[taskid]pre" + ls + "[taskid]test\n" + "[taskid]\n" + "[taskid]post" + ls));
+		assertTrue(
+				out.toString().equals("[taskid]pre" + sysls + "[taskid]test\n" + "[taskid]\n" + "[taskid]post" + sysls),
+				msgsupplier);
 	}
 
 	@Override

@@ -420,8 +420,8 @@ test(
 		],
 		TestInvokerParameters: {
 			SakerJarPath: std.file.mirror($export[Path]),
-			#20 sec
-			TimeoutMillis: 20000,
+			#2min
+			TimeoutMillis: 120000,
 			TestsBaseBuildDirectory: std.file.mirror.path(std.file.place(test/build)),
 		},
 		IgnoreFileChanges: [
@@ -547,18 +547,6 @@ _configure(
 				Identifier: jdk9,
 				SDKs: {
 					Java: saker.java.sdk(9),
-				},
-			},
-			{
-				Identifier: jdk10,
-				SDKs: {
-					Java: saker.java.sdk(10),
-				},
-			},
-			{
-				Identifier: jdk11,
-				SDKs: {
-					Java: saker.java.sdk(11),
 				},
 			},
 			{

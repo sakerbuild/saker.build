@@ -53,10 +53,37 @@ public class SubscriptGetterScriptTaskTest extends VariablesMetricEnvironmentTes
 		}
 	}
 
+	//member function order changed
+	public static class SwitchDynamicGetter implements Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		public int get(int i) {
+			return i * 2;
+		}
+
+		public String get(String s) {
+			return s + s;
+		}
+
+		public String getPresentGetter() {
+			return "PG";
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+		}
+	}
+
+	Object getterObject;
+
 	@Override
 	protected Map<String, ?> getTaskVariables() {
 		TreeMap<String, Object> result = ObjectUtils.newTreeMap(super.getTaskVariables());
-		result.put("test.subscript1", new DynamicGetter());
+		result.put("test.subscript1", getterObject);
 		return result;
 	}
 
@@ -64,6 +91,13 @@ public class SubscriptGetterScriptTaskTest extends VariablesMetricEnvironmentTes
 	protected void runTestImpl() throws Throwable {
 		CombinedTargetTaskResult res;
 
+		getterObject = new DynamicGetter();
+		res = runScriptTask("build");
+		assertEquals(res.getTargetTaskResult("subscript1"), "valval");
+		assertEquals(res.getTargetTaskResult("presentgetter"), "PG");
+		assertEquals(res.getTargetTaskResult("intsubscript"), 123 * 2);
+
+		getterObject = new SwitchDynamicGetter();
 		res = runScriptTask("build");
 		assertEquals(res.getTargetTaskResult("subscript1"), "valval");
 		assertEquals(res.getTargetTaskResult("presentgetter"), "PG");
