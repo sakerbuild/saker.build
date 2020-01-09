@@ -208,8 +208,11 @@ public class StandardIOFormatterTest extends CollectingMetricEnvironmentTestCase
 		assertTrue(!out.toString().contains("[task][task]"), msgsupplier);
 		assertTrue(out.toString().equals(""), msgsupplier);
 
+		String sysls = System.lineSeparator();
+		//as the pre and post messages are printed using System.out.println, use the system line separator there
 		runTask("regr", new JavacRegressionTask());
-		assertTrue(out.toString().equals("[taskid]pre" + ls + "[taskid]test\n" + "[taskid]\n" + "[taskid]post" + ls),
+		assertTrue(
+				out.toString().equals("[taskid]pre" + sysls + "[taskid]test\n" + "[taskid]\n" + "[taskid]post" + sysls),
 				msgsupplier);
 	}
 
