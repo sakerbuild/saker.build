@@ -167,7 +167,7 @@ public class StandardIOFormatterTest extends CollectingMetricEnvironmentTestCase
 	@Override
 	protected void runTestImpl() throws Throwable {
 		Supplier<String> msgsupplier = () -> out.toString().replace("\n", "\\n").replace("\r", "\\r");
-		String ls = System.lineSeparator();
+		String ls = "\r\n";
 		runTask("main", new PrintingTask(null, "printed"));
 		assertTrue(!out.toString().contains("[task][task]"), msgsupplier);
 		assertTrue(out.toString().contains("[task]printed"), msgsupplier);
