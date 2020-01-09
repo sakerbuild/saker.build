@@ -550,18 +550,6 @@ _configure(
 				},
 			},
 			{
-				Identifier: jdk10,
-				SDKs: {
-					Java: saker.java.sdk(10),
-				},
-			},
-			{
-				Identifier: jdk11,
-				SDKs: {
-					Java: saker.java.sdk(11),
-				},
-			},
-			{
 				ClassPath: [
 					saker.java.classpath.bundle(Bundles: "saker.apiextract-api-v{ global(VERSION_saker.apiextract) }"),
 				],

@@ -1594,7 +1594,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 */
 	public FileEventListener.ListenerToken addFileEventListener(Path directory, FileEventListener listener)
 			throws IOException {
-		requireLocalAbsolutePath(directory);
+		directory = requireLocalAbsolutePath(directory);
 
 		//normalize the path to avoid different representations of the same path in collections
 		return addFileEventListenerImpl(directory.normalize(), listener);
@@ -1721,7 +1721,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #getDirectoryEntries(SakerPath)
 	 */
 	public NavigableMap<String, ? extends FileEntry> getDirectoryEntries(Path path) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return getDirectoryEntriesByNameImpl(path);
 	}
@@ -1736,7 +1736,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #getDirectoryEntriesRecursively(SakerPath)
 	 */
 	public NavigableMap<SakerPath, ? extends FileEntry> getDirectoryEntriesRecursively(Path path) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 		return getDirectoryEntriesRecursivelyImpl(path);
 	}
 
@@ -1749,7 +1749,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #getDirectoryEntryNames(SakerPath)
 	 */
 	public NavigableSet<String> getDirectoryEntryNames(Path path) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return getDirectoryEntryNamesImpl(path);
 	}
@@ -1764,7 +1764,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #getSubDirectoryNames(SakerPath)
 	 */
 	public Set<String> getSubDirectoryNames(Path path) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return getSubDirectoryNamesImpl(path);
 	}
@@ -1779,7 +1779,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #getDirectoryEntryIfSingle(SakerPath)
 	 */
 	public Entry<String, ? extends FileEntry> getDirectoryEntryIfSingle(Path path) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return getDirectoryEntryIfSingleImpl(path);
 	}
@@ -1806,7 +1806,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #writeTo(Path, ByteSink, OpenOption...)
 	 */
 	public long writeToStream(Path path, OutputStream os, OpenOption... openoptions) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return writeToStreamImpl(path, os, openoptions);
 	}
@@ -1815,7 +1815,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #writeToFile(ByteSource, SakerPath, OpenOption...)
 	 */
 	public long writeToFile(InputStream is, Path path, OpenOption... openoptions) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return writeToFileImpl(is, path, openoptions);
 	}
@@ -1832,7 +1832,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 */
 	public FileHashResult hash(Path path, String algorithm, OpenOption... openoptions)
 			throws NoSuchAlgorithmException, IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return hashImpl(path, algorithm, openoptions);
 	}
@@ -1854,7 +1854,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #writeTo(SakerPath, ByteSink, OpenOption...)
 	 */
 	public long writeTo(Path path, ByteSink out, OpenOption... openoptions) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return writeToImpl(path, out, openoptions);
 	}
@@ -1870,9 +1870,9 @@ public final class LocalFileProvider implements SakerFileProvider {
 	/**
 	 * @see #moveFile(SakerPath, SakerPath, CopyOption...)
 	 */
-	public static void moveFile(Path source, Path target, CopyOption... copyoptions) throws IOException {
-		requireLocalAbsolutePath(source);
-		requireLocalAbsolutePath(target);
+	public void moveFile(Path source, Path target, CopyOption... copyoptions) throws IOException {
+		source = requireLocalAbsolutePath(source);
+		target = requireLocalAbsolutePath(target);
 
 		moveFileImpl(source, target, copyoptions);
 	}
@@ -1904,7 +1904,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #openInput(SakerPath, OpenOption...)
 	 */
 	public ByteSource openInput(Path path, OpenOption... openoptions) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return openInputImpl(path, openoptions);
 	}
@@ -1913,7 +1913,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #openInput(Path, OpenOption...)
 	 */
 	public InputStream openInputStream(Path path, OpenOption... openoptions) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return openInputStreamImpl(path, openoptions);
 	}
@@ -1932,7 +1932,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #ensureWriteRequest(SakerPath, int, int)
 	 */
 	public int ensureWriteRequest(Path path, int filetype, int opflag) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return ensureWriteRequestImpl(path, filetype, opflag);
 	}
@@ -2029,7 +2029,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #openOutput(SakerPath, OpenOption...)
 	 */
 	public ByteSink openOutput(Path path, OpenOption... openoptions) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return openOutputImpl(path, openoptions);
 	}
@@ -2038,7 +2038,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #openOutput(Path, OpenOption...)
 	 */
 	public OutputStream openOutputStream(Path path, OpenOption... openoptions) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return openOutputStreamImpl(path, openoptions);
 	}
@@ -2059,7 +2059,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #getFileAttributes(SakerPath, LinkOption...)
 	 */
 	public FileEntry getFileAttributes(Path file, LinkOption... linkoptions) throws IOException {
-		requireLocalAbsolutePath(file);
+		file = requireLocalAbsolutePath(file);
 
 		return readFileEntryImpl(file, linkoptions);
 	}
@@ -2073,7 +2073,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #setLastModifiedMillis(SakerPath, long)
 	 */
 	public void setLastModifiedMillis(Path path, long millis) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		setLastModifiedMillisImpl(path, millis);
 	}
@@ -2086,7 +2086,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #setLastModifiedMillis(Path, long)
 	 */
 	public void setLastModifiedTime(Path path, FileTime time) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		setLastModifiedTimeImpl(path, time);
 	}
@@ -2105,7 +2105,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #isChanged(SakerPath, long, long, LinkOption...)
 	 */
 	public boolean isChanged(Path path, long size, long modificationmillis, LinkOption... linkoptions) {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return isChangedImpl(path, size, modificationmillis, linkoptions);
 	}
@@ -2119,7 +2119,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #createDirectories(SakerPath)
 	 */
 	public void createDirectories(Path path) throws FileAlreadyExistsException, IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		createDirectoriesImpl(path, OPERATION_FLAG_NONE);
 	}
@@ -2133,7 +2133,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #deleteRecursively(SakerPath)
 	 */
 	public void deleteRecursively(Path path) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		deleteRecursivelyImpl(path);
 	}
@@ -2147,7 +2147,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #delete(SakerPath)
 	 */
 	public void delete(Path path) throws IOException, DirectoryNotEmptyException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 		deleteImpl(path);
 	}
 
@@ -2165,7 +2165,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #clearDirectoryRecursively(SakerPath)
 	 */
 	public void clearDirectoryRecursively(Path directory) throws IOException {
-		requireLocalAbsolutePath(directory);
+		directory = requireLocalAbsolutePath(directory);
 
 		clearDirectoryImpl(directory);
 	}
@@ -2180,7 +2180,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #deleteRecursivelyIfNotFileType(SakerPath, int)
 	 */
 	public int deleteRecursivelyIfNotFileType(Path path, int filetype) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return deleteIfNotFileTypeImpl(path, filetype);
 	}
@@ -2195,7 +2195,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #deleteChildrenRecursivelyIfNotIn(SakerPath, Set)
 	 */
 	public Set<String> deleteChildrenRecursivelyIfNotIn(Path path, Set<String> childfilenames) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return deleteChildrenIfNotInImpl(path, childfilenames);
 	}
@@ -2226,7 +2226,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 */
 	@ExcludeApi
 	public SakerFileLock createLockFile(Path path) throws IOException {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return createLockFileImpl(path);
 	}
@@ -2252,7 +2252,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @return The created path key.
 	 */
 	public ProviderHolderPathKey getPathKey(Path path) {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return getPathKeyImpl(SakerPath.valueOf(path));
 	}
@@ -2287,7 +2287,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * @see #getProviderKeyStatic()
 	 */
 	public static PathKey getPathKeyStatic(Path path) {
-		requireLocalAbsolutePath(path);
+		path = requireLocalAbsolutePath(path);
 
 		return getPathKeyStaticImpl(SakerPath.valueOf(path));
 	}
@@ -2309,7 +2309,10 @@ public final class LocalFileProvider implements SakerFileProvider {
 		if (path.getFileSystem() != localFileSystem) {
 			throw new InvalidPathFormatException("Path is not associated with the default filesystem. (" + path + ")");
 		}
-		return path;
+		//need to normalize, as the following fails on ubuntu:
+		//    Files.readAttributes(Paths.get(".").toAbsolutePath().normalize().resolve("x").resolve(".."), BasicFileAttributes.class);
+		// however, succeeds on windows.
+		return path.normalize();
 	}
 
 	@Override
