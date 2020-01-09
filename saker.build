@@ -420,8 +420,8 @@ test(
 		],
 		TestInvokerParameters: {
 			SakerJarPath: std.file.mirror($export[Path]),
-			#20 sec
-			TimeoutMillis: 20000,
+			#2min
+			TimeoutMillis: 120000,
 			TestsBaseBuildDirectory: std.file.mirror.path(std.file.place(test/build)),
 		},
 		IgnoreFileChanges: [

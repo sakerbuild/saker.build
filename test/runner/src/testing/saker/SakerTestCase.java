@@ -176,6 +176,12 @@ public abstract class SakerTestCase {
 		}
 	}
 
+	public static void assertTrue(boolean bool, Supplier<String> message) throws AssertionError {
+		if (!bool) {
+			assertionFailed(bool, message.get());
+		}
+	}
+
 	public static void assertTrue(boolean bool, String message) throws AssertionError {
 		if (!bool) {
 			assertionFailed(bool, message);
@@ -183,7 +189,13 @@ public abstract class SakerTestCase {
 	}
 
 	public static void assertTrue(boolean bool) throws AssertionError {
-		assertTrue(bool, null);
+		assertTrue(bool, (String) null);
+	}
+
+	public static void assertFalse(boolean bool, Supplier<String> message) throws AssertionError {
+		if (bool) {
+			assertionFailed(bool, message.get());
+		}
 	}
 
 	public static void assertFalse(boolean bool, String message) throws AssertionError {
@@ -193,7 +205,13 @@ public abstract class SakerTestCase {
 	}
 
 	public static void assertFalse(boolean bool) throws AssertionError {
-		assertFalse(bool, null);
+		assertFalse(bool, (String) null);
+	}
+
+	public static void assertNull(Object obj, Supplier<String> message) throws AssertionError {
+		if (obj != null) {
+			assertionFailed(obj, message.get());
+		}
 	}
 
 	public static void assertNull(Object obj, String message) throws AssertionError {
@@ -205,6 +223,12 @@ public abstract class SakerTestCase {
 	public static void assertNull(Object obj) throws AssertionError {
 		if (obj != null) {
 			assertionFailed(obj, "Object is not null.");
+		}
+	}
+
+	public static void assertNonNull(Object obj, Supplier<String> message) throws AssertionError {
+		if (obj == null) {
+			assertionFailed(obj, message.get());
 		}
 	}
 
