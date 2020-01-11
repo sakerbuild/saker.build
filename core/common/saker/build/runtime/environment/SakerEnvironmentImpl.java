@@ -204,7 +204,8 @@ public final class SakerEnvironmentImpl implements Closeable {
 				throw new IllegalStateException("Closed.");
 			}
 
-			thread = new TaskRunnerThread<>(executionthreadgroup, this, parameters, project, taskid, task);
+			thread = new TaskRunnerThread<>(executionthreadgroup, this, parameters, project, taskid, task,
+					uncaughtexceptions::clearAndIterable);
 		}
 		thread.start();
 		boolean interrupted = false;
@@ -222,14 +223,11 @@ public final class SakerEnvironmentImpl implements Closeable {
 		if (interrupted) {
 			Thread.currentThread().interrupt();
 		}
-		Function<Iterable<? extends Throwable>, BuildTaskExecutionResult> resultcreator = thread.resultCreator;
-		BuildTaskExecutionResult res;
-		if (resultcreator == null) {
+		BuildTaskExecutionResult res = thread.result;
+		if (res == null) {
 			res = initializationFailedBuildResultCreator(
 					new AssertionError("Internal error, failed to retrieve result from executor thread."))
 							.apply(uncaughtexceptions.clearAndIterable());
-		} else {
-			res = resultcreator.apply(uncaughtexceptions.clearAndIterable());
 		}
 		return res;
 	}
@@ -695,10 +693,13 @@ public final class SakerEnvironmentImpl implements Closeable {
 		private final TaskFactory<R> taskFactory;
 		private final TaskIdentifier taskId;
 
-		protected Function<Iterable<? extends Throwable>, BuildTaskExecutionResult> resultCreator;
+		protected BuildTaskExecutionResult result;
+
+		protected Supplier<Iterable<? extends Throwable>> uncaughtSupplier;
 
 		public TaskRunnerThread(ThreadGroup group, SakerEnvironmentImpl environment, ExecutionParametersImpl parameters,
-				SakerProjectCache project, TaskIdentifier taskid, TaskFactory<R> task) {
+				SakerProjectCache project, TaskIdentifier taskid, TaskFactory<R> task,
+				Supplier<Iterable<? extends Throwable>> uncaughtSupplier) {
 			super(group, "Execution context-" + contextThreadCounter.incrementAndGet());
 			setContextClassLoader(null);
 			this.taskId = taskid;
@@ -706,6 +707,7 @@ public final class SakerEnvironmentImpl implements Closeable {
 			this.environment = environment;
 			this.parameters = parameters;
 			this.project = project;
+			this.uncaughtSupplier = uncaughtSupplier;
 		}
 
 		protected Function<Iterable<? extends Throwable>, BuildTaskExecutionResult> runWithContext(
@@ -747,10 +749,10 @@ public final class SakerEnvironmentImpl implements Closeable {
 			try {
 				context = new ExecutionContextImpl(environment, parameters);
 			} catch (Exception e) {
-				resultCreator = initializationFailedBuildResultCreator(e);
+				result = initializationFailedBuildResultCreator(e).apply(uncaughtSupplier.get());
 				return;
 			} catch (Throwable e) {
-				resultCreator = initializationFailedBuildResultCreator(e);
+				result = initializationFailedBuildResultCreator(e).apply(uncaughtSupplier.get());
 				throw e;
 			}
 			try {
@@ -766,20 +768,49 @@ public final class SakerEnvironmentImpl implements Closeable {
 						initexc = IOUtils.addExc(initexc, e);
 						throw e;
 					}
-					resultCreator = runWithContext(context);
+					result = runWithContext(context).apply(uncaughtSupplier.get());
 				}
 			} finally {
 				try {
-					context.close();
-					if (initexc != null) {
-						resultCreator = initializationFailedBuildResultCreator(initexc);
+					try {
+						if (initexc != null) {
+							try {
+								result = initializationFailedBuildResultCreator(initexc).apply(uncaughtSupplier.get());
+							} catch (Exception e) {
+								//dont propagate the exception any further
+								initexc.addSuppressed(e);
+								result = BuildTaskExecutionResultImpl.createInitializationFailed(
+										new AssertionError("Build result creation failure. (" + e.getClass() + ")"));
+							}
+						}
+					} finally {
+						//if somewhy the build result creation fails, we still need to close the context.
+						context.close();
 					}
 				} catch (Exception e) {
+					//the closing failed
 					initexc = IOUtils.addExc(initexc, e);
-					resultCreator = initializationFailedBuildResultCreator(initexc);
+					try {
+						result = initializationFailedBuildResultCreator(initexc).apply(uncaughtSupplier.get());
+					} catch (Exception ex) {
+						//dont propagate the exception any further
+						if (result == null) {
+							result = BuildTaskExecutionResultImpl.createInitializationFailed(
+									new AssertionError("Build result creation failure. (" + ex.getClass() + ")"));
+						}
+					}
 				} catch (Throwable e) {
+					//the closing failed
 					initexc = IOUtils.addExc(initexc, e);
-					resultCreator = initializationFailedBuildResultCreator(initexc);
+					try {
+						result = initializationFailedBuildResultCreator(initexc).apply(uncaughtSupplier.get());
+					} catch (Exception ex) {
+						//dont propagate the exception any further
+						if (result == null) {
+							result = BuildTaskExecutionResultImpl.createInitializationFailed(
+									new AssertionError("Build result creation failure. (" + ex.getClass() + ")"));
+						}
+					}
 					throw e;
 				}
 			}

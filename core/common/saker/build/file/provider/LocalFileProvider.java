@@ -1918,6 +1918,16 @@ public final class LocalFileProvider implements SakerFileProvider {
 		return openInputStreamImpl(path, openoptions);
 	}
 
+	/**
+	 * @see #openInput(Path, OpenOption...)
+	 * @since saker.build 0.8.1
+	 */
+	public InputStream openInputStream(SakerPath path, OpenOption... openoptions) throws IOException {
+		Path ppath = toRealPath(path);
+
+		return openInputStreamImpl(ppath, openoptions);
+	}
+
 	@Override
 	public ByteSink openOutput(SakerPath path, OpenOption... openoptions) throws IOException {
 		return openOutputImpl(toRealPath(path), openoptions);
