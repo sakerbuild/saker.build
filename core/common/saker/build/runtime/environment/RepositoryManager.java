@@ -275,7 +275,7 @@ public class RepositoryManager implements Closeable {
 				Object version = this.classPathLock.getVersion();
 				if (version.equals(this.classPathVersion) && this.classLoader.makeStrong()) {
 					//successfully reused the previous classloader
-					//TODO we should not query and cast, but keep a reference instead? or something like that
+					//XXX we should not query and cast, but keep a reference instead? or something like that
 					((ForwardingReplaceableClassLoaderDataFinder) classLoader.get().getDatasFinders().iterator().next())
 							.setClassLoaderDataFinder(classPathLock.getClassLoaderDataFinder());
 				} else {

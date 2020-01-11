@@ -61,32 +61,36 @@ public class RepoManagerRepoCloseTest extends SakerTestCase {
 					SakerRepositoryFactory.class);
 			try (SakerRepository repo = repomanager.loadRepository(repoloc, serviceloader)) {
 				repo.executeAction("the.property", "the.value");
-				uuid = System.getProperty("repo_uuid");
+				uuid = System.clearProperty("repo_uuid");
 			}
 			assertNonNull(uuid);
+			assertEmpty(tm.getLoadedClassPaths());
 			try (SakerRepository repo = repomanager.loadRepository(repoloc, serviceloader)) {
 				repo.executeAction("the.property", "the.value");
-				String nuuid = System.getProperty("repo_uuid");
+				String nuuid = System.clearProperty("repo_uuid");
 				assertNotEquals(uuid, nuuid);
 				uuid = nuuid;
 			}
+			assertEmpty(tm.getLoadedClassPaths());
 
 			//test reusing the repository
 			SakerRepository innerrepo;
 			try (SakerRepository outerrepo = repomanager.loadRepository(repoloc, serviceloader)) {
 				innerrepo = repomanager.loadRepository(repoloc, serviceloader);
 				outerrepo.executeAction("the.property", "the.value");
-				String nuuid = System.getProperty("repo_uuid");
+				String nuuid = System.clearProperty("repo_uuid");
 				assertNotEquals(uuid, nuuid);
 				uuid = nuuid;
 			}
+			assertNotEmpty(tm.getLoadedClassPaths());
 			innerrepo.executeAction("the.property", "the.value");
-			assertEquals(uuid, System.getProperty("repo_uuid"));
+			assertEquals(uuid, System.clearProperty("repo_uuid"));
 			try (SakerRepository repo = repomanager.loadRepository(repoloc, serviceloader)) {
 				repo.executeAction("the.property", "the.value");
-				assertEquals(uuid, System.getProperty("repo_uuid"));
+				assertEquals(uuid, System.clearProperty("repo_uuid"));
 			}
 			innerrepo.close();
+			assertEmpty(tm.getLoadedClassPaths());
 		}
 		assertEmpty(tm.getLoadedClassPaths());
 	}

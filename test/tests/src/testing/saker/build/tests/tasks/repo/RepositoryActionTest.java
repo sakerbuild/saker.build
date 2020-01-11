@@ -76,10 +76,12 @@ public class RepositoryActionTest extends SakerTestCase {
 				RepositoryManager repomanager = new RepositoryManager(classpathmanager,
 						EnvironmentTestCase.getSakerJarPath())) {
 
+			assertEmpty(tm.getLoadedClassPaths());
 			try (SakerRepository repo = repomanager.loadDirectRepository(loaddir, serviceloader)) {
 				repo.executeAction("other.property", "other.value");
 				assertEquals(System.getProperty("other.property"), "other.value");
 			}
+			assertEmpty(tm.getLoadedClassPaths());
 		}
 		assertEmpty(tm.getLoadedClassPaths());
 	}

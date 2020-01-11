@@ -340,7 +340,10 @@ public class SakerExecutionCache implements Closeable {
 
 		IOException exc = null;
 		exc = IOUtils.closeExc(exc, loadedBuildRepositories.values());
+		loadedBuildRepositories = Collections.emptyNavigableMap();
+
 		exc = IOUtils.closeExc(exc, loadedRepositories.values());
+		loadedRepositories = Collections.emptyNavigableMap();
 
 		//clear the cached datas again, as there is a race condition between clearing, and closing the build repositories
 		//they still might add cached datas to the environment asynchronously, or in the closing method (though they are discouraged to do so)
@@ -354,8 +357,6 @@ public class SakerExecutionCache implements Closeable {
 			e.printStackTrace();
 		}
 
-		loadedBuildRepositories = Collections.emptyNavigableMap();
-		loadedRepositories = Collections.emptyNavigableMap();
 		loadedScriptProviderLocators = Collections.emptyMap();
 		trackedClassLoaderResolvers.clear();
 		executionClassLoaderRegistry = null;

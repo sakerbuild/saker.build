@@ -40,7 +40,7 @@ public class RepositoryTestUtils {
 		ZipEntry entry = new ZipEntry(entryname);
 		entry.setLastModifiedTime(FileTime.fromMillis(0));
 		jos.putNextEntry(entry);
-		try (InputStream is = RepositoryActionTest.class.getClassLoader().getResourceAsStream(entryname)) {
+		try (InputStream is = RepositoryTestUtils.class.getClassLoader().getResourceAsStream(entryname)) {
 			StreamUtils.copyStream(is, jos);
 		}
 		jos.closeEntry();

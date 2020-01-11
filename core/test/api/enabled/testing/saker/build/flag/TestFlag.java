@@ -17,7 +17,6 @@ package testing.saker.build.flag;
 
 import java.lang.ref.WeakReference;
 
-import saker.build.thirdparty.saker.util.ObjectUtils;
 import testing.saker.api.TaskTestMetric;
 import testing.saker.api.TestMetric;
 
@@ -25,18 +24,23 @@ public final class TestFlag {
 	private static final TaskTestMetric NULL_METRIC_INSTANCE = new TaskTestMetric() {
 	};
 	public static final boolean ENABLED = true;
-	private static final InheritableThreadLocal<WeakReference<TestMetric>> METRIC_THREADLOCAL = new InheritableThreadLocal<>();
+	private static final InheritableThreadLocal<MetricReference> METRIC_THREADLOCAL = new InheritableThreadLocal<>();
 
 	public static void set(TestMetric metric) {
 		if (metric == null) {
 			METRIC_THREADLOCAL.remove();
 		} else {
-			METRIC_THREADLOCAL.set(new WeakReference<>(metric));
+			MetricReference mr = METRIC_THREADLOCAL.get();
+			METRIC_THREADLOCAL.set(new MetricReference(mr, new WeakReference<>(metric)));
 		}
 	}
 
 	public static TaskTestMetric metric() {
-		TestMetric metric = ObjectUtils.getReference(METRIC_THREADLOCAL.get());
+		MetricReference mr = METRIC_THREADLOCAL.get();
+		if (mr == null) {
+			return NULL_METRIC_INSTANCE;
+		}
+		TestMetric metric = mr.get();
 		if (metric instanceof TaskTestMetric) {
 			return (TaskTestMetric) metric;
 		}
@@ -45,5 +49,26 @@ public final class TestFlag {
 
 	private TestFlag() {
 		throw new UnsupportedOperationException();
+	}
+
+	private static class MetricReference {
+		private MetricReference parent;
+		private WeakReference<TestMetric> metric;
+
+		public MetricReference(MetricReference parent, WeakReference<TestMetric> metric) {
+			this.parent = parent;
+			this.metric = metric;
+		}
+
+		public TestMetric get() {
+			TestMetric tm = metric.get();
+			if (tm != null) {
+				return tm;
+			}
+			if (parent != null) {
+				return parent.get();
+			}
+			return null;
+		}
 	}
 }

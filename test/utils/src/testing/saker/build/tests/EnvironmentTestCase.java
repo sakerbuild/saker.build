@@ -254,6 +254,7 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 				t.join();
 				break;
 			} catch (InterruptedException e) {
+				t.interrupt();
 			}
 		}
 		IOUtils.throwExc(t.getException());

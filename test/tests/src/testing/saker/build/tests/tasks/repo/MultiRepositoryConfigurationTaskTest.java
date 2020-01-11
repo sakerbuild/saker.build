@@ -30,6 +30,8 @@ import testing.saker.build.tests.CollectingTestMetric;
 
 @SakerTest
 public class MultiRepositoryConfigurationTaskTest extends CollectingMetricEnvironmentTestCase {
+	//keep as a field to not be GCd after the end of runTestImpl
+	private CollectingTestMetric tm = new CollectingTestMetric();
 
 	@Override
 	public void executeRunning() throws Exception {
@@ -44,8 +46,10 @@ public class MultiRepositoryConfigurationTaskTest extends CollectingMetricEnviro
 
 	@Override
 	protected void runTestImpl() throws Throwable {
-		CollectingTestMetric tm = new CollectingTestMetric();
+		tm = new CollectingTestMetric();
 		TestFlag.set(tm);
+
+		System.out.println(" -- Start run " + tm.getLoadedClassPaths().size());
 
 		SakerPath repopath = PATH_WORKING_DIRECTORY.resolve(RepositoryTestUtils.createRepositoryJarName(getClass()));
 		RepositoryTestUtils.exportTestRepositoryJar(files, repopath);
@@ -78,11 +82,13 @@ public class MultiRepositoryConfigurationTaskTest extends CollectingMetricEnviro
 		nuserparams.put("repo2.userparamtask.value", "value.task2");
 		parameters.setUserParameters(nuserparams);
 
+		System.out.println(" -- Run with different parameters " + tm.getLoadedClassPaths().size());
+
 		res = runScriptTask("repoidentified");
 		assertEquals(res.getTargetTaskResult("out1"), "value.task1");
 		assertEquals(res.getTargetTaskResult("out2"), "value.task2");
 
 		//so the metric is not GCd prematurely
-		System.out.println("CustomScriptLanguageTest.runTestImpl() " + tm);
+		System.out.println(" -- End run" + tm + " - " + tm.getLoadedClassPaths().size());
 	}
 }

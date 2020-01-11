@@ -639,7 +639,7 @@ public class SakerProjectCache implements ProjectCacheHandle {
 				}
 			}
 		} finally {
-			MemoryTrimmer.trimInterruptible(() -> this.startingRequested);
+			MemoryTrimmer.trimInterruptible(() -> this.startingRequested || this.closed);
 		}
 	}
 
