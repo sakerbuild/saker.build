@@ -9,7 +9,7 @@ steps:
   displayName: 'Download saker.build'
 - script: |
     set -e
-    curl -s https://gist.githubusercontent.com/Sipkab/f71ecb5e2167a2b0fced6736d703b8a5/raw/35ab3a1d94a32a1183a05cdb2498943937326993/azure_ubuntu_jdksetup.sh -o /tmp/azure_ubuntu_jdksetup.sh
+    curl -s https://gist.githubusercontent.com/Sipkab/f71ecb5e2167a2b0fced6736d703b8a5/raw/azure_ubuntu_jdksetup.sh -o /tmp/azure_ubuntu_jdksetup.sh
     echo "##vso[task.setvariable variable=JAVA_HOME_8_X64]$(bash /tmp/azure_ubuntu_jdksetup.sh 8)" &
     echo "##vso[task.setvariable variable=JAVA_HOME_9_X64]$(bash /tmp/azure_ubuntu_jdksetup.sh 9)" &
     wait < <(jobs -p)
