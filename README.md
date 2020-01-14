@@ -1,6 +1,6 @@
 # [<img src=".github/readme_logo.svg" height="64" alt="saker.build system">](https://saker.build "Saker.build system")
 
-![Build status](https://img.shields.io/azure-devops/build/sakerbuild/9de21fc8-f935-48f9-bd0a-666d204cbdcb/15/master)
+![Build status](https://img.shields.io/azure-devops/build/sakerbuild/9de21fc8-f935-48f9-bd0a-666d204cbdcb/15/master) [![Latest version](https://mirror.nest.saker.build/badges/saker.build/version.svg)](https://nest.saker.build/package/saker.build "saker.build | saker.nest")
 
 Saker.build is a language agnostic build system that focuses on extensibility and scalable incremental builds. It supports distributing build tasks over multiple build machines, rebuilding only the smallest possible part of the project, and can scale for tens of thousands of source files.
 
