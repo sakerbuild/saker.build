@@ -28,7 +28,7 @@ import saker.apiextract.api.PublicApi;
 public class Versions {
 	//XXX should export the generation of these constants to the build files, or query them from the build script
 	/**
-	 * The major version of the Saker.build system release.
+	 * The major version of the saker.build system release.
 	 * <p>
 	 * The major version will change when there are backward incompatible changes between releases.
 	 * 
@@ -37,7 +37,7 @@ public class Versions {
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
 	public static final int VERSION_MAJOR = 0;
 	/**
-	 * The minor version of the Saker.build system release.
+	 * The minor version of the saker.build system release.
 	 * <p>
 	 * The minor version changes when changes are made to the build system implementation, but they are backward
 	 * compatible.
@@ -49,7 +49,7 @@ public class Versions {
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
 	public static final int VERSION_MINOR = 8;
 	/**
-	 * The patch version of the Saker.build system release.
+	 * The patch version of the saker.build system release.
 	 * <p>
 	 * The patch version changes when bugfixes are added to the implementation.
 	 * 
@@ -129,6 +129,30 @@ public class Versions {
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
 	public static final String THIRDPARTY_SAKER_RMI_VERSION_FULL = THIRDPARTY_SAKER_RMI_VERSION_MAJOR + "."
 			+ THIRDPARTY_SAKER_RMI_VERSION_MINOR + "." + THIRDPARTY_SAKER_RMI_VERSION_PATCH;
+
+	/**
+	 * A compound version representation of the saker.build system release.
+	 * <p>
+	 * The field has the value of
+	 * <code>{@link #VERSION_MAJOR} * 1_000_000 + {@link #VERSION_MINOR} * 1_000 + {@link #VERSION_PATCH}</code>.
+	 * <p>
+	 * It can be easily used in conditional statements to query the runtime for available features.
+	 * 
+	 * <pre>
+	 * if (Versions.VERSION_FULL_COMPOUND >= 8_001) {
+	 * 	// use features from 0.8.1
+	 * } else if (Versions.VERSION_FULL_COMPOUND >= 1_000_000) {
+	 * 	// use features from 1.0.0
+	 * }
+	 * </pre>
+	 * 
+	 * Note that you shouldn't start your version numbers with the number <code>0</code>, as that represents an octal
+	 * number.
+	 * 
+	 * @since saker.build 0.8.1
+	 */
+	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
+	public static final int VERSION_FULL_COMPOUND = VERSION_MAJOR * 1_000_000 + VERSION_MINOR * 1_000 + VERSION_PATCH;
 
 	private Versions() {
 		throw new UnsupportedOperationException();

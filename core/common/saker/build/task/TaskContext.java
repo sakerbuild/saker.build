@@ -281,7 +281,7 @@ public interface TaskContext extends TaskResultResolver, TaskDirectoryContext, T
 	 * executed tasks.
 	 * 
 	 * @param metadataid
-	 *            The identifier of the meta-data. Should follow package nameing conventions.
+	 *            The identifier of the meta-data. Should follow package naming conventions.
 	 * @param value
 	 *            The value to set as meta-data.
 	 * @throws NullPointerException
