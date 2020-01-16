@@ -224,7 +224,7 @@ public final class HttpUrlJarFileClassPathLocation implements ClassPathLocation,
 						try {
 							if (targetfp.getFileAttributes(targetdirpath.resolve(f)).isRegularFile()) {
 								//found the file that was previously downloaded
-								return SakerPath.valueOf(f);
+								return subDirectory.resolve(f);
 							}
 						} catch (IOException e) {
 						}
@@ -296,7 +296,7 @@ public final class HttpUrlJarFileClassPathLocation implements ClassPathLocation,
 			} catch (IOException e) {
 				//ignoreable
 			}
-			return SakerPath.valueOf(outputfilename);
+			return subDirectory.resolve(outputfilename);
 		}
 	}
 }
