@@ -66,6 +66,30 @@ public class Versions {
 	public static final String VERSION_STRING_FULL = VERSION_MAJOR + "." + VERSION_MINOR + "." + VERSION_PATCH;
 
 	/**
+	 * A compound version representation of the saker.build system release.
+	 * <p>
+	 * The field has the value of
+	 * <code>{@link #VERSION_MAJOR} * 1_000_000 + {@link #VERSION_MINOR} * 1_000 + {@link #VERSION_PATCH}</code>.
+	 * <p>
+	 * It can be easily used in conditional statements to query the runtime for available features.
+	 * 
+	 * <pre>
+	 * if (Versions.VERSION_FULL_COMPOUND &gt;= 8_001) {
+	 * 	// use features from 0.8.1
+	 * } else if (Versions.VERSION_FULL_COMPOUND &gt;= 1_000_000) {
+	 * 	// use features from 1.0.0
+	 * }
+	 * </pre>
+	 * 
+	 * Note that you shouldn't start your version numbers with the number <code>0</code>, as that represents an octal
+	 * number.
+	 * 
+	 * @since saker.build 0.8.1
+	 */
+	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
+	public static final int VERSION_FULL_COMPOUND = VERSION_MAJOR * 1_000_000 + VERSION_MINOR * 1_000 + VERSION_PATCH;
+
+	/**
 	 * The major version of the saker.util library that is included under the <code>saker.build.thirdparty</code>
 	 * package.
 	 * 
@@ -97,6 +121,33 @@ public class Versions {
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
 	public static final String THIRDPARTY_SAKER_UTIL_VERSION_FULL = THIRDPARTY_SAKER_UTIL_VERSION_MAJOR + "."
 			+ THIRDPARTY_SAKER_UTIL_VERSION_MINOR + "." + THIRDPARTY_SAKER_UTIL_VERSION_PATCH;
+
+	/**
+	 * A compound version representation of the saker.util library that is included under the
+	 * <code>saker.build.thirdparty</code> package.
+	 * <p>
+	 * The field has the value of
+	 * <code>{@link #THIRDPARTY_SAKER_UTIL_VERSION_MAJOR} * 1_000_000 + {@link #THIRDPARTY_SAKER_UTIL_VERSION_MINOR} * 1_000 + {@link #THIRDPARTY_SAKER_UTIL_VERSION_PATCH}</code>.
+	 * <p>
+	 * It can be easily used in conditional statements to query the runtime for available features.
+	 * 
+	 * <pre>
+	 * if (Versions.THIRDPARTY_SAKER_UTIL_VERSION_FULL_COMPOUND &gt;= 8_001) {
+	 * 	// use features from 0.8.1
+	 * } else if (Versions.THIRDPARTY_SAKER_UTIL_VERSION_FULL_COMPOUND &gt;= 1_000_000) {
+	 * 	// use features from 1.0.0
+	 * }
+	 * </pre>
+	 * 
+	 * Note that you shouldn't start your version numbers with the number <code>0</code>, as that represents an octal
+	 * number.
+	 * 
+	 * @since saker.build 0.8.1
+	 */
+	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
+	public static final int THIRDPARTY_SAKER_UTIL_VERSION_FULL_COMPOUND = THIRDPARTY_SAKER_UTIL_VERSION_MAJOR
+			* 1_000_000 + THIRDPARTY_SAKER_UTIL_VERSION_MINOR * 1_000 + THIRDPARTY_SAKER_UTIL_VERSION_PATCH;
+
 	/**
 	 * The major version of the saker.rmi library that is included under the <code>saker.build.thirdparty</code>
 	 * package.
@@ -125,23 +176,25 @@ public class Versions {
 	 * The full version of the saker.rmi library that is included under the <code>saker.build.thirdparty</code> package
 	 * string in the format of
 	 * <code>&lt;{@link #THIRDPARTY_SAKER_RMI_VERSION_MAJOR major}&gt;.&lt;{@link #THIRDPARTY_SAKER_RMI_VERSION_MINOR minor}&gt;.&lt;{@link #THIRDPARTY_SAKER_RMI_VERSION_PATCH patch}&gt;</code>
+	 * 
+	 * @since saker.build 0.8.1
 	 */
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
 	public static final String THIRDPARTY_SAKER_RMI_VERSION_FULL = THIRDPARTY_SAKER_RMI_VERSION_MAJOR + "."
 			+ THIRDPARTY_SAKER_RMI_VERSION_MINOR + "." + THIRDPARTY_SAKER_RMI_VERSION_PATCH;
-
 	/**
-	 * A compound version representation of the saker.build system release.
+	 * A compound version representation of the saker.rmi library that is included under the
+	 * <code>saker.build.thirdparty</code> package.
 	 * <p>
 	 * The field has the value of
-	 * <code>{@link #VERSION_MAJOR} * 1_000_000 + {@link #VERSION_MINOR} * 1_000 + {@link #VERSION_PATCH}</code>.
+	 * <code>{@link #THIRDPARTY_SAKER_RMI_VERSION_MAJOR} * 1_000_000 + {@link #THIRDPARTY_SAKER_RMI_VERSION_MINOR} * 1_000 + {@link #THIRDPARTY_SAKER_RMI_VERSION_PATCH}</code>.
 	 * <p>
 	 * It can be easily used in conditional statements to query the runtime for available features.
 	 * 
 	 * <pre>
-	 * if (Versions.VERSION_FULL_COMPOUND >= 8_001) {
+	 * if (Versions.THIRDPARTY_SAKER_RMI_VERSION_FULL_COMPOUND &gt;= 8_001) {
 	 * 	// use features from 0.8.1
-	 * } else if (Versions.VERSION_FULL_COMPOUND >= 1_000_000) {
+	 * } else if (Versions.THIRDPARTY_SAKER_RMI_VERSION_FULL_COMPOUND &gt;= 1_000_000) {
 	 * 	// use features from 1.0.0
 	 * }
 	 * </pre>
@@ -152,7 +205,8 @@ public class Versions {
 	 * @since saker.build 0.8.1
 	 */
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
-	public static final int VERSION_FULL_COMPOUND = VERSION_MAJOR * 1_000_000 + VERSION_MINOR * 1_000 + VERSION_PATCH;
+	public static final int THIRDPARTY_SAKER_RMI_VERSION_FULL_COMPOUND = THIRDPARTY_SAKER_RMI_VERSION_MAJOR * 1_000_000
+			+ THIRDPARTY_SAKER_RMI_VERSION_MINOR * 1_000 + THIRDPARTY_SAKER_RMI_VERSION_PATCH;
 
 	private Versions() {
 		throw new UnsupportedOperationException();

@@ -15,11 +15,30 @@
  */
 package saker.build.ide.support.properties;
 
-import saker.build.thirdparty.saker.util.ObjectUtils;
+import java.util.regex.Pattern;
 
 public class NestRepositoryClassPathLocationIDEProperty implements ClassPathLocationIDEProperty {
+	private static final Pattern PATTERN_NEST_REPOSITORY_VERSION_NUMBER = Pattern
+			.compile("(0|([1-9][0-9]*))(\\.(0|([1-9][0-9]*)))*");
+
+	private String version;
 
 	public NestRepositoryClassPathLocationIDEProperty() {
+	}
+
+	public NestRepositoryClassPathLocationIDEProperty(String version) {
+		this.version = version;
+	}
+
+	public String getVersion() {
+		return version;
+	}
+
+	public static boolean isValidVersionNumber(String version) {
+		if (version == null) {
+			return false;
+		}
+		return PATTERN_NEST_REPOSITORY_VERSION_NUMBER.matcher(version).matches();
 	}
 
 	@Override
@@ -29,12 +48,27 @@ public class NestRepositoryClassPathLocationIDEProperty implements ClassPathLoca
 
 	@Override
 	public int hashCode() {
-		return getClass().getName().hashCode();
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((version == null) ? 0 : version.hashCode());
+		return result;
 	}
 
 	@Override
 	public boolean equals(Object obj) {
-		return ObjectUtils.isSameClass(this, obj);
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		NestRepositoryClassPathLocationIDEProperty other = (NestRepositoryClassPathLocationIDEProperty) obj;
+		if (version == null) {
+			if (other.version != null)
+				return false;
+		} else if (!version.equals(other.version))
+			return false;
+		return true;
 	}
 
 	@Override

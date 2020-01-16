@@ -103,6 +103,7 @@ import saker.build.runtime.params.ExecutionRepositoryConfiguration.RepositoryCon
 import saker.build.runtime.params.ExecutionScriptConfiguration;
 import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptOptionsConfig;
 import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptProviderLocation;
+import saker.build.runtime.params.NestRepositoryClassPathLocation;
 import saker.build.runtime.params.NestRepositoryFactoryClassPathServiceEnumerator;
 import saker.build.runtime.project.ProjectCacheHandle;
 import saker.build.runtime.project.SakerExecutionCache;
@@ -188,6 +189,7 @@ public final class SakerIDEProject {
 	public static final String C_NEST_REPOSITORY = "nest-repository.";
 
 	public static final String E_ILLEGAL = "illegal";
+	public static final String E_VERSION_FORMAT = "version-format";
 	public static final String E_PROTOCOL = "protocol";
 	public static final String E_FORMAT = "format";
 	public static final String E_RELATIVE = "relative";
@@ -683,6 +685,15 @@ public final class SakerIDEProject {
 						errors.add(new PropertiesValidationErrorResult(
 								errornamespace + SakerIDEProject.C_NEST_REPOSITORY + SakerIDEProject.E_ILLEGAL,
 								property));
+					} else {
+						String ver = property.getVersion();
+						if (ver != null) {
+							if (!NestRepositoryClassPathLocationIDEProperty.isValidVersionNumber(ver)) {
+								errors.add(new PropertiesValidationErrorResult(errornamespace
+										+ SakerIDEProject.C_NEST_REPOSITORY + SakerIDEProject.E_VERSION_FORMAT,
+										property));
+							}
+						}
 					}
 					return null;
 				}
@@ -1636,7 +1647,11 @@ public final class SakerIDEProject {
 
 		@Override
 		public ClassPathLocation visit(NestRepositoryClassPathLocationIDEProperty property, Void param) {
-			return ExecutionRepositoryConfiguration.RepositoryConfig.getDefault().getClassPathLocation();
+			String version = property.getVersion();
+			if (version == null) {
+				return NestRepositoryClassPathLocation.getInstance();
+			}
+			return NestRepositoryClassPathLocation.getInstance(version);
 		}
 	}
 

@@ -31,7 +31,7 @@ import saker.build.runtime.environment.SakerEnvironment;
  */
 public interface RepositoryEnvironment {
 	/**
-	 * Gets the local path to the classes of the repository;
+	 * Gets the local path to the classes of the repository.
 	 * <p>
 	 * The returned path points to a file or folder on the local machine where the classes of the repository are
 	 * located. The classes can be contained in a directory tree with appropriate package directories or in a JAR file.

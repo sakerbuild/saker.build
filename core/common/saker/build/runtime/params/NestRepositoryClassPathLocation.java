@@ -19,11 +19,13 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
-import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.Objects;
+import java.util.regex.Pattern;
 
 import saker.apiextract.api.DefaultableBoolean;
 import saker.apiextract.api.PublicApi;
+import saker.build.file.path.SakerPath;
 import saker.build.runtime.classpath.ClassPathLoader;
 import saker.build.runtime.classpath.ClassPathLocation;
 import saker.build.runtime.classpath.HttpUrlJarFileClassPathLocation;
@@ -33,7 +35,7 @@ import saker.build.runtime.classpath.HttpUrlJarFileClassPathLocation;
  * <p>
  * The repository is downloaded as a JAR from the URL: {@value #DEFAULT_NEST_REPOSITORY_URL}
  * <p>
- * See also: <a class="javadoc-external-link" href="https://saker.build/saker.nest/index.html">Nest repository</a>
+ * See also: <a class="javadoc-external-link" href="https://saker.build/saker.nest/index.html">saker.nest repository</a>
  * 
  * @see #getInstance()
  * @see NestRepositoryFactoryClassPathServiceEnumerator
@@ -42,37 +44,49 @@ import saker.build.runtime.classpath.HttpUrlJarFileClassPathLocation;
 public class NestRepositoryClassPathLocation implements ClassPathLocation, Externalizable {
 	private static final long serialVersionUID = 1L;
 
+	private static final Pattern PATTERN_VERSION_NUMBER = Pattern.compile("(0|([1-9][0-9]*))(\\.(0|([1-9][0-9]*)))*");
+
 	/**
 	 * The version number of the saker.nest repository that is loaded as the default for the build executions.
 	 */
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
 	public static final String DEFAULT_VERSION = "0.8.0";
 
-	/**
-	 * The URL of the Nest repository.
-	 */
-	private static final String DEFAULT_NEST_REPOSITORY_URL = "https://api.nest.saker.build/bundle/download/saker.nest-v"
-			+ DEFAULT_VERSION;
-
-	private ClassPathLocation realClassPath;
+	private String version;
 
 	/**
-	 * Gets an instance of this class path location.
+	 * Gets an instance of this classpath location.
 	 * <p>
 	 * The result may or may not be a singleton instance.
 	 * <p>
-	 * The returned class path location will load the saker.nest repository with the {@value #DEFAULT_VERSION} version.
+	 * The returned classpath location will load the saker.nest repository with the {@value #DEFAULT_VERSION} version.
 	 * 
 	 * @return An instance.
 	 */
 	public static ClassPathLocation getInstance() {
-		NestRepositoryClassPathLocation result = new NestRepositoryClassPathLocation();
-		try {
-			result.realClassPath = new HttpUrlJarFileClassPathLocation(new URL(DEFAULT_NEST_REPOSITORY_URL));
-		} catch (MalformedURLException e) {
-			throw new AssertionError();
+		return new NestRepositoryClassPathLocation(DEFAULT_VERSION);
+	}
+
+	/**
+	 * Gets an instance of the saker.nest repository classpath location for the given version.
+	 * <p>
+	 * The classpath will download the repository release with the specified version.
+	 * 
+	 * @param version
+	 *            The version of the repository.
+	 * @return The classpath location.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @throws IllegalArgumentException
+	 *             If the argument is not a valid version number.
+	 * @since saker.build 0.8.1
+	 */
+	public static ClassPathLocation getInstance(String version) throws NullPointerException, IllegalArgumentException {
+		Objects.requireNonNull(version, "version");
+		if (!PATTERN_VERSION_NUMBER.matcher(version).matches()) {
+			throw new IllegalArgumentException("Invalid version number: " + version);
 		}
-		return result;
+		return new NestRepositoryClassPathLocation(version);
 	}
 
 	/**
@@ -86,9 +100,15 @@ public class NestRepositoryClassPathLocation implements ClassPathLocation, Exter
 	public NestRepositoryClassPathLocation() {
 	}
 
+	private NestRepositoryClassPathLocation(String version) {
+		this.version = version;
+	}
+
 	@Override
 	public ClassPathLoader getLoader() throws IOException {
-		return realClassPath.getLoader();
+		return HttpUrlJarFileClassPathLocation.createClassPathLoader(
+				new URL("https://api.nest.saker.build/bundle/download/saker.nest-v" + version),
+				SakerPath.valueOf(version));
 	}
 
 	@Override
@@ -100,17 +120,17 @@ public class NestRepositoryClassPathLocation implements ClassPathLocation, Exter
 
 	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
-		out.writeObject(realClassPath);
+		out.writeObject(version);
 	}
 
 	@Override
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-		realClassPath = (HttpUrlJarFileClassPathLocation) in.readObject();
+		version = (String) in.readObject();
 	}
 
 	@Override
 	public int hashCode() {
-		return getClass().getName().hashCode() ^ realClassPath.hashCode();
+		return getClass().getName().hashCode() ^ version.hashCode();
 	}
 
 	@Override
@@ -122,17 +142,17 @@ public class NestRepositoryClassPathLocation implements ClassPathLocation, Exter
 		if (getClass() != obj.getClass())
 			return false;
 		NestRepositoryClassPathLocation other = (NestRepositoryClassPathLocation) obj;
-		if (realClassPath == null) {
-			if (other.realClassPath != null)
+		if (version == null) {
+			if (other.version != null)
 				return false;
-		} else if (!realClassPath.equals(other.realClassPath))
+		} else if (!version.equals(other.version))
 			return false;
 		return true;
 	}
 
 	@Override
 	public String toString() {
-		return getClass().getSimpleName() + "[" + realClassPath + "]";
+		return getClass().getSimpleName() + "[" + version + "]";
 	}
 
 }

@@ -592,7 +592,12 @@ public class IDEPersistenceUtils {
 							break;
 						}
 						case "nest-repository-classpath": {
-							cplocation = new NestRepositoryClassPathLocationIDEProperty();
+							String version = cp.readString("version");
+							if (version != null) {
+								cplocation = new NestRepositoryClassPathLocationIDEProperty(version);
+							} else {
+								cplocation = new NestRepositoryClassPathLocationIDEProperty();
+							}
 							break;
 						}
 						default: {
@@ -797,6 +802,10 @@ public class IDEPersistenceUtils {
 		public Void visit(NestRepositoryClassPathLocationIDEProperty property, Void param) {
 			try {
 				cpobj.writeField("type", "nest-repository-classpath");
+				String ver = property.getVersion();
+				if (ver != null) {
+					cpobj.writeField("version", ver);
+				}
 			} catch (DuplicateObjectFieldException | IOException e) {
 				throw ObjectUtils.sneakyThrow(e);
 			}
