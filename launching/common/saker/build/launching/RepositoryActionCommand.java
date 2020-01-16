@@ -15,6 +15,7 @@
  */
 package saker.build.launching;
 
+import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -75,6 +76,11 @@ public class RepositoryActionCommand {
 	 * The classpath may be an HTTP URL by starting it with the 
 	 * 'http://' or 'https://' phrases. 
 	 * It can also be a file path for the local file system. 
+	 * 
+	 * It can also be in the format of 'nest:/version/&lt;version-number&gt;'
+	 * where the &lt;version-number&gt; is the version of the saker.nest repository 
+	 * you want to use. The &lt;version-number&gt; can also be 'latest' in which 
+	 * case the most recent known saker.nest nest repository release is used.
 	 * 
 	 * This parameter and -direct-repo cannot be used together.
 	 * </pre>
@@ -170,14 +176,7 @@ public class RepositoryActionCommand {
 				repoloc = defaultrepoconfig.getClassPathLocation();
 				enumerator = defaultrepoconfig.getRepositoryFactoryEnumerator();
 			} else {
-				String repostr = repositoryClassPath.getPath();
-				if (repostr.startsWith("http://") || repostr.startsWith("https://")) {
-					URL url = new URL(repostr);
-					repoloc = new HttpUrlJarFileClassPathLocation(url);
-				} else {
-					repoloc = new JarFileClassPathLocation(LocalFileProvider.getInstance()
-							.getPathKey(LaunchingUtils.absolutize(SakerPath.valueOf(repostr))));
-				}
+				repoloc = getClassPathLocation();
 				enumerator = getServiceEnumeratorDefaulted();
 			}
 		}
@@ -202,6 +201,19 @@ public class RepositoryActionCommand {
 				userepo.close();
 			}
 		}
+	}
+
+	private ClassPathLocation getClassPathLocation() throws IOException {
+		String repostr = repositoryClassPath.getPath();
+		if (repostr.startsWith("http://") || repostr.startsWith("https://")) {
+			URL url = new URL(repostr);
+			return new HttpUrlJarFileClassPathLocation(url);
+		}
+		if (repostr.startsWith("nest:/")) {
+			return BuildCommand.getNestRepositoryClassPathForNestVersionPath(repostr);
+		}
+		return new JarFileClassPathLocation(
+				LocalFileProvider.getInstance().getPathKey(LaunchingUtils.absolutize(SakerPath.valueOf(repostr))));
 	}
 
 	private ClassPathServiceEnumerator<? extends SakerRepositoryFactory> getServiceEnumeratorDefaulted() {

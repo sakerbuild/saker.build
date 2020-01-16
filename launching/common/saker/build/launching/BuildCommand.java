@@ -20,12 +20,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
+import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.MalformedURLException;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -52,6 +53,7 @@ import saker.build.daemon.EnvironmentBuildExecutionInvoker;
 import saker.build.daemon.RemoteDaemonConnection;
 import saker.build.daemon.files.DaemonPath;
 import saker.build.exception.BuildExecutionFailedException;
+import saker.build.exception.InvalidPathFormatException;
 import saker.build.file.content.CommonContentDescriptorSupplier;
 import saker.build.file.content.ContentDescriptorSupplier;
 import saker.build.file.path.ProviderHolderPathKey;
@@ -82,6 +84,7 @@ import saker.build.runtime.params.ExecutionRepositoryConfiguration;
 import saker.build.runtime.params.ExecutionScriptConfiguration;
 import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptOptionsConfig;
 import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptProviderLocation;
+import saker.build.runtime.params.NestRepositoryClassPathLocation;
 import saker.build.runtime.project.ProjectCacheHandle;
 import saker.build.runtime.repository.SakerRepositoryFactory;
 import saker.build.scripting.ScriptAccessProvider;
@@ -127,7 +130,7 @@ public class BuildCommand {
 	private static final Set<String> RESERVED_CONNECTION_NAMES = ImmutableUtils
 			.makeImmutableNavigableSet(new String[] { DAEMON_CLIENT_NAME_LOCAL, DAEMON_CLIENT_NAME_REMOTE,
 					DAEMON_CLIENT_NAME_PROC_WORK_DIR, "build", "http", "https", "ftp", "sftp", "file", "data", "jar",
-					"zip", "url", "uri", "tcp", "udp", "mem", "memory", "ide", "project", "null", "storage" });
+					"zip", "url", "uri", "tcp", "udp", "mem", "memory", "ide", "project", "null", "storage", "nest" });
 
 	private static final String DEFAULT_BUILD_FILE_NAME = "saker.build";
 	/**
@@ -739,7 +742,7 @@ public class BuildCommand {
 								ScriptAccessProvider.class);
 					}
 					ClassPathLocation scriptclasspath = createClassPathLocation(scentry.classPath, remoteenv, localenv,
-							connections, pathconfiguration);
+							connections, pathconfiguration, false);
 					scproviderlocation = new ScriptProviderLocation(scriptclasspath, scriptserviceenumerator);
 				}
 				ScriptOptionsConfig scoptionsconfig = new ScriptOptionsConfig(scentry.options, scproviderlocation);
@@ -764,7 +767,7 @@ public class BuildCommand {
 			for (RepositoryParam repoparam : repositoryCollector.getRepositories()) {
 				ClassPathParam cp = repoparam.getClassPath();
 				ClassPathLocation cplocation = createClassPathLocation(cp, remoteenv, localenv, connections,
-						pathconfiguration);
+						pathconfiguration, true);
 				String repoid = repoparam.getRepositoryIdentifier();
 				ClassPathServiceEnumerator<? extends SakerRepositoryFactory> serviceenumerator = repoparam
 						.getServiceEnumerator();
@@ -938,57 +941,102 @@ public class BuildCommand {
 
 	private ClassPathLocation createClassPathLocation(ClassPathParam cp, DaemonEnvironment remoteenv,
 			DaemonEnvironment localenv, NavigableMap<String, ? extends RemoteDaemonConnection> connections,
-			ExecutionPathConfiguration pathconfiguration) throws MalformedURLException {
+			ExecutionPathConfiguration pathconfiguration, boolean allownest) throws IOException {
 		String repostr = cp.getPath();
-		ClassPathLocation cplocation;
 		if (repostr.startsWith("http://") || repostr.startsWith("https://")) {
 			URL url = new URL(repostr);
-			cplocation = new HttpUrlJarFileClassPathLocation(url);
+			return new HttpUrlJarFileClassPathLocation(url);
+		}
+		if (allownest && repostr.startsWith("nest:/")) {
+			return getNestRepositoryClassPathForNestVersionPath(repostr);
+		}
+		DaemonPath repodaemonpath = DaemonPath.valueOf(repostr);
+		String repoclientname = repodaemonpath.getClientName();
+		ProviderHolderPathKey repopathkey;
+		if (repoclientname == null) {
+			repopathkey = pathconfiguration.getPathKey(repodaemonpath.getPath());
 		} else {
-			DaemonPath repodaemonpath = DaemonPath.valueOf(repostr);
-			String repoclientname = repodaemonpath.getClientName();
-			ProviderHolderPathKey repopathkey;
-			if (repoclientname == null) {
-				repopathkey = pathconfiguration.getPathKey(repodaemonpath.getPath());
-			} else {
-				SakerFileProvider fp;
-				switch (repoclientname) {
-					case DAEMON_CLIENT_NAME_LOCAL: {
+			SakerFileProvider fp;
+			switch (repoclientname) {
+				case DAEMON_CLIENT_NAME_LOCAL: {
+					fp = getLocalFileProviderFromLocalDaemon(localenv);
+					repopathkey = SakerPathFiles.getPathKey(fp, repodaemonpath.getPath());
+					break;
+				}
+				case DAEMON_CLIENT_NAME_REMOTE: {
+					if (remoteenv == null) {
+						//if there is no remote daemon, then we are running only on local
+						//therefore consider the local as the remote
 						fp = getLocalFileProviderFromLocalDaemon(localenv);
-						repopathkey = SakerPathFiles.getPathKey(fp, repodaemonpath.getPath());
-						break;
+					} else {
+						fp = remoteenv.getFileProvider();
 					}
-					case DAEMON_CLIENT_NAME_REMOTE: {
-						if (remoteenv == null) {
-							//if there is no remote daemon, then we are running only on local
-							//therefore consider the local as the remote
-							fp = getLocalFileProviderFromLocalDaemon(localenv);
-						} else {
-							fp = remoteenv.getFileProvider();
-						}
-						repopathkey = SakerPathFiles.getPathKey(fp, repodaemonpath.getPath());
-						break;
+					repopathkey = SakerPathFiles.getPathKey(fp, repodaemonpath.getPath());
+					break;
+				}
+				case DAEMON_CLIENT_NAME_PROC_WORK_DIR: {
+					fp = getLocalFileProviderFromLocalDaemon(localenv);
+					repopathkey = SakerPathFiles.getPathKey(fp,
+							getUserDir().resolve(repodaemonpath.getPath().forcedRelative()));
+					break;
+				}
+				default: {
+					RemoteDaemonConnection connection = connections.get(repoclientname);
+					if (connection == null) {
+						throw new IllegalArgumentException("Connection not found with name: " + repoclientname);
 					}
-					case DAEMON_CLIENT_NAME_PROC_WORK_DIR: {
-						fp = getLocalFileProviderFromLocalDaemon(localenv);
-						repopathkey = SakerPathFiles.getPathKey(fp,
-								getUserDir().resolve(repodaemonpath.getPath().forcedRelative()));
-						break;
-					}
-					default: {
-						RemoteDaemonConnection connection = connections.get(repoclientname);
-						if (connection == null) {
-							throw new IllegalArgumentException("Connection not found with name: " + repoclientname);
-						}
-						fp = connection.getDaemonEnvironment().getFileProvider();
-						repopathkey = SakerPathFiles.getPathKey(fp, repodaemonpath.getPath());
-						break;
-					}
+					fp = connection.getDaemonEnvironment().getFileProvider();
+					repopathkey = SakerPathFiles.getPathKey(fp, repodaemonpath.getPath());
+					break;
 				}
 			}
-			cplocation = new JarFileClassPathLocation(repopathkey);
 		}
-		return cplocation;
+		return new JarFileClassPathLocation(repopathkey);
+	}
+
+	public static ClassPathLocation getNestRepositoryClassPathForNestVersionPath(String repostr) throws IOException {
+		SakerPath path;
+		try {
+			path = SakerPath.valueOf(repostr);
+		} catch (IllegalArgumentException e) {
+			throw new InvalidPathFormatException("Failed to parse nest:/ repository classpath path. (" + repostr + ")",
+					e);
+		}
+		if (path.getNameCount() != 2 || !path.getName(0).equals("version")) {
+			throw new InvalidPathFormatException(
+					"Invalid nest:/ repository classpath path. It must be nest:/version/<version-number> or nest:/version/latest ("
+							+ repostr + ")");
+		}
+		String versionname = path.getName(1);
+		if ("latest".equals(versionname)) {
+			HttpURLConnection connection = (HttpURLConnection) new URL(
+					"https://mirror.nest.saker.build/badges/saker.nest/latest.txt").openConnection();
+			connection.setDoOutput(false);
+			int rc = connection.getResponseCode();
+			if (rc != HttpURLConnection.HTTP_OK) {
+				throw new IOException(
+						"Failed to determine latest saker.nest repository version. Server responded with code: " + rc);
+			}
+			String version;
+			try (InputStream is = connection.getInputStream()) {
+				version = StreamUtils.readStreamStringFully(is, StandardCharsets.UTF_8);
+			} catch (IOException e) {
+				throw new IOException(
+						"Failed to determine latest saker.nest repository version. Failed to read server response.", e);
+			}
+			try {
+				return NestRepositoryClassPathLocation.getInstance(version);
+			} catch (IllegalArgumentException e) {
+				throw new IllegalArgumentException("Server returned invalid version number: " + version, e);
+			}
+		}
+		try {
+			return NestRepositoryClassPathLocation.getInstance(versionname);
+		} catch (IllegalArgumentException e) {
+			throw new InvalidPathFormatException(
+					"Invalid nest:/version/<version-number> repository classpath path. Invalid version number. ("
+							+ repostr + ")");
+		}
 	}
 
 	private static NavigableSet<SakerPath> getBuildFileNamesInDirectory(SakerPath directory,
@@ -1090,6 +1138,11 @@ public class BuildCommand {
 		 * 'http://' or 'https://' phrases. 
 		 * It can also be a file path in the format specified by -mount. 
 		 * The paths are resolved against the path configuration of the build.
+		 * 
+		 * It can also be in the format of 'nest:/version/&lt;version-number&gt;'
+		 * where the &lt;version-number&gt; is the version of the saker.nest repository 
+		 * you want to use. The &lt;version-number&gt; can also be 'latest' in which 
+		 * case the most recent known saker.nest nest repository release is used.
 		 * 
 		 * Any following -repository parameters will modify this configuration.
 		 * </pre>
