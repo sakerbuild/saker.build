@@ -5,7 +5,7 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-- script: curl -s https://api.nest.saker.build/bundle/download/saker.build-v0.8.0 -o saker.build.jar
+- script: curl https://api.nest.saker.build/bundle/download/saker.build-v$(curl -s https://mirror.nest.saker.build/badges/saker.build/latest.txt) -o saker.build.jar
   displayName: 'Download saker.build'
 - script: |
     set -e
