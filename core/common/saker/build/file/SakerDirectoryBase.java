@@ -30,6 +30,7 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import saker.build.file.content.ContentDescriptor;
 import saker.build.file.content.DirectoryContentDescriptor;
@@ -37,6 +38,7 @@ import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.function.LazySupplier;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
@@ -390,30 +392,71 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 	private SakerFileBase putIfAbsentImpl(ConcurrentNavigableMap<String, SakerFileBase> trackedfiles,
 			SakerFileBase file) {
 		String filename = file.getName();
-		SakerFileBase result;
 		if (populatedState == POPULATED_STATE_POPULATED) {
-			result = trackedfiles.compute(filename, (k, v) -> {
-				if (v == null || v == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
-					return file;
-				}
-				return v;
-			});
-		} else {
-			result = trackedfiles.compute(filename, (k, v) -> {
-				//XXX this function may be called multiple times, but the population call should be at most once. LazySupplier?
-
-				if (v != null && v != MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
-					//already present
-					return v;
-				}
-				SakerFileBase populated = populateSingle(filename);
-				if (populated == null) {
-					return file;
-				}
-				SakerFileBase.internal_setParent(populated, this);
-				return populated;
-			});
+			return putIfAbsentImplForPopulatedState(trackedfiles, file, filename);
 		}
+		SakerFileBase v = trackedfiles.get(filename);
+		Supplier<SakerFileBase> populater = LazySupplier.of(() -> {
+			SakerFileBase popresult = populateSingle(filename);
+			if (popresult != null) {
+				SakerFileBase.internal_setParent(popresult, this);
+			}
+			return popresult;
+		});
+		while (true) {
+			if (v != null) {
+				if (v == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+					if (!trackedfiles.replace(filename, v, file)) {
+						//try again
+						v = trackedfiles.get(filename);
+						continue;
+					}
+					//the file was put in place, success
+					return null;
+				}
+				//already present, return the previous
+				return v;
+			}
+			SakerFileBase populated = populater.get();
+			if (populated == null) {
+				SakerFileBase prev = trackedfiles.putIfAbsent(filename, file);
+				if (prev != null) {
+					//try again
+					v = prev;
+					continue;
+				}
+				//the file was put in place, success
+				return null;
+			}
+			synchronized (trackedfiles) {
+				//syncrhonize to ensure that any concurrent population requests finish before we put the populated file
+				if (populatedState != POPULATED_STATE_POPULATED) {
+					//still unpopulated, put the file
+					SakerFileBase prev = trackedfiles.putIfAbsent(filename, file);
+					if (prev != null) {
+						//try again
+						v = prev;
+						continue;
+					}
+					//the file was put in place, success
+					return null;
+				}
+				//don't use the populated file, as the full population completed meanwhile
+			}
+			//the directory was populated meanwhile
+			//perform the absent insertion for the populated state
+			return putIfAbsentImplForPopulatedState(trackedfiles, file, filename);
+		}
+	}
+
+	private static SakerFileBase putIfAbsentImplForPopulatedState(
+			ConcurrentNavigableMap<String, SakerFileBase> trackedfiles, SakerFileBase file, String filename) {
+		SakerFileBase result = trackedfiles.compute(filename, (k, v) -> {
+			if (v == null || v == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+				return file;
+			}
+			return v;
+		});
 		if (result == file) {
 			//the file was put in place. no previous, return null.
 			return null;
@@ -463,8 +506,6 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 			return got;
 		}
 		if (populatedState == POPULATED_STATE_POPULATED) {
-			//there is a race condition while getting the file and checking if populated
-			//so check again just in case
 			got = trackedfiles.get(name);
 			if (got == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
 				return null;
@@ -474,14 +515,26 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		SakerFileBase populated = populateSingle(name);
 		if (populated != null) {
 			SakerFileBase.internal_setParent(populated, this);
-			SakerFileBase prev = trackedfiles.putIfAbsent(name, populated);
-			if (prev != null) {
-				if (prev == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
-					return null;
+			synchronized (trackedfiles) {
+				//syncrhonize to ensure that any concurrent population requests finish before we put the populated file
+				if (populatedState != POPULATED_STATE_POPULATED) {
+					//still unpopulated, put the file
+					SakerFileBase prev = trackedfiles.putIfAbsent(name, populated);
+					if (prev != null) {
+						if (prev == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+							return null;
+						}
+						return prev;
+					}
+					return populated;
 				}
-				return prev;
 			}
-			return populated;
+			//the directory was populated meanwhile. simply get.
+			got = trackedfiles.get(name);
+			if (got == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
+				return null;
+			}
+			return got;
 		}
 		SakerFileBase prev = trackedfiles.putIfAbsent(name, MarkerSakerDirectory.POPULATED_NOT_PRESENT);
 		if (prev != null) {
