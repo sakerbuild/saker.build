@@ -48,7 +48,9 @@ import sipka.cmdline.api.SubCommand;
  * for the given setting will be used.
  * </pre>
  */
-@Command(className = "saker.build.launching.Launcher", main = true, helpCommand = { "help", "?" })
+@Command(className = "saker.build.launching.Launcher",
+		main = true,
+		helpCommand = { "help", "-help", "--help", "?", "/?" })
 @CommonConverter(type = SakerPath.class, converter = MainCommand.class, method = "toSakerPath")
 @CommonConverter(type = InetAddress.class, converter = MainCommand.class, method = "toInetAddress")
 @CommonConverter(type = Path.class, converter = MainCommand.class, method = "toLocalPath")
