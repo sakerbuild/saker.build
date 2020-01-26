@@ -43,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -668,6 +669,24 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			} catch (Exception e) {
 				serialobj = new FailedSerializedObject<>(
 						() -> new SerializationReflectionException("Failed to read Field.", e));
+			}
+			reader.setSerializedObject(idx, serialobj);
+			return serialobj.get();
+		});
+
+		SERIALIZABLE_CLASS_WRITERS.put(Optional.class,
+				(IOBiConsumer<Optional<?>, ContentWriterObjectOutput>) (v, writer) -> {
+					writer.writeObject(v.orElse(null));
+				});
+		SERIALIZABLE_CLASS_READERS.put(Optional.class, reader -> {
+			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
+			SerializedObject<Optional<?>> serialobj;
+			try {
+				Object obj = reader.readObject();
+				serialobj = new PresentSerializedObject<>(Optional.ofNullable(obj));
+			} catch (Exception e) {
+				serialobj = new FailedSerializedObject<>(
+						() -> new SerializationReflectionException("Failed to read Optional.", e));
 			}
 			reader.setSerializedObject(idx, serialobj);
 			return serialobj.get();
