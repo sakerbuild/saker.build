@@ -33,7 +33,7 @@ import saker.build.task.TaskResultResolver;
  * The interface should be implemented by clients to be used.
  */
 @PublicApi
-public interface ComposedStructuredTaskResult {
+public interface ComposedStructuredTaskResult extends StructuredTaskResult {
 	/**
 	 * Gets the intermediate task result that this task result is composed of.
 	 * <p>
