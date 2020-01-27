@@ -30,6 +30,8 @@ import saker.java.testing.api.test.invoker.TestInvokerParameters;
 
 public class SakerJavaTestingInvoker extends BasicInstrumentationJavaTestInvoker {
 	private static final String PARAM_TIMEOUT_MILLIS = "TimeoutMillis";
+	
+	private static final StackTraceElement[] EMPTY_STACK_TRACE_ELEMENT_ARRAY = {};
 
 	private static final LinkedList<AutoCloseable> closeables = new LinkedList<>();
 
@@ -127,7 +129,10 @@ public class SakerJavaTestingInvoker extends BasicInstrumentationJavaTestInvoker
 			}
 
 			if (exc[0] != null) {
-				throw new AssertionError("Test case failed: " + testclassname, exc[0]);
+				AssertionError e = new AssertionError("Test case failed: " + testclassname, exc[0]);
+				//clear the stack trace as it is irrelevant for the test case failure
+				e.setStackTrace(EMPTY_STACK_TRACE_ELEMENT_ARRAY);
+				throw e;
 			}
 		} finally {
 			synchronized (finished) {
