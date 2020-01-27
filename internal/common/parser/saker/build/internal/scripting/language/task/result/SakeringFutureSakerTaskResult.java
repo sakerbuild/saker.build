@@ -29,6 +29,7 @@ import saker.build.task.exception.TaskExecutionFailedException;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.StructuredObjectTaskResult;
 import saker.build.task.utils.StructuredTaskResult;
+import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 
 public class SakeringFutureSakerTaskResult implements SakerTaskResult, StructuredObjectTaskResult {
 	private static final long serialVersionUID = 1L;
@@ -69,7 +70,7 @@ public class SakeringFutureSakerTaskResult implements SakerTaskResult, Structure
 		TaskResultDependencyHandle dephandle = results.getTaskResultDependencyHandle(taskId);
 		Object handleval = dephandle.get();
 		if (handleval instanceof SakerTaskResult) {
-			dephandle.setTaskOutputChangeDetector(CommonTaskOutputChangeDetector.isInstanceOf(SakerTaskResult.class));
+			dephandle.setTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(handleval));
 			TaskResultDependencyHandle resulthandle = ((SakerTaskResult) handleval).getDependencyHandle(results,
 					dephandle);
 			if (resulthandle == dephandle) {

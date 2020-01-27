@@ -26,6 +26,7 @@ import saker.build.task.TaskResultResolver;
 import saker.build.task.dependencies.CommonTaskOutputChangeDetector;
 import saker.build.task.dependencies.TaskOutputChangeDetector;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 
 /**
  * Represents a special kind of task result which should be handled as a structured output with fields that haven't
@@ -214,7 +215,9 @@ public interface StructuredTaskResult {
 		TaskResultDependencyHandle handle = results.getTaskResultDependencyHandle(taskid);
 		Object obj = handle.get();
 		if (obj instanceof StructuredTaskResult) {
-			handle.setTaskOutputChangeDetector(CommonTaskOutputChangeDetector.isInstanceOf(StructuredTaskResult.class));
+			//NOTE: we don't set CommonTaskOutputChangeDetector.isInstanceOf(StructuredTaskResult.class)
+			//  but instead we set the equality change detector as changes in the structured result needs to be noticed
+			handle.setTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(obj));
 			return ((StructuredTaskResult) obj).toResultDependencyHandle(results);
 		}
 		handle.setTaskOutputChangeDetector(CommonTaskOutputChangeDetector.notInstanceOf(StructuredTaskResult.class));

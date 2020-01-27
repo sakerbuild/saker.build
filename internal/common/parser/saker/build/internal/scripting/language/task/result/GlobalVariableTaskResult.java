@@ -33,6 +33,7 @@ import saker.build.task.identifier.GlobalValueTaskIdentifier;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.StructuredObjectTaskResult;
 import saker.build.task.utils.StructuredTaskResult;
+import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 
 public class GlobalVariableTaskResult implements SakerTaskResult, AssignableTaskResult, StructuredObjectTaskResult {
 	private static final long serialVersionUID = 1L;
@@ -93,7 +94,7 @@ public class GlobalVariableTaskResult implements SakerTaskResult, AssignableTask
 			throw unassignedDeadlockedExc();
 		}
 		if (handleval instanceof SakerTaskResult) {
-			dephandle.setTaskOutputChangeDetector(CommonTaskOutputChangeDetector.isInstanceOf(SakerTaskResult.class));
+			dephandle.setTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(handleval));
 			TaskResultDependencyHandle resulthandle = ((SakerTaskResult) handleval).getDependencyHandle(results,
 					dephandle);
 			if (resulthandle == dephandle) {
@@ -154,6 +155,6 @@ public class GlobalVariableTaskResult implements SakerTaskResult, AssignableTask
 
 	private UnassignedVariableExecutionException unassignedDeadlockedExc() {
 		return new UnassignedVariableExecutionException("Variable global(" + variableTaskIdentifier.getVariableName()
-				+ ") in " + " was not assigned. (execution deadlocked)", variableTaskIdentifier);
+				+ ") was not assigned. (execution deadlocked)", variableTaskIdentifier);
 	}
 }

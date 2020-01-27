@@ -84,7 +84,12 @@ public class StaticVariableTaskResult implements SakerTaskResult, AssignableTask
 		} catch (TaskExecutionDeadlockedException e) {
 			throw unassignedDeadlockedExc();
 		}
-		return ((SakerTaskResult) vartaskresult).getDependencyHandle(results, dephandle);
+		TaskResultDependencyHandle reshandle = ((SakerTaskResult) vartaskresult).getDependencyHandle(results,
+				dephandle);
+		if (reshandle == dephandle) {
+			return reshandle.clone();
+		}
+		return reshandle;
 	}
 
 	@Override
