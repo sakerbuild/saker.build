@@ -11,13 +11,13 @@ import testing.saker.build.tests.EnvironmentTestCaseConfiguration;
 import testing.saker.build.tests.EnvironmentTestCaseConfiguration.MultiBuilder;
 import testing.saker.build.tests.tasks.SelfStatelessTaskFactory;
 
+/**
+ * test for the case when a task is found to be suitable for a cluster and is being run on it, however the environment
+ * selection still runs on other clusters. the selection fails on the others, and it is reported to the execution
+ * manager. this report shouldn't cause the abortion of the already running task
+ */
 @SakerTest
 public class StartedOtherUnsuitableTaskTest extends ClusterBuildTestCase {
-//	test for the case when a task is found to be suitable for a cluster
-//	and is being run on it, however the environment selection still runs
-//	on other clusters. the selection fails on the others, and it is reported to
-//	the execution manager. this report shouldn't cause the abortion of the already
-//	running task
 
 	public static class RunnerTaskFactory extends SelfStatelessTaskFactory<Object> {
 		private static final long serialVersionUID = 1L;
@@ -41,7 +41,6 @@ public class StartedOtherUnsuitableTaskTest extends ClusterBuildTestCase {
 
 	@Override
 	protected void runTestImpl() throws Throwable {
-		// TODO Auto-generated method stub
 		runTask("main", new RunnerTaskFactory());
 	}
 

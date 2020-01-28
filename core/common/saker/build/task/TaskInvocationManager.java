@@ -54,6 +54,7 @@ import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
+import saker.build.thirdparty.saker.rmi.exception.RMIIOFailureException;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
@@ -886,7 +887,17 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		public void failUnsuitable(Exception e) {
-			event.failUnsuitable(e);
+			try {
+				event.failUnsuitable(e);
+			} catch (RMIIOFailureException e2) {
+				//we cannot recover from IO failures
+				throw e2;
+			} catch (RMIRuntimeException e2) {
+				//the method call may fail due to object transfer failures
+				//if the exception argument cannot be transferred, then fall back to the normal
+				//unsuitability notification
+				failUnsuitable();
+			}
 		}
 
 		@Override
