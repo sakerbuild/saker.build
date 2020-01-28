@@ -447,7 +447,7 @@ public class TaskInvocationManager implements Closeable {
 	public interface InvocationRequest {
 		public boolean isActive();
 
-		public void fail(TaskInvocationContext invocationcontext, Throwable cause);
+		public void fail(TaskInvocationContext invocationcontext, @RMISerialize Throwable cause);
 	}
 
 	public interface TaskInvocationEventVisitor {
@@ -461,7 +461,7 @@ public class TaskInvocationManager implements Closeable {
 	public interface TaskInvocationEvent {
 		public boolean isActive();
 
-		public void fail(Throwable cause);
+		public void fail(@RMISerialize Throwable cause);
 
 		public void accept(TaskInvocationEventVisitor visitor);
 	}
@@ -482,7 +482,7 @@ public class TaskInvocationManager implements Closeable {
 
 		public void failUnsuitable();
 
-		public void failUnsuitable(Exception e);
+		public void failUnsuitable(@RMISerialize Exception e);
 	}
 
 	public interface ClusterExecutionEvent<R> extends TaskInvocationEvent {

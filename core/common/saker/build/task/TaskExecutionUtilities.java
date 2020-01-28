@@ -57,6 +57,7 @@ import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMIArrayListRemoteElementWrapper;
+import saker.build.thirdparty.saker.util.rmi.wrap.RMIArrayListSerializeElementWrapper;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMIArrayListWrapper;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMIInputStreamWrapper;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMIOutputStreamWrapper;
@@ -205,7 +206,7 @@ public interface TaskExecutionUtilities {
 	 * @see TaskContext#reportInputFileAdditionDependency(Object, FileCollectionStrategy)
 	 */
 	@RMIWrap(RMITreeMapSerializeKeyRemoteValueWrapper.class)
-	public NavigableMap<SakerPath, SakerFile> collectFiles(FileCollectionStrategy collectionstrategy)
+	public NavigableMap<SakerPath, SakerFile> collectFiles(@RMISerialize FileCollectionStrategy collectionstrategy)
 			throws NullPointerException;
 
 	/**
@@ -229,7 +230,8 @@ public interface TaskExecutionUtilities {
 	 */
 	@RMIWrap(RMITreeMapSerializeKeyRemoteValueWrapper.class)
 	public default NavigableMap<SakerPath, SakerFile> collectFilesReportInputFileAndAdditionDependency(
-			@RMISerialize Object tag, FileCollectionStrategy fileadditiondependency) throws NullPointerException {
+			@RMISerialize Object tag, @RMISerialize FileCollectionStrategy fileadditiondependency)
+			throws NullPointerException {
 		return collectFilesReportInputFileAndAdditionDependency(tag, Collections.singleton(fileadditiondependency));
 	}
 
@@ -251,7 +253,7 @@ public interface TaskExecutionUtilities {
 	 */
 	@RMIWrap(RMITreeMapSerializeKeyRemoteValueWrapper.class)
 	public NavigableMap<SakerPath, SakerFile> collectFilesReportInputFileAndAdditionDependency(@RMISerialize Object tag,
-			@RMIWrap(RMIArrayListWrapper.class) Iterable<? extends FileCollectionStrategy> fileadditiondependencies)
+			@RMIWrap(RMIArrayListSerializeElementWrapper.class) Iterable<? extends FileCollectionStrategy> fileadditiondependencies)
 			throws NullPointerException;
 
 	/**
@@ -274,7 +276,7 @@ public interface TaskExecutionUtilities {
 	 */
 	@RMIWrap(RMITreeMapSerializeKeyRemoteValueWrapper.class)
 	public default NavigableMap<SakerPath, SakerFile> collectFilesReportAdditionDependency(@RMISerialize Object tag,
-			FileCollectionStrategy fileadditiondependency) throws NullPointerException {
+			@RMISerialize FileCollectionStrategy fileadditiondependency) throws NullPointerException {
 		return collectFilesReportAdditionDependency(tag, Collections.singleton(fileadditiondependency));
 	}
 
@@ -295,7 +297,7 @@ public interface TaskExecutionUtilities {
 	 */
 	@RMIWrap(RMITreeMapSerializeKeyRemoteValueWrapper.class)
 	public NavigableMap<SakerPath, SakerFile> collectFilesReportAdditionDependency(@RMISerialize Object tag,
-			@RMIWrap(RMIArrayListWrapper.class) Iterable<? extends FileCollectionStrategy> fileadditiondependencies)
+			@RMIWrap(RMIArrayListSerializeElementWrapper.class) Iterable<? extends FileCollectionStrategy> fileadditiondependencies)
 			throws NullPointerException;
 
 	/**
@@ -1694,6 +1696,7 @@ public interface TaskExecutionUtilities {
 	 * @throws NullPointerException
 	 *             If any of the arguments are <code>null</code>.
 	 */
+	//TODO create a variant of this method that returns the contents of the file
 	public void addSynchronizeInvalidatedProviderPathFileToDirectory(SakerDirectory directory,
 			ProviderHolderPathKey pathkey, String filename) throws IOException, NullPointerException;
 

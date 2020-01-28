@@ -739,8 +739,8 @@ public interface TaskContext extends TaskResultResolver, TaskDirectoryContext, T
 	 * @see FileChangeDelta
 	 * @see #reportInputFileDependency(Object, SakerPath, ContentDescriptor)
 	 */
-	public void reportInputFileAdditionDependency(@RMISerialize Object tag, FileCollectionStrategy dependency)
-			throws NullPointerException;
+	public void reportInputFileAdditionDependency(@RMISerialize Object tag,
+			@RMISerialize FileCollectionStrategy dependency) throws NullPointerException;
 
 	/**
 	 * Reports a file input content dependency for this task to the build runtime.
