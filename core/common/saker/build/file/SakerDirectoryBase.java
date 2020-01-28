@@ -310,7 +310,7 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 	}
 
 	@Override
-	public ContentDescriptor getContentDescriptor() {
+	public final ContentDescriptor getContentDescriptor() {
 		return DirectoryContentDescriptor.INSTANCE;
 	}
 

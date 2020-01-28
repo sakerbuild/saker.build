@@ -18,6 +18,8 @@ package saker.build.file;
 import java.io.IOException;
 import java.util.NavigableMap;
 
+import saker.build.file.content.ContentDescriptor;
+import saker.build.file.content.DirectoryContentDescriptor;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
@@ -336,4 +338,12 @@ public interface SakerDirectory extends SakerFile {
 	@RMIWrap(RMITreeMapSerializeKeyRemoteValueWrapper.class)
 	public NavigableMap<SakerPath, SakerFile> getFilesRecursiveByPath(SakerPath basepath,
 			DirectoryVisitPredicate filepredicate) throws NullPointerException;
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Always returns {@link DirectoryContentDescriptor#INSTANCE} for directories.
+	 */
+	@Override
+	public ContentDescriptor getContentDescriptor();
 }
