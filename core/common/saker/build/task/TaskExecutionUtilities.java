@@ -1611,7 +1611,7 @@ public interface TaskExecutionUtilities {
 	 *            The exception.
 	 * @see TaskContext#reportIgnoredException(ExceptionView)
 	 */
-	public default void reportIgnoredException(Throwable e) {
+	public default void reportIgnoredException(@RMISerialize Throwable e) {
 		if (e == null) {
 			e = new NullPointerException("ignored exception");
 		}

@@ -99,6 +99,14 @@ public final class EnvironmentTestCaseConfiguration implements Cloneable {
 			return this;
 		}
 
+		public Builder addClusterName(String name) {
+			result.clusterNames = ObjectUtils.isNullOrEmpty(result.clusterNames)
+					? ImmutableUtils.singletonNavigableSet(name)
+					: ImmutableUtils.unmodifiableNavigableSet(
+							ObjectUtils.addAll(ObjectUtils.newTreeSet(result.clusterNames), name));
+			return this;
+		}
+
 		public Builder setUseProject(boolean useProject) {
 			result.useProject = useProject;
 			return this;
@@ -142,6 +150,13 @@ public final class EnvironmentTestCaseConfiguration implements Cloneable {
 		public MultiBuilder setClusterNames(Set<String> clusterNames) {
 			for (Builder builder : builders) {
 				builder.setClusterNames(clusterNames);
+			}
+			return this;
+		}
+
+		public MultiBuilder addClusterName(String clusterNames) {
+			for (Builder builder : builders) {
+				builder.addClusterName(clusterNames);
 			}
 			return this;
 		}

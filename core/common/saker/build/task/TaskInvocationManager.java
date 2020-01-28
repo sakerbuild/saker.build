@@ -697,9 +697,11 @@ public class TaskInvocationManager implements Closeable {
 
 	private static class TaskExecutionRequestImpl<R> extends BaseInvocationRequest {
 		@SuppressWarnings("rawtypes")
-		private static final AtomicIntegerFieldUpdater<TaskInvocationManager.TaskExecutionRequestImpl> AIFU_started = AtomicIntegerFieldUpdater
-				.newUpdater(TaskInvocationManager.TaskExecutionRequestImpl.class, "started");
-		private volatile int started = 0;
+		private static final AtomicReferenceFieldUpdater<TaskInvocationManager.TaskExecutionRequestImpl, TaskInvocationContext> ARFU_starterInvocationContext = AtomicReferenceFieldUpdater
+				.newUpdater(TaskInvocationManager.TaskExecutionRequestImpl.class, TaskInvocationContext.class,
+						"starterInvocationContext");
+
+		private volatile TaskInvocationContext starterInvocationContext;
 
 		private final TaskFactory<R> factory;
 		private final TaskInvocationConfiguration capabilities;
@@ -724,7 +726,7 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		public boolean isActive() {
-			return started == 0 && super.isActive();
+			return starterInvocationContext == null && super.isActive();
 		}
 
 		@Override
@@ -753,7 +755,7 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		public void fail(TaskInvocationContext invocationcontext, Throwable cause) {
-			if (isStartedExecution()) {
+			if (isStartedExecution(invocationcontext)) {
 				failWithStartedExecution(invocationcontext, cause);
 			} else {
 				super.fail(invocationcontext, cause);
@@ -789,16 +791,16 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		public boolean startExecution(TaskInvocationContext invocationContext) {
-			boolean result = AIFU_started.compareAndSet(this, 0, 1);
-			if (!result) {
+			if (!ARFU_starterInvocationContext.compareAndSet(this, null, invocationContext)) {
 				//the given execution context will not start the execution
 				super.fail(invocationContext, null);
+				return false;
 			}
-			return result;
+			return true;
 		}
 
-		public boolean isStartedExecution() {
-			return started != 0;
+		public boolean isStartedExecution(TaskInvocationContext invocationcontext) {
+			return starterInvocationContext == invocationcontext;
 		}
 
 		public void waitForResult() throws InterruptedException {
