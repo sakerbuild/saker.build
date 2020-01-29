@@ -318,7 +318,11 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 			try {
 				outputChangeDetector = (TaskOutputChangeDetector) in.readObject();
 			} catch (IOException | ClassNotFoundException e) {
-				System.err.println(e);
+				if (TestFlag.ENABLED) {
+					e.printStackTrace();
+				} else {
+					System.err.println(e);
+				}
 				//if we fail to load the output change detector, then always assume it as changed
 				outputChangeDetector = CommonTaskOutputChangeDetector.ALWAYS;
 			}
@@ -513,7 +517,11 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 			try {
 				selfOutputChangeDetector = (TaskOutputChangeDetector) in.readObject();
 			} catch (IOException | ClassNotFoundException e) {
-				System.err.println(e);
+				if (TestFlag.ENABLED) {
+					e.printStackTrace();
+				} else {
+					System.err.println(e);
+				}
 				selfOutputChangeDetector = CommonTaskOutputChangeDetector.ALWAYS;
 			}
 
@@ -748,17 +756,29 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		try {
 			out.writeObject(output);
 		} catch (Exception e) {
-			System.err.println(e);
+			if (TestFlag.ENABLED) {
+				e.printStackTrace();
+			} else {
+				System.err.println(e);
+			}
 		}
 		try {
 			SerialUtils.writeExternalCollection(out, abortExceptions);
 		} catch (Exception e) {
-			System.err.println(e);
+			if (TestFlag.ENABLED) {
+				e.printStackTrace();
+			} else {
+				System.err.println(e);
+			}
 		}
 		try {
 			out.writeObject(failCauseException);
 		} catch (Exception e) {
-			System.err.println(e);
+			if (TestFlag.ENABLED) {
+				e.printStackTrace();
+			} else {
+				System.err.println(e);
+			}
 		}
 		writeTaggedOutputsMap(out, taggedOutputs);
 		SerialUtils.writeExternalMap(out, reportedMetaDatas);
@@ -785,19 +805,31 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		try {
 			output = (R) in.readObject();
 		} catch (IOException | ClassNotFoundException e) {
-			System.err.println(e);
+			if (TestFlag.ENABLED) {
+				e.printStackTrace();
+			} else {
+				System.err.println(e);
+			}
 			outputLoadFailed = true;
 		}
 		try {
 			abortExceptions = SerialUtils.readExternalImmutableList(in);
 		} catch (IOException | ClassNotFoundException e) {
-			System.err.println(e);
+			if (TestFlag.ENABLED) {
+				e.printStackTrace();
+			} else {
+				System.err.println(e);
+			}
 			outputLoadFailed = true;
 		}
 		try {
 			failCauseException = (Throwable) in.readObject();
 		} catch (IOException | ClassNotFoundException e) {
-			System.err.println(e);
+			if (TestFlag.ENABLED) {
+				e.printStackTrace();
+			} else {
+				System.err.println(e);
+			}
 			outputLoadFailed = true;
 		}
 		taggedOutputs = readTaggedOutputsMap(in);
@@ -817,7 +849,11 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 				o.writeObject(entry.getKey());
 				o.writeObject(entry.getValue());
 			} catch (Exception e) {
-				System.err.println(e);
+				if (TestFlag.ENABLED) {
+					e.printStackTrace();
+				} else {
+					System.err.println(e);
+				}
 			}
 		});
 	}
@@ -842,7 +878,11 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 			try {
 				content = (ContentDescriptor) in.readObject();
 			} catch (IOException | ClassNotFoundException | ClassCastException e) {
-				System.err.println(e);
+				if (TestFlag.ENABLED) {
+					e.printStackTrace();
+				} else {
+					System.err.println(e);
+				}
 				content = NullContentDescriptor.getInstance();
 			}
 			return content;
@@ -855,7 +895,11 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 			try {
 				o.writeObject(v);
 			} catch (IOException e) {
-				System.err.println(e);
+				if (TestFlag.ENABLED) {
+					e.printStackTrace();
+				} else {
+					System.err.println(e);
+				}
 			}
 		});
 	}

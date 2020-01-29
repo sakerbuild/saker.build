@@ -319,6 +319,7 @@ public interface ExecutionContext extends ExecutionDirectoryContext, ExecutionDi
 	 * @throws NullPointerException
 	 *             If the argument is <code>null</code>.
 	 */
+	//TODO create bulk method as getContentDescriptor(SakerFileProvider, Set<SakerPath>)
 	@RMISerialize
 	public ContentDescriptor getContentDescriptor(ProviderHolderPathKey pathkey) throws NullPointerException;
 

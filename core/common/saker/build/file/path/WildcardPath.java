@@ -244,8 +244,11 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 		 * @param fp
 		 *            The file provider.
 		 * @return The created item lister.
+		 * @throws NullPointerException
+		 *             If the file provider is <code>null</code>.
 		 */
-		public static ItemLister<? extends BasicFileAttributes> forFileProvider(SakerFileProvider fp) {
+		public static ItemLister<? extends BasicFileAttributes> forFileProvider(SakerFileProvider fp)
+				throws NullPointerException {
 			return new FileProviderItemLister(fp);
 		}
 
@@ -259,10 +262,34 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 		 * @param workingdir
 		 *            The working directory, or <code>null</code> to not use one.
 		 * @return The created item lister.
+		 * @throws NullPointerException
+		 *             If the file provider is <code>null</code>.
 		 */
 		public static ItemLister<? extends BasicFileAttributes> forFileProvider(SakerFileProvider fp,
-				SakerPath workingdir) {
+				SakerPath workingdir) throws NullPointerException {
 			return new FileProviderItemLister(fp, workingdir);
+		}
+
+		/**
+		 * Creates an {@link ItemLister} for a given file provider, but without any root directories.
+		 * <p>
+		 * The item lister will not use the root directories of the specified file provider, only the working directory.
+		 * <p>
+		 * The created item lister will collect the file attributes of the files.
+		 * 
+		 * @param fp
+		 *            The file provider.
+		 * @param workingdir
+		 *            The working directory.
+		 * @return The created item lister.
+		 * @throws NullPointerException
+		 *             If any of the arguments are <code>null</code>.
+		 * @since saker.build 0.8.5
+		 */
+		public static ItemLister<? extends BasicFileAttributes> forFileProviderWithoutRoots(SakerFileProvider fp,
+				SakerPath workingdir) throws NullPointerException {
+			Objects.requireNonNull(workingdir, "working directory");
+			return new FileProviderItemLister(fp, workingdir, Collections.emptySet());
 		}
 
 		/**
@@ -282,15 +309,36 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 		/**
 		 * Creates an {@link ItemLister} for collecting {@link SakerFile SakerFiles} with the given root directories.
 		 * <p>
-		 * No root directory is used.
+		 * No working directory is used.
 		 * 
 		 * @param rootdirectories
 		 *            The root directories.
 		 * @return The created item lister.
+		 * @throws NullPointerException
+		 *             If the argument is <code>null</code>.
 		 */
 		public static ItemLister<? extends SakerFile> forSakerFiles(
-				NavigableMap<String, ? extends SakerDirectory> rootdirectories) {
+				NavigableMap<String, ? extends SakerDirectory> rootdirectories) throws NullPointerException {
+			Objects.requireNonNull(rootdirectories, "root directories");
 			return new SakerFileItemLister(null, rootdirectories);
+		}
+
+		/**
+		 * Creates an {@link ItemLister} for collecting {@link SakerFile SakerFiles} in the specified working directory.
+		 * <p>
+		 * No root directories are used.
+		 * 
+		 * @param workingdirectory
+		 *            The working directory.
+		 * @return The created item lister.
+		 * @throws NullPointerException
+		 *             If the argument is <code>null</code>.
+		 * @since saker.build 0.8.5
+		 */
+		public static ItemLister<? extends SakerFile> forSakerFiles(SakerDirectory workingdirectory)
+				throws NullPointerException {
+			Objects.requireNonNull(workingdirectory, "working directory");
+			return new SakerFileItemLister(workingdirectory, Collections.emptyMap());
 		}
 
 		/**
@@ -298,13 +346,22 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 		 * working directory.
 		 * 
 		 * @param rootdirectories
-		 *            The root directories.
+		 *            The root directories or <code>null</code> to not use them.
 		 * @param workingdirectory
 		 *            The working directory, or <code>null</code> to not use one.
 		 * @return The created item lister.
+		 * @throws NullPointerException
+		 *             If both arguments are <code>null</code>.
 		 */
 		public static ItemLister<? extends SakerFile> forSakerFiles(
-				NavigableMap<String, ? extends SakerDirectory> rootdirectories, SakerDirectory workingdirectory) {
+				NavigableMap<String, ? extends SakerDirectory> rootdirectories, SakerDirectory workingdirectory)
+				throws NullPointerException {
+			if (rootdirectories == null) {
+				if (workingdirectory == null) {
+					throw new NullPointerException("No arguments specified.");
+				}
+				rootdirectories = Collections.emptyNavigableMap();
+			}
 			return new SakerFileItemLister(workingdirectory, rootdirectories);
 		}
 	}
@@ -504,9 +561,14 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 		}
 
 		public FileProviderItemLister(SakerFileProvider fp, SakerPath workingDirectory) {
+			this(fp, workingDirectory, null);
+		}
+
+		/*default*/ FileProviderItemLister(SakerFileProvider fp, SakerPath workingDirectoryPath, Set<String> roots) {
 			Objects.requireNonNull(fp, "file provider");
 			this.fp = fp;
-			this.workingDirectoryPath = workingDirectory;
+			this.workingDirectoryPath = workingDirectoryPath;
+			this.roots = roots;
 		}
 
 		@Override
@@ -625,7 +687,8 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 		private Map<String, ? extends SakerDirectory> rootDirectories;
 
 		public SakerFileItemLister(SakerDirectory workingDirectory,
-				Map<String, ? extends SakerDirectory> rootDirectories) {
+				Map<String, ? extends SakerDirectory> rootDirectories) throws NullPointerException {
+			Objects.requireNonNull(rootDirectories, "root directories");
 			this.workingDirectory = workingDirectory;
 			this.rootDirectories = rootDirectories;
 		}
@@ -800,6 +863,8 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 
 	/**
 	 * Collects the files for multiple wildcard paths, a given execution directory context, and a working directory.
+	 * <p>
+	 * If the execution directory context is <code>null</code>, no root directories are considered.
 	 * 
 	 * @param paths
 	 *            The wildcard paths to collect the files for.

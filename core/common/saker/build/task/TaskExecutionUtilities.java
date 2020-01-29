@@ -1696,7 +1696,8 @@ public interface TaskExecutionUtilities {
 	 * @throws NullPointerException
 	 *             If any of the arguments are <code>null</code>.
 	 */
-	//TODO create a variant of this method that returns the contents of the file
+	//TODO create a variant of this method that returns the contents of the file and the file
+	//TODO create a variant that handles multiple files
 	public void addSynchronizeInvalidatedProviderPathFileToDirectory(SakerDirectory directory,
 			ProviderHolderPathKey pathkey, String filename) throws IOException, NullPointerException;
 
