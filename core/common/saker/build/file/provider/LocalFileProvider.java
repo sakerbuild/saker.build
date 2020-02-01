@@ -95,9 +95,11 @@ import saker.build.meta.PropertyNames;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.SakerLog;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
+import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWriter;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
+import saker.build.thirdparty.saker.rmi.io.writer.SerializeRMIObjectWriteHandler;
 import saker.build.thirdparty.saker.util.ArrayUtils;
 import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
@@ -367,6 +369,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	 * {@link RootFileProviderKey} implementation for {@link LocalFileProvider}.
 	 */
 	@ExcludeApi
+	@RMIWriter(SerializeRMIObjectWriteHandler.class)
 	public static final class LocalFilesKey implements RootFileProviderKey, Externalizable {
 		private static final long serialVersionUID = 1L;
 

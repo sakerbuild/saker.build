@@ -177,6 +177,7 @@ class ClusterExecutionContext implements ExecutionContext, InternalExecutionCont
 
 	@Override
 	public ContentDescriptor getContentDescriptor(ProviderHolderPathKey pathkey) throws NullPointerException {
+		//XXX handle specially if the path key is associated with the local file system?
 		return realExecutionContext.getContentDescriptor(pathkey);
 	}
 

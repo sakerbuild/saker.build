@@ -64,6 +64,8 @@ import saker.build.file.provider.RootFileProviderKey;
 import saker.build.file.provider.SakerFileLock;
 import saker.build.file.provider.SakerFileProvider;
 import saker.build.file.provider.SakerPathFiles;
+import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWriter;
+import saker.build.thirdparty.saker.rmi.io.writer.SerializeRMIObjectWriteHandler;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.function.Functionals;
@@ -840,6 +842,7 @@ public class MemoryFileProvider implements SakerFileProvider {
 		return f.createLock();
 	}
 
+	@RMIWriter(SerializeRMIObjectWriteHandler.class)
 	private static class MemoryFileProviderKey implements RootFileProviderKey, Externalizable {
 		private static final long serialVersionUID = 1L;
 

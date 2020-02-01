@@ -2849,8 +2849,9 @@ final class RMIStream implements Closeable {
 		try {
 			return ReflectUtils.invokeMethod(object, method, arguments);
 		} catch (IllegalArgumentException | IllegalAccessException e) {
-			throw new RMICallFailedException(e + " on " + method + " with argument types: "
-					+ Arrays.toString(ObjectUtils.classOfArrayElements(arguments)));
+			throw new RMICallFailedException(
+					e + " on " + method + " with object type: " + ObjectUtils.classNameOf(object)
+							+ " and argument types: " + Arrays.toString(ObjectUtils.classOfArrayElements(arguments)));
 		} finally {
 			reqidint.set(currentid);
 		}

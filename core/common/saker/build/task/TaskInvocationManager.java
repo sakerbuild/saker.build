@@ -73,6 +73,7 @@ import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
 import testing.saker.build.flag.TestFlag;
 
 public class TaskInvocationManager implements Closeable {
+	//TODO create cluster test in cases where the task factory fails to transfer
 	public interface InnerTaskInvocationHandle<R> {
 		public static final Method METHOD_CANCEL_DUPLICATION = ReflectUtils
 				.getMethodAssert(InnerTaskInvocationHandle.class, "cancelDuplication");
