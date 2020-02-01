@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2020 Bence Sipka
+ *
+ * This program is free software: you can redistribute it and/or modify 
+ * it under the terms of the GNU General Public License as published by 
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 package saker.build.thirdparty.saker.util.classloader;
 
 import java.lang.ref.Reference;
@@ -24,8 +39,8 @@ import saker.build.thirdparty.saker.util.StringUtils;
  * The resolvers are registered with an additional identifier in the registry, which is arbitrary, but should make
  * attempt to uniquely identify the resolver itself. Only one resolver can be registered with a specific identifier.
  * <p>
- * The registry can be constructed with a default resolver, which is going to be called when no registered resolvers
- * succeeded to match a resolve request.
+ * The registry can be constructed with a default resolver, which is called before the registered resolvers to match a
+ * resolve request.
  * <p>
  * This class is thread safe, registering and unregistering can be done concurrently from multiple threads.
  */
@@ -139,6 +154,12 @@ public class ClassLoaderResolverRegistry implements ClassLoaderResolver {
 
 	@Override
 	public String getClassLoaderIdentifier(ClassLoader cl) {
+		if (defaultResolver != null) {
+			String defaultresolverid = defaultResolver.getClassLoaderIdentifier(cl);
+			if (defaultresolverid != null) {
+				return ID_SEPARATOR_CHARACTER + defaultresolverid;
+			}
+		}
 		for (Iterator<? extends Entry<String, ? extends Reference<? extends ClassLoaderResolver>>> it = resolvers
 				.entrySet().iterator(); it.hasNext();) {
 			Entry<String, ? extends Reference<? extends ClassLoaderResolver>> entry = it.next();
@@ -150,12 +171,6 @@ public class ClassLoaderResolverRegistry implements ClassLoaderResolver {
 			String id = resolver.getClassLoaderIdentifier(cl);
 			if (id != null) {
 				return entry.getKey() + ID_SEPARATOR_CHARACTER + id;
-			}
-		}
-		if (defaultResolver != null) {
-			String defaultresolverid = defaultResolver.getClassLoaderIdentifier(cl);
-			if (defaultresolverid != null) {
-				return ID_SEPARATOR_CHARACTER + defaultresolverid;
 			}
 		}
 		return null;

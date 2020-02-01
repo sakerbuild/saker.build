@@ -21,6 +21,7 @@ import java.net.SocketAddress;
 
 import javax.net.SocketFactory;
 
+import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.task.cluster.TaskInvokerFactory;
 import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
@@ -29,7 +30,6 @@ import saker.build.thirdparty.saker.rmi.connection.RMIOptions;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
-import saker.build.thirdparty.saker.util.classloader.SingleClassLoaderResolver;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 
 public interface RemoteDaemonConnection extends Closeable {
@@ -66,10 +66,9 @@ public interface RemoteDaemonConnection extends Closeable {
 
 		ClassLoaderResolver clresolver = rmioptions.getClassLoaderResolver();
 		if (clresolver == null) {
-			clresolver = createConnectionBaseClassLoaderResolver();
+			clresolver = new ClassLoaderResolverRegistry(createConnectionBaseClassLoaderResolver());
 		}
-		ClassLoaderResolverRegistry clregistry = new ClassLoaderResolverRegistry(clresolver);
-		rmioptions.classResolver(clregistry);
+		rmioptions.classResolver(clresolver);
 		RMIConnection connection = rmioptions.connect(socketfactory, address);
 		RMIVariables vars = null;
 		try {
@@ -102,7 +101,7 @@ public interface RemoteDaemonConnection extends Closeable {
 		return connect(SocketFactory.getDefault(), address);
 	}
 
-	public static SingleClassLoaderResolver createConnectionBaseClassLoaderResolver() {
-		return new SingleClassLoaderResolver("base.classes", DaemonEnvironment.class.getClassLoader());
+	public static ClassLoaderResolverRegistry createConnectionBaseClassLoaderResolver() {
+		return SakerEnvironmentImpl.createEnvironmentBaseClassLoaderResolverRegistry();
 	}
 }

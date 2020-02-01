@@ -111,7 +111,8 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 	public void setConnectionBaseRMIOptions(RMIOptions connectionBaseRMIOptions) {
 		checkUnstarted();
-		this.connectionBaseRMIOptions = connectionBaseRMIOptions;
+		this.connectionBaseRMIOptions = connectionBaseRMIOptions == null ? null
+				: new RMIOptions(connectionBaseRMIOptions);
 	}
 
 	public void setServerThreadGroup(ThreadGroup serverThreadGroup) {
@@ -212,14 +213,14 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 					@Override
 					protected RMIOptions getRMIOptionsForAcceptedConnection(Socket acceptedsocket,
 							int protocolversion) {
-						RMIOptions options = connectionBaseRMIOptions == null ? new RMIOptions()
-								: new RMIOptions(connectionBaseRMIOptions);
-						ClassLoaderResolver optionsclresolver = options.getClassLoaderResolver();
-						ClassLoaderResolver registrybaseresolver = optionsclresolver == null
-								? RemoteDaemonConnection.createConnectionBaseClassLoaderResolver()
-								: optionsclresolver;
-						ClassLoaderResolverRegistry clregistry = new ClassLoaderResolverRegistry(registrybaseresolver);
-						return options.classResolver(clregistry);
+						RMIOptions options;
+						if (connectionBaseRMIOptions == null) {
+							options = new RMIOptions().classResolver(new ClassLoaderResolverRegistry(
+									RemoteDaemonConnection.createConnectionBaseClassLoaderResolver()));
+						} else {
+							options = connectionBaseRMIOptions;
+						}
+						return options;
 					}
 
 					@Override
@@ -559,7 +560,6 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		@Override
 		public TaskInvoker createTaskInvoker(ExecutionContext executioncontext,
 				TaskInvokerInformation invokerinformation) throws IOException, NullPointerException {
-			Object execkey = null;
 			try {
 				ExecutionPathConfiguration realpathconfig = executioncontext.getPathConfiguration();
 				ProviderHolderPathKey workingpathkey = realpathconfig.getWorkingDirectoryPathKey();
@@ -572,49 +572,44 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 					modifiedmirrordir = getMirrorDirectoryPathForWorkingDirectory(clusterMirrorDirectory,
 							workingpathkey);
 				}
-				try {
-					project.clusterStarting(realpathconfig, executioncontext.getRepositoryConfiguration(),
-							executioncontext.getScriptConfiguration(), executioncontext.getUserParameters(),
-							modifiedmirrordir, invokerinformation.getCoordinatorProviderKey(),
-							invokerinformation.getDatabaseConfiguration(), executioncontext);
-				} catch (Exception e) {
-					//XXX reify exception
-					throw new IOException(e);
-				}
 
-				SakerExecutionCache execcache = project.getExecutionCache();
-
-				String resolverid = createClusterTaskInvokerRMIRegistryClassResolverId(realpathconfig);
-				ClassLoaderResolver execresolver = execcache.getExecutionClassLoaderResolver();
-
-				FileMirrorHandler mirrorhandler = project.getClusterMirrorHandler();
-				SakerEnvironment executionenvironment = project.getExecutionCache().getRecordingEnvironment();
-
-				final Object finalexeckey = environment.getStartExecutionKey();
-				execkey = finalexeckey;
-				ClusterTaskInvoker result = new ClusterTaskInvoker(environment, executionenvironment, executioncontext,
-						mirrorhandler, execcache.getLoadedBuildRepositories(), project.getClusterContentDatabase(),
-						execcache.getLoadedScriptProviderLocators()) {
+				return new TaskInvoker() {
 					@Override
-					public void run(TaskInvocationContext context) throws InterruptedException {
+					public void run(TaskInvocationContext context) throws Exception {
+						try {
+							project.clusterStarting(realpathconfig, executioncontext.getRepositoryConfiguration(),
+									executioncontext.getScriptConfiguration(), executioncontext.getUserParameters(),
+									modifiedmirrordir, invokerinformation.getCoordinatorProviderKey(),
+									invokerinformation.getDatabaseConfiguration(), executioncontext);
+						} catch (Exception e) {
+							//XXX reify exception
+							throw new IOException(e);
+						}
+
+						SakerExecutionCache execcache = project.getExecutionCache();
+
+						String resolverid = createClusterTaskInvokerRMIRegistryClassResolverId(realpathconfig);
+						ClassLoaderResolver execresolver = execcache.getExecutionClassLoaderResolver();
+
+						FileMirrorHandler mirrorhandler = project.getClusterMirrorHandler();
+						SakerEnvironment executionenvironment = project.getExecutionCache().getRecordingEnvironment();
+
+						Object execkey = environment.getStartExecutionKey();
 						try {
 							connectionClassLoaderRegistry.register(resolverid, execresolver);
-							super.run(context);
+							new ClusterTaskInvoker(environment, executionenvironment, executioncontext, mirrorhandler,
+									execcache.getLoadedBuildRepositories(), project.getClusterContentDatabase(),
+									execcache.getLoadedScriptProviderLocators()).run(context);
 						} finally {
 							connectionClassLoaderRegistry.unregister(resolverid, execresolver);
-							project.clusterFinished(finalexeckey);
+							project.clusterFinished(execkey);
 						}
+
 					}
 				};
-				execkey = null;
-				return result;
 			} catch (Throwable e) {
 				e.printStackTrace();
 				throw e;
-			} finally {
-				if (execkey != null) {
-					environment.executionFinished(execkey);
-				}
 			}
 		}
 

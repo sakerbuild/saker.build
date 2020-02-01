@@ -43,7 +43,6 @@ import saker.build.task.TaskInvocationManager.TaskInvocationContext;
 import saker.build.task.TaskInvocationManager.TaskInvocationEvent;
 import saker.build.task.TaskInvocationManager.TaskInvocationEventVisitor;
 import saker.build.task.TaskInvoker;
-import saker.build.thirdparty.saker.rmi.exception.RMIIOFailureException;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
@@ -74,7 +73,7 @@ public class ClusterTaskInvoker implements TaskInvoker {
 	}
 
 	@Override
-	public void run(TaskInvocationContext context) throws InterruptedException {
+	public void run(TaskInvocationContext context) throws Exception {
 		ThreadUtils.setInheritableDefaultThreadFactor(environment.getThreadFactor());
 
 		try (ThreadWorkPool workpool = ThreadUtils.newDynamicWorkPool("Cluster-worker-")) {

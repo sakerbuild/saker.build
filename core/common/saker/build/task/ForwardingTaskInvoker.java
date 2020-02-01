@@ -25,7 +25,7 @@ public class ForwardingTaskInvoker implements TaskInvoker {
 	}
 
 	@Override
-	public void run(TaskInvocationContext context) throws InterruptedException {
+	public void run(TaskInvocationContext context) throws Exception {
 		subject.run(context);
 	}
 }

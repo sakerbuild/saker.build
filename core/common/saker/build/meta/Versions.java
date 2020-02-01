@@ -56,7 +56,7 @@ public class Versions {
 	 * @see <a href="https://semver.org/">https://semver.org/</a>
 	 */
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
-	public static final int VERSION_PATCH = 4;
+	public static final int VERSION_PATCH = 5;
 
 	/**
 	 * The full version string in the format of
@@ -112,7 +112,7 @@ public class Versions {
 	 * @since saker.build 0.8.1
 	 */
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
-	public static final int THIRDPARTY_SAKER_UTIL_VERSION_PATCH = 0;
+	public static final int THIRDPARTY_SAKER_UTIL_VERSION_PATCH = 1;
 	/**
 	 * The full version of the saker.util library that is included under the <code>saker.build.thirdparty</code> package
 	 * string in the format of
@@ -171,7 +171,7 @@ public class Versions {
 	 * @since saker.build 0.8.1
 	 */
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
-	public static final int THIRDPARTY_SAKER_RMI_VERSION_PATCH = 0;
+	public static final int THIRDPARTY_SAKER_RMI_VERSION_PATCH = 1;
 	/**
 	 * The full version of the saker.rmi library that is included under the <code>saker.build.thirdparty</code> package
 	 * string in the format of

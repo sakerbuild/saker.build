@@ -154,11 +154,10 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 				//    as a single class can be available through multiple registries.
 				//    if the registry is modified before creating the task invoker
 				//    then the passed classes through execution context might not be found on the remote endpoint
-				TaskInvoker subjecttaskinvoker = invokerfactory.createTaskInvoker(executioncontext,
-						invokerinformation);
+				TaskInvoker subjecttaskinvoker = invokerfactory.createTaskInvoker(executioncontext, invokerinformation);
 				return new ForwardingTaskInvoker(subjecttaskinvoker) {
 					@Override
-					public void run(TaskInvocationContext context) throws InterruptedException {
+					public void run(TaskInvocationContext context) throws Exception {
 						try {
 							connection.connectionClassLoaderRegistry.register(resolverid, dbclresolver);
 							super.run(context);

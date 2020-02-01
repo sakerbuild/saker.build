@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2020 Bence Sipka
+ *
+ * This program is free software: you can redistribute it and/or modify 
+ * it under the terms of the GNU General Public License as published by 
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 package saker.build.thirdparty.saker.rmi.connection;
 
 import static saker.build.thirdparty.org.objectweb.asm.Opcodes.AASTORE;
@@ -54,6 +69,7 @@ import saker.build.thirdparty.org.objectweb.asm.Opcodes;
 import saker.build.thirdparty.org.objectweb.asm.Type;
 import saker.build.thirdparty.saker.rmi.connection.RemoteProxyObject.RMICacheHelper;
 import saker.build.thirdparty.saker.rmi.connection.RemoteProxyObject.RemoteInvocationRMIFailureException;
+import saker.build.thirdparty.saker.rmi.exception.RMICallFailedException;
 import saker.build.thirdparty.saker.rmi.exception.RMIProxyCreationFailedException;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ReflectUtils;
@@ -128,6 +144,41 @@ class ProxyGenerator {
 				continue;
 			}
 
+			if (key.isReturnTypeOrAnyArgumentNonPublic()) {
+				//there is a non-public return type or argument type.
+				//the RMI method cannot be modelled, as it would throw IllegalAccessErrors and others
+				//don't throw RMIProxyCreationFailedException, as it may be a valid use case
+				//however, fail the method call
+
+				MethodVisitor mrefv = cw.visitMethod(ACC_PUBLIC | ACC_FINAL, key.name, key.descriptor, null, null);
+				mrefv.visitCode();
+
+				mrefv.visitTypeInsn(NEW, RMICALLFAILEDEXCEPTION_INTERNAL_NAME);
+				mrefv.visitInsn(DUP);
+				StringBuilder sb = new StringBuilder();
+				sb.append("Failed to call method with inaccessible return or argument types: ");
+				sb.append(key.returnType.getName());
+				sb.append(" ");
+				sb.append(key.name);
+				sb.append("(");
+				for (int j = 0; j < key.argTypes.length; j++) {
+					Class<?> c = key.argTypes[j];
+					sb.append(c.getName());
+					if (j + 1 < key.argTypes.length) {
+						sb.append(", ");
+					}
+				}
+				sb.append(")");
+				mrefv.visitLdcInsn(sb.toString());
+				mrefv.visitMethodInsn(INVOKESPECIAL, RMICALLFAILEDEXCEPTION_INTERNAL_NAME, "<init>",
+						"(Ljava/lang/String;)V", false);
+				mrefv.visitInsn(ATHROW);
+
+				mrefv.visitMaxs(0, 0);
+				mrefv.visitEnd();
+				continue;
+			}
+
 			++i;
 			String methodfieldname = createMethodHolderVariableName(i);
 			String cachefieldname = cacheresult ? createCacheFieldHolderVariableName(i) : null;
@@ -141,7 +192,7 @@ class ProxyGenerator {
 			}
 
 			FieldVisitor methodfieldfw = cw.visitField(ACC_PRIVATE | ACC_STATIC, methodfieldname,
-					METHODPTRANSFERROPERTIES_DESCRIPTOR, null, null);
+					METHODTRANSFERROPERTIES_DESCRIPTOR, null, null);
 			methodfieldfw.visitEnd();
 
 			initcachefieldswriters
@@ -164,12 +215,12 @@ class ProxyGenerator {
 					snrmw.visitCode();
 
 					snrmw.visitFieldInsn(GETSTATIC, thisclassinternalname, methodfieldname,
-							METHODPTRANSFERROPERTIES_DESCRIPTOR);
+							METHODTRANSFERROPERTIES_DESCRIPTOR);
 					snrmw.visitVarInsn(ALOAD, 0);
 					writeLoadArgumentsArrayInstructions(snrmw, key.argTypes);
 					snrmw.visitMethodInsn(INVOKESTATIC, REMOTEPROXYOBJECT_INTERNAL_NAME,
 							"callNonRedirectMethodFromStaticDelegate",
-							"(" + METHODPTRANSFERROPERTIES_DESCRIPTOR + REMOTEPROXYOBJECT_DESCRIPTOR
+							"(" + METHODTRANSFERROPERTIES_DESCRIPTOR + REMOTEPROXYOBJECT_DESCRIPTOR
 									+ ARRAY_JAVA_LANG_OBJECT_DESCRIPTOR + ")" + JAVA_LANG_OBJECT_DESCRIPTOR,
 							false);
 					writeCheckCastReturn(snrmw, mr.getReturnType());
@@ -184,9 +235,9 @@ class ProxyGenerator {
 				mrefv.visitCode();
 
 				mrefv.visitFieldInsn(GETSTATIC, thisclassinternalname, methodfieldname,
-						METHODPTRANSFERROPERTIES_DESCRIPTOR);
+						METHODTRANSFERROPERTIES_DESCRIPTOR);
 				mrefv.visitMethodInsn(INVOKESTATIC, REMOTEPROXYOBJECT_INTERNAL_NAME, "forbiddenThrowableInternal",
-						"(" + METHODPTRANSFERROPERTIES_DESCRIPTOR + ")" + JAVA_LANG_THROWABLE_DESCRIPTOR, false);
+						"(" + METHODTRANSFERROPERTIES_DESCRIPTOR + ")" + JAVA_LANG_THROWABLE_DESCRIPTOR, false);
 				mrefv.visitInsn(ATHROW);
 
 				mrefv.visitMaxs(0, 0);
@@ -209,9 +260,9 @@ class ProxyGenerator {
 				mw.visitVarInsn(ALOAD, 0);
 				mw.visitFieldInsn(GETFIELD, thisclassinternalname, cachefieldname, cachehelperfielddescriptor);
 				loadCallInvokerMethodInstructionParameters(mw, thisclassinternalname, methodfieldname, key);
-				mw.visitMethodInsn(
-						INVOKEVIRTUAL, RMICACHEHELPER_INTERNAL_NAME, "call", "(" + REMOTEPROXYOBJECT_DESCRIPTOR
-								+ METHODPTRANSFERROPERTIES_DESCRIPTOR + "[Ljava/lang/Object;)Ljava/lang/Object;",
+				mw.visitMethodInsn(INVOKEVIRTUAL, RMICACHEHELPER_INTERNAL_NAME, "call",
+						"(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
+								+ "[Ljava/lang/Object;)Ljava/lang/Object;",
 						false);
 				writeObjectReturnInstructions(mw, mr);
 			} else {
@@ -277,8 +328,9 @@ class ProxyGenerator {
 	private static final String RMICACHEHELPER_INTERNAL_NAME = Type.getInternalName(RMICacheHelper.class);
 	private static final String THROWABLE_INTERNAL_NAME = Type.getInternalName(Throwable.class);
 	private static final String RMIRUNTIMEEXCEPTION_INTERNAL_NAME = Type.getInternalName(RMIRuntimeException.class);
-	private static final String METHODPTRANSFERROPERTIES_DESCRIPTOR = Type
-			.getDescriptor(MethodTransferProperties.class);
+	private static final String RMICALLFAILEDEXCEPTION_INTERNAL_NAME = Type
+			.getInternalName(RMICallFailedException.class);
+	private static final String METHODTRANSFERROPERTIES_DESCRIPTOR = Type.getDescriptor(MethodTransferProperties.class);
 	private static final String REMOTEINVOCATIONRMIFAILUREEXCEPTION_INTERNAL_NAME = Type
 			.getInternalName(RemoteInvocationRMIFailureException.class);
 	private static final String RMITRANSFERPROPERTIESHOLDER_INTERNAL_NAME = Type
@@ -322,11 +374,32 @@ class ProxyGenerator {
 		public final Class<?>[] argTypes;
 
 		public final transient String descriptor;
+		public final transient Class<?> returnType;
 
 		public MethodKey(Method m) {
 			this.name = m.getName();
 			this.descriptor = Type.getMethodDescriptor(m);
 			this.argTypes = m.getParameterTypes();
+			this.returnType = m.getReturnType();
+		}
+
+		public boolean isReturnTypeOrAnyArgumentNonPublic() {
+			if (isNonPublic(returnType)) {
+				return true;
+			}
+			for (Class<?> argc : argTypes) {
+				if (isNonPublic(argc)) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		private static boolean isNonPublic(Class<?> c) {
+			if (c.isPrimitive()) {
+				return false;
+			}
+			return !Modifier.isPublic(c.getModifiers());
 		}
 
 		@Override
@@ -600,7 +673,7 @@ class ProxyGenerator {
 		loadCallInvokerMethodInstructionParameters(mw, thisclassinternalname, methodfieldname, key);
 
 		mw.visitMethodInsn(INVOKESTATIC, REMOTEPROXYOBJECT_INTERNAL_NAME, callmethodname,
-				"(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODPTRANSFERROPERTIES_DESCRIPTOR
+				"(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
 						+ "[Ljava/lang/Object;)Ljava/lang/Object;",
 				false);
 
@@ -610,7 +683,7 @@ class ProxyGenerator {
 	private static void loadCallInvokerMethodInstructionParameters(MethodVisitor mw, String thisclassinternalname,
 			String methodfieldname, MethodKey key) {
 		mw.visitVarInsn(ALOAD, 0);
-		mw.visitFieldInsn(GETSTATIC, thisclassinternalname, methodfieldname, METHODPTRANSFERROPERTIES_DESCRIPTOR);
+		mw.visitFieldInsn(GETSTATIC, thisclassinternalname, methodfieldname, METHODTRANSFERROPERTIES_DESCRIPTOR);
 		Class<?>[] argtypes = key.argTypes;
 		writeLoadArgumentsArrayInstructions(mw, argtypes);
 	}
@@ -716,8 +789,8 @@ class ProxyGenerator {
 			mv.visitMethodInsn(INVOKEVIRTUAL, JAVA_LANG_CLASS_INTERNAL_NAME, "getMethod",
 					"(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;", false);
 			mv.visitMethodInsn(INVOKEVIRTUAL, RMITRANSFERPROPERTIESHOLDER_INTERNAL_NAME, "getExecutableProperties",
-					"(Ljava/lang/reflect/Method;)" + METHODPTRANSFERROPERTIES_DESCRIPTOR, false);
-			mv.visitFieldInsn(PUTSTATIC, thisclassinternalname, methodfieldname, METHODPTRANSFERROPERTIES_DESCRIPTOR);
+					"(Ljava/lang/reflect/Method;)" + METHODTRANSFERROPERTIES_DESCRIPTOR, false);
+			mv.visitFieldInsn(PUTSTATIC, thisclassinternalname, methodfieldname, METHODTRANSFERROPERTIES_DESCRIPTOR);
 		};
 	}
 

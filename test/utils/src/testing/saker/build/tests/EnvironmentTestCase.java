@@ -360,54 +360,60 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 
 					params.setPathConfiguration(pathconfig);
 					setupParameters(params);
-					Collection<TaskInvokerFactory> taskinvokerfactories = new ArrayList<>();
-					ClassLoaderResolverRegistry daemonconnectionregistry = new ClassLoaderResolverRegistry(
-							RemoteDaemonConnection.createConnectionBaseClassLoaderResolver());
-					daemonconnectionregistry.register(TEST_CLASSLOADER_RESOLVER_ID, testclresolver);
+					Set<String> configclusternames = testconfig.getClusterNames();
+					Map<String, LocalDaemonEnvironment> clusterenvironments = Collections.emptyNavigableMap();
+					if (!ObjectUtils.isNullOrEmpty(configclusternames)) {
+						Collection<TaskInvokerFactory> taskinvokerfactories = new ArrayList<>();
+						ClassLoaderResolverRegistry daemonbaseregistry = RemoteDaemonConnection
+								.createConnectionBaseClassLoaderResolver();
+						daemonbaseregistry.register(TEST_CLASSLOADER_RESOLVER_ID, testclresolver);
 
-					Map<String, LocalDaemonEnvironment> clusterEnvironments = new LinkedHashMap<>();
-					for (String clustername : testconfig.getClusterNames()) {
-						DaemonLaunchParameters.Builder clusterparamsbuilder = DaemonLaunchParameters.builder();
-						clusterparamsbuilder.setActsAsCluster(true);
-						clusterparamsbuilder.setActsAsServer(false);
-						//choose a free port
-						clusterparamsbuilder.setPort(0);
-						clusterparamsbuilder
-								.setStorageDirectory(SakerPath.valueOf(getClusterStorageDirectory(clustername)));
-						clusterparamsbuilder
-								.setClusterMirrorDirectory(SakerPath.valueOf(getClusterMirrorDirectory(clustername)));
-						clusterparamsbuilder.setUserParameters(
-								ImmutableUtils.singletonNavigableMap(TEST_CLUSTER_NAME_ENV_PARAM, clustername));
-						DaemonLaunchParameters clusterdaemonparams = clusterparamsbuilder.build();
+						clusterenvironments = new LinkedHashMap<>();
+						for (String clustername : configclusternames) {
+							DaemonLaunchParameters.Builder clusterparamsbuilder = DaemonLaunchParameters.builder();
+							clusterparamsbuilder.setActsAsCluster(true);
+							clusterparamsbuilder.setActsAsServer(false);
+							//choose a free port
+							clusterparamsbuilder.setPort(0);
+							clusterparamsbuilder
+									.setStorageDirectory(SakerPath.valueOf(getClusterStorageDirectory(clustername)));
+							clusterparamsbuilder.setClusterMirrorDirectory(
+									SakerPath.valueOf(getClusterMirrorDirectory(clustername)));
+							clusterparamsbuilder.setUserParameters(
+									ImmutableUtils.singletonNavigableMap(TEST_CLUSTER_NAME_ENV_PARAM, clustername));
+							DaemonLaunchParameters clusterdaemonparams = clusterparamsbuilder.build();
 
-						LocalDaemonEnvironment clusterdaemon = new LocalDaemonEnvironment(getSakerJarPath(),
-								clusterdaemonparams, null) {
-							@Override
-							protected SakerEnvironmentImpl createSakerEnvironment(EnvironmentParameters params) {
-								SakerEnvironmentImpl daemonenv = new SakerEnvironmentImpl(params);
-								daemonenv.getClassLoaderResolverRegistry().register(TEST_CLASSLOADER_RESOLVER_ID,
-										testclresolver);
-								return daemonenv;
-							}
-						};
-						rescloser.add(clusterdaemon);
-						clusterdaemon.setServerThreadGroup(COMMON_THREAD_GROUP);
-						clusterdaemon
-								.setConnectionBaseRMIOptions(new RMIOptions().classResolver(daemonconnectionregistry));
-						clusterdaemon.start();
-						InetSocketAddress daemonaddr = new InetSocketAddress(InetAddress.getLoopbackAddress(),
-								clusterdaemon.getRuntimeLaunchConfiguration().getPort());
-						RemoteDaemonConnection daemonconnection = RemoteDaemonConnection.connect(null, daemonaddr,
-								new RMIOptions().classResolver(daemonconnectionregistry));
-						rescloser.add(daemonconnection);
+							LocalDaemonEnvironment clusterdaemon = new LocalDaemonEnvironment(getSakerJarPath(),
+									clusterdaemonparams, null) {
+								@Override
+								protected SakerEnvironmentImpl createSakerEnvironment(EnvironmentParameters params) {
+									SakerEnvironmentImpl daemonenv = new SakerEnvironmentImpl(params);
+									daemonenv.getClassLoaderResolverRegistry().register(TEST_CLASSLOADER_RESOLVER_ID,
+											testclresolver);
+									return daemonenv;
+								}
+							};
+							rescloser.add(clusterdaemon);
+							clusterdaemon.setServerThreadGroup(COMMON_THREAD_GROUP);
+							clusterdaemon.setConnectionBaseRMIOptions(new RMIOptions()
+									.classResolver(new ClassLoaderResolverRegistry(daemonbaseregistry)));
+							clusterdaemon.start();
+							InetSocketAddress daemonaddr = new InetSocketAddress(InetAddress.getLoopbackAddress(),
+									clusterdaemon.getRuntimeLaunchConfiguration().getPort());
+							RemoteDaemonConnection daemonconnection = RemoteDaemonConnection.connect(null, daemonaddr,
+									new RMIOptions()
+											.classResolver(new ClassLoaderResolverRegistry(daemonbaseregistry)));
+							rescloser.add(daemonconnection);
 
-						TaskInvokerFactory daemontaskinvokerfactory = daemonconnection.getClusterTaskInvokerFactory();
-						assertNonNull(daemontaskinvokerfactory);
-						taskinvokerfactories.add(daemontaskinvokerfactory);
+							TaskInvokerFactory daemontaskinvokerfactory = daemonconnection
+									.getClusterTaskInvokerFactory();
+							assertNonNull(daemontaskinvokerfactory);
+							taskinvokerfactories.add(daemontaskinvokerfactory);
 
-						clusterEnvironments.put(clustername, clusterdaemon);
+							clusterenvironments.put(clustername, clusterdaemon);
+						}
+						params.setTaskInvokerFactories(taskinvokerfactories);
 					}
-					params.setTaskInvokerFactories(taskinvokerfactories);
 					params.defaultize();
 
 					try (SakerProjectCache project = testconfig.isUseProject() ? new SakerProjectCache(env) : null) {
@@ -419,7 +425,7 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 						this.project = project;
 						this.parameters = params;
 						this.files = memfiles;
-						this.clusterEnvironments = clusterEnvironments;
+						this.clusterEnvironments = clusterenvironments;
 
 						this.runTestImpl();
 					} finally {
@@ -429,7 +435,6 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 						this.project = null;
 						this.files = null;
 						this.clusterEnvironments = null;
-						clusterEnvironments.clear();
 					}
 				} finally {
 					env.unredirectStandardIO();

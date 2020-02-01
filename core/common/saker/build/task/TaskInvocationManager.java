@@ -1511,7 +1511,7 @@ public class TaskInvocationManager implements Closeable {
 			this.environmentIdentifier = environmentIdentifier;
 		}
 
-		public void run(TaskInvoker taskinvoker) throws InterruptedException {
+		public void run(TaskInvoker taskinvoker) throws Exception {
 			try {
 				taskinvoker.run(this);
 				clusterExit();

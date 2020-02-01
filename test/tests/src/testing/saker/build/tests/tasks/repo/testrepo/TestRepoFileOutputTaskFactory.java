@@ -74,9 +74,8 @@ public class TestRepoFileOutputTaskFactory implements TaskFactory<Void>, Externa
 
 		@Override
 		public Void run(TaskContext taskcontext) throws Exception {
-			if (!taskcontext.getExecutionContext().getEnvironment().getUserParameters()
-					.get(EnvironmentTestCase.TEST_CLUSTER_NAME_ENV_PARAM)
-					.equals(ClusterBuildTestCase.DEFAULT_CLUSTER_NAME)) {
+			if (!ClusterBuildTestCase.DEFAULT_CLUSTER_NAME.equals(taskcontext.getExecutionContext().getEnvironment()
+					.getUserParameters().get(EnvironmentTestCase.TEST_CLUSTER_NAME_ENV_PARAM))) {
 				throw new AssertionError();
 			}
 			TaskExecutionUtilities taskutils = taskcontext.getTaskUtilities();

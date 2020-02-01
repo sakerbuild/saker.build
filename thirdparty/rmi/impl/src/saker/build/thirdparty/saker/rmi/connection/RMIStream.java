@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2020 Bence Sipka
+ *
+ * This program is free software: you can redistribute it and/or modify 
+ * it under the terms of the GNU General Public License as published by 
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 package saker.build.thirdparty.saker.rmi.connection;
 
 import java.io.Closeable;
@@ -12,7 +27,6 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamClass;
 import java.io.OutputStream;
-import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
@@ -27,10 +41,10 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
 
 import saker.build.thirdparty.saker.rmi.connection.RequestHandler.Request;
 import saker.build.thirdparty.saker.rmi.exception.RMICallFailedException;
@@ -170,7 +184,7 @@ final class RMIStream implements Closeable {
 		OBJECT_READERS.put(OBJECT_REMOTE, (s, vars, in) -> readRemoteObject(vars, in));
 		OBJECT_READERS.put(OBJECT_NEW_REMOTE, RMIStream::readNewRemoteObject);
 		OBJECT_READERS.put(OBJECT_EXTERNALIZABLE, RMIStream::readExternalizableObject);
-		OBJECT_READERS.put(OBJECT_CLASS, (s, vars, in) -> s.readClass(in));
+		OBJECT_READERS.put(OBJECT_CLASS, (s, vars, in) -> s.readClass(in).get(vars.getConnection()));
 		OBJECT_READERS.put(OBJECT_METHOD, (s, vars, in) -> s.readMethod(in, null));
 		OBJECT_READERS.put(OBJECT_CONSTRUCTOR, (s, vars, in) -> s.readConstructor(in));
 		OBJECT_READERS.put(OBJECT_SERIALIZED, (s, vars, in) -> s.readSerializedObject(in));
@@ -184,7 +198,7 @@ final class RMIStream implements Closeable {
 		OBJECT_READERS.put(OBJECT_DOUBLE_ARRAY, (s, vars, in) -> readObjectDoubleArray(in));
 		OBJECT_READERS.put(OBJECT_BOOLEAN_ARRAY, (s, vars, in) -> readObjectBooleanArray(in));
 		OBJECT_READERS.put(OBJECT_CHAR_ARRAY, (s, vars, in) -> readObjectCharArray(in));
-		OBJECT_READERS.put(OBJECT_CLASSLOADER, (s, vars, in) -> s.readClassLoader(in));
+		OBJECT_READERS.put(OBJECT_CLASSLOADER, (s, vars, in) -> s.readClassLoader(in).get(vars.getConnection()));
 		OBJECT_READERS.put(OBJECT_FIELD, (s, vars, in) -> s.readField(in, null));
 	}
 	private static final Map<Short, IOBiConsumer<RMIStream, DataInputUnsyncByteArrayInputStream>> COMMAND_HANDLERS = new HashMap<>(
@@ -231,14 +245,15 @@ final class RMIStream implements Closeable {
 
 	protected final Object outLock = new Object();
 
-	private final RMIWeakCommCache<Class<?>> commClasses;
-	private final RMIWeakCommCache<ClassLoader> commClassLoaders;
+	private final RMICommCache<ClassReflectionElementSupplier> commClasses;
+	private final RMICommCache<ClassLoaderReflectionElementSupplier> commClassLoaders;
 
-	private final RMIGeneratingCommCache<Method> commMethods;
-	private final RMIGeneratingCommCache<Constructor<?>> commConstructors;
-	private final RMIGeneratingCommCache<Field> commFields;
+	private final RMICommCache<MethodReflectionElementSupplier> commMethods;
+	private final RMICommCache<ConstructorReflectionElementSupplier> commConstructors;
+	private final RMICommCache<FieldReflectionElementSupplier> commFields;
 
 	private final ClassLoader nullClassLoader;
+	private final ClassLoaderReflectionElementSupplier nullClassLoaderSupplier;
 
 	private class CommandFlusher implements Closeable {
 		final StrongSoftReference<DataOutputUnsyncByteArrayOutputStream> buffer;
@@ -290,6 +305,7 @@ final class RMIStream implements Closeable {
 		commFields = commState.getFields();
 
 		this.nullClassLoader = connection.getNullClassLoader();
+		this.nullClassLoaderSupplier = new NullClassLoaderReflectionElementSupplier(this.nullClassLoader);
 	}
 
 	public RMIStream(RMIConnection connection, StreamPair streams) {
@@ -522,6 +538,10 @@ final class RMIStream implements Closeable {
 		if (writeExternalizableObject(variables, obj, out)) {
 			return;
 		}
+		if (obj instanceof Throwable) {
+			writeSerializedObject(obj, out);
+			return;
+		}
 		writeNewRemoteObject(variables, obj, out);
 	}
 
@@ -622,7 +642,18 @@ final class RMIStream implements Closeable {
 
 	private void writeObjectClassLoader(DataOutputUnsyncByteArrayOutputStream out, ClassLoader cl) {
 		out.writeShort(OBJECT_CLASSLOADER);
-		writeClassLoader(cl, out);
+		ClassLoaderReflectionElementSupplier clres = getClassLoaderReflectionElementSupplier(cl);
+		writeClassLoader(clres, out);
+	}
+
+	private ClassLoaderReflectionElementSupplier getClassLoaderReflectionElementSupplier(ClassLoader cl) {
+		if (cl == nullClassLoader) {
+			return nullClassLoaderSupplier;
+		}
+		String clid = connection.getClassLoaderId(cl);
+		DynamicClassLoaderReflectionElementSupplier clres = new DynamicClassLoaderReflectionElementSupplier(connection,
+				clid);
+		return clres;
 	}
 
 	private static void writeObjectString(DataOutputUnsyncByteArrayOutputStream out, String s) {
@@ -889,7 +920,7 @@ final class RMIStream implements Closeable {
 
 	private Object readExternalizableObject(RMIVariables variables, DataInputUnsyncByteArrayInputStream in)
 			throws IOException {
-		Class<?> clazz = readClass(in);
+		Class<?> clazz = readClass(in).get(connection);
 		try {
 			Externalizable instance;
 			try {
@@ -928,7 +959,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private Object readObjectArray(RMIVariables vars, DataInputUnsyncByteArrayInputStream in) throws IOException {
-		Class<?> component = this.readClass(in);
+		Class<?> component = this.readClass(in).get(connection);
 		int len = in.readInt();
 		Object array = Array.newInstance(component, len);
 		for (int i = 0; i < len; i++) {
@@ -940,7 +971,7 @@ final class RMIStream implements Closeable {
 
 	private Object readEnum(DataInputUnsyncByteArrayInputStream in) throws IOException {
 		@SuppressWarnings("rawtypes")
-		Class enumtype = this.readClass(in);
+		Class enumtype = this.readClass(in).get(connection);
 		@SuppressWarnings({ "rawtypes", "unchecked" })
 		Enum result = Enum.valueOf(enumtype, readString(in));
 		return result;
@@ -952,41 +983,48 @@ final class RMIStream implements Closeable {
 	}
 
 	private void writeClass(Class<?> clazz, DataOutputUnsyncByteArrayOutputStream out) {
-		RMIWeakCommCache<Class<?>> cache = commClasses;
-		Integer index = cache.getWriteIndex(clazz);
+		ClassReflectionElementSupplier cres = getClassReflectionElementSupplier(clazz);
+		writeClass(cres, out);
+	}
+
+	private void writeClass(ClassReflectionElementSupplier cres, DataOutputUnsyncByteArrayOutputStream out) {
+		RMICommCache<ClassReflectionElementSupplier> cache = commClasses;
+		Integer index;
+		index = cache.getWriteIndex(cres);
 		if (index != null) {
 			out.writeShort(CLASS_INDEX);
 			out.writeInt(index);
 			return;
 		}
 		out.writeShort(CLASS_DETAILS);
-		writeClassData(clazz, out);
+		writeClassData(cres, out);
 	}
 
-	private Class<?> readClass(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		RMIWeakCommCache<Class<?>> cache = commClasses;
+	private ClassReflectionElementSupplier getClassReflectionElementSupplier(Class<?> clazz) {
+		ClassReflectionElementSupplier cres;
+		if (RMICommState.DEFAULT_CLASSES.contains(clazz)) {
+			cres = new BootstrapClassReflectionElementSupplier(clazz);
+		} else {
+			cres = new DynamicClassReflectionElementSupplier(new DynamicClassLoaderReflectionElementSupplier(connection,
+					connection.getClassLoaderId(clazz.getClassLoader())), clazz.getName());
+		}
+		return cres;
+	}
+
+	private ClassReflectionElementSupplier readClass(DataInputUnsyncByteArrayInputStream in) throws IOException {
+		RMICommCache<ClassReflectionElementSupplier> cache = commClasses;
 		short cmd = in.readShort();
 		switch (cmd) {
 			case CLASS_DETAILS: {
 				String classname = readString(in);
-				ClassLoader cl;
-				try {
-					cl = readClassLoader(in);
-				} catch (ClassLoaderNotFoundIOException e) {
-					throw new RMIObjectTransferFailureException("Class not found: " + classname, e);
+				ClassLoaderReflectionElementSupplier clsupplier = readClassLoader(in);
+				ClassReflectionElementSupplier classsupplier = new DynamicClassReflectionElementSupplier(clsupplier,
+						classname);
+				Integer putidx = cache.putReadIfAbsent(classsupplier);
+				if (putidx != null) {
+					writeCommandCachedClass(classsupplier, putidx);
 				}
-				try {
-					Class<?> result = Class.forName(classname, false, cl);
-
-					Integer putidx = cache.putReadIfAbsent(result);
-					if (putidx != null) {
-						writeCommandCachedClass(result, putidx);
-					}
-					return result;
-				} catch (ClassNotFoundException e) {
-					throw new RMIObjectTransferFailureException(
-							"Class not found: " + classname + " in classloader: " + cl, e);
-				}
+				return classsupplier;
 			}
 			case CLASS_INDEX: {
 				return readClassWithIndex(in, cache);
@@ -997,83 +1035,28 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private Class<?> readClassWithHierarchyOptional(DataInputUnsyncByteArrayInputStream in, Class<?> relativehierarchy,
-			boolean[] outcachetransferable) throws IOException {
-		RMIWeakCommCache<Class<?>> cache = commClasses;
-		short cmd = in.readShort();
-		switch (cmd) {
-			case CLASS_DETAILS: {
-				String classname = readString(in);
-				ClassLoader cl;
-				try {
-					cl = readClassLoader(in);
-				} catch (ClassLoaderNotFoundIOException e) {
-					throw new RMIObjectTransferFailureException("Class not found: " + classname, e);
-				}
-				ClassLoader findercl;
-				Class<?> result = ReflectUtils.findTypeWithNameInHierarchy(relativehierarchy, classname);
-				if (result == null) {
-					try {
-						result = Class.forName(classname, false, cl);
-						findercl = cl;
-
-					} catch (ClassNotFoundException e) {
-						throw new RMIObjectTransferFailureException(
-								"Class not found: " + classname + " in classloader: " + cl, e);
-					}
-				} else {
-					findercl = result.getClassLoader();
-				}
-				//only update the cache if the class was found through the denoted classloader
-				if (findercl == cl) {
-					outcachetransferable[0] = true;
-					Integer putidx = cache.putReadIfAbsent(result);
-					if (putidx != null) {
-						writeCommandCachedClass(result, putidx);
-					}
-				}
-				return result;
-			}
-			case CLASS_INDEX: {
-				return readClassWithIndex(in, cache);
-			}
-			default: {
-				throw new RMICallFailedException("illegal command: " + cmd);
-			}
-		}
-	}
-
-	private static Class<?> readClassWithIndex(DataInputUnsyncByteArrayInputStream in, RMIWeakCommCache<Class<?>> cache)
-			throws EOFException {
+	private static ClassReflectionElementSupplier readClassWithIndex(DataInputUnsyncByteArrayInputStream in,
+			RMICommCache<ClassReflectionElementSupplier> cache) throws EOFException {
 		int cindex = in.readInt();
-		Class<?> result = cache.getRead(cindex);
+		ClassReflectionElementSupplier result = cache.getRead(cindex);
 		if (result == null) {
 			throw new RMIObjectTransferFailureException("Class not found for index: " + cindex);
 		}
 		return result;
 	}
 
-	private void writeClassData(Class<?> clazz, DataOutputUnsyncByteArrayOutputStream out) {
-		writeString(clazz.getName(), out);
+	private void writeClassData(ClassReflectionElementSupplier clazz, DataOutputUnsyncByteArrayOutputStream out) {
+		writeString(clazz.getClassName(), out);
 		writeClassLoader(clazz.getClassLoader(), out);
 	}
 
-	private Class<?> readClassData(DataInputUnsyncByteArrayInputStream in) throws IOException {
+	private ClassReflectionElementSupplier readClassData(DataInputUnsyncByteArrayInputStream in) throws IOException {
 		String classname = readString(in);
-		ClassLoader cl;
-		try {
-			cl = readClassLoader(in);
-		} catch (ClassLoaderNotFoundIOException e) {
-			throw new RMIObjectTransferFailureException("Class not found: " + classname, e);
-		}
-		try {
-			return Class.forName(classname, false, cl);
-		} catch (ClassNotFoundException e) {
-			throw new RMIObjectTransferFailureException("Class not found: " + classname + " in classloader: " + cl, e);
-		}
+		ClassLoaderReflectionElementSupplier clsupplier = readClassLoader(in);
+		return new DynamicClassReflectionElementSupplier(clsupplier, classname);
 	}
 
-	private void writeClassLoader(ClassLoader cl, DataOutputUnsyncByteArrayOutputStream out) {
+	private void writeClassLoader(ClassLoaderReflectionElementSupplier cl, DataOutputUnsyncByteArrayOutputStream out) {
 		if (cl == null) {
 			out.writeShort(CLASSLOADER_NULL);
 			return;
@@ -1088,29 +1071,30 @@ final class RMIStream implements Closeable {
 		writeClassLoaderData(cl, out);
 	}
 
-	private ClassLoader readClassLoader(DataInputUnsyncByteArrayInputStream in) throws IOException {
+	private ClassLoaderReflectionElementSupplier readClassLoader(DataInputUnsyncByteArrayInputStream in)
+			throws IOException {
 		short cmd = in.readShort();
 		switch (cmd) {
 			case CLASSLOADER_DETAILS: {
-				ClassLoader result = readClassLoaderData(in);
-				if (result != null) {
-					Integer putidx = commClassLoaders.putReadIfAbsent(result);
-					if (putidx != null) {
-						writeCommandCachedClassLoader(result, putidx);
-					}
+				String clid = readClassLoaderId(in);
+				ClassLoaderReflectionElementSupplier clsupplier = new DynamicClassLoaderReflectionElementSupplier(
+						connection, clid);
+				Integer putidx = commClassLoaders.putReadIfAbsent(clsupplier);
+				if (putidx != null) {
+					writeCommandCachedClassLoader(clsupplier, putidx);
 				}
-				return result;
+				return clsupplier;
 			}
 			case CLASSLOADER_INDEX: {
 				int cindex = in.readInt();
-				ClassLoader readcl = commClassLoaders.getRead(cindex);
+				ClassLoaderReflectionElementSupplier readcl = commClassLoaders.getRead(cindex);
 				if (readcl == null) {
 					throw new RMIObjectTransferFailureException("Class not found for index: " + cindex);
 				}
 				return readcl;
 			}
 			case CLASSLOADER_NULL: {
-				return nullClassLoader;
+				return nullClassLoaderSupplier;
 			}
 			default: {
 				throw new RMICallFailedException("illegal command: " + cmd);
@@ -1118,8 +1102,9 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private void writeClassLoaderData(ClassLoader cl, DataOutputUnsyncByteArrayOutputStream out) {
-		String clid = connection.getClassLoaderId(cl);
+	private static void writeClassLoaderData(ClassLoaderReflectionElementSupplier cl,
+			DataOutputUnsyncByteArrayOutputStream out) {
+		String clid = cl.getClassLoaderId();
 		writeClassLoaderId(out, clid);
 	}
 
@@ -1147,13 +1132,8 @@ final class RMIStream implements Closeable {
 		return result;
 	}
 
-	private ClassLoader readClassLoaderData(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		String clid = readClassLoaderId(in);
-		return getClassLoaderById(connection, clid);
-	}
-
-	private static ClassLoader getClassLoaderById(RMIConnection connection, String clid) throws IOException {
-		return connection.getClassLoaderByIdOrThrow(clid);
+	private static Optional<ClassLoader> getClassLoaderByIdOptional(RMIConnection connection, String clid) {
+		return connection.getClassLoaderByIdOptional(clid);
 	}
 
 	static class ClassLoaderNotFoundIOException extends IOException {
@@ -1181,15 +1161,20 @@ final class RMIStream implements Closeable {
 
 	private Set<Class<?>> readClassesSet(DataInputUnsyncByteArrayInputStream in)
 			throws IOException, ClassSetPartiallyReadException {
-		Set<Class<?>> result = new LinkedHashSet<>();
 		short count = in.readShort();
 		if (count == 0) {
 			return Collections.emptySet();
 		}
-		ClassSetPartiallyReadException partialexc = null;
+		Set<ClassReflectionElementSupplier> classsuppliers = new LinkedHashSet<>();
 		while (count-- > 0) {
+			classsuppliers.add(readClass(in));
+		}
+		ClassSetPartiallyReadException partialexc = null;
+		Set<Class<?>> result = new LinkedHashSet<>();
+		for (ClassReflectionElementSupplier cres : classsuppliers) {
 			try {
-				result.add(readClass(in));
+				Class<?> c = cres.get(connection);
+				result.add(c);
 			} catch (RMIObjectTransferFailureException e) {
 				if (partialexc == null) {
 					partialexc = new ClassSetPartiallyReadException(result);
@@ -1211,110 +1196,90 @@ final class RMIStream implements Closeable {
 	}
 
 	private void writeConstructor(Constructor<?> constructor, DataOutputUnsyncByteArrayOutputStream out) {
-		RMIGeneratingCommCache<Constructor<?>> cache = commConstructors;
-		Integer index = cache.getWriteIndex(constructor);
+		RMICommCache<ConstructorReflectionElementSupplier> cache = commConstructors;
+		ConstructorReflectionElementSupplier constructorres = getConstructorReflectionElementSupplier(constructor);
+		Integer index = cache.getWriteIndex(constructorres);
 		if (index != null) {
 			out.writeShort(CONSTRUCTOR_INDEX);
 			out.writeInt(index);
 			return;
 		}
 		out.writeShort(CONSTRUCTOR_DETAILS);
-		writeConstructorData(constructor, out);
+		writeConstructorData(constructorres, out);
 	}
 
 	private Constructor<?> readConstructor(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		RMIGeneratingCommCache<Constructor<?>> cache = commConstructors;
+		RMICommCache<ConstructorReflectionElementSupplier> cache = commConstructors;
 		short cmd = in.readShort();
-		Constructor<?> result;
 		switch (cmd) {
 			case CONSTRUCTOR_DETAILS: {
-				result = readConstructorData(in);
-				Integer putidx = cache.putReadIfAbsent(result, new ConstructorWeakSupplier(result));
+				ConstructorReflectionElementSupplier result = readConstructorData(in);
+				Integer putidx = cache.putReadIfAbsent(result);
 				if (putidx != null) {
 					writeCommandCachedConstructor(result, putidx);
 				}
-				break;
+				return result.get(connection);
 			}
 			case CONSTRUCTOR_INDEX: {
 				int cindex = in.readInt();
-				Constructor<?> readconstructor = cache.getRead(cindex);
-				if (readconstructor == null) {
+				ConstructorReflectionElementSupplier result = cache.getRead(cindex);
+				if (result == null) {
 					throw new RMIObjectTransferFailureException("Constructor not found with index: " + cindex);
 				}
-				result = readconstructor;
-				break;
+				return result.get(connection);
 			}
 			default: {
 				throw new RMICallFailedException("illegal command: " + cmd);
 			}
 		}
-		return result;
 	}
 
-	private void writeConstructorData(Constructor<?> constructor, DataOutputUnsyncByteArrayOutputStream out) {
+	private void writeConstructorData(ConstructorReflectionElementSupplier constructor,
+			DataOutputUnsyncByteArrayOutputStream out) {
 		writeClass(constructor.getDeclaringClass(), out);
-		writeClassNames(constructor.getParameterTypes(), out);
+		writeClassNames(constructor.getParameterTypeNames(), out);
 	}
 
-	private Constructor<?> readConstructorData(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		try {
-			Class<?> declaringclass = readClass(in);
-			Class<?>[] parameterTypes = readClassNames(in, declaringclass.getClassLoader());
+	private ConstructorReflectionElementSupplier readConstructorData(DataInputUnsyncByteArrayInputStream in)
+			throws IOException {
+		ClassReflectionElementSupplier declaringclass = readClass(in);
+		String[] parameterTypes = readClassNames(in);
 
-			return declaringclass.getDeclaredConstructor(parameterTypes);
-		} catch (NoSuchMethodException e) {
-			throw new RMIObjectTransferFailureException(e);
-		}
+		return new ImplConstructorReflectionElementSupplier(declaringclass, parameterTypes);
 	}
 
 	private void writeField(Field f, DataOutputUnsyncByteArrayOutputStream out) {
-		RMIGeneratingCommCache<Field> cache = commFields;
-		Integer index = cache.getWriteIndex(f);
+		RMICommCache<FieldReflectionElementSupplier> cache = commFields;
+		FieldReflectionElementSupplier fres = getFieldReflectionElementSupplier(f);
+		Integer index = cache.getWriteIndex(fres);
 		if (index != null) {
 			out.writeShort(FIELD_INDEX);
 			out.writeInt(index);
 			return;
 		}
 		out.writeShort(FIELD_DETAILS);
-		writeFieldData(f, out);
+		writeFieldData(fres, out);
 	}
 
 	private Field readField(DataInputUnsyncByteArrayInputStream in, Object relativeobject) throws IOException {
-		RMIGeneratingCommCache<Field> cache = commFields;
+		RMICommCache<FieldReflectionElementSupplier> cache = commFields;
 		short cmd = in.readShort();
 		switch (cmd) {
 			case FIELD_DETAILS: {
-				Field result;
-				if (relativeobject != null) {
-					try {
-						boolean[] outcachetransferable = { false };
-						Class<?> declaringclass = readClassWithHierarchyOptional(in, relativeobject.getClass(),
-								outcachetransferable);
-						String name = readString(in);
-
-						result = declaringclass.getDeclaredField(name);
-						if (!outcachetransferable[0]) {
-							return result;
-						}
-					} catch (NoSuchFieldException e) {
-						throw new RMIObjectTransferFailureException(e);
-					}
-				} else {
-					result = readFieldData(in);
-				}
-				Integer putidx = cache.putReadIfAbsent(result, new FieldWeakSupplier(result));
+				final FieldReflectionElementSupplier fielddata = readFieldData(in);
+				Integer putidx = commFields.putReadIfAbsent(fielddata);
 				if (putidx != null) {
-					writeCommandCachedField(result, putidx);
+					writeCommandCachedField(fielddata, putidx);
 				}
-				return result;
+				return fielddata.get(connection, relativeobject);
 			}
 			case FIELD_INDEX: {
 				int cindex = in.readInt();
-				Field result = cache.getRead(cindex);
+				FieldReflectionElementSupplier result = cache.getRead(cindex);
 				if (result == null) {
 					throw new RMIObjectTransferFailureException("Field not found with index: " + cindex);
 				}
-				return result;
+				return result.get(connection, relativeobject);
 			}
 			default: {
 				throw new RMICallFailedException("illegal command: " + cmd);
@@ -1322,70 +1287,80 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private void writeFieldData(Field f, DataOutputUnsyncByteArrayOutputStream out) {
+	private void writeFieldData(FieldReflectionElementSupplier f, DataOutputUnsyncByteArrayOutputStream out) {
 		writeClass(f.getDeclaringClass(), out);
-		writeString(f.getName(), out);
+		writeString(f.getFieldName(), out);
 	}
 
-	private Field readFieldData(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		try {
-			Class<?> declaringclass = readClass(in);
-			String name = readString(in);
-			return declaringclass.getDeclaredField(name);
-		} catch (NoSuchFieldException e) {
-			throw new RMIObjectTransferFailureException(e);
+	private FieldReflectionElementSupplier readFieldData(DataInputUnsyncByteArrayInputStream in) throws IOException {
+		ClassReflectionElementSupplier declaringclass = readClass(in);
+		String name = readString(in);
+		DeclaredFieldReflectionElementSupplier result = new DeclaredFieldReflectionElementSupplier(declaringclass,
+				name);
+		return result;
+	}
+
+	private FieldReflectionElementSupplier getFieldReflectionElementSupplier(Field f) {
+		return new DeclaredFieldReflectionElementSupplier(getClassReflectionElementSupplier(f.getDeclaringClass()),
+				f.getName());
+	}
+
+	private ConstructorReflectionElementSupplier getConstructorReflectionElementSupplier(Constructor<?> constructor) {
+		Class<?> declclass = constructor.getDeclaringClass();
+		ClassReflectionElementSupplier declaringclassres = getClassReflectionElementSupplier(declclass);
+		Class<?>[] paramtypes = constructor.getParameterTypes();
+		String[] stringtypenames = new String[paramtypes.length];
+		for (int i = 0; i < stringtypenames.length; i++) {
+			stringtypenames[i] = paramtypes[i].getName();
 		}
+		return new ImplConstructorReflectionElementSupplier(declaringclassres, stringtypenames);
+	}
+
+	private MethodReflectionElementSupplier getMethodReflectionElementSupplier(Method method) {
+		Class<?> declclass = method.getDeclaringClass();
+		ClassReflectionElementSupplier declaringclassres = getClassReflectionElementSupplier(declclass);
+		String methodname = method.getName();
+		Class<?>[] paramtypes = method.getParameterTypes();
+		String[] stringtypenames = new String[paramtypes.length];
+		for (int i = 0; i < stringtypenames.length; i++) {
+			stringtypenames[i] = paramtypes[i].getName();
+		}
+		return new ImplMethodReflectionElementSupplier(declaringclassres, methodname, stringtypenames);
+
 	}
 
 	private void writeMethod(Method method, DataOutputUnsyncByteArrayOutputStream out) {
-		RMIGeneratingCommCache<Method> cache = commMethods;
-		Integer index = cache.getWriteIndex(method);
+		RMICommCache<MethodReflectionElementSupplier> cache = commMethods;
+		MethodReflectionElementSupplier methodres = getMethodReflectionElementSupplier(method);
+		Integer index = cache.getWriteIndex(methodres);
 		if (index != null) {
 			out.writeShort(METHOD_INDEX);
 			out.writeInt(index);
 			return;
 		}
 		out.writeShort(METHOD_DETAILS);
-		writeMethodData(method, out);
+		writeMethodData(methodres, out);
 	}
 
 	private Method readMethod(DataInputUnsyncByteArrayInputStream in, Object relativeobject) throws IOException {
-		RMIGeneratingCommCache<Method> cache = commMethods;
+		RMICommCache<MethodReflectionElementSupplier> cache = commMethods;
 		short cmd = in.readShort();
 		switch (cmd) {
 			case METHOD_DETAILS: {
-				final Method result;
-				if (relativeobject != null) {
-					try {
-						boolean[] outcachetransferable = { false };
-						Class<?> declaringclass = readClassWithHierarchyOptional(in, relativeobject.getClass(),
-								outcachetransferable);
-						String name = readString(in);
-						Class<?>[] parameterTypes = readClassNames(in, declaringclass.getClassLoader());
-
-						result = declaringclass.getMethod(name, parameterTypes);
-						if (!outcachetransferable[0]) {
-							return result;
-						}
-					} catch (NoSuchMethodException e) {
-						throw new RMIObjectTransferFailureException(e);
-					}
-				} else {
-					result = readMethodData(in);
-				}
-				Integer putidx = cache.putReadIfAbsent(result, new MethodWeakSupplier(result));
+				final MethodReflectionElementSupplier methoddata = readMethodData(in);
+				Integer putidx = commMethods.putReadIfAbsent(methoddata);
 				if (putidx != null) {
-					writeCommandCachedMethod(result, putidx);
+					writeCommandCachedMethod(methoddata, putidx);
 				}
-				return result;
+				return methoddata.get(connection, relativeobject);
 			}
 			case METHOD_INDEX: {
 				int cindex = in.readInt();
-				Method result = cache.getRead(cindex);
+				MethodReflectionElementSupplier result = cache.getRead(cindex);
 				if (result == null) {
 					throw new RMIObjectTransferFailureException("Method not found with index: " + cindex);
 				}
-				return result;
+				return result.get(connection, relativeobject);
 			}
 			default: {
 				throw new RMICallFailedException("illegal command: " + cmd);
@@ -1393,50 +1368,37 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private void writeMethodData(Method method, DataOutputUnsyncByteArrayOutputStream out) {
+	private void writeMethodData(MethodReflectionElementSupplier method, DataOutputUnsyncByteArrayOutputStream out) {
 		writeClass(method.getDeclaringClass(), out);
-		writeString(method.getName(), out);
-		writeClassNames(method.getParameterTypes(), out);
+		writeString(method.getMethodName(), out);
+		writeClassNames(method.getParameterTypeNames(), out);
 	}
 
-	private static void writeClassNames(Class<?>[] clazz, DataOutputUnsyncByteArrayOutputStream out) {
+	private static void writeClassNames(String[] clazz, DataOutputUnsyncByteArrayOutputStream out) {
 		out.writeInt(clazz.length);
 		for (int i = 0; i < clazz.length; i++) {
-			String cname = clazz[i].getName();
-			writeString(cname, out);
+			writeString(clazz[i], out);
 		}
 	}
 
-	private static Class<?>[] readClassNames(DataInputUnsyncByteArrayInputStream in, ClassLoader cl)
-			throws IOException {
+	private static String[] readClassNames(DataInputUnsyncByteArrayInputStream in) throws IOException {
 		int len = in.readInt();
-		Class<?>[] result = new Class<?>[len];
+		String[] result = new String[len];
 		for (int i = 0; i < len; i++) {
 			String cname = readString(in);
-			try {
-				Class<?> foundc = ReflectUtils.primitiveNameToPrimitiveClass(cname);
-				if (foundc == null) {
-					foundc = Class.forName(cname, false, cl);
-				}
-				result[i] = foundc;
-			} catch (ClassNotFoundException e) {
-				throw new RMIObjectTransferFailureException(
-						"Class not found for name: " + cname + " in clasloader: " + cl, e);
-			}
+			result[i] = cname;
 		}
 		return result;
 	}
 
-	private Method readMethodData(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		try {
-			Class<?> declaringclass = readClass(in);
-			String name = readString(in);
-			Class<?>[] parameterTypes = readClassNames(in, declaringclass.getClassLoader());
+	private MethodReflectionElementSupplier readMethodData(DataInputUnsyncByteArrayInputStream in) throws IOException {
+		ClassReflectionElementSupplier declaringclass = readClass(in);
+		String name = readString(in);
+		String[] parameterTypes = readClassNames(in);
 
-			return declaringclass.getMethod(name, parameterTypes);
-		} catch (NoSuchMethodException e) {
-			throw new RMIObjectTransferFailureException(e);
-		}
+		ImplMethodReflectionElementSupplier result = new ImplMethodReflectionElementSupplier(declaringclass, name,
+				parameterTypes);
+		return result;
 	}
 
 	private void writeMethodParameters(RMIVariables variables, ExecutableTransferProperties<?> execproperties,
@@ -1456,7 +1418,7 @@ final class RMIStream implements Closeable {
 
 	private Object readWrappedObject(RMIVariables variables, DataInputUnsyncByteArrayInputStream in)
 			throws IOException {
-		Class<?> clazz = readClass(in);
+		Class<?> clazz = readClass(in).get(connection);
 		RMIWrapper wrapper;
 		try {
 			//cast down the class to ensure that the wrapper is only instantiated if it actually implements the RMIWrapper
@@ -1781,21 +1743,41 @@ final class RMIStream implements Closeable {
 	}
 
 	private void handleCommandCachedClass(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		Class<?> classdata = readClassData(in);
+		ClassReflectionElementSupplier classdata = readClassData(in);
 		int idx = in.readInt();
 		commClasses.putWrite(classdata, idx);
 	}
 
+	private static Class<?>[] loadParameterTypeClasses(ClassLoader declcl, String[] parametertypenames, Object msgsrc) {
+		Class<?>[] paramtypes = new Class<?>[parametertypenames.length];
+		for (int i = 0; i < paramtypes.length; i++) {
+			try {
+				Class<?> foundc = ReflectUtils.primitiveNameToPrimitiveClass(parametertypenames[i]);
+				if (foundc != null) {
+					paramtypes[i] = foundc;
+				} else {
+					paramtypes[i] = Class.forName(parametertypenames[i], false, declcl);
+				}
+			} catch (ClassNotFoundException e) {
+				throw new RMIObjectTransferFailureException(
+						"Failed to load type: " + parametertypenames[i] + " for " + msgsrc, e);
+			}
+		}
+		return paramtypes;
+	}
+
 	private void handleCommandCachedClassLoader(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		ClassLoader cl = readClassLoaderData(in);
+		String clid = readClassLoaderId(in);
+		DynamicClassLoaderReflectionElementSupplier clsupplier = new DynamicClassLoaderReflectionElementSupplier(
+				connection, clid);
 		int idx = in.readInt();
-		commClassLoaders.putWrite(cl, idx);
+		commClassLoaders.putWrite(clsupplier, idx);
 	}
 
 	private void handleCommandCachedMethod(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		Method method = readMethodData(in);
+		MethodReflectionElementSupplier method = readMethodData(in);
 		int idx = in.readInt();
-		commMethods.putWrite(method, new MethodWeakSupplier(method), idx);
+		commMethods.putWrite(method, idx);
 	}
 
 	private void handleCommandInterruptRequest(DataInputUnsyncByteArrayInputStream in) throws IOException {
@@ -1804,15 +1786,15 @@ final class RMIStream implements Closeable {
 	}
 
 	private void handleCommandCachedField(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		Field field = readFieldData(in);
+		FieldReflectionElementSupplier field = readFieldData(in);
 		int idx = in.readInt();
-		commFields.putWrite(field, new FieldWeakSupplier(field), idx);
+		commFields.putWrite(field, idx);
 	}
 
 	private void handleCommandCachedConstructor(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		Constructor<?> constructor = readConstructorData(in);
+		ConstructorReflectionElementSupplier constructor = readConstructorData(in);
 		int idx = in.readInt();
-		commConstructors.putWrite(constructor, new ConstructorWeakSupplier(constructor), idx);
+		commConstructors.putWrite(constructor, idx);
 	}
 
 	private void handleCommandNewVariables(DataInputUnsyncByteArrayInputStream in) throws IOException {
@@ -2407,7 +2389,7 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private void writeCommandCachedClass(Class<?> clazz, int index) {
+	private void writeCommandCachedClass(ClassReflectionElementSupplier clazz, int index) {
 		checkClosed();
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
@@ -2419,7 +2401,7 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private void writeCommandCachedClassLoader(ClassLoader cl, int index) {
+	private void writeCommandCachedClassLoader(ClassLoaderReflectionElementSupplier cl, int index) {
 		checkClosed();
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
@@ -2431,7 +2413,7 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private void writeCommandCachedMethod(Method method, int index) {
+	private void writeCommandCachedMethod(MethodReflectionElementSupplier method, int index) {
 		checkClosed();
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
@@ -2443,7 +2425,7 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private void writeCommandCachedConstructor(Constructor<?> constructor, int index) {
+	private void writeCommandCachedConstructor(ConstructorReflectionElementSupplier constructor, int index) {
 		checkClosed();
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
@@ -2455,7 +2437,7 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private void writeCommandCachedField(Field field, int index) {
+	private void writeCommandCachedField(FieldReflectionElementSupplier field, int index) {
 		checkClosed();
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
@@ -2781,12 +2763,13 @@ final class RMIStream implements Closeable {
 		protected Class<?> resolveClass(ObjectStreamClass desc) throws IOException, ClassNotFoundException {
 			String clid = readClassLoaderId(this);
 
-			ClassLoader classloader;
-			try {
-				classloader = getClassLoaderById(connection, clid);
-			} catch (ClassLoaderNotFoundIOException e) {
-				throw new ClassNotFoundException("Class not found: " + desc.getName(), e);
+			Optional<ClassLoader> clopt = getClassLoaderByIdOptional(connection, clid);
+			if (clopt == null) {
+				throw new ClassNotFoundException(
+						"Class not found: " + desc.getName() + " (ClassLoader not found for ID: " + clid + ")");
 			}
+
+			ClassLoader classloader = clopt.orElse(null);
 			try {
 				Class<?> result = Class.forName(desc.getName(), false, classloader);
 				return result;
@@ -3059,92 +3042,485 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private static final class FieldWeakSupplier implements Supplier<Field> {
-		private final WeakReference<Class<?>> declaringClass;
-		private final String name;
+	static class DynamicClassLoaderReflectionElementSupplier implements ClassLoaderReflectionElementSupplier {
+		private RMIConnection connection;
+		private String classLoaderId;
 
-		public FieldWeakSupplier(Field field) {
-			this.declaringClass = new WeakReference<>(field.getDeclaringClass());
-			this.name = field.getName();
+		public DynamicClassLoaderReflectionElementSupplier(RMIConnection connection, String classLoaderId) {
+			this.connection = connection;
+			this.classLoaderId = classLoaderId;
 		}
 
 		@Override
-		public Field get() {
-			try {
-				Class<?> decc = declaringClass.get();
-				if (decc == null) {
-					return null;
+		public String getClassLoaderId() {
+			return classLoaderId;
+		}
+
+		@Override
+		public ClassLoader get(RMIConnection connection) throws RMIObjectTransferFailureException {
+			Optional<ClassLoader> clopt = getClassLoaderByIdOptional(connection, classLoaderId);
+			if (clopt == null) {
+				throw new RMIObjectTransferFailureException("Class loader not found with id: " + classLoaderId);
+			}
+			return clopt.orElse(null);
+		}
+
+		@Override
+		public int hashCode() {
+			return (classLoaderId == null) ? 0 : classLoaderId.hashCode();
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			DynamicClassLoaderReflectionElementSupplier other = (DynamicClassLoaderReflectionElementSupplier) obj;
+			if (connection != other.connection)
+				return false;
+			if (classLoaderId == null) {
+				if (other.classLoaderId != null)
+					return false;
+			} else if (!classLoaderId.equals(other.classLoaderId))
+				return false;
+			return true;
+		}
+
+		@Override
+		public String toString() {
+			//the classloader id may contain invalid characters, replace them with escaped zero
+			return "[Classloader with ID: " + classLoaderId + "]".replace("\0", "\\0");
+		}
+	}
+
+	interface ClassReflectionElementSupplier extends ReflectionElementSupplier {
+		public Class<?> get(RMIConnection connection) throws RMIObjectTransferFailureException;
+
+		public String getClassName();
+
+		public ClassLoaderReflectionElementSupplier getClassLoader();
+	}
+
+	interface ClassLoaderReflectionElementSupplier extends ReflectionElementSupplier {
+		public ClassLoader get(RMIConnection connection) throws RMIObjectTransferFailureException;
+
+		public String getClassLoaderId();
+	}
+
+	interface ConstructorReflectionElementSupplier extends ReflectionElementSupplier {
+		public Constructor<?> get(RMIConnection connection) throws RMIObjectTransferFailureException;
+
+		public ClassReflectionElementSupplier getDeclaringClass();
+
+		public String[] getParameterTypeNames();
+	}
+
+	interface MethodReflectionElementSupplier extends ReflectionElementSupplier {
+		public Method get(RMIConnection connection, Object relativeobject) throws RMIObjectTransferFailureException;
+
+		public ClassReflectionElementSupplier getDeclaringClass();
+
+		public String getMethodName();
+
+		public String[] getParameterTypeNames();
+	}
+
+	interface FieldReflectionElementSupplier extends ReflectionElementSupplier {
+		public Field get(RMIConnection connection, Object relativeobject) throws RMIObjectTransferFailureException;
+
+		public ClassReflectionElementSupplier getDeclaringClass();
+
+		public String getFieldName();
+	}
+
+	static class DeclaredFieldReflectionElementSupplier implements FieldReflectionElementSupplier {
+
+		private ClassReflectionElementSupplier declaringClass;
+		private String fieldName;
+
+		public DeclaredFieldReflectionElementSupplier(ClassReflectionElementSupplier declaringClass, String fieldName) {
+			super();
+			this.declaringClass = declaringClass;
+			this.fieldName = fieldName;
+		}
+
+		@Override
+		public Field get(RMIConnection connection, Object relativeobject) throws RMIObjectTransferFailureException {
+			if (relativeobject != null) {
+				Class<?> hierarchyclass = ReflectUtils.findTypeWithNameInHierarchy(relativeobject.getClass(),
+						declaringClass.getClassName());
+				if (hierarchyclass != null) {
+					try {
+						return hierarchyclass.getDeclaredField(fieldName);
+					} catch (NoSuchFieldException | SecurityException e) {
+						throw new RMIObjectTransferFailureException("Field not found: " + this, e);
+					}
 				}
-				return decc.getDeclaredField(name);
+			}
+			try {
+				return declaringClass.get(connection).getDeclaredField(fieldName);
 			} catch (NoSuchFieldException | SecurityException e) {
-				//print just in case
-				return null;
-			}
-		}
-	}
-
-	private static abstract class ExecutableWeakSupplier<T extends Executable> implements Supplier<T> {
-		protected final WeakReference<Class<?>> declaringClass;
-		protected final WeakReference<Class<?>>[] parameterTypes;
-
-		@SuppressWarnings("unchecked")
-		protected ExecutableWeakSupplier(T executable) {
-			this.declaringClass = new WeakReference<>(executable.getDeclaringClass());
-			Class<?>[] paramtypes = executable.getParameterTypes();
-			this.parameterTypes = (WeakReference<Class<?>>[]) new WeakReference<?>[paramtypes.length];
-			for (int i = 0; i < paramtypes.length; i++) {
-				this.parameterTypes[i] = new WeakReference<>(paramtypes[i]);
+				throw new RMIObjectTransferFailureException("Field not found: " + this, e);
 			}
 		}
 
 		@Override
-		public T get() {
-			Class<?> dc = declaringClass.get();
-			if (dc == null) {
-				return null;
-			}
-			Class<?>[] types = new Class<?>[parameterTypes.length];
-			for (int i = 0; i < types.length; i++) {
-				Class<?> t = parameterTypes[i].get();
-				if (t == null) {
-					//shouldnt ever occurr, but just in case
-					return null;
-				}
-				types[i] = t;
-			}
+		public ClassReflectionElementSupplier getDeclaringClass() {
+			return declaringClass;
+		}
+
+		@Override
+		public String getFieldName() {
+			return fieldName;
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((declaringClass == null) ? 0 : declaringClass.hashCode());
+			result = prime * result + ((fieldName == null) ? 0 : fieldName.hashCode());
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			DeclaredFieldReflectionElementSupplier other = (DeclaredFieldReflectionElementSupplier) obj;
+			if (declaringClass == null) {
+				if (other.declaringClass != null)
+					return false;
+			} else if (!declaringClass.equals(other.declaringClass))
+				return false;
+			if (fieldName == null) {
+				if (other.fieldName != null)
+					return false;
+			} else if (!fieldName.equals(other.fieldName))
+				return false;
+			return true;
+		}
+
+		@Override
+		public String toString() {
+			return "[field " + fieldName + " in " + declaringClass + "]";
+		}
+
+	}
+
+	static class ImplConstructorReflectionElementSupplier implements ConstructorReflectionElementSupplier {
+
+		private ClassReflectionElementSupplier declaringClass;
+		private String[] parameterTypes;
+
+		public ImplConstructorReflectionElementSupplier(ClassReflectionElementSupplier declaringClass,
+				String[] parameterTypes) {
+			super();
+			this.declaringClass = declaringClass;
+			this.parameterTypes = parameterTypes;
+		}
+
+		@Override
+		public Constructor<?> get(RMIConnection connection) throws RMIObjectTransferFailureException {
+			Class<?> declclass = declaringClass.get(connection);
+			ClassLoader declcl = declclass.getClassLoader();
+			Class<?>[] paramtypes = loadParameterTypeClasses(declcl, parameterTypes, this);
 			try {
-				return get(dc, types);
-			} catch (NoSuchMethodException e) {
-				//print just in case
-				return null;
+				return declclass.getConstructor(paramtypes);
+			} catch (NoSuchMethodException | SecurityException e) {
+				throw new RMIObjectTransferFailureException("Failed to retrieve method: " + this, e);
 			}
 		}
 
-		protected abstract T get(Class<?> declaringclass, Class<?>[] parametertypes) throws NoSuchMethodException;
-	}
-
-	private static final class MethodWeakSupplier extends ExecutableWeakSupplier<Method> {
-		private final String name;
-
-		protected MethodWeakSupplier(Method executable) {
-			super(executable);
-			this.name = executable.getName();
+		@Override
+		public ClassReflectionElementSupplier getDeclaringClass() {
+			return declaringClass;
 		}
 
 		@Override
-		protected Method get(Class<?> declaringclass, Class<?>[] parametertypes) throws NoSuchMethodException {
-			return declaringclass.getDeclaredMethod(name, parametertypes);
+		public String[] getParameterTypeNames() {
+			return parameterTypes;
 		}
+
 	}
 
-	private static final class ConstructorWeakSupplier extends ExecutableWeakSupplier<Constructor<?>> {
-		protected ConstructorWeakSupplier(Constructor<?> executable) {
-			super(executable);
+	static class ImplMethodReflectionElementSupplier implements MethodReflectionElementSupplier {
+
+		private ClassReflectionElementSupplier declaringClass;
+		private String methodName;
+		private String[] parameterTypes;
+
+		public ImplMethodReflectionElementSupplier(ClassReflectionElementSupplier declaringClass, String methodName,
+				String[] parameterTypes) {
+			super();
+			this.declaringClass = declaringClass;
+			this.methodName = methodName;
+			this.parameterTypes = parameterTypes;
 		}
 
 		@Override
-		protected Constructor<?> get(Class<?> declaringclass, Class<?>[] parametertypes) throws NoSuchMethodException {
-			return declaringclass.getDeclaredConstructor(parametertypes);
+		public Method get(RMIConnection connection, Object relativeobject) throws RMIObjectTransferFailureException {
+			if (relativeobject != null) {
+				Class<?> hierarchyclass = ReflectUtils.findTypeWithNameInHierarchy(relativeobject.getClass(),
+						declaringClass.getClassName());
+				if (hierarchyclass != null) {
+					Class<?>[] paramtypeclasses = loadParameterTypeClasses(hierarchyclass.getClassLoader(),
+							parameterTypes, this);
+					try {
+						return hierarchyclass.getMethod(methodName, paramtypeclasses);
+					} catch (NoSuchMethodException | SecurityException e) {
+						throw new RMIObjectTransferFailureException(
+								"Method not found: " + hierarchyclass + "." + declaringClass.getClassName() + "("
+										+ StringUtils.toStringJoin(", ", parameterTypes) + ")",
+								e);
+					}
+				}
+			}
+
+			Class<?> declclass = declaringClass.get(connection);
+			ClassLoader declcl = declclass.getClassLoader();
+			String[] parametertypenames = parameterTypes;
+			Class<?>[] paramtypes = loadParameterTypeClasses(declcl, parametertypenames, this);
+			try {
+				return declclass.getMethod(methodName, paramtypes);
+			} catch (NoSuchMethodException | SecurityException e) {
+				throw new RMIObjectTransferFailureException("Failed to retrieve method: " + this, e);
+			}
+		}
+
+		@Override
+		public ClassReflectionElementSupplier getDeclaringClass() {
+			return declaringClass;
+		}
+
+		@Override
+		public String getMethodName() {
+			return methodName;
+		}
+
+		@Override
+		public String[] getParameterTypeNames() {
+			return parameterTypes;
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((declaringClass == null) ? 0 : declaringClass.hashCode());
+			result = prime * result + ((methodName == null) ? 0 : methodName.hashCode());
+			result = prime * result + Arrays.hashCode(parameterTypes);
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			ImplMethodReflectionElementSupplier other = (ImplMethodReflectionElementSupplier) obj;
+			if (declaringClass == null) {
+				if (other.declaringClass != null)
+					return false;
+			} else if (!declaringClass.equals(other.declaringClass))
+				return false;
+			if (methodName == null) {
+				if (other.methodName != null)
+					return false;
+			} else if (!methodName.equals(other.methodName))
+				return false;
+			if (!Arrays.equals(parameterTypes, other.parameterTypes))
+				return false;
+			return true;
+		}
+
+		@Override
+		public String toString() {
+			return "[method" + declaringClass + "." + methodName + "(" + StringUtils.toStringJoin(", ", parameterTypes)
+					+ ")]";
+		}
+
+	}
+
+	static class NullClassLoaderReflectionElementSupplier implements ClassLoaderReflectionElementSupplier {
+		private ClassLoader classLoader;
+
+		public NullClassLoaderReflectionElementSupplier(ClassLoader classLoader) {
+			this.classLoader = classLoader;
+		}
+
+		@Override
+		public ClassLoader get(RMIConnection connection) throws RMIObjectTransferFailureException {
+			return classLoader;
+		}
+
+		@Override
+		public String getClassLoaderId() {
+			return null;
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((classLoader == null) ? 0 : classLoader.hashCode());
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			NullClassLoaderReflectionElementSupplier other = (NullClassLoaderReflectionElementSupplier) obj;
+			if (classLoader == null) {
+				if (other.classLoader != null)
+					return false;
+			} else if (!classLoader.equals(other.classLoader))
+				return false;
+			return true;
+		}
+
+		@Override
+		public String toString() {
+			return "[" + classLoader + "]";
+		}
+
+	}
+
+	static class BootstrapClassReflectionElementSupplier implements ClassReflectionElementSupplier {
+		private static final NullClassLoaderReflectionElementSupplier BOOTSTRAP_CL_SUPPLIER = new NullClassLoaderReflectionElementSupplier(
+				null);
+		private final Class<?> c;
+
+		public BootstrapClassReflectionElementSupplier(Class<?> c) {
+			this.c = c;
+		}
+
+		@Override
+		public Class<?> get(RMIConnection connection) throws RMIObjectTransferFailureException {
+			return c;
+		}
+
+		@Override
+		public String getClassName() {
+			return c.getName();
+		}
+
+		@Override
+		public ClassLoaderReflectionElementSupplier getClassLoader() {
+			return BOOTSTRAP_CL_SUPPLIER;
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((c == null) ? 0 : c.hashCode());
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			BootstrapClassReflectionElementSupplier other = (BootstrapClassReflectionElementSupplier) obj;
+			if (c == null) {
+				if (other.c != null)
+					return false;
+			} else if (!c.equals(other.c))
+				return false;
+			return true;
+		}
+
+		@Override
+		public String toString() {
+			return "[" + c + "]";
+		}
+
+	}
+
+	static class DynamicClassReflectionElementSupplier implements ClassReflectionElementSupplier {
+		private ClassLoaderReflectionElementSupplier classLoaderSupplier;
+		private String className;
+
+		public DynamicClassReflectionElementSupplier(ClassLoaderReflectionElementSupplier classLoaderSupplier,
+				String className) {
+			this.classLoaderSupplier = classLoaderSupplier;
+			this.className = className;
+		}
+
+		@Override
+		public Class<?> get(RMIConnection connection) throws RMIObjectTransferFailureException {
+			try {
+				return Class.forName(className, false, classLoaderSupplier.get(connection));
+			} catch (ClassNotFoundException e) {
+				throw new RMIObjectTransferFailureException(
+						"Class not found: " + className + " in classloader: " + classLoaderSupplier, e);
+			}
+		}
+
+		@Override
+		public ClassLoaderReflectionElementSupplier getClassLoader() {
+			return classLoaderSupplier;
+		}
+
+		@Override
+		public String getClassName() {
+			return className;
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((classLoaderSupplier == null) ? 0 : classLoaderSupplier.hashCode());
+			result = prime * result + ((className == null) ? 0 : className.hashCode());
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			DynamicClassReflectionElementSupplier other = (DynamicClassReflectionElementSupplier) obj;
+			if (classLoaderSupplier == null) {
+				if (other.classLoaderSupplier != null)
+					return false;
+			} else if (!classLoaderSupplier.equals(other.classLoaderSupplier))
+				return false;
+			if (className == null) {
+				if (other.className != null)
+					return false;
+			} else if (!className.equals(other.className))
+				return false;
+			return true;
+		}
+
+		@Override
+		public String toString() {
+			return "[Class " + className + " from class loader " + classLoaderSupplier + "]";
 		}
 
 	}

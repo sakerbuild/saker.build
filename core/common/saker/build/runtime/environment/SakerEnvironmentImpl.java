@@ -131,9 +131,7 @@ public final class SakerEnvironmentImpl implements Closeable {
 
 	public SakerEnvironmentImpl(EnvironmentParameters params) {
 		Objects.requireNonNull(params, "params");
-		classLoaderRegistry = new ClassLoaderResolverRegistry(new SingleClassLoaderResolver(
-				"saker.env.classes_" + Versions.VERSION_STRING_FULL, SakerEnvironmentImpl.class.getClassLoader()));
-		classLoaderRegistry.register("jdk.tools", JavaTools.getJDKToolsClassLoaderResolver());
+		classLoaderRegistry = createEnvironmentBaseClassLoaderResolverRegistry();
 		ThreadGroup parentthreadgroup = params.getEnvironmentThreadGroupParent();
 		if (parentthreadgroup == null) {
 			parentthreadgroup = Thread.currentThread().getThreadGroup();
@@ -155,6 +153,13 @@ public final class SakerEnvironmentImpl implements Closeable {
 		this.repositoryManager = new RepositoryManager(storageDirectoryPath, classPathManager, sakerJarPath);
 
 		dataCache = new SakerDataCache(environmentThreadGroup);
+	}
+
+	public static ClassLoaderResolverRegistry createEnvironmentBaseClassLoaderResolverRegistry() {
+		ClassLoaderResolverRegistry result = new ClassLoaderResolverRegistry(new SingleClassLoaderResolver(
+				"saker.env.classes_" + Versions.VERSION_STRING_FULL, SakerEnvironmentImpl.class.getClassLoader()));
+		result.register("jdk.tools", JavaTools.getJDKToolsClassLoaderResolver());
+		return result;
 	}
 
 	public UUID getEnvironmentIdentifier() {

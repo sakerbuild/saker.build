@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2020 Bence Sipka
+ *
+ * This program is free software: you can redistribute it and/or modify 
+ * it under the terms of the GNU General Public License as published by 
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 package saker.build.thirdparty.saker.rmi.io.writer;
 
 import java.io.Externalizable;
@@ -45,6 +60,8 @@ import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
  * The object is not written using {@link ObjectOutputStream}, but the {@link RMIObjectOutput} interface will be used to
  * call {@link Externalizable#writeExternal}. Any {@link ObjectOutput#writeObject} calls will use the default object
  * writing strategy, and {@link Object} target type.</li>
+ * <li>If the object is an instace of {@link Throwable}, it will be attempted to be transferred as a serializable
+ * object. See {@link SerializeRMIObjectWriteHandler}. (Since saker.rmi 0.8.1)</li>
  * <li>As a fallback mechanism, the RMI runtime will write the given object as a remote to the other side. This means
  * that if the actual target type can not accept an interface, then the RMI request will likely fail. This can be
  * considered an undefined behavior and the user should attempt to properly choose the interfaces and instances for RMI
