@@ -438,8 +438,8 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 						v = prev;
 						continue;
 					}
-					//the file was put in place, success
-					return null;
+					//the populated file was put in place, put if absent failed
+					return populated;
 				}
 				//don't use the populated file, as the full population completed meanwhile
 			}
