@@ -429,10 +429,10 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 				return null;
 			}
 			synchronized (trackedfiles) {
-				//syncrhonize to ensure that any concurrent population requests finish before we put the populated file
+				//synchronize to ensure that any concurrent population requests finish before we put the populated file
 				if (populatedState != POPULATED_STATE_POPULATED) {
 					//still unpopulated, put the file
-					SakerFileBase prev = trackedfiles.putIfAbsent(filename, file);
+					SakerFileBase prev = trackedfiles.putIfAbsent(filename, populated);
 					if (prev != null) {
 						//try again
 						v = prev;

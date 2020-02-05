@@ -763,7 +763,7 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 	 * The following will be <code>true</code> for any two relativizable paths:
 	 * 
 	 * <pre>
-	 * SakerPath firt = ...;
+	 * SakerPath first = ...;
 	 * SakerPath other = ...;
 	 * // the following is true:
 	 * first.resolve(first.relativize(other)).equals(other);
@@ -920,9 +920,11 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 	 * @param paths
 	 *            The paths to resolve.
 	 * @return The resolved path.
+	 * @throws InvalidPathFormatException
+	 *             If the path has an invalid format.
 	 * @see #resolve(SakerPath)
 	 */
-	public SakerPath resolve(Iterable<String> paths) {
+	public SakerPath resolve(Iterable<String> paths) throws InvalidPathFormatException {
 		List<String> nnames = ObjectUtils.newArrayList(this.names);
 		StringBuilder sb = new StringBuilder();
 		for (String path : paths) {
@@ -939,9 +941,11 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 	 * @param path
 	 *            The path to resolve.
 	 * @return The resolved path.
+	 * @throws InvalidPathFormatException
+	 *             If the path has an invalid format.
 	 * @see #resolve(SakerPath)
 	 */
-	public SakerPath resolve(String path) {
+	public SakerPath resolve(String path) throws InvalidPathFormatException {
 		List<String> nnames = ObjectUtils.newArrayList(this.names);
 		addSplitPathNames(this.root, nnames, path);
 		return new SakerPath(this.root, nnames.toArray(ObjectUtils.EMPTY_STRING_ARRAY));
@@ -955,9 +959,11 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 	 * @param paths
 	 *            The paths to resolve.
 	 * @return The resolved path.
+	 * @throws InvalidPathFormatException
+	 *             If the path has an invalid format.
 	 * @see #resolve(SakerPath)
 	 */
-	public SakerPath resolve(String... paths) {
+	public SakerPath resolve(String... paths) throws InvalidPathFormatException {
 		List<String> nnames = ObjectUtils.newArrayList(this.names);
 		StringBuilder sb = new StringBuilder();
 		for (String path : paths) {

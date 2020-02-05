@@ -1049,9 +1049,16 @@ public class BuildCommand {
 				continue;
 			}
 			String f = entry.getKey();
-			SakerPath fpath = directory.resolve(f);
-			if (scriptconfiguration.getScriptOptionsConfig(fpath) != null) {
-				buildfiles.add(fpath);
+			try {
+				SakerPath fpath = directory.resolve(f);
+				if (scriptconfiguration.getScriptOptionsConfig(fpath) != null) {
+					buildfiles.add(fpath);
+				}
+			} catch (InvalidPathFormatException e) {
+				//the file name may be invalid. e.g. if it contains a colon
+				//we cannot really handle them in the build system, but don't fail here
+				//the exception should be thrown down the line
+				continue;
 			}
 		}
 		return buildfiles;
