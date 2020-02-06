@@ -96,6 +96,8 @@ import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
+import saker.build.trace.InternalBuildTrace;
+import saker.build.trace.InternalBuildTraceImpl;
 import saker.build.util.exc.ExceptionView;
 import saker.build.util.property.ScriptParsingConfigurationExecutionProperty;
 
@@ -156,7 +158,15 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	private SecretInputReader secretInputReader;
 	private TaskExecutionManager tasExecutionManager;
 
+	private final InternalBuildTrace buildTrace;
+
 	public ExecutionContextImpl(SakerEnvironmentImpl environment, ExecutionParametersImpl parameters) throws Exception {
+		SakerPath buildtraceoutputpath = parameters.getBuildTraceOutputLocalPath();
+		if (buildtraceoutputpath != null) {
+			this.buildTrace = new InternalBuildTraceImpl(buildtraceoutputpath);
+		} else {
+			this.buildTrace = InternalBuildTrace.NULL_INSTANCE;
+		}
 		this.environment = environment;
 		this.buildTimeDateMillis = System.currentTimeMillis();
 
@@ -415,7 +425,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 			}
 
 			try {
-				manager.execute(taskfactory, taskid, this, taskinvokerfactories, buildCacheAccessor);
+				manager.execute(taskfactory, taskid, this, taskinvokerfactories, buildCacheAccessor, buildTrace);
 			} finally {
 				results = manager.getTaskResults();
 				resultCollection = manager.getResultCollection();
@@ -614,7 +624,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 				}
 				if (project != null) {
 					this.project.executionFinished(this, pathConfiguration, environmentExecutionKey, buildDirectoryPath,
-							fileComputeDataHandler, cacheabletasks, buildCacheAccessor);
+							fileComputeDataHandler, cacheabletasks, buildCacheAccessor, buildTrace);
 				} else {
 					if (contentdb != null) {
 						try {
@@ -632,7 +642,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 					try {
 						environment.executionFinished(environmentExecutionKey);
 					} finally {
-						ioexc = IOUtils.closeExc(ioexc, ownedExecutionCache);
+						ioexc = IOUtils.closeExc(ioexc, ownedExecutionCache, buildTrace);
 					}
 				}
 			}

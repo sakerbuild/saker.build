@@ -77,6 +77,8 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 
 	private long deadlockPollingFrequencyMillis = 3000;
 
+	private SakerPath buildTraceOutputLocalPath;
+
 	public ExecutionParametersImpl() {
 	}
 
@@ -100,6 +102,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		this.secretInputReader = copy.secretInputReader;
 		this.userPrompHandler = copy.userPrompHandler;
 		this.deadlockPollingFrequencyMillis = copy.deadlockPollingFrequencyMillis;
+		this.buildTraceOutputLocalPath = copy.buildTraceOutputLocalPath;
 	}
 
 	public void defaultize() throws IOException {
@@ -217,6 +220,10 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		return buildDataCache;
 	}
 
+	public SakerPath getBuildTraceOutputLocalPath() {
+		return buildTraceOutputLocalPath;
+	}
+
 	public void setDeadlockPollingFrequencyMillis(long deadlockPollingFrequencyMillis) {
 		this.deadlockPollingFrequencyMillis = deadlockPollingFrequencyMillis;
 	}
@@ -307,6 +314,10 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 
 	public void setBuildCache(BuildDataCache buildCache) {
 		this.buildDataCache = buildCache;
+	}
+
+	public void setBuildTraceOutputLocalPath(SakerPath buildTraceOutputLocalPath) {
+		this.buildTraceOutputLocalPath = buildTraceOutputLocalPath;
 	}
 
 	private static class TimedPollingProgressMonitor implements ExecutionProgressMonitor {

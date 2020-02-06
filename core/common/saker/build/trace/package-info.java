@@ -13,21 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-package saker.build.task;
-
 /**
- * Interface for monitoring and reporting progress of tasks during execution.
- * <p>
- * The methods in this interface, and any objects that are returned by these methods <b>never</b> throw an exception.
- * This is in order not to distrupt the build execution.
- * <p>
- * This interface is planned to be extended in the future for reified information reporting.
+ * Contains classes related to build traces.
  */
-public interface TaskProgressMonitor {
-	/**
-	 * Gets if the cancellation of the execution was requested for the task.
-	 * 
-	 * @return <code>true</code> if the task execution should be cancelled.
-	 */
-	public boolean isCancelled();
-}
+package saker.build.trace;

@@ -173,6 +173,7 @@ import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import saker.build.thirdparty.saker.util.thread.ParallelExecutionException;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
+import saker.build.trace.InternalBuildTrace;
 import saker.build.util.exc.ExceptionView;
 import testing.saker.build.flag.TestFlag;
 
@@ -688,7 +689,16 @@ public class TaskExecutionManager {
 			return new TaskProgressMonitor() {
 				@Override
 				public boolean isCancelled() {
-					return executionManager.cancelledByInterruption || monitor.isCancelled();
+					try {
+						return executionManager.cancelledByInterruption || monitor.isCancelled();
+					} catch (Exception e) {
+						//we may never throw exceptions.
+						try {
+							reportIgnoredException(e);
+						} catch (Exception ignored) {
+						}
+						return false;
+					}
 				}
 			};
 		}
@@ -2156,6 +2166,11 @@ public class TaskExecutionManager {
 				abspath = path;
 			}
 			return new PathSakerFileContents(file, abspath, file.getContentDescriptor());
+		}
+
+		@Override
+		public InternalBuildTrace internalGetBuildTrace() {
+			return executionManager.buildTrace;
 		}
 	}
 
@@ -3808,6 +3823,8 @@ public class TaskExecutionManager {
 
 	protected ExecutionContextImpl executionContext;
 
+	protected InternalBuildTrace buildTrace;
+
 	public TaskExecutionManager(BuildTaskResultDatabase taskresults) {
 		this.initTaskResults = taskresults;
 		this.taskIdTaskResults = taskresults == null ? Collections.emptyMap()
@@ -3836,8 +3853,8 @@ public class TaskExecutionManager {
 	}
 
 	public void execute(TaskFactory<?> factory, TaskIdentifier taskid, ExecutionContextImpl executioncontext,
-			Collection<? extends TaskInvokerFactory> taskinvokerfactories, BuildCacheAccessor buildcache)
-			throws MultiTaskExecutionFailedException {
+			Collection<? extends TaskInvokerFactory> taskinvokerfactories, BuildCacheAccessor buildcache,
+			InternalBuildTrace buildtrace) throws MultiTaskExecutionFailedException {
 		Objects.requireNonNull(taskid, "taskid");
 		Objects.requireNonNull(factory, "factory");
 		Objects.requireNonNull(executioncontext, "execution context");
@@ -3850,6 +3867,7 @@ public class TaskExecutionManager {
 		ThreadGroup clusterInteractionThreadGroup = new ThreadGroup("Cluster management");
 		//XXX maybe set executionThreadGroup to daemon thread group?
 		this.buildCache = buildcache;
+		this.buildTrace = buildtrace;
 
 		buildDirectoryPath = executioncontext.getBuildDirectoryPath();
 		buildSakerDirectory = executioncontext.getExecutionBuildDirectory();

@@ -51,6 +51,7 @@ import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.IOUtils;
+import saker.build.trace.InternalBuildTrace;
 import saker.build.util.cache.MemoryTrimmer;
 
 public class SakerProjectCache implements ProjectCacheHandle {
@@ -463,7 +464,8 @@ public class SakerProjectCache implements ProjectCacheHandle {
 
 	public void executionFinished(ExecutionContextImpl context, ExecutionPathConfiguration pathconfig,
 			Object environmentexecutionkey, SakerPath builddirectory, FileContentDataComputeHandler filecomputehandler,
-			Map<TaskIdentifier, TaskExecutionResult<?>> cachedktaskstopublish, BuildCacheAccessor buildcacheaccessor) {
+			Map<TaskIdentifier, TaskExecutionResult<?>> cachedktaskstopublish, BuildCacheAccessor buildcacheaccessor,
+			InternalBuildTrace buildtrace) {
 		try {
 			if (this.executionFinalizerThread != null) {
 				throw new IllegalStateException("Execution was not started.");
@@ -488,7 +490,7 @@ public class SakerProjectCache implements ProjectCacheHandle {
 							filecomputehandler.cacheify();
 						}
 						runExecutionFinisherThreadImpl(pathconfig, rootdirs, builddirectory, cachedktaskstopublish,
-								buildcacheaccessor);
+								buildcacheaccessor, buildtrace);
 					} catch (Throwable e) {
 						e.printStackTrace();
 						throw e;
@@ -611,7 +613,8 @@ public class SakerProjectCache implements ProjectCacheHandle {
 
 	private void runExecutionFinisherThreadImpl(ExecutionPathConfiguration pathconfig,
 			Map<String, ? extends SakerDirectory> rootdirs, SakerPath builddirectory,
-			Map<TaskIdentifier, TaskExecutionResult<?>> cachedktaskstopublish, BuildCacheAccessor buildcacheaccessor) {
+			Map<TaskIdentifier, TaskExecutionResult<?>> cachedktaskstopublish, BuildCacheAccessor buildcacheaccessor,
+			InternalBuildTrace buildtrace) {
 		try {
 			if (this.executionDatabase != null) {
 				this.executionDatabase.handleAbandonedTasksOffline(pathconfig, builddirectory);
@@ -632,6 +635,7 @@ public class SakerProjectCache implements ProjectCacheHandle {
 						e.printStackTrace();
 					}
 				}
+				IOUtils.closePrint(buildtrace);
 				if (!this.fileWatchingEnabled) {
 					//invalidate the whole database, as we don't watch the disk contents for changes
 					//    therefore they need to be rechecked when needed without caching
