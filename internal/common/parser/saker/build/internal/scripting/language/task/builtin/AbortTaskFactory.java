@@ -52,6 +52,7 @@ public class AbortTaskFactory extends SelfSakerTaskFactory {
 
 	@Override
 	public SakerTaskResult run(TaskContext taskcontext) throws Exception {
+		taskcontext.setStandardOutDisplayIdentifier(TaskInvocationSakerTaskFactory.TASKNAME_ABORT);
 		if (messageTask == null) {
 			taskcontext.abortExecution(new BuildAbortedException());
 		} else {

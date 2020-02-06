@@ -58,6 +58,7 @@ import saker.build.file.content.CommonContentDescriptorSupplier;
 import saker.build.file.content.ContentDescriptorSupplier;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
+import saker.build.file.path.SimpleProviderHolderPathKey;
 import saker.build.file.path.WildcardPath;
 import saker.build.file.provider.DirectoryMountFileProvider;
 import saker.build.file.provider.FileEntry;
@@ -418,6 +419,21 @@ public class BuildCommand {
 
 	/**
 	 * <pre>
+	 * Sets the output path of the build trace for the build execution.
+	 * 
+	 * The path is expected to be in the same format as in the -mount 
+	 * parameter.
+	 * 
+	 * The build trace can be viewed in a browser, by navigating to:
+	 *     https://saker.build/buildtrace
+	 * and opening it on the page.
+	 * </pre>
+	 */
+	@Parameter("-trace")
+	public String buildTracePath;
+
+	/**
+	 * <pre>
 	 * The build target to execute.
 	 * 
 	 * If not specified then defaults to the following:
@@ -695,6 +711,11 @@ public class BuildCommand {
 		if (deadlockPollingMillis != null) {
 			params.setDeadlockPollingFrequencyMillis(deadlockPollingMillis);
 		}
+		if (buildTracePath != null) {
+			ProviderHolderPathKey buildtraceoutpathkey = mountPathToPathKey(DaemonPath.valueOf(buildTracePath),
+					remoteenv, localenv, connections);
+			params.setBuildTraceOutputPathKey(buildtraceoutpathkey);
+		}
 		params.setUserParameters(userParameters);
 		params.setIO(ByteSink.valueOf(stdOut), ByteSink.valueOf(stdErr),
 				!interactive ? StreamUtils.nullByteSource() : ByteSource.valueOf(stdIn));
@@ -822,47 +843,54 @@ public class BuildCommand {
 		ExecutionPathConfiguration.Builder pathconfigbuilder = ExecutionPathConfiguration.builder(workingdir);
 		for (DirectoryMountParam dm : mount) {
 			DaemonPath path = dm.path;
-			String clientname = path.getClientName();
 			String root = dm.root;
-			SakerFileProvider mountfp;
-			SakerPath mountedmpath = path.getPath();
-			if (clientname == null) {
-				mountfp = getLocalFileProviderFromLocalDaemon(localenv);
-			} else {
-				switch (clientname) {
-					case DAEMON_CLIENT_NAME_LOCAL: {
-						mountfp = getLocalFileProviderFromLocalDaemon(localenv);
-						break;
-					}
-					case DAEMON_CLIENT_NAME_REMOTE: {
-						if (remoteenv == null) {
-							//if there is no remote daemon, then we are running only on local
-							//therefore consider the local as the remote
-							mountfp = getLocalFileProviderFromLocalDaemon(localenv);
-						} else {
-							mountfp = remoteenv.getFileProvider();
-						}
-						break;
-					}
-					case DAEMON_CLIENT_NAME_PROC_WORK_DIR: {
-						mountfp = getLocalFileProviderFromLocalDaemon(localenv);
-						mountedmpath = getUserDir().resolve(mountedmpath.forcedRelative());
-						break;
-					}
-					default: {
-						RemoteDaemonConnection connection = connections.get(clientname);
-						if (connection == null) {
-							throw new IllegalArgumentException("Connection not found with name: " + clientname);
-						}
-						mountfp = connection.getDaemonEnvironment().getFileProvider();
-						break;
-					}
-				}
-			}
+			ProviderHolderPathKey mountpathkey = mountPathToPathKey(path, remoteenv, localenv, connections);
 
-			pathconfigbuilder.addRootProvider(root, DirectoryMountFileProvider.create(mountfp, mountedmpath, root));
+			pathconfigbuilder.addRootProvider(root,
+					DirectoryMountFileProvider.create(mountpathkey.getFileProvider(), mountpathkey.getPath(), root));
 		}
 		return pathconfigbuilder.build();
+	}
+
+	private ProviderHolderPathKey mountPathToPathKey(DaemonPath path, DaemonEnvironment remoteenv,
+			DaemonEnvironment localenv, NavigableMap<String, ? extends RemoteDaemonConnection> connections) {
+		String clientname = path.getClientName();
+		SakerFileProvider mountfp;
+		SakerPath mountedmpath = path.getPath();
+		if (clientname == null) {
+			mountfp = getLocalFileProviderFromLocalDaemon(localenv);
+		} else {
+			switch (clientname) {
+				case DAEMON_CLIENT_NAME_LOCAL: {
+					mountfp = getLocalFileProviderFromLocalDaemon(localenv);
+					break;
+				}
+				case DAEMON_CLIENT_NAME_REMOTE: {
+					if (remoteenv == null) {
+						//if there is no remote daemon, then we are running only on local
+						//therefore consider the local as the remote
+						mountfp = getLocalFileProviderFromLocalDaemon(localenv);
+					} else {
+						mountfp = remoteenv.getFileProvider();
+					}
+					break;
+				}
+				case DAEMON_CLIENT_NAME_PROC_WORK_DIR: {
+					mountfp = getLocalFileProviderFromLocalDaemon(localenv);
+					mountedmpath = getUserDir().resolve(mountedmpath.forcedRelative());
+					break;
+				}
+				default: {
+					RemoteDaemonConnection connection = connections.get(clientname);
+					if (connection == null) {
+						throw new IllegalArgumentException("Connection not found with name: " + clientname);
+					}
+					mountfp = connection.getDaemonEnvironment().getFileProvider();
+					break;
+				}
+			}
+		}
+		return new SimpleProviderHolderPathKey(mountfp, mountedmpath);
 	}
 
 	private static SakerFileProvider getLocalFileProviderFromLocalDaemon(DaemonEnvironment localenv) {

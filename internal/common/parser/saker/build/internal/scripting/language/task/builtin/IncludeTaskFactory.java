@@ -30,6 +30,7 @@ import saker.build.internal.scripting.language.task.SakerLiteralTaskFactory;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
 import saker.build.internal.scripting.language.task.SakerTaskFactory;
 import saker.build.internal.scripting.language.task.SelfSakerTaskFactory;
+import saker.build.internal.scripting.language.task.TaskInvocationSakerTaskFactory;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.internal.scripting.language.task.result.TaskInvocationOutputSakerTaskResult;
 import saker.build.task.TaskContext;
@@ -59,6 +60,7 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 
 	@Override
 	public SakerTaskResult run(TaskContext taskcontext) throws Exception {
+		taskcontext.setStandardOutDisplayIdentifier(TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE);
 		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
 
 		NavigableMap<String, TaskIdentifier> parametertaskids = new TreeMap<>();

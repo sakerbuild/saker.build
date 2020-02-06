@@ -1,6 +1,9 @@
 package saker.build.trace;
 
 import saker.apiextract.api.PublicApi;
+import saker.build.task.InternalTaskContext;
+import saker.build.task.TaskContextReference;
+import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 
 /**
  * This is the client API class for reporting build trace information.
@@ -27,5 +30,21 @@ public final class BuildTrace {
 			// this should never happen, but handle just in case as we may not throw
 			return InternalBuildTrace.NULL_INSTANCE;
 		}
+	}
+
+	private static InternalTaskBuildTrace getTaskTrace() {
+		try {
+			InternalTaskContext tc = (InternalTaskContext) TaskContextReference.current();
+			if (tc == null) {
+				return InternalTaskBuildTrace.NULL_INSTANCE;
+			}
+			InternalTaskBuildTrace bt = tc.internalGetBuildTrace();
+			if (bt != null) {
+				return bt;
+			}
+		} catch (Exception e) {
+			// this should never happen, but handle just in case as we may not throw
+		}
+		return InternalTaskBuildTrace.NULL_INSTANCE;
 	}
 }

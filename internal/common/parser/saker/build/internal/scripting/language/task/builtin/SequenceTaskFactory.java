@@ -27,6 +27,7 @@ import saker.build.internal.scripting.language.task.SakerLiteralTaskFactory;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
 import saker.build.internal.scripting.language.task.SakerTaskFactory;
 import saker.build.internal.scripting.language.task.SelfSakerTaskFactory;
+import saker.build.internal.scripting.language.task.TaskInvocationSakerTaskFactory;
 import saker.build.internal.scripting.language.task.result.SakerListTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskObjectSakerTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
@@ -53,6 +54,7 @@ public class SequenceTaskFactory extends SelfSakerTaskFactory {
 
 	@Override
 	public SakerTaskResult run(TaskContext taskcontext) throws Exception {
+		taskcontext.setStandardOutDisplayIdentifier(TaskInvocationSakerTaskFactory.TASKNAME_SEQUENCE);
 		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
 		List<StructuredTaskResult> resulttids = new ArrayList<>(elements.size());
 		for (SakerTaskFactory taskfactory : elements) {

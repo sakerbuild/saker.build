@@ -174,6 +174,7 @@ import saker.build.thirdparty.saker.util.thread.ParallelExecutionException;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
 import saker.build.trace.InternalBuildTrace;
+import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 import saker.build.util.exc.ExceptionView;
 import testing.saker.build.flag.TestFlag;
 
@@ -569,6 +570,8 @@ public class TaskExecutionManager {
 
 		protected final ConcurrentPrependAccumulator<ManagerInnerTaskResults<?>> innerTasks = new ConcurrentPrependAccumulator<>();
 
+		protected final InternalTaskBuildTrace taskBuildTrace;
+
 		public TaskExecutorContext(TaskExecutionManager executionManager, TaskIdentifier taskid,
 				ExecutionContextImpl executioncontext, TaskExecutionResult<?> prevTaskResult,
 				TaskExecutionResult<R> taskResult, DependencyDelta deltas, TaskInvocationConfiguration capabalities,
@@ -586,6 +589,13 @@ public class TaskExecutionManager {
 			this.deltas = deltas;
 
 			this.taskDirectoryContext = taskDirectoryContext;
+
+			this.taskBuildTrace = executionManager.buildTrace.taskBuildTrace(taskid, taskResult.getFactory(),
+					taskDirectoryContext, capabilityConfig);
+			this.taskBuildTrace.deltas(deltas.nonFileDeltas);
+			if (deltas.isFileDeltasCalculated()) {
+				this.taskBuildTrace.deltas(deltas.allFileDeltas.getFileDeltas());
+			}
 
 			SakerPath wdirpath = taskDirectoryContext.getTaskWorkingDirectoryPath();
 			SakerPath builddirpath = taskDirectoryContext.getRelativeTaskBuildDirectoryPath();
@@ -900,6 +910,7 @@ public class TaskExecutionManager {
 
 		@Override
 		public void setStandardOutDisplayIdentifier(String displayid) {
+			this.taskBuildTrace.setStandardOutDisplayIdentifier(displayid);
 			this.identifiedStdOut.setIdentifier(displayid);
 		}
 
@@ -1486,7 +1497,7 @@ public class TaskExecutionManager {
 		}
 
 		@SuppressWarnings("try")
-		protected void flushStdStreams() {
+		protected void flushStdStreamsFinalizeExecution() {
 			synchronized (identifiedStdOut) {
 				synchronized (streamFlushingLock) {
 					identifiedStdOut.finishLastLineLocked();
@@ -1519,6 +1530,7 @@ public class TaskExecutionManager {
 					}
 				}
 			}
+			this.taskBuildTrace.close(this, taskResult);
 		}
 
 		protected void finishExecutionDependencies() {
@@ -2169,8 +2181,8 @@ public class TaskExecutionManager {
 		}
 
 		@Override
-		public InternalBuildTrace internalGetBuildTrace() {
-			return executionManager.buildTrace;
+		public InternalTaskBuildTrace internalGetBuildTrace() {
+			return taskBuildTrace;
 		}
 	}
 
@@ -4529,6 +4541,8 @@ public class TaskExecutionManager {
 		//TODO if a created task is also dependency, then it can be just directly added to the results 
 		//     instead of going through the delta checking again
 
+		this.buildTrace.taskUpToDate(prevexecresult);
+
 		runIdeConfigurations.addAll(prevexecresult.getIDEConfigurations());
 
 		TaskIdentifier taskid = prevexecresult.getTaskIdentifier();
@@ -4870,6 +4884,8 @@ public class TaskExecutionManager {
 				TaskExecutionManager.collectFileDependencyDeltas(executorcontext.executionContext, dependencies, this,
 						simpledirectorycontext);
 				fileDeltasCalculated = true;
+
+				executorcontext.taskBuildTrace.deltas(this.allFileDeltas.getFileDeltas());
 			}
 		}
 
@@ -5883,7 +5899,7 @@ public class TaskExecutionManager {
 				taskcontext.finishExecutionDependencies();
 			}
 		} finally {
-			taskcontext.flushStdStreams();
+			taskcontext.flushStdStreamsFinalizeExecution();
 		}
 	}
 

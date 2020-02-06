@@ -58,7 +58,7 @@ import saker.build.task.exception.TaskStandardIOLockIllegalStateException;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
-import saker.build.trace.InternalBuildTrace;
+import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 import saker.build.util.exc.ExceptionView;
 
 class ClusterTaskContext implements TaskContext, InternalTaskContext {
@@ -341,7 +341,7 @@ class ClusterTaskContext implements TaskContext, InternalTaskContext {
 	}
 
 	@Override
-	public InternalBuildTrace internalGetBuildTrace() {
+	public InternalTaskBuildTrace internalGetBuildTrace() {
 		// TODO handle cluster-wise build trace
 		return ((InternalTaskContext) realTaskContext).internalGetBuildTrace();
 	}

@@ -161,18 +161,20 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	private final InternalBuildTrace buildTrace;
 
 	public ExecutionContextImpl(SakerEnvironmentImpl environment, ExecutionParametersImpl parameters) throws Exception {
-		SakerPath buildtraceoutputpath = parameters.getBuildTraceOutputLocalPath();
-		if (buildtraceoutputpath != null) {
-			this.buildTrace = new InternalBuildTraceImpl(buildtraceoutputpath);
-		} else {
-			this.buildTrace = InternalBuildTrace.NULL_INSTANCE;
-		}
 		this.environment = environment;
 		this.buildTimeDateMillis = System.currentTimeMillis();
 
 		parameters = new ExecutionParametersImpl(parameters);
 		parameters.defaultize();
 		this.executionParameters = parameters;
+
+		ProviderHolderPathKey buildtraceoutputpath = parameters.getBuildTraceOutputPathKey();
+		if (buildtraceoutputpath != null) {
+			this.buildTrace = new InternalBuildTraceImpl(buildtraceoutputpath);
+			this.buildTrace.startBuild(environment, this);
+		} else {
+			this.buildTrace = InternalBuildTrace.NULL_INSTANCE;
+		}
 
 		ByteSink pstdout = parameters.getStandardOutput();
 		ByteSink pstderr = parameters.getErrorOutput();
@@ -196,6 +198,8 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	}
 
 	public void initialize(SakerProjectCache project) throws Exception {
+		this.buildTrace.initialize();
+
 		final SakerPath workingdirectorysakerpath = pathConfiguration.getWorkingDirectory();
 		final SakerPath paramsmirrordirectory = executionParameters.getMirrorDirectory();
 		SakerPath builddirectoryabssakerpath = executionParameters.getBuildDirectory();
@@ -339,6 +343,8 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		this.contentDatabase.setProtectionSettings(pathprotectionsettings);
 
 		this.environmentExecutionKey = environment.getStartExecutionKey();
+
+		this.buildTrace.initializeDone(this);
 	}
 
 	@Override
@@ -425,8 +431,10 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 			}
 
 			try {
+				this.buildTrace.startExecute();
 				manager.execute(taskfactory, taskid, this, taskinvokerfactories, buildCacheAccessor, buildTrace);
 			} finally {
+				this.buildTrace.endExecute();
 				results = manager.getTaskResults();
 				resultCollection = manager.getResultCollection();
 				NavigableMap<SakerPath, ScriptInformationProvider> scriptinfoproviders = new TreeMap<>(
@@ -484,10 +492,6 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 	public SakerFileProvider getRootFileProvider(String root) {
 		return pathConfiguration.getRootFileProvider(root);
-	}
-
-	public final long getBuildTimeDateMillis() {
-		return buildTimeDateMillis;
 	}
 
 	public ByteSource getStandardIn() {

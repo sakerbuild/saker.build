@@ -22,6 +22,7 @@ import java.util.Map;
 
 import saker.build.cache.BuildDataCache;
 import saker.build.file.path.PathKey;
+import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.LocalFileProvider;
 import saker.build.file.provider.SakerPathFiles;
@@ -77,7 +78,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 
 	private long deadlockPollingFrequencyMillis = 3000;
 
-	private SakerPath buildTraceOutputLocalPath;
+	private ProviderHolderPathKey buildTraceOutputPathKey;
 
 	public ExecutionParametersImpl() {
 	}
@@ -102,7 +103,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		this.secretInputReader = copy.secretInputReader;
 		this.userPrompHandler = copy.userPrompHandler;
 		this.deadlockPollingFrequencyMillis = copy.deadlockPollingFrequencyMillis;
-		this.buildTraceOutputLocalPath = copy.buildTraceOutputLocalPath;
+		this.buildTraceOutputPathKey = copy.buildTraceOutputPathKey;
 	}
 
 	public void defaultize() throws IOException {
@@ -220,8 +221,8 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		return buildDataCache;
 	}
 
-	public SakerPath getBuildTraceOutputLocalPath() {
-		return buildTraceOutputLocalPath;
+	public ProviderHolderPathKey getBuildTraceOutputPathKey() {
+		return buildTraceOutputPathKey;
 	}
 
 	public void setDeadlockPollingFrequencyMillis(long deadlockPollingFrequencyMillis) {
@@ -316,8 +317,8 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		this.buildDataCache = buildCache;
 	}
 
-	public void setBuildTraceOutputLocalPath(SakerPath buildTraceOutputLocalPath) {
-		this.buildTraceOutputLocalPath = buildTraceOutputLocalPath;
+	public void setBuildTraceOutputPathKey(ProviderHolderPathKey buildTraceOutputPathKey) {
+		this.buildTraceOutputPathKey = buildTraceOutputPathKey;
 	}
 
 	private static class TimedPollingProgressMonitor implements ExecutionProgressMonitor {
@@ -398,6 +399,8 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 			SerialUtils.writeExternalMap(out, params.userParameters);
 
 			out.writeLong(params.deadlockPollingFrequencyMillis);
+
+			out.writeObject(params.buildTraceOutputPathKey);
 		}
 
 		@Override
@@ -433,6 +436,8 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 			params.userParameters = SerialUtils.readExternalImmutableLinkedHashMap(in);
 
 			params.deadlockPollingFrequencyMillis = in.readLong();
+
+			params.buildTraceOutputPathKey = (ProviderHolderPathKey) in.readObject();
 		}
 
 		@Override
