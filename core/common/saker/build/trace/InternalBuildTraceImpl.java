@@ -1,7 +1,11 @@
 package saker.build.trace;
 
 import java.io.DataOutputStream;
+import java.io.Externalizable;
 import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
+import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.util.Collection;
@@ -9,25 +13,42 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.NavigableMap;
+import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
+import saker.build.file.SakerFile;
+import saker.build.file.path.PathKey;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
+import saker.build.file.provider.LocalFileProvider;
 import saker.build.file.provider.SakerFileProvider;
+import saker.build.file.provider.SakerPathFiles;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionContextImpl;
+import saker.build.scripting.ScriptParsingOptions;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskDirectoryPathContext;
 import saker.build.task.TaskExecutionResult;
+import saker.build.task.TaskExecutionResult.FileDependencies;
 import saker.build.task.TaskFactory;
 import saker.build.task.TaskInvocationConfiguration;
 import saker.build.task.delta.BuildDelta;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSink;
+import saker.build.thirdparty.saker.util.io.ByteSource;
+import saker.build.thirdparty.saker.util.io.SerialUtils;
+import saker.build.thirdparty.saker.util.io.UnsyncByteArrayInputStream;
+import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 
 public class InternalBuildTraceImpl implements InternalBuildTrace {
 	public static final int MAGIC = 0x45a8f96a;
@@ -42,7 +63,8 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 	public static final byte TYPE_STRING = 7;
 	public static final byte TYPE_NULL = 8;
 	public static final byte TYPE_ARRAY_NULL_BOUNDED = 9;
-	public static final byte TYPE_OBJECT_NULL_BOUNDED = 10;
+	public static final byte TYPE_OBJECT_EMPTY_BOUNDED = 10;
+	public static final byte TYPE_BYTE_ARRAY = 11;
 
 	private static final InheritableThreadLocal<WeakReference<InternalBuildTraceImpl>> baseReferenceThreadLocal = new InheritableThreadLocal<>();
 
@@ -53,7 +75,7 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 	private final ProviderHolderPathKey buildTraceOutputPathKey;
 	private final transient WeakReference<InternalBuildTraceImpl> baseReference;
 
-	private Map<String, String> environmentUserParameters;
+	private EnvironmentInformation localEnvironmentInformation;
 	private Map<String, String> executionUserParameters;
 	private long buildTimeDateMillis;
 	private long startNanos;
@@ -66,10 +88,15 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 	private SakerPath workingDirectoryPath;
 	private SakerPath buildDirectoryPath;
 
+	private NavigableMap<String, PathKey> rootsPathKey = new TreeMap<>();
+	/**
+	 * Maps {@link EnvironmentInformation#machineFileProviderUUID} to informations.
+	 */
+	private NavigableMap<UUID, EnvironmentInformation> environmentInformations = new ConcurrentSkipListMap<>();
+
 	public InternalBuildTraceImpl(ProviderHolderPathKey buildtraceoutput) {
 		this.buildTraceOutputPathKey = buildtraceoutput;
 		this.baseReference = new WeakReference<>(this);
-		baseReferenceThreadLocal.set(baseReference);
 	}
 
 	@Override
@@ -88,9 +115,13 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 
 	@Override
 	public void startBuild(SakerEnvironmentImpl environment, ExecutionContextImpl executioncontext) {
+		baseReferenceThreadLocal.set(baseReference);
+
 		this.startNanos = System.nanoTime();
 		this.buildTimeDateMillis = executioncontext.getBuildTimeMillis();
-		this.environmentUserParameters = environment.getUserParameters();
+
+		localEnvironmentInformation = new EnvironmentInformation(environment);
+		environmentInformations.put(localEnvironmentInformation.machineFileProviderUUID, localEnvironmentInformation);
 	}
 
 	@Override
@@ -98,6 +129,11 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 		this.executionUserParameters = executioncontext.getUserParameters();
 		this.workingDirectoryPath = executioncontext.getWorkingDirectoryPath();
 		this.buildDirectoryPath = executioncontext.getBuildDirectoryPath();
+		for (Entry<String, SakerFileProvider> entry : executioncontext.getPathConfiguration().getRootFileProviders()
+				.entrySet()) {
+			rootsPathKey.put(entry.getKey(),
+					SakerPathFiles.getPathKey(entry.getValue(), SakerPath.valueOf(entry.getKey())));
+		}
 	}
 
 	@Override
@@ -141,8 +177,6 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 			writeFieldName(os, "phase_finalize");
 			writeLong(os, (endNanos - endExecutionNanos) / 1_000_000);
 
-			writeFieldName(os, "env_user_params");
-			writeObject(os, environmentUserParameters);
 			writeFieldName(os, "exec_user_params");
 			writeObject(os, executionUserParameters);
 
@@ -151,14 +185,76 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 			writeFieldName(os, "build_dir");
 			writeTypedObject(os, Objects.toString(buildDirectoryPath, null));
 
+			writeFieldName(os, "execution_machine_uuid");
+			writeString(os, localEnvironmentInformation.machineFileProviderUUID.toString());
+
+			writeFieldName(os, "environments");
+			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+			for (Entry<UUID, EnvironmentInformation> entry : environmentInformations.entrySet()) {
+				writeFieldName(os, "user_params");
+				EnvironmentInformation envinfo = entry.getValue();
+				writeObject(os, envinfo.environmentUserParameters);
+
+				writeFieldName(os, "machine_uuid");
+				writeString(os, envinfo.machineFileProviderUUID.toString());
+
+				writeFieldName(os, "env_uuid");
+				writeString(os, envinfo.buildEnvironmentUUID.toString());
+
+				writeFieldName(os, "os_name");
+				writeString(os, envinfo.osName);
+				writeFieldName(os, "os_version");
+				writeString(os, envinfo.osVersion);
+				writeFieldName(os, "os_arch");
+				writeString(os, envinfo.osArch);
+				writeFieldName(os, "java_version");
+				writeString(os, envinfo.javaVersion);
+				writeFieldName(os, "java_vm_vendor");
+				writeString(os, envinfo.javaVmVendor);
+				writeFieldName(os, "java_vm_name");
+				writeString(os, envinfo.javaVmName);
+				writeFieldName(os, "processors");
+				writeInt(os, envinfo.availableProcessors);
+			}
+			writeFieldName(os, "");
+
+			writeFieldName(os, "scripts");
+			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+			for (TaskBuildTraceImpl ttrace : taskBuildTraces.values()) {
+				if (ttrace.traceInfo == null) {
+					continue;
+				}
+				for (Entry<SakerPath, ByteArrayRegion> entry : ttrace.traceInfo.readScriptContents.entrySet()) {
+					writeFieldName(os, entry.getKey().toString());
+					writeByteArray(os, entry.getValue());
+				}
+			}
+			writeFieldName(os, "");
+
+			writeFieldName(os, "path_config");
+			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+			for (Entry<String, PathKey> entry : rootsPathKey.entrySet()) {
+				writeFieldName(os, entry.getKey());
+
+				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+
+				writeFieldName(os, "file_provider");
+				writeString(os, entry.getValue().getFileProviderKey().getUUID().toString());
+				writeFieldName(os, "path");
+				writeString(os, entry.getValue().getPath().toString());
+
+				writeFieldName(os, "");
+			}
+			writeFieldName(os, "");
+
 			writeFieldName(os, "tasks");
 			os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
 			for (Entry<TaskIdentifier, TaskBuildTraceImpl> entry : taskBuildTraces.entrySet()) {
 				TaskBuildTraceImpl ttrace = entry.getValue();
-				os.writeByte(TYPE_OBJECT_NULL_BOUNDED);
-				if (ttrace.standardOutDisplayIdentifier != null) {
+				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+				if (ttrace.traceInfo.standardOutDisplayIdentifier != null) {
 					writeFieldName(os, "display");
-					writeTypedObject(os, ttrace.standardOutDisplayIdentifier);
+					writeTypedObject(os, ttrace.traceInfo.standardOutDisplayIdentifier);
 				}
 
 				writeFieldName(os, "start");
@@ -174,6 +270,23 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 					os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
 					for (BuildDelta d : ttrace.deltas) {
 						writeString(os, d.getType().name());
+					}
+					writeNull(os);
+				}
+
+				if (!ObjectUtils.isNullOrEmpty(ttrace.inputFiles)) {
+					writeFieldName(os, "input_files");
+					os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
+					for (SakerPath f : ttrace.inputFiles) {
+						writeString(os, f.toString());
+					}
+					writeNull(os);
+				}
+				if (!ObjectUtils.isNullOrEmpty(ttrace.outputFiles)) {
+					writeFieldName(os, "output_files");
+					os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
+					for (SakerPath f : ttrace.outputFiles) {
+						writeString(os, f.toString());
 					}
 					writeNull(os);
 				}
@@ -204,6 +317,12 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 
 	private static void writeNull(DataOutputStream os) throws IOException {
 		os.writeByte(TYPE_NULL);
+	}
+
+	private static void writeByteArray(DataOutputStream os, ByteArrayRegion bytes) throws IOException {
+		os.writeByte(TYPE_BYTE_ARRAY);
+		os.writeInt(bytes.getLength());
+		bytes.writeTo((OutputStream) os);
 	}
 
 	private static void writeArray(DataOutputStream os, Object o) throws IOException {
@@ -262,7 +381,7 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 			writeNull(os);
 			return;
 		}
-		os.writeByte(TYPE_OBJECT_NULL_BOUNDED);
+		os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
 		for (Entry<String, ?> entry : o.entrySet()) {
 			writeFieldName(os, entry.getKey());
 			writeTypedObject(os, entry.getValue());
@@ -340,9 +459,11 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 	}
 
 	private TaskBuildTraceImpl upToDateTaskTrace(TaskExecutionResult<?> taskresult) {
-		TaskBuildTraceImpl result = new TaskBuildTraceImpl(taskresult.getFactory());
+		TaskBuildTraceImpl result = new TaskBuildTraceImpl(taskresult.getFactory(),
+				(TaskBuildTraceInfo) taskresult.getBuildTraceInfo());
 		result.endNanos = result.startNanos;
 		result.deltas = Collections.emptySet();
+		result.collectFileDependencies(taskresult);
 		return result;
 	}
 
@@ -350,15 +471,20 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 		protected final int eventId;
 		protected long startNanos;
 		protected long endNanos;
-		protected String standardOutDisplayIdentifier;
 		protected Class<? extends TaskFactory<?>> taskClass;
+
+		protected TaskBuildTraceInfo traceInfo;
 
 		protected Set<BuildDelta> deltas = new LinkedHashSet<>();
 		protected SakerPath workingDirectory;
 		protected SakerPath buildDirectory;
 
+		protected NavigableSet<SakerPath> inputFiles;
+		protected NavigableSet<SakerPath> outputFiles;
+
 		@SuppressWarnings("unchecked")
-		public TaskBuildTraceImpl(TaskFactory<?> taskfactory) {
+		public TaskBuildTraceImpl(TaskFactory<?> taskfactory, TaskBuildTraceInfo traceInfo) {
+			this.traceInfo = traceInfo;
 			this.eventId = AIFU_eventCounter.incrementAndGet(InternalBuildTraceImpl.this);
 			this.startNanos = System.nanoTime();
 			this.taskClass = (Class<? extends TaskFactory<?>>) taskfactory.getClass();
@@ -366,14 +492,14 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 
 		public TaskBuildTraceImpl(TaskFactory<?> taskfactory, TaskDirectoryPathContext taskDirectoryContext,
 				TaskInvocationConfiguration capabilityConfig) {
-			this(taskfactory);
+			this(taskfactory, new TaskBuildTraceInfo());
 			this.workingDirectory = taskDirectoryContext.getTaskWorkingDirectoryPath();
 			this.buildDirectory = taskDirectoryContext.getTaskBuildDirectoryPath();
 		}
 
 		@Override
 		public void setStandardOutDisplayIdentifier(String displayid) {
-			this.standardOutDisplayIdentifier = displayid;
+			traceInfo.standardOutDisplayIdentifier = displayid;
 		}
 
 		@Override
@@ -382,8 +508,111 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 		}
 
 		@Override
+		public ByteSource openTargetConfigurationReadingInput(ScriptParsingOptions parsingoptions, SakerFile file)
+				throws IOException {
+			ByteArrayRegion filebytes = file.getBytes();
+			traceInfo.readScriptContents.put(parsingoptions.getScriptPath(), filebytes);
+			return new UnsyncByteArrayInputStream(filebytes);
+		}
+
+		@Override
 		public void close(TaskContext taskcontext, TaskExecutionResult<?> taskresult) {
 			this.endNanos = System.nanoTime();
+			taskresult.setBuildTraceInfo(traceInfo);
+			collectFileDependencies(taskresult);
+		}
+
+		protected void collectFileDependencies(TaskExecutionResult<?> taskresult) {
+			this.inputFiles = new TreeSet<>();
+			this.outputFiles = new TreeSet<>();
+			for (Entry<Object, FileDependencies> entry : taskresult.getDependencies().getTaggedFileDependencies()
+					.entrySet()) {
+				inputFiles.addAll(entry.getValue().getInputFileDependencies().navigableKeySet());
+				outputFiles.addAll(entry.getValue().getOutputFileDependencies().navigableKeySet());
+			}
+		}
+	}
+
+	private static final class TaskBuildTraceInfo implements Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		protected String standardOutDisplayIdentifier;
+		protected NavigableMap<SakerPath, ByteArrayRegion> readScriptContents = new ConcurrentSkipListMap<>();
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public TaskBuildTraceInfo() {
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			out.writeObject(standardOutDisplayIdentifier);
+			SerialUtils.writeExternalMap(out, readScriptContents);
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			standardOutDisplayIdentifier = (String) in.readObject();
+			readScriptContents = SerialUtils.readExternalSortedImmutableNavigableMap(in);
+		}
+	}
+
+	private static class EnvironmentInformation implements Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		protected UUID machineFileProviderUUID;
+		protected UUID buildEnvironmentUUID;
+		protected Map<String, String> environmentUserParameters;
+
+		protected String osName;
+		protected String osVersion;
+		protected String osArch;
+		protected String javaVersion;
+		protected String javaVmVendor;
+		protected String javaVmName;
+
+		protected int availableProcessors;
+
+		public EnvironmentInformation(SakerEnvironmentImpl environment) {
+			this.environmentUserParameters = environment.getUserParameters();
+			this.machineFileProviderUUID = LocalFileProvider.getProviderKeyStatic().getUUID();
+			this.buildEnvironmentUUID = environment.getEnvironmentIdentifier();
+			this.availableProcessors = Runtime.getRuntime().availableProcessors();
+			this.osName = System.getProperty("os.name");
+			this.osVersion = System.getProperty("os.version");
+			this.osArch = System.getProperty("os.arch");
+			this.javaVersion = System.getProperty("java.version");
+			this.javaVmVendor = System.getProperty("java.vm.vendor");
+			this.javaVmName = System.getProperty("java.vm.name");
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			out.writeObject(machineFileProviderUUID);
+			out.writeObject(buildEnvironmentUUID);
+			SerialUtils.writeExternalMap(out, environmentUserParameters);
+			out.writeObject(osName);
+			out.writeObject(osVersion);
+			out.writeObject(osArch);
+			out.writeObject(javaVersion);
+			out.writeObject(javaVmVendor);
+			out.writeObject(javaVmName);
+			out.writeInt(availableProcessors);
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			machineFileProviderUUID = (UUID) in.readObject();
+			buildEnvironmentUUID = (UUID) in.readObject();
+			environmentUserParameters = SerialUtils.readExternalImmutableNavigableMap(in);
+			osName = (String) in.readObject();
+			osVersion = (String) in.readObject();
+			osArch = (String) in.readObject();
+			javaVersion = (String) in.readObject();
+			javaVmVendor = (String) in.readObject();
+			javaVmName = (String) in.readObject();
+			availableProcessors = in.readInt();
 		}
 	}
 }

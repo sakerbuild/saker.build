@@ -713,6 +713,11 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		return new FilePathContents(file.getSakerPath(), file.getContentDescriptor());
 	}
 
+	@Override
+	public InternalBuildTrace internalGetBuildTrace() {
+		return this.buildTrace;
+	}
+
 	private ScriptInformationProvider internalGetScriptInformationProviderForTaskScriptPosition(
 			SakerPath buildfilepath) {
 		TargetConfigurationReadingResult res = scriptCache.get(buildfilepath);
