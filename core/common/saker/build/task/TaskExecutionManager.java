@@ -470,7 +470,7 @@ public class TaskExecutionManager {
 	}
 
 	//XXX issue a warning if a file is reported multiple times as output
-	private static final class TaskExecutorContext<R>
+	protected static final class TaskExecutorContext<R>
 			implements TaskContext, TaskExecutionUtilities, InternalTaskContext {
 
 		@SuppressWarnings("rawtypes")
@@ -1530,6 +1530,7 @@ public class TaskExecutionManager {
 					}
 				}
 			}
+			this.taskBuildTrace.closeStandardIO(stdOut, stdErr);
 			this.taskBuildTrace.close(this, taskResult);
 		}
 

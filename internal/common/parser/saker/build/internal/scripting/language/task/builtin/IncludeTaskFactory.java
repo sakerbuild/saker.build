@@ -40,6 +40,7 @@ import saker.build.task.utils.TaskUtils;
 import saker.build.task.utils.annot.SakerInput;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
+import saker.build.trace.BuildTrace;
 
 public class IncludeTaskFactory extends SelfSakerTaskFactory {
 	private static final long serialVersionUID = 1L;
@@ -91,6 +92,7 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 				data.Target, data.targetInvocationParameters, workdir, SakerPath.EMPTY);
 		SakerTaskResult result = new TaskInvocationOutputSakerTaskResult(includetaskid);
 		taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
+		BuildTrace.classifyFrontendTask(includetaskid);
 		return result;
 	}
 

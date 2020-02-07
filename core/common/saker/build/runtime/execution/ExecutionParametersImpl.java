@@ -15,10 +15,15 @@
  */
 package saker.build.runtime.execution;
 
+import java.io.Externalizable;
 import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
+import java.util.NavigableMap;
+import java.util.UUID;
 
 import saker.build.cache.BuildDataCache;
 import saker.build.file.path.PathKey;
@@ -80,6 +85,8 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 
 	private ProviderHolderPathKey buildTraceOutputPathKey;
 
+	private BuildInformation buildInfo;
+
 	public ExecutionParametersImpl() {
 	}
 
@@ -104,6 +111,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		this.userPrompHandler = copy.userPrompHandler;
 		this.deadlockPollingFrequencyMillis = copy.deadlockPollingFrequencyMillis;
 		this.buildTraceOutputPathKey = copy.buildTraceOutputPathKey;
+		this.buildInfo = copy.buildInfo;
 	}
 
 	public void defaultize() throws IOException {
@@ -225,6 +233,10 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		return buildTraceOutputPathKey;
 	}
 
+	public BuildInformation getBuildInfo() {
+		return buildInfo;
+	}
+
 	public void setDeadlockPollingFrequencyMillis(long deadlockPollingFrequencyMillis) {
 		this.deadlockPollingFrequencyMillis = deadlockPollingFrequencyMillis;
 	}
@@ -321,6 +333,37 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		this.buildTraceOutputPathKey = buildTraceOutputPathKey;
 	}
 
+	public void setBuildInfo(BuildInformation buildInfo) {
+		this.buildInfo = buildInfo;
+	}
+
+	public static class BuildInformation implements Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		private NavigableMap<String, UUID> connectedMachineNames;
+
+		public BuildInformation() {
+		}
+
+		public NavigableMap<String, UUID> getConnectedMachineNames() {
+			return connectedMachineNames;
+		}
+
+		public void setConnectedMachineNames(NavigableMap<String, UUID> connectedMachineNames) {
+			this.connectedMachineNames = connectedMachineNames;
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			SerialUtils.writeExternalMap(out, connectedMachineNames);
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			connectedMachineNames = SerialUtils.readExternalSortedImmutableNavigableMap(in);
+		}
+	}
+
 	private static class TimedPollingProgressMonitor implements ExecutionProgressMonitor {
 		private final ExecutionProgressMonitor subject;
 		private volatile boolean cancelled = false;
@@ -401,6 +444,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 			out.writeLong(params.deadlockPollingFrequencyMillis);
 
 			out.writeObject(params.buildTraceOutputPathKey);
+			out.writeObject(params.buildInfo);
 		}
 
 		@Override
@@ -438,6 +482,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 			params.deadlockPollingFrequencyMillis = in.readLong();
 
 			params.buildTraceOutputPathKey = (ProviderHolderPathKey) in.readObject();
+			params.buildInfo = (BuildInformation) in.readObject();
 		}
 
 		@Override

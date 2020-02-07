@@ -42,6 +42,7 @@ import java.util.NavigableSet;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 import javax.net.SocketFactory;
@@ -76,6 +77,7 @@ import saker.build.runtime.environment.BuildTaskExecutionResult;
 import saker.build.runtime.environment.EnvironmentParameters;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionParametersImpl;
+import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation;
 import saker.build.runtime.execution.SakerLog.CommonExceptionFormat;
 import saker.build.runtime.execution.SakerLog.ExceptionFormat;
 import saker.build.runtime.execution.SecretInputReader;
@@ -427,6 +429,8 @@ public class BuildCommand {
 	 * The build trace can be viewed in a browser, by navigating to:
 	 *     https://saker.build/buildtrace
 	 * and opening it on the page.
+	 * (The build trace can be viewed offline, it won't be transferred 
+	 * to our servers.)
 	 * </pre>
 	 */
 	@Parameter("-trace")
@@ -728,6 +732,18 @@ public class BuildCommand {
 		ExecutionPathConfiguration pathconfiguration = createPathConfiguration(remoteenv, localenv, workingdir,
 				connections);
 		params.setPathConfiguration(pathconfiguration);
+
+		BuildInformation buildinfo = new BuildInformation();
+		if (!ObjectUtils.isNullOrEmpty(connections)) {
+			//XXX this information retrieval could be done multi-threadingly as it may involve multiple RMI calls
+			TreeMap<String, UUID> machinesinfo = new TreeMap<>();
+			for (Entry<String, ? extends RemoteDaemonConnection> entry : connections.entrySet()) {
+				machinesinfo.put(entry.getKey(), SakerPathFiles
+						.getRootFileProviderKey(entry.getValue().getDaemonEnvironment().getFileProvider()).getUUID());
+			}
+			buildinfo.setConnectedMachineNames(machinesinfo);
+		}
+		params.setBuildInfo(buildinfo);
 
 		DatabaseConfiguration databaseconfiguration;
 		if (databaseConfigCollector.isEmpty()) {

@@ -21,7 +21,9 @@ import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
+import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
+import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import saker.build.util.exc.ExceptionView;
 
 public interface InternalBuildTrace extends Closeable {
@@ -108,12 +110,24 @@ public interface InternalBuildTrace extends Closeable {
 		public default void deltas(Set<? extends BuildDelta> deltas) {
 		}
 
+		public default void closeStandardIO(UnsyncByteArrayOutputStream stdout, UnsyncByteArrayOutputStream stderr) {
+		}
+
 		public default void close(TaskContext taskcontext, TaskExecutionResult<?> taskresult) {
 		}
 
 		public default ByteSource openTargetConfigurationReadingInput(ScriptParsingOptions parsingoptions,
 				SakerFile file) throws IOException {
 			return file.openByteSource();
+		}
+
+		public default void startTaskExecution() {
+		}
+
+		public default void endTaskExecution() {
+		}
+
+		public default void classifyFrontendTask(TaskIdentifier workertaskid) {
 		}
 	}
 

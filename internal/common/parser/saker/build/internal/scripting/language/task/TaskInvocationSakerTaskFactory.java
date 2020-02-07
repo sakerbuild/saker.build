@@ -50,6 +50,7 @@ import saker.build.task.utils.TaskInvocationBootstrapperTaskFactory;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
+import saker.build.trace.BuildTrace;
 
 public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 	public static final String TASKNAME_ABORT = "abort";
@@ -323,6 +324,7 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 
 		TaskIdentifier invokertaskid = TaskInvocationBootstrapperTaskFactory.runBootstrapping(taskcontext,
 				targettaskname, parametertaskids, repository, null);
+		BuildTrace.classifyFrontendTask(invokertaskid);
 		TaskInvocationOutputSakerTaskResult result = new TaskInvocationOutputSakerTaskResult(invokertaskid);
 		taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
 		return result;

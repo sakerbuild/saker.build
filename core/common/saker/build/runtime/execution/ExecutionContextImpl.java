@@ -554,7 +554,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		return buildDirectoryPath;
 	}
 
-	public ExecutionParameters getExecutionParameters() {
+	public ExecutionParametersImpl getExecutionParameters() {
 		return executionParameters;
 	}
 
