@@ -22,10 +22,9 @@ import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.thirdparty.saker.util.io.ByteSource;
+import saker.build.util.exc.ExceptionView;
 
 public interface InternalBuildTrace extends Closeable {
-	public static final InternalBuildTrace NULL_INSTANCE = NullInternalBuildTrace.INSTANCE;
-
 	public static InternalBuildTrace current() {
 		return InternalBuildTraceImpl.current();
 	}
@@ -51,7 +50,10 @@ public interface InternalBuildTrace extends Closeable {
 
 	public default InternalTaskBuildTrace taskBuildTrace(TaskIdentifier taskid, TaskFactory<?> taskfactory,
 			TaskDirectoryPathContext taskDirectoryContext, TaskInvocationConfiguration capabilityConfig) {
-		return InternalTaskBuildTrace.NULL_INSTANCE;
+		return NullInternalBuildTrace.INSTANCE;
+	}
+
+	public default void ignoredException(TaskIdentifier taskid, ExceptionView e) {
 	}
 
 	public default void taskUpToDate(TaskExecutionResult<?> prevexecresult) {
@@ -84,13 +86,11 @@ public interface InternalBuildTrace extends Closeable {
 	}
 
 	public interface InternalTaskBuildTrace {
-		public static final InternalTaskBuildTrace NULL_INSTANCE = NullInternalBuildTrace.INSTANCE;
-
 		public static InternalTaskBuildTrace current() {
 			try {
 				InternalTaskContext tc = (InternalTaskContext) TaskContextReference.current();
 				if (tc == null) {
-					return InternalTaskBuildTrace.NULL_INSTANCE;
+					return NullInternalBuildTrace.INSTANCE;
 				}
 				InternalTaskBuildTrace bt = tc.internalGetBuildTrace();
 				if (bt != null) {
@@ -99,7 +99,7 @@ public interface InternalBuildTrace extends Closeable {
 			} catch (Exception e) {
 				// this should never happen, but handle just in case as we may not throw
 			}
-			return InternalTaskBuildTrace.NULL_INSTANCE;
+			return NullInternalBuildTrace.INSTANCE;
 		}
 
 		public default void setStandardOutDisplayIdentifier(String displayid) {

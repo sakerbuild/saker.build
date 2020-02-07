@@ -2,6 +2,7 @@ package saker.build.trace;
 
 import saker.apiextract.api.PublicApi;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
+import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
 
 /**
  * This is the client API class for reporting build trace information.
@@ -26,7 +27,7 @@ public final class BuildTrace {
 			return InternalBuildTrace.current();
 		} catch (Exception e) {
 			// this should never happen, but handle just in case as we may not throw
-			return InternalBuildTrace.NULL_INSTANCE;
+			return NullInternalBuildTrace.INSTANCE;
 		}
 	}
 

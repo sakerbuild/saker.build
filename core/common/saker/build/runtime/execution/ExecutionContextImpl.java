@@ -98,6 +98,7 @@ import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.trace.InternalBuildTrace;
 import saker.build.trace.InternalBuildTraceImpl;
+import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
 import saker.build.util.exc.ExceptionView;
 import saker.build.util.property.ScriptParsingConfigurationExecutionProperty;
 
@@ -173,7 +174,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 			this.buildTrace = new InternalBuildTraceImpl(buildtraceoutputpath);
 			this.buildTrace.startBuild(environment, this);
 		} else {
-			this.buildTrace = InternalBuildTrace.NULL_INSTANCE;
+			this.buildTrace = NullInternalBuildTrace.INSTANCE;
 		}
 
 		ByteSink pstdout = parameters.getStandardOutput();

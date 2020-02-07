@@ -14,7 +14,6 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
-import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
@@ -36,19 +35,24 @@ import saker.build.runtime.execution.ExecutionContextImpl;
 import saker.build.scripting.ScriptParsingOptions;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskDirectoryPathContext;
+import saker.build.task.TaskExecutionEnvironmentSelector;
 import saker.build.task.TaskExecutionResult;
 import saker.build.task.TaskExecutionResult.FileDependencies;
+import saker.build.task.TaskExecutionResult.TaskDependencies;
 import saker.build.task.TaskFactory;
 import saker.build.task.TaskInvocationConfiguration;
 import saker.build.task.delta.BuildDelta;
+import saker.build.task.delta.FileChangeDelta;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayInputStream;
-import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
+import saker.build.util.exc.ExceptionView;
+import testing.saker.build.flag.TestFlag;
 
 public class InternalBuildTraceImpl implements InternalBuildTrace {
 	public static final int MAGIC = 0x45a8f96a;
@@ -65,12 +69,18 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 	public static final byte TYPE_ARRAY_NULL_BOUNDED = 9;
 	public static final byte TYPE_OBJECT_EMPTY_BOUNDED = 10;
 	public static final byte TYPE_BYTE_ARRAY = 11;
+	public static final byte TYPE_BOOLEAN_TRUE = 12;
+	public static final byte TYPE_BOOLEAN_FALSE = 13;
 
 	private static final InheritableThreadLocal<WeakReference<InternalBuildTraceImpl>> baseReferenceThreadLocal = new InheritableThreadLocal<>();
 
 	private static final AtomicIntegerFieldUpdater<InternalBuildTraceImpl> AIFU_eventCounter = AtomicIntegerFieldUpdater
 			.newUpdater(InternalBuildTraceImpl.class, "eventCounter");
 	private volatile int eventCounter;
+
+	private static final AtomicIntegerFieldUpdater<InternalBuildTraceImpl> AIFU_traceTaskIdCounter = AtomicIntegerFieldUpdater
+			.newUpdater(InternalBuildTraceImpl.class, "traceTaskIdCounter");
+	private volatile int traceTaskIdCounter;
 
 	private final ProviderHolderPathKey buildTraceOutputPathKey;
 	private final transient WeakReference<InternalBuildTraceImpl> baseReference;
@@ -94,6 +104,8 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 	 */
 	private NavigableMap<UUID, EnvironmentInformation> environmentInformations = new ConcurrentSkipListMap<>();
 
+	private ConcurrentPrependAccumulator<ExceptionView> ignoredExceptions = new ConcurrentPrependAccumulator<>();
+
 	public InternalBuildTraceImpl(ProviderHolderPathKey buildtraceoutput) {
 		this.buildTraceOutputPathKey = buildtraceoutput;
 		this.baseReference = new WeakReference<>(this);
@@ -102,15 +114,28 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 	@Override
 	public InternalTaskBuildTrace taskBuildTrace(TaskIdentifier taskid, TaskFactory<?> taskfactory,
 			TaskDirectoryPathContext taskDirectoryContext, TaskInvocationConfiguration capabilityConfig) {
-		TaskBuildTraceImpl trace = new TaskBuildTraceImpl(taskfactory, taskDirectoryContext, capabilityConfig);
-		taskBuildTraces.put(taskid, trace);
+		TaskBuildTraceImpl trace = getTaskTraceForTaskId(taskid);
+		trace.start(taskfactory, taskDirectoryContext, capabilityConfig);
 		return trace;
+	}
+
+	private TaskBuildTraceImpl getTaskTraceForTaskId(TaskIdentifier taskid) {
+		return taskBuildTraces.computeIfAbsent(taskid, x -> new TaskBuildTraceImpl());
 	}
 
 	@Override
 	public void taskUpToDate(TaskExecutionResult<?> prevexecresult) {
-		TaskBuildTraceImpl trace = upToDateTaskTrace(prevexecresult);
-		taskBuildTraces.put(prevexecresult.getTaskIdentifier(), trace);
+		TaskBuildTraceImpl trace = getTaskTraceForTaskId(prevexecresult.getTaskIdentifier());
+		trace.upToDate(prevexecresult);
+	}
+
+	@Override
+	public void ignoredException(TaskIdentifier taskid, ExceptionView e) {
+		// TODO Auto-generated method stub
+		if (taskid == null) {
+			ignoredExceptions.add(e);
+			return;
+		}
 	}
 
 	@Override
@@ -252,10 +277,9 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 			for (Entry<TaskIdentifier, TaskBuildTraceImpl> entry : taskBuildTraces.entrySet()) {
 				TaskBuildTraceImpl ttrace = entry.getValue();
 				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
-				if (ttrace.traceInfo.standardOutDisplayIdentifier != null) {
-					writeFieldName(os, "display");
-					writeTypedObject(os, ttrace.traceInfo.standardOutDisplayIdentifier);
-				}
+
+				writeFieldName(os, "trace_id");
+				writeInt(os, ttrace.taskTraceId);
 
 				writeFieldName(os, "start");
 				writeLong(os, (ttrace.startNanos - this.startNanos) / 1_000_000);
@@ -265,30 +289,93 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 				writeFieldName(os, "task_class");
 				writeString(os, ttrace.taskClass.getName());
 
+				if (ttrace.traceInfo != null) {
+					if (ttrace.traceInfo.standardOutDisplayIdentifier != null) {
+						writeFieldName(os, "display");
+						writeTypedObject(os, ttrace.traceInfo.standardOutDisplayIdentifier);
+					}
+
+					if (ttrace.traceInfo.computationTokenCount > 0) {
+						writeFieldName(os, "cpu_tokens");
+						writeInt(os, ttrace.traceInfo.computationTokenCount);
+					}
+					if (ttrace.traceInfo.cacheable) {
+						writeFieldName(os, "cacheable");
+						writeBoolean(os, true);
+					}
+					if (ttrace.traceInfo.innerTasksComputationals) {
+						writeFieldName(os, "inner_task_computational");
+						writeBoolean(os, true);
+					}
+					if (ttrace.traceInfo.remoteDispatchable) {
+						writeFieldName(os, "remote_dispatchable");
+						writeBoolean(os, true);
+					}
+					if (ttrace.traceInfo.shortTask) {
+						writeFieldName(os, "short_task");
+						writeBoolean(os, true);
+					}
+				}
+
+				if (!Objects.equals(workingDirectoryPath, ttrace.workingDirectory)) {
+					writeFieldName(os, "working_dir");
+					writeString(os, Objects.toString(ttrace.workingDirectory, null));
+				}
+				if (!Objects.equals(buildDirectoryPath, ttrace.buildDirectory)) {
+					writeFieldName(os, "build_dir");
+					writeString(os, Objects.toString(ttrace.buildDirectory, null));
+				}
+
 				if (!ObjectUtils.isNullOrEmpty(ttrace.deltas)) {
 					writeFieldName(os, "deltas");
 					os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
 					for (BuildDelta d : ttrace.deltas) {
-						writeString(os, d.getType().name());
+						switch (d.getType()) {
+							case INPUT_FILE_ADDITION:
+							case INPUT_FILE_CHANGE:
+							case OUTPUT_FILE_CHANGE: {
+								os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+								writeFieldName(os, "type");
+								writeString(os, d.getType().name());
+
+								writeFieldName(os, "file");
+								writeString(os, ((FileChangeDelta) d).getFilePath().toString());
+
+								writeFieldName(os, "");
+								break;
+							}
+							default: {
+								writeString(os, d.getType().name());
+								break;
+							}
+						}
 					}
 					writeNull(os);
 				}
 
-				if (!ObjectUtils.isNullOrEmpty(ttrace.inputFiles)) {
-					writeFieldName(os, "input_files");
-					os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
-					for (SakerPath f : ttrace.inputFiles) {
-						writeString(os, f.toString());
+				if (ttrace.taskDependencies != null) {
+					TreeSet<SakerPath> indeps = new TreeSet<>();
+					TreeSet<SakerPath> outdeps = new TreeSet<>();
+					for (FileDependencies fdep : ttrace.taskDependencies.getTaggedFileDependencies().values()) {
+						indeps.addAll(fdep.getInputFileDependencies().navigableKeySet());
+						outdeps.addAll(fdep.getOutputFileDependencies().navigableKeySet());
 					}
-					writeNull(os);
-				}
-				if (!ObjectUtils.isNullOrEmpty(ttrace.outputFiles)) {
-					writeFieldName(os, "output_files");
-					os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
-					for (SakerPath f : ttrace.outputFiles) {
-						writeString(os, f.toString());
+					if (!indeps.isEmpty()) {
+						writeFieldName(os, "input_files");
+						os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
+						for (SakerPath f : indeps) {
+							writeString(os, f.toString());
+						}
+						writeNull(os);
 					}
-					writeNull(os);
+					if (!outdeps.isEmpty()) {
+						writeFieldName(os, "output_files");
+						os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
+						for (SakerPath f : outdeps) {
+							writeString(os, f.toString());
+						}
+						writeNull(os);
+					}
 				}
 
 				writeFieldName(os, "");
@@ -307,7 +394,7 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 		if (bt != null) {
 			return bt;
 		}
-		return InternalBuildTrace.NULL_INSTANCE;
+		return NullInternalBuildTrace.INSTANCE;
 	}
 
 	@Override
@@ -445,6 +532,10 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 		os.writeByte(v);
 	}
 
+	private static void writeBoolean(DataOutputStream os, boolean bool) throws IOException {
+		os.writeByte(bool ? TYPE_BOOLEAN_TRUE : TYPE_BOOLEAN_FALSE);
+	}
+
 	private static void writeFieldName(DataOutputStream os, CharSequence s) throws IOException {
 		writeStringImpl(os, s);
 	}
@@ -458,17 +549,9 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 		}
 	}
 
-	private TaskBuildTraceImpl upToDateTaskTrace(TaskExecutionResult<?> taskresult) {
-		TaskBuildTraceImpl result = new TaskBuildTraceImpl(taskresult.getFactory(),
-				(TaskBuildTraceInfo) taskresult.getBuildTraceInfo());
-		result.endNanos = result.startNanos;
-		result.deltas = Collections.emptySet();
-		result.collectFileDependencies(taskresult);
-		return result;
-	}
-
 	private final class TaskBuildTraceImpl implements InternalTaskBuildTrace {
-		protected final int eventId;
+		protected final int eventId = AIFU_eventCounter.incrementAndGet(InternalBuildTraceImpl.this);
+		protected final int taskTraceId = AIFU_traceTaskIdCounter.incrementAndGet(InternalBuildTraceImpl.this);
 		protected long startNanos;
 		protected long endNanos;
 		protected Class<? extends TaskFactory<?>> taskClass;
@@ -479,22 +562,32 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 		protected SakerPath workingDirectory;
 		protected SakerPath buildDirectory;
 
-		protected NavigableSet<SakerPath> inputFiles;
-		protected NavigableSet<SakerPath> outputFiles;
+		protected TaskDependencies taskDependencies;
 
-		@SuppressWarnings("unchecked")
-		public TaskBuildTraceImpl(TaskFactory<?> taskfactory, TaskBuildTraceInfo traceInfo) {
-			this.traceInfo = traceInfo;
-			this.eventId = AIFU_eventCounter.incrementAndGet(InternalBuildTraceImpl.this);
-			this.startNanos = System.nanoTime();
-			this.taskClass = (Class<? extends TaskFactory<?>>) taskfactory.getClass();
+		public TaskBuildTraceImpl() {
 		}
 
-		public TaskBuildTraceImpl(TaskFactory<?> taskfactory, TaskDirectoryPathContext taskDirectoryContext,
+		@SuppressWarnings("unchecked")
+		public void start(TaskFactory<?> taskfactory, TaskDirectoryPathContext taskDirectoryContext,
 				TaskInvocationConfiguration capabilityConfig) {
-			this(taskfactory, new TaskBuildTraceInfo());
+			this.startNanos = System.nanoTime();
+			this.taskClass = (Class<? extends TaskFactory<?>>) taskfactory.getClass();
+
+			this.traceInfo = new TaskBuildTraceInfo();
+			this.traceInfo.setCapabilityConfig(capabilityConfig);
+
 			this.workingDirectory = taskDirectoryContext.getTaskWorkingDirectoryPath();
 			this.buildDirectory = taskDirectoryContext.getTaskBuildDirectoryPath();
+		}
+
+		@SuppressWarnings("unchecked")
+		public void upToDate(TaskExecutionResult<?> taskresult) {
+			this.startNanos = System.nanoTime();
+			this.endNanos = this.startNanos;
+			this.deltas = Collections.emptySet();
+			this.collectDependencies(taskresult);
+			this.traceInfo = (TaskBuildTraceInfo) taskresult.getBuildTraceInfo();
+			this.taskClass = (Class<? extends TaskFactory<?>>) taskresult.getFactory().getClass();
 		}
 
 		@Override
@@ -519,17 +612,11 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 		public void close(TaskContext taskcontext, TaskExecutionResult<?> taskresult) {
 			this.endNanos = System.nanoTime();
 			taskresult.setBuildTraceInfo(traceInfo);
-			collectFileDependencies(taskresult);
+			collectDependencies(taskresult);
 		}
 
-		protected void collectFileDependencies(TaskExecutionResult<?> taskresult) {
-			this.inputFiles = new TreeSet<>();
-			this.outputFiles = new TreeSet<>();
-			for (Entry<Object, FileDependencies> entry : taskresult.getDependencies().getTaggedFileDependencies()
-					.entrySet()) {
-				inputFiles.addAll(entry.getValue().getInputFileDependencies().navigableKeySet());
-				outputFiles.addAll(entry.getValue().getOutputFileDependencies().navigableKeySet());
-			}
+		protected void collectDependencies(TaskExecutionResult<?> taskresult) {
+			this.taskDependencies = taskresult.getDependencies();
 		}
 	}
 
@@ -539,22 +626,66 @@ public class InternalBuildTraceImpl implements InternalBuildTrace {
 		protected String standardOutDisplayIdentifier;
 		protected NavigableMap<SakerPath, ByteArrayRegion> readScriptContents = new ConcurrentSkipListMap<>();
 
+		protected boolean shortTask;
+		protected boolean remoteDispatchable;
+		protected boolean cacheable;
+		protected boolean innerTasksComputationals;
+		protected int computationTokenCount;
+		protected TaskExecutionEnvironmentSelector environmentSelector;
+
 		/**
 		 * For {@link Externalizable}.
 		 */
 		public TaskBuildTraceInfo() {
 		}
 
+		public void setCapabilityConfig(TaskInvocationConfiguration capabilityConfig) {
+			shortTask = capabilityConfig.isShortTask();
+			remoteDispatchable = capabilityConfig.isRemoteDispatchable();
+			cacheable = capabilityConfig.isCacheable();
+			innerTasksComputationals = capabilityConfig.isInnerTasksComputationals();
+			computationTokenCount = capabilityConfig.getComputationTokenCount();
+			environmentSelector = capabilityConfig.getEnvironmentSelector();
+		}
+
 		@Override
 		public void writeExternal(ObjectOutput out) throws IOException {
 			out.writeObject(standardOutDisplayIdentifier);
 			SerialUtils.writeExternalMap(out, readScriptContents);
+
+			out.writeBoolean(shortTask);
+			out.writeBoolean(remoteDispatchable);
+			out.writeBoolean(cacheable);
+			out.writeBoolean(innerTasksComputationals);
+			out.writeInt(computationTokenCount);
+			try {
+				out.writeObject(environmentSelector);
+			} catch (Exception e) {
+				//ignore
+				if (TestFlag.ENABLED) {
+					e.printStackTrace();
+				}
+			}
 		}
 
 		@Override
 		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 			standardOutDisplayIdentifier = (String) in.readObject();
 			readScriptContents = SerialUtils.readExternalSortedImmutableNavigableMap(in);
+
+			shortTask = in.readBoolean();
+			remoteDispatchable = in.readBoolean();
+			cacheable = in.readBoolean();
+			innerTasksComputationals = in.readBoolean();
+			computationTokenCount = in.readInt();
+			try {
+				environmentSelector = (TaskExecutionEnvironmentSelector) in.readObject();
+			} catch (Exception e) {
+				//ignore
+				if (TestFlag.ENABLED) {
+					e.printStackTrace();
+				}
+			}
 		}
 	}
 
