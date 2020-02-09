@@ -8,7 +8,6 @@ import saker.build.file.SakerFile;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionContextImpl;
 import saker.build.scripting.ScriptParsingOptions;
-import saker.build.task.InternalTaskContext;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskContextReference;
 import saker.build.task.TaskDirectoryPathContext;
@@ -21,7 +20,6 @@ import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
-import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import saker.build.util.exc.ExceptionView;
@@ -61,11 +59,21 @@ public interface InternalBuildTrace extends Closeable {
 	public default void taskUpToDate(TaskExecutionResult<?> prevexecresult) {
 	}
 
+	public default void startBuildCluster(SakerEnvironmentImpl environment) {
+	}
+
 	@RMIWrap(NullInternalBuildTrace.NullInternalBuildTraceRMIWrapper.class)
 	public static final class NullInternalBuildTrace implements InternalBuildTrace, InternalTaskBuildTrace {
 		public static final NullInternalBuildTrace INSTANCE = new NullInternalBuildTrace();
 
 		public static class NullInternalBuildTraceRMIWrapper implements RMIWrapper {
+
+			public NullInternalBuildTraceRMIWrapper() {
+			}
+
+			public NullInternalBuildTraceRMIWrapper(Object traceobj) {
+			}
+
 			@Override
 			public void writeWrapped(RMIObjectOutput out) throws IOException {
 			}
@@ -90,11 +98,11 @@ public interface InternalBuildTrace extends Closeable {
 	public interface InternalTaskBuildTrace {
 		public static InternalTaskBuildTrace current() {
 			try {
-				InternalTaskContext tc = (InternalTaskContext) TaskContextReference.current();
-				if (tc == null) {
+				TaskContextReference currentref = TaskContextReference.currentReference();
+				if (currentref == null) {
 					return NullInternalBuildTrace.INSTANCE;
 				}
-				InternalTaskBuildTrace bt = tc.internalGetBuildTrace();
+				InternalTaskBuildTrace bt = currentref.getTaskBuildTrace();
 				if (bt != null) {
 					return bt;
 				}
@@ -129,6 +137,12 @@ public interface InternalBuildTrace extends Closeable {
 
 		public default void classifyFrontendTask(TaskIdentifier workertaskid) {
 		}
-	}
 
+		public default InternalTaskBuildTrace startInnerTask(TaskFactory<?> innertaskfactory) {
+			return NullInternalBuildTrace.INSTANCE;
+		}
+
+		public default void endInnerTask() {
+		}
+	}
 }

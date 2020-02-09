@@ -71,6 +71,7 @@ import saker.build.thirdparty.saker.util.io.SerialUtils;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMIArrayListWrapper;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
+import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 import testing.saker.build.flag.TestFlag;
 
 public class TaskInvocationManager implements Closeable {
@@ -251,14 +252,15 @@ public class TaskInvocationManager implements Closeable {
 						"TaskFactory " + factory.getClass().getName() + " created null Task."));
 			}
 			R taskres;
-			try (TaskContextReference contextref = new TaskContextReference(taskcontext)) {
-				taskcontext.internalGetBuildTrace().startTaskExecution();
+			InternalTaskBuildTrace btrace = taskcontext.internalGetBuildTrace();
+			try (TaskContextReference contextref = new TaskContextReference(taskcontext, btrace)) {
+				btrace.startTaskExecution();
 				taskres = task.run(taskcontext);
 			} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError | AssertionError
 					| Exception e) {
 				return new TaskInvocationResult<>(null, e);
 			} finally {
-				taskcontext.internalGetBuildTrace().endTaskExecution();
+				btrace.endTaskExecution();
 				ctoken.closeAll();
 			}
 			return new TaskInvocationResult<>(Optional.ofNullable(taskres), null);

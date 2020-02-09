@@ -39,6 +39,7 @@ import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.FileMirrorHandler;
+import saker.build.runtime.execution.InternalExecutionContext;
 import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.runtime.project.ProjectCacheHandle;
 import saker.build.runtime.project.SakerExecutionCache;
@@ -576,6 +577,8 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 				return new TaskInvoker() {
 					@Override
 					public void run(TaskInvocationContext context) throws Exception {
+						((InternalExecutionContext) executioncontext).internalGetBuildTrace()
+								.startBuildCluster(environment);
 						try {
 							project.clusterStarting(realpathconfig, executioncontext.getRepositoryConfiguration(),
 									executioncontext.getScriptConfiguration(), executioncontext.getUserParameters(),

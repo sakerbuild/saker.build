@@ -4276,8 +4276,14 @@ public class TaskExecutionManager {
 					throw new NullPointerException("Task factory created null task: " + factory.getClass().getName());
 				}
 				R res;
-				try (TaskContextReference contextref = new TaskContextReference(taskcontext)) {
-					res = task.run(taskcontext);
+				try (TaskContextReference contextref = new TaskContextReference(taskcontext,
+						taskcontext.taskBuildTrace)) {
+					taskcontext.taskBuildTrace.startTaskExecution();
+					try {
+						res = task.run(taskcontext);
+					} finally {
+						taskcontext.taskBuildTrace.endTaskExecution();
+					}
 				}
 				return new CompletedInnerTaskResults<>(new CompletedInnerTaskOptionalResult<>(res));
 			} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError | AssertionError

@@ -19,6 +19,7 @@ import java.io.Closeable;
 import java.io.IOException;
 
 import saker.apiextract.api.ExcludeApi;
+import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 
 // explicitly exclude this api class, as it is implementation detail
 @ExcludeApi
@@ -50,17 +51,35 @@ public final class TaskContextReference implements Closeable {
 		return ref.get();
 	}
 
+	public static TaskContextReference currentReference() {
+		return CURRENT_THREAD_TASK_CONTEXT.get();
+	}
+
 	private final TaskContextReference previous;
 	private volatile TaskContext taskContext;
+	private InternalTaskBuildTrace taskBuildTrace;
 
 	public TaskContextReference(TaskContext taskContext) {
+		this(taskContext, null);
+	}
+
+	public TaskContextReference(TaskContext taskContext, InternalTaskBuildTrace taskBuildTrace) {
 		this.taskContext = taskContext;
+		this.taskBuildTrace = taskBuildTrace;
 		this.previous = CURRENT_THREAD_TASK_CONTEXT.get();
 		CURRENT_THREAD_TASK_CONTEXT.set(this);
 	}
 
+	public void initTaskBuildTrace(InternalTaskBuildTrace taskBuildTrace) {
+		this.taskBuildTrace = taskBuildTrace;
+	}
+
 	public TaskContext get() {
 		return taskContext;
+	}
+
+	public InternalTaskBuildTrace getTaskBuildTrace() {
+		return taskBuildTrace;
 	}
 
 	@Override
@@ -71,6 +90,7 @@ public final class TaskContextReference implements Closeable {
 			CURRENT_THREAD_TASK_CONTEXT.set(previous);
 		}
 		this.taskContext = null;
+		this.taskBuildTrace = null;
 	}
 
 	@Override

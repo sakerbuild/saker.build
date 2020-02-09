@@ -47,6 +47,7 @@ import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
+import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 
 public class ClusterTaskInvoker implements TaskInvoker {
 	private SakerEnvironmentImpl environment;
@@ -188,9 +189,12 @@ public class ClusterTaskInvoker implements TaskInvoker {
 				ClusterTaskContext clustertaskcontext = new ClusterTaskContext(clusterExecutionContext, realtaskcontext,
 						clusterContentDatabase, event.getTaskUtilities());
 				R taskres;
-				try (TaskContextReference contextref = new TaskContextReference(clustertaskcontext)) {
+				InternalTaskBuildTrace btrace = clustertaskcontext.internalGetBuildTrace();
+				try (TaskContextReference contextref = new TaskContextReference(clustertaskcontext, btrace)) {
+					btrace.startTaskExecution();
 					taskres = task.run(clustertaskcontext);
 				} finally {
+					btrace.endTaskExecution();
 					ctoken.closeAll();
 				}
 				event.executionSuccessful(taskres);
