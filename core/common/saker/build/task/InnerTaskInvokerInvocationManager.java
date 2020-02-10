@@ -186,6 +186,9 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 								try {
 									R result = task.run(taskContext);
 									this.putResult(result, false);
+								} catch (Throwable e) {
+									btrace.setThrownException(e);
+									throw e;
 								} finally {
 									btrace.endInnerTask();
 								}
@@ -284,6 +287,9 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 											try {
 												R result = task.run(taskContext);
 												this.putResult(result, false);
+											} catch (Throwable e) {
+												btrace.setThrownException(e);
+												throw e;
 											} finally {
 												btrace.endInnerTask();
 											}
@@ -337,6 +343,9 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 						try {
 							R result = task.run(taskContext);
 							this.putResult(result, true);
+						} catch (Throwable e) {
+							btrace.setThrownException(e);
+							throw e;
 						} finally {
 							btrace.endInnerTask();
 						}

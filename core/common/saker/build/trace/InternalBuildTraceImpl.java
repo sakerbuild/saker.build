@@ -6,13 +6,17 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.io.OutputStream;
+import java.io.PrintStream;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
@@ -26,15 +30,38 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import saker.build.file.SakerFile;
+import saker.build.file.content.CommonContentDescriptorSupplier;
+import saker.build.file.content.ContentDescriptorSupplier;
 import saker.build.file.path.PathKey;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
+import saker.build.file.path.WildcardPath;
 import saker.build.file.provider.LocalFileProvider;
+import saker.build.file.provider.RootFileProviderKey;
 import saker.build.file.provider.SakerFileProvider;
 import saker.build.file.provider.SakerPathFiles;
+import saker.build.runtime.classpath.ClassPathLocation;
+import saker.build.runtime.classpath.ClassPathServiceEnumerator;
+import saker.build.runtime.classpath.HttpUrlJarFileClassPathLocation;
+import saker.build.runtime.classpath.JarFileClassPathLocation;
+import saker.build.runtime.classpath.NamedCheckingClassPathServiceEnumerator;
+import saker.build.runtime.classpath.NamedClassPathServiceEnumerator;
+import saker.build.runtime.classpath.ServiceLoaderClassPathServiceEnumerator;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionContextImpl;
 import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation;
+import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation.ConnectionInformation;
+import saker.build.runtime.params.BuiltinScriptAccessorServiceEnumerator;
+import saker.build.runtime.params.DatabaseConfiguration;
+import saker.build.runtime.params.DatabaseConfiguration.ContentDescriptorConfiguration;
+import saker.build.runtime.params.ExecutionRepositoryConfiguration;
+import saker.build.runtime.params.ExecutionRepositoryConfiguration.RepositoryConfig;
+import saker.build.runtime.params.ExecutionScriptConfiguration;
+import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptOptionsConfig;
+import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptProviderLocation;
+import saker.build.runtime.params.NestRepositoryClassPathLocation;
+import saker.build.runtime.params.NestRepositoryFactoryClassPathServiceEnumerator;
+import saker.build.scripting.ScriptAccessProvider;
 import saker.build.scripting.ScriptParsingOptions;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskContextReference;
@@ -50,12 +77,12 @@ import saker.build.task.TaskInvocationConfiguration;
 import saker.build.task.delta.BuildDelta;
 import saker.build.task.delta.FileChangeDelta;
 import saker.build.task.identifier.TaskIdentifier;
-import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
+import saker.build.thirdparty.saker.util.ConcurrentAppendAccumulator;
 import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
@@ -84,10 +111,23 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			.getMethodAssert(ClusterTaskBuildTrace.class, "endClusterTaskExecution", long.class);
 	protected static final Method METHOD_CLASSIFYFRONTENDTASK = ReflectUtils
 			.getMethodAssert(ClusterTaskBuildTrace.class, "classifyFrontendTask", TaskIdentifier.class);
-	protected static final Method METHOD_STARTINNERTASKCLUSTER = ReflectUtils.getMethodAssert(
+	protected static final Method METHOD_STARTCLUSTERINNERTASK = ReflectUtils.getMethodAssert(
 			ClusterTaskBuildTrace.class, "startClusterInnerTask", Object.class, long.class, UUID.class, String.class);
-	protected static final Method METHOD_ENDINNERTASKCLUSTER = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
+	protected static final Method METHOD_ENDCLUSTERINNERTASK = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
 			"endClusterInnerTask", Object.class, long.class);
+	protected static final Method METHOD_SETTHROWNEXCEPTION = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
+			"setThrownException", ExceptionView.class);
+	protected static final Method METHOD_SETCLUSTERINNERTASKTHROWNEXCEPTION = ReflectUtils.getMethodAssert(
+			ClusterTaskBuildTrace.class, "setClusterInnerTaskThrownException", Object.class, ExceptionView.class);
+
+	protected static final Method METHOD_SETTITLE = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
+			"setTitle", String.class);
+	protected static final Method METHOD_SETTIMELINELABEL = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
+			"setTimelineLabel", String.class);
+	protected static final Method METHOD_SETCLUSTERINNERTASKTITLE = ReflectUtils
+			.getMethodAssert(ClusterTaskBuildTrace.class, "setClusterInnerTaskTitle", Object.class, String.class);
+	protected static final Method METHOD_SETCLUSTERINNERTASKTIMELINELABEL = ReflectUtils.getMethodAssert(
+			ClusterTaskBuildTrace.class, "setClusterInnerTaskTimelineLabel", Object.class, String.class);
 
 	public static final int MAGIC = 0x45a8f96a;
 	public static final int FORMAT_VERSION = 1;
@@ -139,10 +179,14 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	 * Maps {@link EnvironmentInformation#buildEnvironmentUUID} to informations.
 	 */
 	private NavigableMap<UUID, EnvironmentInformation> environmentInformations = new ConcurrentSkipListMap<>();
-	private NavigableMap<UUID, Long> clusterInitializationTimes = new ConcurrentSkipListMap<>();
+	private NavigableMap<UUID, Long> clusterInitializationTimeNanos = new ConcurrentSkipListMap<>();
 
 	private ConcurrentPrependAccumulator<ExceptionView> ignoredExceptions = new ConcurrentPrependAccumulator<>();
 	private BuildInformation buildInformation;
+	private boolean ideConfigurationRequired;
+	private ExecutionScriptConfiguration scriptConfiguration;
+	private ExecutionRepositoryConfiguration repositoryConfiguration;
+	private DatabaseConfiguration databaseConfiguration;
 
 	public InternalBuildTraceImpl(ProviderHolderPathKey buildtraceoutput) {
 		this.buildTraceOutputPathKey = buildtraceoutput;
@@ -197,7 +241,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	@Override
 	public void startBuildCluster(EnvironmentInformation envinfo, long nanos) {
 		environmentInformations.put(envinfo.buildEnvironmentUUID, envinfo);
-		clusterInitializationTimes.put(envinfo.buildEnvironmentUUID, nanos);
+		clusterInitializationTimeNanos.put(envinfo.buildEnvironmentUUID, nanos);
 	}
 
 	@Override
@@ -210,6 +254,10 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			rootsPathKey.put(entry.getKey(),
 					SakerPathFiles.getPathKey(entry.getValue(), SakerPath.valueOf(entry.getKey())));
 		}
+		this.scriptConfiguration = executioncontext.getScriptConfiguration();
+		this.repositoryConfiguration = executioncontext.getRepositoryConfiguration();
+		this.databaseConfiguration = executioncontext.getDatabaseConfiguretion();
+		this.ideConfigurationRequired = executioncontext.isIDEConfigurationRequired();
 	}
 
 	@Override
@@ -265,6 +313,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			writeFieldName(os, "execution_environment_uuid");
 			writeString(os, localEnvironmentInformation.buildEnvironmentUUID.toString());
 
+			writeFieldName(os, "ide_config_required");
+			writeBoolean(os, ideConfigurationRequired);
+
 			writeFieldName(os, "environments");
 			os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
 			for (Entry<UUID, EnvironmentInformation> entry : environmentInformations.entrySet()) {
@@ -281,6 +332,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				writeFieldName(os, "user_params");
 				writeObject(os, envinfo.environmentUserParameters);
 
+				writeFieldName(os, "thread_factor");
+				writeInt(os, envinfo.threadFactor);
+
 				writeFieldName(os, "os_name");
 				writeString(os, envinfo.osName);
 				writeFieldName(os, "os_version");
@@ -293,6 +347,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				writeString(os, envinfo.javaVmVendor);
 				writeFieldName(os, "java_vm_name");
 				writeString(os, envinfo.javaVmName);
+				writeFieldName(os, "java_home");
+				writeString(os, envinfo.javaHome);
 				writeFieldName(os, "processors");
 				writeInt(os, envinfo.availableProcessors);
 
@@ -301,10 +357,10 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 					writeString(os, envinfo.computerName);
 				}
 
-				Long inittime = clusterInitializationTimes.get(entry.getKey());
+				Long inittime = clusterInitializationTimeNanos.get(entry.getKey());
 				if (inittime != null) {
 					writeFieldName(os, "initialization_time");
-					writeLong(os, inittime);
+					writeLong(os, (inittime - startNanos) / 1_000_000);
 				}
 
 				writeFieldName(os, "");
@@ -312,30 +368,36 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			writeNull(os);
 
 			if (this.buildInformation != null) {
-				NavigableMap<String, UUID> connmachines = this.buildInformation.getConnectedMachineNames();
-				if (!ObjectUtils.isNullOrEmpty(connmachines)) {
+				NavigableMap<String, ConnectionInformation> connectioninfos = this.buildInformation
+						.getConnectionInformations();
+				if (!ObjectUtils.isNullOrEmpty(connectioninfos)) {
 					writeFieldName(os, "connections");
 					os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
-					for (Entry<String, UUID> entry : connmachines.entrySet()) {
+					for (Entry<String, ConnectionInformation> entry : connectioninfos.entrySet()) {
 						writeFieldName(os, entry.getKey());
-						writeString(os, entry.getValue().toString());
+						os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+						ConnectionInformation conninfo = entry.getValue();
+						String addr = conninfo.getConnectionAddress();
+						if (!ObjectUtils.isNullOrEmpty(addr)) {
+							writeFieldName(os, "address");
+							writeString(os, addr);
+						}
+						UUID rootuuid = conninfo.getConnectionRootFileProviderUUID();
+						if (rootuuid != null) {
+							writeFieldName(os, "machine_uuid");
+							writeString(os, rootuuid.toString());
+						}
+						UUID buildenvuuid = conninfo.getConnectionBuildEnvironmentUUID();
+						if (buildenvuuid != null) {
+							writeFieldName(os, "env_uuid");
+							writeString(os, buildenvuuid.toString());
+						}
+
+						writeFieldName(os, "");
 					}
 					writeFieldName(os, "");
 				}
 			}
-
-			writeFieldName(os, "scripts");
-			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
-			for (TaskBuildTraceImpl ttrace : taskBuildTraces.values()) {
-				if (ttrace.traceInfo == null) {
-					continue;
-				}
-				for (Entry<SakerPath, ByteArrayRegion> entry : ttrace.traceInfo.readScriptContents.entrySet()) {
-					writeFieldName(os, entry.getKey().toString());
-					writeByteArray(os, entry.getValue());
-				}
-			}
-			writeFieldName(os, "");
 
 			writeFieldName(os, "path_config");
 			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
@@ -350,6 +412,102 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				writeString(os, entry.getValue().getPath().toString());
 
 				writeFieldName(os, "");
+			}
+			writeFieldName(os, "");
+
+			if (this.databaseConfiguration != null) {
+				ContentDescriptorSupplier fallbackcds = this.databaseConfiguration.getFallbackContentSupplier();
+				writeFieldName(os, "database_config");
+				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+
+				writeFieldName(os, "fallback");
+				writeContentDescriptorSupplier(os, fallbackcds);
+
+				Map<RootFileProviderKey, Set<ContentDescriptorConfiguration>> dbconfigs = this.databaseConfiguration
+						.internalGetConfigurations();
+				if (!ObjectUtils.isNullOrEmpty(dbconfigs)) {
+					writeFieldName(os, "configuration");
+					os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+					for (Entry<RootFileProviderKey, Set<ContentDescriptorConfiguration>> entry : dbconfigs.entrySet()) {
+						writeFieldName(os, entry.getKey().getUUID().toString());
+						os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+						for (ContentDescriptorConfiguration config : entry.getValue()) {
+							writeFieldName(os, config.getWildcard().toString());
+							writeContentDescriptorSupplier(os, config.getContentDescriptorSupplier());
+						}
+						writeFieldName(os, "");
+					}
+					writeFieldName(os, "");
+				}
+
+				writeFieldName(os, "");
+			}
+
+			if (this.repositoryConfiguration != null) {
+				writeFieldName(os, "repo_config");
+				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+
+				for (RepositoryConfig rc : this.repositoryConfiguration.getRepositories()) {
+					String repoid = rc.getRepositoryIdentifier();
+					if (!ObjectUtils.isNullOrEmpty(repoid)) {
+						writeFieldName(os, "identifier");
+						writeString(os, repoid);
+					}
+
+					writeFieldName(os, "classpath");
+					writeClassPathLocation(os, rc.getClassPathLocation());
+
+					writeFieldName(os, "service");
+					writeClassPathServiceEnumerator(os, rc.getRepositoryFactoryEnumerator());
+				}
+
+				writeFieldName(os, "");
+			}
+
+			if (this.scriptConfiguration != null) {
+				writeFieldName(os, "script_config");
+				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+
+				for (Entry<WildcardPath, ? extends ScriptOptionsConfig> entry : this.scriptConfiguration
+						.getConfigurations().entrySet()) {
+					writeFieldName(os, entry.getKey().toString());
+					os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+
+					writeFieldName(os, "options");
+					writeObject(os, entry.getValue().getOptions());
+					ScriptProviderLocation provider = entry.getValue().getProviderLocation();
+					if (provider != null) {
+						ClassPathLocation cpl = provider.getClassPathLocation();
+						ClassPathServiceEnumerator<? extends ScriptAccessProvider> enumerator = provider
+								.getScriptProviderEnumerator();
+
+						writeFieldName(os, "classpath");
+						if (cpl == null) {
+							writeString(os, "builtin-script");
+						} else {
+							writeClassPathLocation(os, cpl);
+						}
+
+						writeFieldName(os, "service");
+						writeClassPathServiceEnumerator(os, enumerator);
+					}
+
+					writeFieldName(os, "");
+				}
+
+				writeFieldName(os, "");
+			}
+
+			writeFieldName(os, "scripts");
+			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+			for (TaskBuildTraceImpl ttrace : taskBuildTraces.values()) {
+				if (ttrace.traceInfo == null) {
+					continue;
+				}
+				for (Entry<SakerPath, ByteArrayRegion> entry : ttrace.traceInfo.readScriptContents.entrySet()) {
+					writeFieldName(os, entry.getKey().toString());
+					writeByteArray(os, entry.getValue());
+				}
 			}
 			writeFieldName(os, "");
 
@@ -371,9 +529,17 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				writeString(os, ttrace.taskClassName);
 
 				if (ttrace.traceInfo != null) {
-					if (ttrace.traceInfo.standardOutDisplayIdentifier != null) {
+					if (!ObjectUtils.isNullOrEmpty(ttrace.traceInfo.standardOutDisplayIdentifier)) {
 						writeFieldName(os, "display");
 						writeTypedObject(os, ttrace.traceInfo.standardOutDisplayIdentifier);
+					}
+					if (!ObjectUtils.isNullOrEmpty(ttrace.traceInfo.title)) {
+						writeFieldName(os, "title");
+						writeTypedObject(os, ttrace.traceInfo.title);
+					}
+					if (!ObjectUtils.isNullOrEmpty(ttrace.traceInfo.timelineLabel)) {
+						writeFieldName(os, "label_timeline");
+						writeTypedObject(os, ttrace.traceInfo.timelineLabel);
 					}
 
 					if (ttrace.traceInfo.computationTokenCount > 0) {
@@ -419,11 +585,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 					}
 				}
 
-				if (!Objects.equals(workingDirectoryPath, ttrace.workingDirectory)) {
+				if (ttrace.workingDirectory != null && !Objects.equals(workingDirectoryPath, ttrace.workingDirectory)) {
 					writeFieldName(os, "working_dir");
 					writeString(os, Objects.toString(ttrace.workingDirectory, null));
 				}
-				if (!Objects.equals(buildDirectoryPath, ttrace.buildDirectory)) {
+				if (ttrace.buildDirectory != null && !Objects.equals(buildDirectoryPath, ttrace.buildDirectory)) {
 					writeFieldName(os, "build_dir");
 					writeString(os, Objects.toString(ttrace.buildDirectory, null));
 				}
@@ -443,7 +609,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 							case INPUT_FILE_CHANGE:
 							case OUTPUT_FILE_CHANGE: {
 								os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
-								writeFieldName(os, "type");
+								writeFieldName(os, "kind");
 								writeString(os, d.getType().name());
 
 								writeFieldName(os, "file");
@@ -461,6 +627,28 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 					writeNull(os);
 				}
 
+				if (ttrace.thrownException != null) {
+					writeFieldName(os, "exception");
+					writeByteArray(os, printExceptionToBytes(ttrace.thrownException));
+				}
+				if (!ObjectUtils.isNullOrEmpty(ttrace.abortExceptions)) {
+					writeFieldName(os, "abort_exceptions");
+					os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
+					for (ExceptionView ev : ttrace.abortExceptions) {
+						writeByteArray(os, printExceptionToBytes(ev));
+					}
+					writeNull(os);
+				}
+				if (!ttrace.ignoredExceptions.isEmpty()) {
+					writeFieldName(os, "ignored_exceptions");
+					os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
+					Iterator<ExceptionView> it = ttrace.ignoredExceptions.clearAndIterator();
+					while (it.hasNext()) {
+						writeByteArray(os, printExceptionToBytes(it.next()));
+					}
+					writeNull(os);
+				}
+
 				if (!ObjectUtils.isNullOrEmpty(ttrace.innerBuildTraces)) {
 					writeFieldName(os, "inner_tasks");
 					os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
@@ -468,10 +656,21 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 					ttrace.innerBuildTraces.values().forEach(ibt -> {
 						try {
 							os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+							writeFieldName(os, "trace_id");
+							writeInt(os, ibt.taskTraceId);
 							writeFieldName(os, "start");
 							writeLong(os, (ibt.startNanos - this.startNanos) / 1_000_000);
 							writeFieldName(os, "end");
 							writeLong(os, (ibt.endNanos - this.startNanos) / 1_000_000);
+
+							if (!ObjectUtils.isNullOrEmpty(ibt.title)) {
+								writeFieldName(os, "title");
+								writeTypedObject(os, ibt.title);
+							}
+							if (!ObjectUtils.isNullOrEmpty(ibt.timelineLabel)) {
+								writeFieldName(os, "label_timeline");
+								writeTypedObject(os, ibt.timelineLabel);
+							}
 
 							writeFieldName(os, "task_class");
 							writeString(os, ibt.innerTaskClassName);
@@ -482,6 +681,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 								writeFieldName(os, "execution_env");
 								writeString(os, ibt.executionEnvironmentUUID.toString());
 							}
+							if (ibt.thrownException != null) {
+								writeFieldName(os, "exception");
+								writeByteArray(os, printExceptionToBytes(ibt.thrownException));
+							}
+
 							writeFieldName(os, "");
 						} catch (IOException e) {
 							throw ObjectUtils.sneakyThrow(e);
@@ -565,6 +769,120 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	@Override
 	public String toString() {
 		return "InternalBuildTraceImpl[" + buildTraceOutputPathKey + "]";
+	}
+
+	private static void writeClassPathServiceEnumerator(DataOutputStream os, ClassPathServiceEnumerator<?> enumerator)
+			throws IOException {
+		if (enumerator instanceof BuiltinScriptAccessorServiceEnumerator) {
+			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+			writeFieldName(os, "kind");
+			writeString(os, "builtin-script");
+			writeFieldName(os, "");
+			return;
+		}
+		if (enumerator instanceof NamedClassPathServiceEnumerator<?>) {
+			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+			writeFieldName(os, "kind");
+			writeString(os, "named");
+			writeFieldName(os, "class_name");
+			writeString(os, ((NamedClassPathServiceEnumerator<?>) enumerator).getClassName());
+			if (enumerator instanceof NamedCheckingClassPathServiceEnumerator<?>) {
+				writeFieldName(os, "instance_of");
+				writeString(os, ((NamedCheckingClassPathServiceEnumerator<?>) enumerator).getExpectedInstanceOfClass()
+						.getName());
+			}
+			writeFieldName(os, "");
+			return;
+		}
+		if (enumerator instanceof NestRepositoryFactoryClassPathServiceEnumerator) {
+			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+			writeFieldName(os, "kind");
+			writeString(os, "nest");
+			writeFieldName(os, "");
+			return;
+		}
+		if (enumerator instanceof ServiceLoaderClassPathServiceEnumerator) {
+			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+			writeFieldName(os, "kind");
+			writeString(os, "service_loader");
+			writeFieldName(os, "class");
+			writeString(os, ((ServiceLoaderClassPathServiceEnumerator<?>) enumerator).getServiceClass().getName());
+			writeFieldName(os, "");
+			return;
+		}
+		os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+		writeFieldName(os, "kind");
+		writeString(os, "unrecognized");
+		writeFieldName(os, "type");
+		writeString(os, enumerator.getClass().getName());
+		writeFieldName(os, "");
+		return;
+	}
+
+	private static void writeClassPathLocation(DataOutputStream os, ClassPathLocation cp) throws IOException {
+		if (cp instanceof HttpUrlJarFileClassPathLocation) {
+			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+			writeFieldName(os, "kind");
+			writeString(os, "http_jar");
+			writeFieldName(os, "url");
+			writeString(os, ((HttpUrlJarFileClassPathLocation) cp).getUrl().toString());
+			writeFieldName(os, "");
+			return;
+		}
+		if (cp instanceof JarFileClassPathLocation) {
+			ProviderHolderPathKey pathkey = SakerPathFiles.getPathKey(((JarFileClassPathLocation) cp).getFileProvider(),
+					((JarFileClassPathLocation) cp).getJarPath());
+
+			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+			writeFieldName(os, "kind");
+			writeString(os, "jar");
+			writeFieldName(os, "path");
+			writeString(os, pathkey.getPath().toString());
+			writeFieldName(os, "file_provider");
+			writeString(os, pathkey.getFileProviderKey().getUUID().toString());
+			writeFieldName(os, "");
+			return;
+		}
+		if (cp instanceof NestRepositoryClassPathLocation) {
+			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+			writeFieldName(os, "kind");
+			writeString(os, "nest");
+			writeFieldName(os, "version");
+			writeString(os, ((NestRepositoryClassPathLocation) cp).getVersion());
+			writeFieldName(os, "");
+			return;
+		}
+		os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+		writeFieldName(os, "kind");
+		writeString(os, "unrecognized");
+		writeFieldName(os, "type");
+		writeString(os, cp.getClass().getName());
+		writeFieldName(os, "");
+		return;
+	}
+
+	private static void writeContentDescriptorSupplier(DataOutputStream os, ContentDescriptorSupplier cds)
+			throws IOException {
+		if (cds instanceof CommonContentDescriptorSupplier) {
+			writeString(os, ((CommonContentDescriptorSupplier) cds).name());
+			return;
+		}
+		os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+		writeFieldName(os, "kind");
+		writeString(os, "unrecognized");
+		writeFieldName(os, "type");
+		writeString(os, cds.getClass().getName());
+		writeFieldName(os, "");
+		return;
+	}
+
+	private static ByteArrayRegion printExceptionToBytes(ExceptionView ev) {
+		try (UnsyncByteArrayOutputStream baos = new UnsyncByteArrayOutputStream()) {
+			try (PrintStream ps = new PrintStream(baos)) {
+				ev.printStackTrace(ps);
+			}
+			return baos.toByteArrayRegion();
+		}
 	}
 
 	private static void writeNull(DataOutputStream os) throws IOException {
@@ -743,11 +1061,16 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		protected UUID executionEnvironmentUUID;
 
+		protected ExceptionView thrownException;
+		protected List<ExceptionView> abortExceptions;
+
 		/**
 		 * Synchronized identity hash map.
 		 */
 		protected Map<Object, InnerTaskBuildTraceImpl> innerBuildTraces = Collections
 				.synchronizedMap(new IdentityHashMap<>());
+
+		protected ConcurrentAppendAccumulator<ExceptionView> ignoredExceptions = new ConcurrentAppendAccumulator<>();
 
 		public TaskBuildTraceImpl() {
 		}
@@ -768,13 +1091,40 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		public void ignoredException(ExceptionView e) {
-			// TODO Auto-generated method stub
+			ignoredExceptions.add(e);
+		}
+
+		@Override
+		public void setTimelineLabel(String label) {
+			traceInfo.timelineLabel = label;
+		}
+
+		@Override
+		public void setTitle(String title) {
+			traceInfo.title = title;
+		}
+
+		@Override
+		public void setThrownException(Throwable e) {
+			this.setThrownException(ExceptionView.create(e));
+		}
+
+		@Override
+		public void setThrownException(ExceptionView e) {
+			this.thrownException = e;
+		}
+
+		@Override
+		public void setClusterInnerTaskThrownException(Object innertaskidentity, ExceptionView e) {
+			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(innertaskidentity);
+			innertrace.setThrownException(e);
 		}
 
 		@Override
 		public InternalTaskBuildTrace startInnerTask(TaskFactory<?> innertaskfactory) {
-			InnerTaskBuildTraceImpl innertrace = new InnerTaskBuildTraceImpl(new Object(), System.nanoTime(),
-					executionEnvironmentUUID);
+			long nanos = System.nanoTime();
+			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(new Object());
+			innertrace.init(nanos, executionEnvironmentUUID);
 			innertrace.setInnerTaskClassName(innertaskfactory.getClass().getName());
 			innerBuildTraces.put(innertrace.innerTaskIdentity, innertrace);
 			return innertrace;
@@ -786,20 +1136,36 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
+		public void setClusterInnerTaskTitle(Object innertaskidentity, String title) {
+			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(new Object());
+			innertrace.setTitle(title);
+		}
+
+		@Override
+		public void setClusterInnerTaskTimelineLabel(Object innertaskidentity, String label) {
+			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(new Object());
+			innertrace.setTimelineLabel(label);
+		}
+
+		@Override
 		public void startClusterInnerTask(Object innertaskidentity, long nanos, UUID environmentuuid,
 				String innertaskclassname) {
-			InnerTaskBuildTraceImpl innertrace = new InnerTaskBuildTraceImpl(innertaskidentity, nanos, environmentuuid);
+			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(innertaskidentity);
+			innertrace.init(nanos, environmentuuid);
 			innertrace.setInnerTaskClassName(innertaskclassname);
 			innerBuildTraces.put(innertrace.innerTaskIdentity, innertrace);
 		}
 
 		@Override
 		public void endClusterInnerTask(Object innertaskidentity, long nanos) {
-			InnerTaskBuildTraceImpl innertrace = innerBuildTraces.get(innertaskidentity);
-			if (innertrace == null) {
-				return;
-			}
+			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(innertaskidentity);
 			innertrace.endInnerTask();
+		}
+
+		private InnerTaskBuildTraceImpl getInnerTaskBuildTraceForIdentity(Object innertaskidentity) {
+			InnerTaskBuildTraceImpl innertrace = innerBuildTraces.computeIfAbsent(innertaskidentity,
+					InnerTaskBuildTraceImpl::new);
+			return innertrace;
 		}
 
 		@Override
@@ -832,9 +1198,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			this.startNanos = System.nanoTime();
 			this.endNanos = this.startNanos;
 			this.deltas = Collections.emptySet();
-			this.collectDependencies(taskresult);
 			this.traceInfo = (TaskBuildTraceInfo) taskresult.getBuildTraceInfo();
 			this.taskClassName = taskresult.getFactory().getClass().getName();
+			this.workingDirectory = taskresult.getExecutionWorkingDirectory();
+			this.buildDirectory = taskresult.getExecutionBuildDirectory();
+			this.collectDependencies(taskresult);
 		}
 
 		@Override
@@ -870,17 +1238,35 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		protected void collectDependencies(TaskExecutionResult<?> taskresult) {
 			this.taskDependencies = taskresult.getDependencies();
+			Throwable failex = taskresult.getFailCauseException();
+			if (failex != null) {
+				this.thrownException = ExceptionView.create(failex);
+			}
+			List<Throwable> abortexceptions = taskresult.getAbortExceptions();
+			if (!ObjectUtils.isNullOrEmpty(abortexceptions)) {
+				this.abortExceptions = new ArrayList<>();
+				for (Throwable t : abortexceptions) {
+					this.abortExceptions.add(ExceptionView.create(t));
+				}
+			}
 		}
 
 		public final class InnerTaskBuildTraceImpl implements InternalTaskBuildTrace {
+			protected final int taskTraceId = AIFU_traceTaskIdCounter.incrementAndGet(InternalBuildTraceImpl.this);
 			protected Object innerTaskIdentity;
 			protected long startNanos;
 			protected long endNanos;
 			protected UUID executionEnvironmentUUID;
 			protected String innerTaskClassName;
+			protected ExceptionView thrownException;
+			protected String title;
+			protected String timelineLabel;
 
-			public InnerTaskBuildTraceImpl(Object innerTaskIdentity, long startNanos, UUID executionEnvironmentUUID) {
+			public InnerTaskBuildTraceImpl(Object innerTaskIdentity) {
 				this.innerTaskIdentity = innerTaskIdentity;
+			}
+
+			public void init(long startNanos, UUID executionEnvironmentUUID) {
 				this.startNanos = startNanos;
 				this.executionEnvironmentUUID = executionEnvironmentUUID;
 			}
@@ -889,27 +1275,31 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				this.innerTaskClassName = innerTaskClassName;
 			}
 
+			public void setThrownException(ExceptionView thrownException) {
+				this.thrownException = thrownException;
+			}
+
 			@Override
 			public void endInnerTask() {
 				this.endNanos = System.nanoTime();
 			}
+
+			@Override
+			public void setThrownException(Throwable e) {
+				this.setThrownException(ExceptionView.create(e));
+			}
+
+			@Override
+			public void setTimelineLabel(String label) {
+				this.timelineLabel = label;
+			}
+
+			@Override
+			public void setTitle(String title) {
+				this.title = title;
+			}
 		}
 
-	}
-
-	public interface ClusterTaskBuildTrace extends InternalTaskBuildTrace {
-		public default void startClusterTaskExecution(long nanos, @RMISerialize UUID executionEnvironmentUUID) {
-		}
-
-		public default void endClusterTaskExecution(long nanos) {
-		}
-
-		public default void startClusterInnerTask(Object innertaskidentity, long nanos,
-				@RMISerialize UUID executionEnvironmentUUID, String innertaskclassname) {
-		}
-
-		public default void endClusterInnerTask(Object innertaskidentity, long nanos) {
-		}
 	}
 
 	protected static class TaskBuildTraceImplRMIWrapper implements RMIWrapper, ClusterTaskBuildTrace {
@@ -980,7 +1370,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			noException(() -> {
 				UUID envuuid = TaskContextReference.current().getExecutionContext().getEnvironment()
 						.getEnvironmentIdentifier();
-				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_STARTINNERTASKCLUSTER, innertaskidentity,
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_STARTCLUSTERINNERTASK, innertaskidentity,
 						currentbuildnanos, envuuid, innertaskfactory.getClass().getName());
 			});
 			return new ClusterInnerTaskBuildTraceImpl(innertaskidentity);
@@ -991,6 +1381,27 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			//this shouldn't be called on the main task trace
 		}
 
+		@Override
+		public void setThrownException(Throwable e) {
+			noException(() -> {
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETTHROWNEXCEPTION, ExceptionView.create(e));
+			});
+		}
+
+		@Override
+		public void setTitle(String title) {
+			noException(() -> {
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETTITLE, title);
+			});
+		}
+
+		@Override
+		public void setTimelineLabel(String label) {
+			noException(() -> {
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETTIMELINELABEL, label);
+			});
+		}
+
 		private class ClusterInnerTaskBuildTraceImpl implements InternalTaskBuildTrace {
 			private final Object innerTaskIdentity;
 
@@ -999,11 +1410,35 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			}
 
 			@Override
+			public void setThrownException(Throwable e) {
+				noException(() -> {
+					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETCLUSTERINNERTASKTHROWNEXCEPTION,
+							innerTaskIdentity, ExceptionView.create(e));
+				});
+			}
+
+			@Override
 			public void endInnerTask() {
 				long currentbuildnanos = System.nanoTime() - readNanos + writeNanos;
 				noException(() -> {
-					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_ENDINNERTASKCLUSTER, innerTaskIdentity,
+					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_ENDCLUSTERINNERTASK, innerTaskIdentity,
 							currentbuildnanos);
+				});
+			}
+
+			@Override
+			public void setTimelineLabel(String label) {
+				noException(() -> {
+					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETCLUSTERINNERTASKTIMELINELABEL,
+							innerTaskIdentity, label);
+				});
+			}
+
+			@Override
+			public void setTitle(String title) {
+				noException(() -> {
+					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETCLUSTERINNERTASKTITLE, innerTaskIdentity,
+							title);
 				});
 			}
 		}
@@ -1027,6 +1462,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		protected Set<TaskIdentifier> frontendClassifications = ConcurrentHashMap.newKeySet();
 
+		protected String title;
+		protected String timelineLabel;
+
 		/**
 		 * For {@link Externalizable}.
 		 */
@@ -1046,6 +1484,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		public void writeExternal(ObjectOutput out) throws IOException {
 			try {
 				out.writeObject(standardOutDisplayIdentifier);
+				out.writeObject(title);
+				out.writeObject(timelineLabel);
 				SerialUtils.writeExternalMap(out, readScriptContents);
 
 				out.writeObject(standardOutBytes);
@@ -1070,6 +1510,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 			try {
 				standardOutDisplayIdentifier = (String) in.readObject();
+				title = (String) in.readObject();
+				timelineLabel = (String) in.readObject();
 				readScriptContents = SerialUtils.readExternalSortedImmutableNavigableMap(in);
 
 				standardOutBytes = (ByteArrayRegion) in.readObject();
@@ -1097,6 +1539,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		protected UUID machineFileProviderUUID;
 		protected UUID buildEnvironmentUUID;
 		protected Map<String, String> environmentUserParameters;
+		protected int threadFactor;
 
 		protected String osName;
 		protected String osVersion;
@@ -1104,6 +1547,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		protected String javaVersion;
 		protected String javaVmVendor;
 		protected String javaVmName;
+		protected String javaHome;
 
 		protected int availableProcessors;
 
@@ -1117,6 +1561,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		public EnvironmentInformation(SakerEnvironmentImpl environment) {
 			this.environmentUserParameters = environment.getUserParameters();
+			this.threadFactor = environment.getThreadFactor();
 			this.machineFileProviderUUID = LocalFileProvider.getProviderKeyStatic().getUUID();
 			this.buildEnvironmentUUID = environment.getEnvironmentIdentifier();
 			this.availableProcessors = Runtime.getRuntime().availableProcessors();
@@ -1126,6 +1571,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			this.javaVersion = System.getProperty("java.version");
 			this.javaVmVendor = System.getProperty("java.vm.vendor");
 			this.javaVmName = System.getProperty("java.vm.name");
+			this.javaHome = System.getProperty("java.home");
 			//from it is present in windows
 			this.computerName = System.getenv("COMPUTERNAME");
 		}
@@ -1135,12 +1581,14 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			out.writeObject(machineFileProviderUUID);
 			out.writeObject(buildEnvironmentUUID);
 			SerialUtils.writeExternalMap(out, environmentUserParameters);
+			out.writeInt(threadFactor);
 			out.writeObject(osName);
 			out.writeObject(osVersion);
 			out.writeObject(osArch);
 			out.writeObject(javaVersion);
 			out.writeObject(javaVmVendor);
 			out.writeObject(javaVmName);
+			out.writeObject(javaHome);
 			out.writeInt(availableProcessors);
 			out.writeObject(computerName);
 		}
@@ -1150,12 +1598,14 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			machineFileProviderUUID = (UUID) in.readObject();
 			buildEnvironmentUUID = (UUID) in.readObject();
 			environmentUserParameters = SerialUtils.readExternalImmutableNavigableMap(in);
+			threadFactor = in.readInt();
 			osName = (String) in.readObject();
 			osVersion = (String) in.readObject();
 			osArch = (String) in.readObject();
 			javaVersion = (String) in.readObject();
 			javaVmVendor = (String) in.readObject();
 			javaVmName = (String) in.readObject();
+			javaHome = (String) in.readObject();
 			availableProcessors = in.readInt();
 			computerName = (String) in.readObject();
 		}

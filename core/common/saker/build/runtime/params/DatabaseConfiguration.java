@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import saker.apiextract.api.ExcludeApi;
 import saker.build.file.content.CommonContentDescriptorSupplier;
 import saker.build.file.content.ContentDescriptorSupplier;
 import saker.build.file.path.SakerPath;
@@ -64,14 +65,22 @@ public final class DatabaseConfiguration {
 	 * the contents of the underlying file.
 	 */
 	@RMIWrap(ContentConfigRMIWrapper.class)
-	protected final static class ContentDescriptorConfiguration {
-
+	@ExcludeApi
+	public final static class ContentDescriptorConfiguration {
 		protected WildcardPath wildcard;
 		protected ContentDescriptorSupplier descriptorSupplier;
 
 		protected ContentDescriptorConfiguration(WildcardPath wildcard, ContentDescriptorSupplier descriptorSupplier) {
 			this.wildcard = wildcard;
 			this.descriptorSupplier = descriptorSupplier;
+		}
+
+		public WildcardPath getWildcard() {
+			return wildcard;
+		}
+
+		public ContentDescriptorSupplier getContentDescriptorSupplier() {
+			return descriptorSupplier;
 		}
 
 		@Override
@@ -267,6 +276,11 @@ public final class DatabaseConfiguration {
 	 */
 	public ContentDescriptorSupplier getFallbackContentSupplier() {
 		return fallbackContentSupplier;
+	}
+
+	@ExcludeApi
+	public Map<RootFileProviderKey, Set<ContentDescriptorConfiguration>> internalGetConfigurations() {
+		return configurations;
 	}
 
 	@Override

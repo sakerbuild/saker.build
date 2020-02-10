@@ -63,4 +63,47 @@ public final class BuildTrace {
 			// no exceptions!
 		}
 	}
+
+	/**
+	 * Sets the title of the currently running task.
+	 * <p>
+	 * If the current task is an inner task, the title will be set for the inner task instead of the enclosing task.
+	 * 
+	 * @param title
+	 *            The title.
+	 */
+	public static void setTitle(String title) {
+		if (title == null) {
+			return;
+		}
+		try {
+			InternalTaskBuildTrace tt = getTaskTrace();
+			tt.setTitle(title);
+		} catch (Exception e) {
+			// no exceptions!
+		}
+	}
+
+	/**
+	 * Sets the label of the currently running task in the timeline view.
+	 * <p>
+	 * If the current task is an inner task, the label will be set for the inner task instead of the enclosing task.
+	 * <p>
+	 * The timeline label should be more concise than the {@linkplain #setTitle(String) title} of the task as they can
+	 * be displayed more tightly in the view.
+	 * 
+	 * @param label
+	 *            The timeline label.
+	 */
+	public static void setTimelineLabel(String label) {
+		if (label == null) {
+			return;
+		}
+		try {
+			InternalTaskBuildTrace tt = getTaskTrace();
+			tt.setTimelineLabel(label);
+		} catch (Exception e) {
+			// no exceptions!
+		}
+	}
 }

@@ -340,27 +340,77 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 	public static class BuildInformation implements Externalizable {
 		private static final long serialVersionUID = 1L;
 
-		private NavigableMap<String, UUID> connectedMachineNames;
+		public static class ConnectionInformation implements Externalizable {
+			private static final long serialVersionUID = 1L;
+
+			protected UUID connectionRootFileProviderUUID;
+			protected UUID connectionBuildEnvironmentUUID;
+			protected String connectionAddress;
+
+			public ConnectionInformation() {
+			}
+
+			public void setConnectionAddress(String connectionAddress) {
+				this.connectionAddress = connectionAddress;
+			}
+
+			public void setConnectionRootFileProviderUUID(UUID connectionRootFileProviderUUID) {
+				this.connectionRootFileProviderUUID = connectionRootFileProviderUUID;
+			}
+
+			public void setConnectionBuildEnvironmentUUID(UUID connectionBuildEnvironmentUUID) {
+				this.connectionBuildEnvironmentUUID = connectionBuildEnvironmentUUID;
+			}
+
+			public UUID getConnectionBuildEnvironmentUUID() {
+				return connectionBuildEnvironmentUUID;
+			}
+
+			public String getConnectionAddress() {
+				return connectionAddress;
+			}
+
+			public UUID getConnectionRootFileProviderUUID() {
+				return connectionRootFileProviderUUID;
+			}
+
+			@Override
+			public void writeExternal(ObjectOutput out) throws IOException {
+				out.writeObject(connectionRootFileProviderUUID);
+				out.writeObject(connectionBuildEnvironmentUUID);
+				out.writeObject(connectionAddress);
+			}
+
+			@Override
+			public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+				connectionRootFileProviderUUID = (UUID) in.readObject();
+				connectionBuildEnvironmentUUID = (UUID) in.readObject();
+				connectionAddress = (String) in.readObject();
+
+			}
+		}
+
+		private NavigableMap<String, ConnectionInformation> connectionInformations;
 
 		public BuildInformation() {
 		}
 
-		public NavigableMap<String, UUID> getConnectedMachineNames() {
-			return connectedMachineNames;
+		public NavigableMap<String, ConnectionInformation> getConnectionInformations() {
+			return connectionInformations;
 		}
 
-		public void setConnectedMachineNames(NavigableMap<String, UUID> connectedMachineNames) {
-			this.connectedMachineNames = connectedMachineNames;
+		public void setConnectionInformations(NavigableMap<String, ConnectionInformation> connectionInformations) {
+			this.connectionInformations = connectionInformations;
 		}
 
 		@Override
 		public void writeExternal(ObjectOutput out) throws IOException {
-			SerialUtils.writeExternalMap(out, connectedMachineNames);
+			SerialUtils.writeExternalMap(out, connectionInformations);
 		}
 
 		@Override
 		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-			connectedMachineNames = SerialUtils.readExternalSortedImmutableNavigableMap(in);
+			connectionInformations = SerialUtils.readExternalSortedImmutableNavigableMap(in);
 		}
 	}
 

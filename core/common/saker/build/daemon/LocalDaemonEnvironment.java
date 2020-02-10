@@ -165,6 +165,12 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		return buildExecutionInvoker;
 	}
 
+	@Override
+	public UUID getEnvironmentIdentifier() {
+		checkStarted();
+		return environment.getEnvironmentIdentifier();
+	}
+
 	@SuppressWarnings("try")
 	public synchronized final void start() throws FileNotFoundException, IOException {
 		checkUnstarted();

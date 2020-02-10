@@ -19,6 +19,7 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.util.Objects;
 
 import saker.apiextract.api.PublicApi;
 
@@ -50,9 +51,13 @@ public class NamedCheckingClassPathServiceEnumerator<T> extends NamedClassPathSe
 	 *            The class name of the service to look up.
 	 * @param expectedInstanceOf
 	 *            The expected type to check the service for.
+	 * @throws NullPointerException
+	 *             If any of the arguments are <code>null</code>.
 	 */
-	public NamedCheckingClassPathServiceEnumerator(String className, Class<?> expectedInstanceOf) {
+	public NamedCheckingClassPathServiceEnumerator(String className, Class<?> expectedInstanceOf)
+			throws NullPointerException {
 		super(className);
+		Objects.requireNonNull(expectedInstanceOf, "expected instance of class");
 		this.expectedInstanceOf = expectedInstanceOf;
 	}
 
@@ -63,6 +68,15 @@ public class NamedCheckingClassPathServiceEnumerator<T> extends NamedClassPathSe
 					"Service class: " + found + " is not assignable to " + expectedInstanceOf);
 		}
 		return super.createIterable(found);
+	}
+
+	/**
+	 * Gets the class that the service is expected to be an instance of.
+	 * 
+	 * @return The class.
+	 */
+	public Class<?> getExpectedInstanceOfClass() {
+		return expectedInstanceOf;
 	}
 
 	@Override

@@ -144,5 +144,14 @@ public interface InternalBuildTrace extends Closeable {
 
 		public default void endInnerTask() {
 		}
+
+		public default void setThrownException(Throwable e) {
+		}
+
+		public default void setTitle(String title) {
+		}
+
+		public default void setTimelineLabel(String label) {
+		}
 	}
 }

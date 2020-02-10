@@ -42,7 +42,6 @@ import java.util.NavigableSet;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 import javax.net.SocketFactory;
@@ -78,6 +77,7 @@ import saker.build.runtime.environment.EnvironmentParameters;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionParametersImpl;
 import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation;
+import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation.ConnectionInformation;
 import saker.build.runtime.execution.SakerLog.CommonExceptionFormat;
 import saker.build.runtime.execution.SakerLog.ExceptionFormat;
 import saker.build.runtime.execution.SecretInputReader;
@@ -101,6 +101,7 @@ import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.ResourceCloser;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
+import saker.build.thirdparty.saker.util.io.function.IOFunction;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.util.exc.ExceptionView;
 import saker.build.util.java.JavaTools;
@@ -611,36 +612,40 @@ public class BuildCommand {
 		try (ResourceCloser rescloser = new ResourceCloser()) {
 			DaemonEnvironment builddaemonenv = ObjectUtils.nullDefault(remoteenv, localenv);
 			NavigableMap<String, RemoteDaemonConnection> connections;
+			BuildInformation buildinfo = null;
 			if (!connect.isEmpty()) {
+				NavigableMap<String, ConnectionInformation> machinesinfo = new ConcurrentSkipListMap<>();
+				buildinfo = new BuildInformation();
 				connections = new ConcurrentSkipListMap<>();
+				IOFunction<DaemonConnectParam, RemoteDaemonConnection> connector;
+
 				if (builddaemonenv == null) {
 					//XXX make this socket factory configureable
 					SocketFactory socketfactory = SocketFactory.getDefault();
-					ThreadUtils.runParallelItems(connect, c -> {
-						if (RESERVED_CONNECTION_NAMES.contains(c.name)) {
-							throw new IllegalArgumentException(c.name + " is a reserved connection name.");
-						}
-						RemoteDaemonConnection connection = RemoteDaemonConnection.connect(socketfactory,
-								c.address.getSocketAddress());
-						rescloser.add(connection);
-						RemoteDaemonConnection prevc = connections.put(c.name, connection);
-						if (prevc != null) {
-							throw new IllegalArgumentException("Multiple connections specified with name: " + c.name);
-						}
-					});
+					connector = c -> RemoteDaemonConnection.connect(socketfactory, c.address.getSocketAddress());
 				} else {
-					ThreadUtils.runParallelItems(connect, c -> {
-						if (RESERVED_CONNECTION_NAMES.contains(c.name)) {
-							throw new IllegalArgumentException(c.name + " is a reserved connection name.");
-						}
-						RemoteDaemonConnection connection = builddaemonenv.connectTo(c.address.getSocketAddress());
-						rescloser.add(connection);
-						RemoteDaemonConnection prevc = connections.put(c.name, connection);
-						if (prevc != null) {
-							throw new IllegalArgumentException("Multiple connections specified with name: " + c.name);
-						}
-					});
+					connector = c -> builddaemonenv.connectTo(c.address.getSocketAddress());
 				}
+				ThreadUtils.runParallelItems(connect, c -> {
+					if (RESERVED_CONNECTION_NAMES.contains(c.name)) {
+						throw new IllegalArgumentException(c.name + " is a reserved connection name.");
+					}
+					RemoteDaemonConnection connection = connector.apply(c);
+					rescloser.add(connection);
+					RemoteDaemonConnection prevc = connections.put(c.name, connection);
+					if (prevc != null) {
+						throw new IllegalArgumentException("Multiple connections specified with name: " + c.name);
+					}
+					//XXX the following probably implies too many RMI requests, which can delay the start of the build
+					ConnectionInformation conninfo = new ConnectionInformation();
+					conninfo.setConnectionRootFileProviderUUID(SakerPathFiles
+							.getRootFileProviderKey(connection.getDaemonEnvironment().getFileProvider()).getUUID());
+					conninfo.setConnectionBuildEnvironmentUUID(
+							connection.getDaemonEnvironment().getEnvironmentIdentifier());
+					conninfo.setConnectionAddress(c.address.argument);
+					machinesinfo.put(c.name, conninfo);
+				});
+				buildinfo.setConnectionInformations(machinesinfo);
 			} else {
 				connections = Collections.emptyNavigableMap();
 			}
@@ -649,6 +654,7 @@ public class BuildCommand {
 
 			ExecutionParametersImpl params = createExecutionParameters(envcontroller, remoteenv, localenv, workingdir,
 					connections);
+			params.setBuildInfo(buildinfo);
 
 			ExecutionPathConfiguration pathconfiguration = params.getPathConfiguration();
 			workingdir = pathconfiguration.getWorkingDirectory();
@@ -732,18 +738,6 @@ public class BuildCommand {
 		ExecutionPathConfiguration pathconfiguration = createPathConfiguration(remoteenv, localenv, workingdir,
 				connections);
 		params.setPathConfiguration(pathconfiguration);
-
-		BuildInformation buildinfo = new BuildInformation();
-		if (!ObjectUtils.isNullOrEmpty(connections)) {
-			//XXX this information retrieval could be done multi-threadingly as it may involve multiple RMI calls
-			TreeMap<String, UUID> machinesinfo = new TreeMap<>();
-			for (Entry<String, ? extends RemoteDaemonConnection> entry : connections.entrySet()) {
-				machinesinfo.put(entry.getKey(), SakerPathFiles
-						.getRootFileProviderKey(entry.getValue().getDaemonEnvironment().getFileProvider()).getUUID());
-			}
-			buildinfo.setConnectedMachineNames(machinesinfo);
-		}
-		params.setBuildInfo(buildinfo);
 
 		DatabaseConfiguration databaseconfiguration;
 		if (databaseConfigCollector.isEmpty()) {

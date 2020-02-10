@@ -18,10 +18,12 @@ package saker.build.daemon;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.SocketAddress;
+import java.util.UUID;
 
 import saker.build.file.path.PathKey;
 import saker.build.file.provider.LocalFileProvider;
 import saker.build.file.provider.SakerFileProvider;
+import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.project.ProjectCacheHandle;
 import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
@@ -38,6 +40,13 @@ public interface DaemonEnvironment extends Closeable {
 
 	@RMICacheResult
 	public BuildExecutionInvoker getExecutionInvoker();
+
+	/**
+	 * @see SakerEnvironmentImpl#getEnvironmentIdentifier()
+	 */
+	@RMICacheResult
+	@RMISerialize
+	public UUID getEnvironmentIdentifier();
 
 	public ProjectCacheHandle getProject(PathKey workingdir) throws IOException;
 
