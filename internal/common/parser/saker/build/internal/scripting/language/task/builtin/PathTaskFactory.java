@@ -21,7 +21,6 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 import saker.build.exception.InvalidPathFormatException;
 import saker.build.file.path.SakerPath;
@@ -49,13 +48,6 @@ public class PathTaskFactory extends SelfSakerTaskFactory {
 
 	public PathTaskFactory(SakerTaskFactory pathTaskFactory) {
 		this.pathTaskFactory = pathTaskFactory;
-	}
-
-	@Override
-	public Set<String> getCapabilities() {
-		//we have the same capabilities as the path task
-		//if the path task is short, we can be short as well.
-		return pathTaskFactory.getCapabilities();
 	}
 
 	@Override

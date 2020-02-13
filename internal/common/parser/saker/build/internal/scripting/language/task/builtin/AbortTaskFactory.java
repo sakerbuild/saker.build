@@ -21,13 +21,11 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 import saker.build.internal.scripting.language.exc.BuildAbortedException;
 import saker.build.internal.scripting.language.exc.OperandExecutionException;
 import saker.build.internal.scripting.language.task.SakerLiteralTaskFactory;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
-import saker.build.internal.scripting.language.task.SakerScriptTaskUtils;
 import saker.build.internal.scripting.language.task.SakerTaskFactory;
 import saker.build.internal.scripting.language.task.SelfSakerTaskFactory;
 import saker.build.internal.scripting.language.task.TaskInvocationSakerTaskFactory;
@@ -50,16 +48,6 @@ public class AbortTaskFactory extends SelfSakerTaskFactory {
 
 	public AbortTaskFactory(SakerTaskFactory message) {
 		this.messageTask = message;
-	}
-
-	@Override
-	public Set<String> getCapabilities() {
-		//we have the same capabilities as the message task
-		//if the message is short, we can be short as well.
-		if (messageTask == null) {
-			return SakerScriptTaskUtils.CAPABILITIES_SHORT_TASK;
-		}
-		return messageTask.getCapabilities();
 	}
 
 	@Override

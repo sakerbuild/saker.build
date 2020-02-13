@@ -127,7 +127,6 @@ import saker.build.task.exception.ExceptionAccessInternal;
 import saker.build.task.exception.IllegalTaskOperationException;
 import saker.build.task.exception.InnerTaskExecutionException;
 import saker.build.task.exception.InvalidTaskInvocationConfigurationException;
-import saker.build.task.exception.InvalidTaskResultException;
 import saker.build.task.exception.MultiTaskExecutionFailedException;
 import saker.build.task.exception.TaskEnvironmentSelectionFailedException;
 import saker.build.task.exception.TaskException;
