@@ -1176,7 +1176,10 @@ public class TaskExecutionManager {
 				ManagerTaskFutureImpl<T> future = executionManager.executeImpl(taskfactory, taskid, executionContext,
 						this.taskResult, parameters == null ? DEFAULT_EXECUTION_PARAMETERS : parameters, this);
 				events.add(new TaskIdTaskEvent(TaskExecutionEventKind.WAITED_TASK, taskid));
+
+				//we need to wait as if others started the task, and we don't run it, then the execute call won't wait for it
 				TaskResultHolder<T> result = future.getWithoutAncestorWaiting(this);
+
 				addTaskOutputChangeDetector(taskid, CommonTaskOutputChangeDetector.ALWAYS);
 				return getOutputOrThrow(result);
 			});
@@ -1195,6 +1198,9 @@ public class TaskExecutionManager {
 				ManagerTaskFutureImpl<T> future = executionManager.executeImpl(taskfactory, taskid, executionContext,
 						this.taskResult, parameters == null ? DEFAULT_EXECUTION_PARAMETERS : parameters, this);
 				events.add(new TaskIdTaskEvent(TaskExecutionEventKind.WAITED_TASK, taskid));
+
+				//don't throw here if the task execution failed. it is delayed until get() is called on the future
+
 				//no need to wait the result, or report it as dependency.
 				//dependency will be reported when any property of the run task is accessed
 				return new UserTaskFuture<>(future, this);
@@ -2644,8 +2650,48 @@ public class TaskExecutionManager {
 
 			@Override
 			public String toString() {
-				return "FactoryFutureState[state=" + state + ", factory=" + factory + "]";
+				return getClass().getSimpleName() + "[state=" + state + ", factory=" + factory + "]";
 			}
+		}
+
+		protected static class DeadlockedFutureState<R> extends FactoryFutureState implements TaskResultHolder<R> {
+			private TaskIdentifier taskId;
+
+			public DeadlockedFutureState(TaskFactory<?> factory, TaskIdentifier taskId) {
+				super(STATE_RESULT_DEADLOCKED, factory);
+				this.taskId = taskId;
+			}
+
+			@Override
+			protected boolean isSuccessfulFinish() {
+				return false;
+			}
+
+			@Override
+			protected TaskResultHolder<?> getTaskResult() {
+				return this;
+			}
+
+			@Override
+			public TaskIdentifier getTaskIdentifier() {
+				return taskId;
+			}
+
+			@Override
+			public R getOutput() {
+				return null;
+			}
+
+			@Override
+			public List<? extends Throwable> getAbortExceptions() {
+				return null;
+			}
+
+			@Override
+			public Throwable getFailCauseException() {
+				return ExceptionAccessInternal.createTaskExecutionDeadlockedException(taskId);
+			}
+
 		}
 
 		protected static class UnchangedInitializingFutureState extends FactoryFutureState {
@@ -2663,7 +2709,7 @@ public class TaskExecutionManager {
 
 			@Override
 			public String toString() {
-				return "UnchangedInitializingFutureState["
+				return getClass().getSimpleName() + "["
 						+ (dependencies != null ? "dependencies=" + dependencies + ", " : "")
 						+ (factory != null ? "factory=" + factory : "") + "]";
 			}
@@ -2692,7 +2738,8 @@ public class TaskExecutionManager {
 
 			@Override
 			public String toString() {
-				return "ExecutingFutureState[" + (taskContext != null ? "taskContext=" + taskContext + ", " : "")
+				return getClass().getSimpleName() + "["
+						+ (taskContext != null ? "taskContext=" + taskContext + ", " : "")
 						+ (modificationStamp != null ? "modificationStamp=" + modificationStamp + ", " : "")
 						+ (factory != null ? "factory=" + factory + ", " : "") + "state=" + state + "]";
 			}
@@ -3645,8 +3692,7 @@ public class TaskExecutionManager {
 		protected void deadlocked() {
 			FutureState s = this.futureState;
 			while (s.state == STATE_UNSTARTED || s.state == STATE_EXECUTING || s.state == STATE_INITIALIZING) {
-				if (ARFU_futureState.compareAndSet(this, s,
-						new FactoryFutureState(STATE_RESULT_DEADLOCKED, s.getFactory()))) {
+				if (ARFU_futureState.compareAndSet(this, s, new DeadlockedFutureState<>(s.getFactory(), this.taskId))) {
 					for (WaiterThreadHandle t; (t = waitingThreads.poll()) != null;) {
 						LockSupport.unpark(t.get());
 					}
@@ -3814,7 +3860,7 @@ public class TaskExecutionManager {
 
 	private ThreadGroup executionThreadGroup;
 	protected ThreadWorkPool generalExecutionThreadWorkPool;
-	private final ConcurrentPrependAccumulator<TaskExceptionThread> taskThreads = new ConcurrentPrependAccumulator<>();
+	private final ConcurrentPrependAccumulator<TaskExecutionThread> taskThreads = new ConcurrentPrependAccumulator<>();
 
 	private final BuildTaskResultDatabase initTaskResults;
 
@@ -3837,6 +3883,8 @@ public class TaskExecutionManager {
 	protected ExecutionContextImpl executionContext;
 
 	protected InternalBuildTrace buildTrace;
+
+	protected ConcurrentPrependAccumulator<Entry<TaskIdentifier, TaskException>> taskRunningFailureExceptions = new ConcurrentPrependAccumulator<>();
 
 	public TaskExecutionManager(BuildTaskResultDatabase taskresults) {
 		this.initTaskResults = taskresults;
@@ -3912,7 +3960,7 @@ public class TaskExecutionManager {
 					//throw an exception if the execution fails;
 					getOutputOrThrow(taskres);
 				}, taskid, createTaskThreadName(factory));
-				for (TaskExceptionThread t; (t = taskThreads.take()) != null;) {
+				for (TaskExecutionThread t; (t = taskThreads.take()) != null;) {
 					while (true) {
 						try {
 							t.join();
@@ -3948,6 +3996,17 @@ public class TaskExecutionManager {
 					texc = ExceptionAccessInternal.createMultiTaskExecutionFailedException(taskid);
 				}
 				texc.addSuppressed(e);
+			}
+			{
+				Entry<TaskIdentifier, TaskException> e = taskRunningFailureExceptions.take();
+				if (e != null) {
+					if (texc == null) {
+						texc = ExceptionAccessInternal.createMultiTaskExecutionFailedException(taskid);
+					}
+					do {
+						ExceptionAccessInternal.addMultiTaskExecutionFailedCause(texc, e.getKey(), e.getValue());
+					} while ((e = taskRunningFailureExceptions.take()) != null);
+				}
 			}
 			if (texc != null) {
 				failedexecution = true;
@@ -4148,12 +4207,12 @@ public class TaskExecutionManager {
 		}
 	}
 
-	private static class TaskExceptionThread extends Thread {
+	private static class TaskExecutionThread extends Thread {
 		protected TaskIdentifier taskIdentifier;
 		private ThrowingRunnable targetRunnable;
 		private Throwable exception;
 
-		public TaskExceptionThread(ThreadGroup group, ThrowingRunnable target, TaskIdentifier taskIdentifier,
+		public TaskExecutionThread(ThreadGroup group, ThrowingRunnable target, TaskIdentifier taskIdentifier,
 				String name) {
 			super(group, null, name);
 			this.taskIdentifier = taskIdentifier;
@@ -4187,7 +4246,7 @@ public class TaskExecutionManager {
 	}
 
 	private void offerTaskRunnable(ThrowingRunnable run, TaskIdentifier taskid, String name) {
-		TaskExceptionThread excthread = new TaskExceptionThread(executionThreadGroup, run, taskid, name);
+		TaskExecutionThread excthread = new TaskExecutionThread(executionThreadGroup, run, taskid, name);
 		//start the thread before adding tot he collector
 		//else there is a race condition when the consumer could join the thread before it is started
 		excthread.start();
@@ -4441,6 +4500,9 @@ public class TaskExecutionManager {
 
 					@SuppressWarnings("unchecked")
 					TaskExecutionResult<R> prevexecres_r = (TaskExecutionResult<R>) prevexecresult;
+
+					this.buildTrace.taskUpToDate(prevexecresult, capabilities);
+
 					//TODO use the all transitive map
 					startUnchangedTaskSubTasks(prevexecres_r, context, currenttaskdirectorycontext, future,
 							collector.getAllTransitiveCreatedTaskIds().keySet(), parameters, spawnedtask);
@@ -4510,6 +4572,7 @@ public class TaskExecutionManager {
 				baos.write('\n');
 //				future.internalGetOriginatingBuildFile(this, context)
 			}
+			this.buildTrace.upToDateTaskStandardOutput(prevexecresult, baos);
 			try (StandardIOLock lock = context.acquireStdIOLock()) {
 				ByteSink stdout = context.getStdOutSink();
 				stdout.write(baos.toByteArrayRegion());
@@ -4547,8 +4610,6 @@ public class TaskExecutionManager {
 
 		//TODO if a created task is also dependency, then it can be just directly added to the results 
 		//     instead of going through the delta checking again
-
-		this.buildTrace.taskUpToDate(prevexecresult);
 
 		runIdeConfigurations.addAll(prevexecresult.getIDEConfigurations());
 
@@ -4612,7 +4673,10 @@ public class TaskExecutionManager {
 			spawnedtask.executionFinished(prevexecresult);
 			//print the lines before throwing the exception, but after setting the failure
 			printLinesOfExecutionResult(executioncontext, prevexecresult, future);
-			throw createFailException(taskid, prevexecresult.getFailCauseException(), abortexceptions);
+			taskRunningFailureExceptions.add(ImmutableUtils.makeImmutableMapEntry(taskid,
+					createFailException(taskid, prevexecresult.getFailCauseException(), abortexceptions)));
+			return;
+//			throw createFailException(taskid, prevexecresult.getFailCauseException(), abortexceptions);
 		}
 
 		future.finished(this, prevexecresult);
@@ -5654,7 +5718,6 @@ public class TaskExecutionManager {
 					directorycontext);
 			if (!inputdeps.isEmpty()) {
 				deltarunnables.add(() -> {
-					long nanos = System.nanoTime();
 					EntryAccumulator<SakerPath, SakerFile> collectedfiles = PartitionedEntryAccumulatorArray
 							.create(inputdependencies.size());
 					forEachSakerFile(inputdependencies, executioncontext, directorycontext.getTaskWorkingDirectory(),
@@ -5681,7 +5744,6 @@ public class TaskExecutionManager {
 			NavigableMap<SakerPath, ContentDescriptor> outputdeps = filedependencies.getOutputFileDependencies();
 			if (!outputdeps.isEmpty()) {
 				deltarunnables.add(() -> {
-					long nanos = System.nanoTime();
 					NavigableMap<SakerPath, ContentDescriptor> outputdependencies = collectDependenciesMap(outputdeps,
 							directorycontext);
 					EntryAccumulator<SakerPath, SakerFile> collectedfiles = PartitionedEntryAccumulatorArray
@@ -5711,7 +5773,6 @@ public class TaskExecutionManager {
 			if (!additiondeps.isEmpty()) {
 				for (FileCollectionStrategy additiondep : additiondeps) {
 					deltarunnables.add(() -> {
-						long nanos = System.nanoTime();
 						NavigableMap<SakerPath, ? extends SakerFile> files = result.fileAdditionDependencies
 								.computeIfAbsent(additiondep, ad -> {
 									NavigableMap<SakerPath, ? extends SakerFile> collectedfiles;
@@ -5818,8 +5879,8 @@ public class TaskExecutionManager {
 		}
 
 		Throwable taskrunningexception = null;
-		R result = null;
 		try {
+			R result = null;
 			try {
 				TaskInvocationResult<R> taskinvocationresult = invocationManager.invokeTaskRunning(factory,
 						capabilities, invokerselectionresult, taskcontext);
@@ -5865,17 +5926,25 @@ public class TaskExecutionManager {
 					executionresult.setFailedOutput(taskrunningexception, abortexceptions, buildUUID);
 					spawnedtask.executionFailed(taskrunningexception, abortexceptions);
 					future.failed(this, taskrunningexception, abortexceptions, taskcontext.resultDependencies);
-					throw createFailException(taskid, taskrunningexception, abortexceptions);
+					taskRunningFailureExceptions.add(ImmutableUtils.makeImmutableMapEntry(taskid,
+							createFailException(taskid, taskrunningexception, abortexceptions)));
+					return;
+//					throw createFailException(taskid, taskrunningexception, abortexceptions);
 				}
 				boolean hasabortedexception = !ObjectUtils.isNullOrEmpty(abortexceptions);
 				if (hasabortedexception) {
 					if (result != null) {
-						InvalidTaskResultException exc = new InvalidTaskResultException(
-								"Task reported exception, but did not return null result. (" + result + ")", taskid);
-						for (Throwable abexc : abortexceptions) {
-							exc.addSuppressed(abexc);
-						}
-						throw exc;
+//						InvalidTaskResultException exc = new InvalidTaskResultException(
+//								"Task reported exception, but did not return null result. (" + result + ")", taskid);
+//						for (Throwable abexc : abortexceptions) {
+//							exc.addSuppressed(abexc);
+//						}
+						//TODO ignore the exception
+						//do not throw this exception, as this is not really necessary, and just disrupts the builds without 
+						// having any advantage. warning is better
+//						future.failed(this, taskrunningexception, abortexceptions, taskcontext.resultDependencies);
+//						return;
+//						throw exc;
 					}
 				}
 				if (TestFlag.ENABLED) {
@@ -5896,7 +5965,10 @@ public class TaskExecutionManager {
 				future.finished(this, executionresult);
 
 				if (hasabortedexception) {
-					throw createFailException(taskid, taskrunningexception, abortexceptions);
+					taskRunningFailureExceptions.add(ImmutableUtils.makeImmutableMapEntry(taskid,
+							createFailException(taskid, taskrunningexception, abortexceptions)));
+					return;
+//					throw createFailException(taskid, taskrunningexception, abortexceptions);
 				}
 
 				if (capabilities.isCacheable()) {
@@ -6292,7 +6364,11 @@ public class TaskExecutionManager {
 			it = abortexceptions.iterator();
 			taskrunningexception = it.next();
 		} else {
-			it = abortexceptions.iterator();
+			if (ObjectUtils.isNullOrEmpty(abortexceptions)) {
+				it = Collections.emptyIterator();
+			} else {
+				it = abortexceptions.iterator();
+			}
 		}
 		TaskExecutionFailedException e = ExceptionAccessInternal
 				.createTaskExecutionFailedException("Task execution failed.", taskrunningexception, taskid);

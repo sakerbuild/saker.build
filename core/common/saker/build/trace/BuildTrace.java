@@ -2,6 +2,7 @@ package saker.build.trace;
 
 import saker.apiextract.api.PublicApi;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
 
@@ -39,69 +40,32 @@ public final class BuildTrace {
 	}
 
 	/**
-	 * Classifies the current task as a frontend task for a given worker task.
+	 * Sets the display information of the currently running task or inner task.
 	 * <p>
-	 * A frontend tasks is considered to be one that parses the input parameters and configuration, and starts a worker
-	 * task that actually performs the build task operations.
+	 * The method will set the label that is displayed in the timeline view of the build trace, and the title that is
+	 * displayed in other locations.
 	 * <p>
-	 * A task can classify itself as frontend for multiple worker tasks.
+	 * It is generally recommended that tht timeline label is short to be able to fit in a timeline block. The title may
+	 * be longer, but should not be used to convey all information related to the task.
 	 * <p>
-	 * In general, the build trace may hide frontend tasks by default to provide more meaningful information to the
-	 * user.
+	 * The titles should be unique enough for the user to differentiate different tasks of a kind, but not too long to
+	 * avoid crowding the UI.
+	 * <p>
+	 * If the current task is an inner task, the display informations will be set for that instead of the enclosing
+	 * task.
 	 * 
-	 * @param workertaskid
-	 *            The task identifier of the worker task.
-	 */
-	public static void classifyFrontendTask(TaskIdentifier workertaskid) {
-		if (workertaskid == null) {
-			return;
-		}
-		try {
-			InternalTaskBuildTrace tt = getTaskTrace();
-			tt.classifyFrontendTask(workertaskid);
-		} catch (Exception e) {
-			// no exceptions!
-		}
-	}
-
-	/**
-	 * Sets the title of the currently running task.
-	 * <p>
-	 * If the current task is an inner task, the title will be set for the inner task instead of the enclosing task.
-	 * 
+	 * @param timelinelabel
+	 *            The label for the timeline view or <code>null</code>.
 	 * @param title
-	 *            The title.
+	 *            The title of the task or <code>null</code>.
 	 */
-	public static void setTitle(String title) {
-		if (title == null) {
+	public static void setDisplayInformation(String timelinelabel, String title) {
+		if (ObjectUtils.isNullOrEmpty(timelinelabel) && ObjectUtils.isNullOrEmpty(title)) {
 			return;
 		}
 		try {
 			InternalTaskBuildTrace tt = getTaskTrace();
-			tt.setTitle(title);
-		} catch (Exception e) {
-			// no exceptions!
-		}
-	}
-
-	/**
-	 * Sets the label of the currently running task in the timeline view.
-	 * <p>
-	 * If the current task is an inner task, the label will be set for the inner task instead of the enclosing task.
-	 * <p>
-	 * The timeline label should be more concise than the {@linkplain #setTitle(String) title} of the task as they can
-	 * be displayed more tightly in the view.
-	 * 
-	 * @param label
-	 *            The timeline label.
-	 */
-	public static void setTimelineLabel(String label) {
-		if (label == null) {
-			return;
-		}
-		try {
-			InternalTaskBuildTrace tt = getTaskTrace();
-			tt.setTimelineLabel(label);
+			tt.setDisplayInformation(timelinelabel, title);
 		} catch (Exception e) {
 			// no exceptions!
 		}

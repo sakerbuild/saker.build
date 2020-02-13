@@ -50,7 +50,6 @@ import saker.build.task.utils.TaskInvocationBootstrapperTaskFactory;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
-import saker.build.trace.BuildTrace;
 
 public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 	public static final String TASKNAME_ABORT = "abort";
@@ -99,6 +98,10 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 								"The task \"" + TASKNAME_GLOBAL + "\" missing variable name as unnamed parameter.",
 								scriptposition);
 					}
+					if (varname instanceof SakerLiteralTaskFactory
+							&& ((SakerLiteralTaskFactory) varname).getValue() == null) {
+						return new InvalidScriptDeclarationTaskFactory("Global variable name is null.", scriptposition);
+					}
 					if (parameters.size() > 1) {
 						return new InvalidScriptDeclarationTaskFactory(
 								"The task \"" + TASKNAME_GLOBAL + "\" cannot have multiple parameters.",
@@ -117,6 +120,10 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 								"The task \"" + TASKNAME_STATIC + "\" missing variable name as unnamed parameter.",
 								scriptposition);
 					}
+					if (varname instanceof SakerLiteralTaskFactory
+							&& ((SakerLiteralTaskFactory) varname).getValue() == null) {
+						return new InvalidScriptDeclarationTaskFactory("Static variable name is null.", scriptposition);
+					}
 					if (parameters.size() > 1) {
 						return new InvalidScriptDeclarationTaskFactory(
 								"The task \"" + TASKNAME_STATIC + "\" cannot have multiple parameters.",
@@ -134,6 +141,10 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 						return new InvalidScriptDeclarationTaskFactory(
 								"The task \"" + TASKNAME_VAR + "\" missing variable name as unnamed parameter.",
 								scriptposition);
+					}
+					if (varname instanceof SakerLiteralTaskFactory
+							&& ((SakerLiteralTaskFactory) varname).getValue() == null) {
+						return new InvalidScriptDeclarationTaskFactory("Variable name is null.", scriptposition);
 					}
 					if (parameters.size() > 1) {
 						return new InvalidScriptDeclarationTaskFactory(
@@ -324,7 +335,6 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 
 		TaskIdentifier invokertaskid = TaskInvocationBootstrapperTaskFactory.runBootstrapping(taskcontext,
 				targettaskname, parametertaskids, repository, null);
-		BuildTrace.classifyFrontendTask(invokertaskid);
 		TaskInvocationOutputSakerTaskResult result = new TaskInvocationOutputSakerTaskResult(invokertaskid);
 		taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
 		return result;

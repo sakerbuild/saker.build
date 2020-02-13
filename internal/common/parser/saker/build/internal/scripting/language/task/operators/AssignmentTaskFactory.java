@@ -48,7 +48,7 @@ public class AssignmentTaskFactory extends BinaryOperatorTaskFactory {
 		TaskIdentifier rtaskid = right.createSubTaskIdentifier(thistaskid);
 		taskcontext.getTaskUtilities().startTaskFuture(rtaskid, right);
 
-		SakerTaskResult leftres = taskcontext.getTaskUtilities().runTaskResult(ltaskid, left);
+		SakerTaskResult leftres = runForResult(taskcontext, ltaskid, left);
 		if (!(leftres instanceof AssignableTaskResult)) {
 			throw new OperandExecutionException("Left operand is not assignable.", ltaskid);
 		}

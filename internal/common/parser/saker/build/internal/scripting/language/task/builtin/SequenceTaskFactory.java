@@ -59,7 +59,7 @@ public class SequenceTaskFactory extends SelfSakerTaskFactory {
 		List<StructuredTaskResult> resulttids = new ArrayList<>(elements.size());
 		for (SakerTaskFactory taskfactory : elements) {
 			TaskIdentifier subtaskid = taskfactory.createSubTaskIdentifier(thistaskid);
-			taskcontext.getTaskUtilities().runTaskResult(subtaskid, taskfactory).toResult(taskcontext);
+			runForResult(taskcontext, subtaskid, taskfactory).toResult(taskcontext);
 			resulttids.add(new SakerTaskObjectSakerTaskResult(subtaskid));
 		}
 		SakerListTaskResult result = new SakerListTaskResult(resulttids);

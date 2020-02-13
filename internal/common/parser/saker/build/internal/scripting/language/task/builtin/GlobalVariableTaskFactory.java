@@ -53,8 +53,8 @@ public class GlobalVariableTaskFactory extends SelfSakerTaskFactory {
 	public SakerTaskResult run(TaskContext taskcontext) throws Exception {
 		TaskIdentifier namefactoryid = nameFactory
 				.createSubTaskIdentifier((SakerScriptTaskIdentifier) taskcontext.getTaskId());
-		String varnamestr = Objects.toString(
-				taskcontext.getTaskUtilities().runTaskResult(namefactoryid, nameFactory).toResult(taskcontext), null);
+		String varnamestr = Objects
+				.toString(runForResult(taskcontext, namefactoryid, nameFactory).toResult(taskcontext), null);
 		if (varnamestr == null) {
 			taskcontext.abortExecution(
 					new OperandExecutionException("Global variable name evaluated to null.", namefactoryid));

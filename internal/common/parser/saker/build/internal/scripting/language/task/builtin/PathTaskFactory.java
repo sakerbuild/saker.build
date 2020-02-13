@@ -21,6 +21,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import saker.build.exception.InvalidPathFormatException;
 import saker.build.file.path.SakerPath;
@@ -51,11 +52,17 @@ public class PathTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
+	public Set<String> getCapabilities() {
+		//we have the same capabilities as the path task
+		//if the path task is short, we can be short as well.
+		return pathTaskFactory.getCapabilities();
+	}
+
+	@Override
 	public SakerTaskResult run(TaskContext taskcontext) throws Exception {
 		TaskIdentifier thistaskid = taskcontext.getTaskId();
 		TaskIdentifier pathtaskid = pathTaskFactory.createSubTaskIdentifier((SakerScriptTaskIdentifier) thistaskid);
-		Object pathtaskres = taskcontext.getTaskUtilities().runTaskResult(pathtaskid, pathTaskFactory)
-				.toResult(taskcontext);
+		Object pathtaskres = runForResult(taskcontext, pathtaskid, pathTaskFactory).toResult(taskcontext);
 		SakerPath p = convertResultToPath(pathtaskid, pathtaskres);
 		if (p.isRelative()) {
 			p = taskcontext.getTaskWorkingDirectory().getSakerPath().resolve(p);

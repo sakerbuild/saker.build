@@ -21,9 +21,11 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import saker.build.internal.scripting.language.task.SakerLiteralTaskFactory;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
+import saker.build.internal.scripting.language.task.SakerScriptTaskUtils;
 import saker.build.internal.scripting.language.task.SakerTaskFactory;
 import saker.build.internal.scripting.language.task.SelfSakerTaskFactory;
 import saker.build.internal.scripting.language.task.TaskInvocationSakerTaskFactory;
@@ -48,13 +50,22 @@ public class PrintTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
+	public Set<String> getCapabilities() {
+		//we have the same capabilities as the message task
+		//if the message is short, we can be short as well.
+		if (messageTask == null) {
+			return SakerScriptTaskUtils.CAPABILITIES_SHORT_TASK;
+		}
+		return messageTask.getCapabilities();
+	}
+
+	@Override
 	public SakerTaskResult run(TaskContext taskcontext) throws Exception {
 		taskcontext.setStandardOutDisplayIdentifier(TaskInvocationSakerTaskFactory.TASKNAME_PRINT);
 		//print "null" if the message is null
 		TaskIdentifier messagetaskid = messageTask
 				.createSubTaskIdentifier((SakerScriptTaskIdentifier) taskcontext.getTaskId());
-		Object taskresult = taskcontext.getTaskUtilities().runTaskResult(messagetaskid, messageTask)
-				.toResult(taskcontext);
+		Object taskresult = runForResult(taskcontext, messagetaskid, messageTask).toResult(taskcontext);
 		String messagestr = Objects.toString(taskresult);
 		taskcontext.println(Objects.toString(messagestr));
 		return new NoSakerTaskResult(taskcontext.getTaskId());

@@ -2,6 +2,7 @@ package saker.build.trace;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Set;
 
 import saker.build.file.SakerFile;
@@ -16,6 +17,7 @@ import saker.build.task.TaskFactory;
 import saker.build.task.TaskInvocationConfiguration;
 import saker.build.task.delta.BuildDelta;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
@@ -45,7 +47,7 @@ public interface InternalBuildTrace extends Closeable {
 	public default void startExecute() {
 	}
 
-	public default void endExecute() {
+	public default void endExecute(boolean successful) {
 	}
 
 	public default InternalTaskBuildTrace taskBuildTrace(TaskIdentifier taskid, TaskFactory<?> taskfactory,
@@ -56,10 +58,14 @@ public interface InternalBuildTrace extends Closeable {
 	public default void ignoredException(TaskIdentifier taskid, ExceptionView e) {
 	}
 
-	public default void taskUpToDate(TaskExecutionResult<?> prevexecresult) {
+	public default void taskUpToDate(TaskExecutionResult<?> prevexecresult, TaskInvocationConfiguration capabilities) {
 	}
 
-	public default void startBuildCluster(SakerEnvironmentImpl environment) {
+	public default void upToDateTaskStandardOutput(TaskExecutionResult<?> prevexecresult,
+			UnsyncByteArrayOutputStream baos) {
+	}
+
+	public default void startBuildCluster(SakerEnvironmentImpl environment, Path mirrordir) {
 	}
 
 	@RMIWrap(NullInternalBuildTrace.NullInternalBuildTraceRMIWrapper.class)
@@ -135,23 +141,18 @@ public interface InternalBuildTrace extends Closeable {
 		public default void endTaskExecution() {
 		}
 
-		public default void classifyFrontendTask(TaskIdentifier workertaskid) {
-		}
-
-		public default InternalTaskBuildTrace startInnerTask(TaskFactory<?> innertaskfactory) {
+		public default InternalTaskBuildTrace startInnerTask(@RMISerialize TaskFactory<?> innertaskfactory) {
 			return NullInternalBuildTrace.INSTANCE;
 		}
 
 		public default void endInnerTask() {
 		}
 
-		public default void setThrownException(Throwable e) {
+		public default void setThrownException(@RMISerialize Throwable e) {
 		}
 
-		public default void setTitle(String title) {
-		}
-
-		public default void setTimelineLabel(String label) {
+		public default void setDisplayInformation(String timelinelabel, String title) {
 		}
 	}
+
 }

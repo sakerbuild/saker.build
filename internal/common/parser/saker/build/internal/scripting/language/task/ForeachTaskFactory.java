@@ -46,8 +46,6 @@ import saker.build.runtime.execution.ExecutionContext;
 import saker.build.scripting.ScriptPosition;
 import saker.build.task.Task;
 import saker.build.task.TaskContext;
-import saker.build.task.TaskDependencyFuture;
-import saker.build.task.TaskFuture;
 import saker.build.task.TaskResultDependencyHandle;
 import saker.build.task.TaskResultResolver;
 import saker.build.task.exception.TaskExecutionFailedException;
@@ -172,9 +170,6 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 	public SakerTaskResult run(TaskContext taskcontext) {
 		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
 		TaskIdentifier iterabletasktaskid = iterableTask.createSubTaskIdentifier(thistaskid);
-		TaskFuture<SakerTaskResult> iterabletaskfuture = taskcontext.getTaskUtilities()
-				.runTaskFuture(iterabletasktaskid, iterableTask);
-		TaskDependencyFuture<SakerTaskResult> iterableresult = iterabletaskfuture.asDependencyFuture();
 
 		//TODO the result should not be a task factory, but the actual result.
 		//     we should start the result tasks ASAP instead of collecting them in a factory and starting that
@@ -208,7 +203,7 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 
 		Object iterableobject;
 		try {
-			SakerTaskResult iterablesakerresult = iterableresult.get();
+			SakerTaskResult iterablesakerresult = runForResult(taskcontext, iterabletasktaskid, iterableTask);
 			iterableobject = iterablesakerresult.get(taskcontext);
 		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
 			throw new OperandExecutionException("Iterable failed to evaluate.", e, iterabletasktaskid);

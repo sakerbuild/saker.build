@@ -10,6 +10,7 @@ import java.io.PrintStream;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -28,6 +29,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import saker.build.file.SakerFile;
 import saker.build.file.content.CommonContentDescriptorSupplier;
@@ -40,6 +42,7 @@ import saker.build.file.provider.LocalFileProvider;
 import saker.build.file.provider.RootFileProviderKey;
 import saker.build.file.provider.SakerFileProvider;
 import saker.build.file.provider.SakerPathFiles;
+import saker.build.meta.Versions;
 import saker.build.runtime.classpath.ClassPathLocation;
 import saker.build.runtime.classpath.ClassPathServiceEnumerator;
 import saker.build.runtime.classpath.HttpUrlJarFileClassPathLocation;
@@ -109,8 +112,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			.getMethodAssert(ClusterTaskBuildTrace.class, "startClusterTaskExecution", long.class, UUID.class);
 	protected static final Method METHOD_ENDCLUSTERTASKEXECUTION = ReflectUtils
 			.getMethodAssert(ClusterTaskBuildTrace.class, "endClusterTaskExecution", long.class);
-	protected static final Method METHOD_CLASSIFYFRONTENDTASK = ReflectUtils
-			.getMethodAssert(ClusterTaskBuildTrace.class, "classifyFrontendTask", TaskIdentifier.class);
 	protected static final Method METHOD_STARTCLUSTERINNERTASK = ReflectUtils.getMethodAssert(
 			ClusterTaskBuildTrace.class, "startClusterInnerTask", Object.class, long.class, UUID.class, String.class);
 	protected static final Method METHOD_ENDCLUSTERINNERTASK = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
@@ -120,14 +121,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	protected static final Method METHOD_SETCLUSTERINNERTASKTHROWNEXCEPTION = ReflectUtils.getMethodAssert(
 			ClusterTaskBuildTrace.class, "setClusterInnerTaskThrownException", Object.class, ExceptionView.class);
 
-	protected static final Method METHOD_SETTITLE = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
-			"setTitle", String.class);
-	protected static final Method METHOD_SETTIMELINELABEL = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
-			"setTimelineLabel", String.class);
-	protected static final Method METHOD_SETCLUSTERINNERTASKTITLE = ReflectUtils
-			.getMethodAssert(ClusterTaskBuildTrace.class, "setClusterInnerTaskTitle", Object.class, String.class);
-	protected static final Method METHOD_SETCLUSTERINNERTASKTIMELINELABEL = ReflectUtils.getMethodAssert(
-			ClusterTaskBuildTrace.class, "setClusterInnerTaskTimelineLabel", Object.class, String.class);
+	protected static final Method METHOD_SETDISPLAYINFORMATION = ReflectUtils
+			.getMethodAssert(ClusterTaskBuildTrace.class, "setDisplayInformation", String.class, String.class);
+	protected static final Method METHOD_SETCLUSTERINNERTASKDISPLAYINFORMATION = ReflectUtils.getMethodAssert(
+			ClusterTaskBuildTrace.class, "setClusterInnerTaskDisplayInformation", Object.class, String.class,
+			String.class);
 
 	public static final int MAGIC = 0x45a8f96a;
 	public static final int FORMAT_VERSION = 1;
@@ -173,6 +171,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	private ConcurrentHashMap<TaskIdentifier, TaskBuildTraceImpl> taskBuildTraces = new ConcurrentHashMap<>();
 	private SakerPath workingDirectoryPath;
 	private SakerPath buildDirectoryPath;
+	private SakerPath mirrorDirectoryPath;
 
 	private NavigableMap<String, PathKey> rootsPathKey = new TreeMap<>();
 	/**
@@ -187,6 +186,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	private ExecutionScriptConfiguration scriptConfiguration;
 	private ExecutionRepositoryConfiguration repositoryConfiguration;
 	private DatabaseConfiguration databaseConfiguration;
+	private boolean successful;
 
 	public InternalBuildTraceImpl(ProviderHolderPathKey buildtraceoutput) {
 		this.buildTraceOutputPathKey = buildtraceoutput;
@@ -202,13 +202,25 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	}
 
 	private TaskBuildTraceImpl getTaskTraceForTaskId(TaskIdentifier taskid) {
-		return taskBuildTraces.computeIfAbsent(taskid, x -> new TaskBuildTraceImpl());
+		return taskBuildTraces.computeIfAbsent(taskid, x -> new TaskBuildTraceImpl(this));
 	}
 
 	@Override
-	public void taskUpToDate(TaskExecutionResult<?> prevexecresult) {
+	public void taskUpToDate(TaskExecutionResult<?> prevexecresult, TaskInvocationConfiguration capabilities) {
 		TaskBuildTraceImpl trace = getTaskTraceForTaskId(prevexecresult.getTaskIdentifier());
-		trace.upToDate(prevexecresult);
+		trace.upToDate(prevexecresult, capabilities);
+	}
+
+	@Override
+	public void upToDateTaskStandardOutput(TaskExecutionResult<?> prevexecresult, UnsyncByteArrayOutputStream baos) {
+		TaskBuildTraceImpl trace = getTaskTraceForTaskId(prevexecresult.getTaskIdentifier());
+		TaskBuildTraceInfo traceinfo = trace.traceInfo;
+		if (traceinfo == null) {
+			traceinfo = new TaskBuildTraceInfo();
+			trace.traceInfo = traceinfo;
+		}
+		traceinfo.standardOutBytes = baos.toByteArrayRegion();
+		traceinfo.standardErrBytes = ByteArrayRegion.EMPTY;
 	}
 
 	@Override
@@ -248,6 +260,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	public void initializeDone(ExecutionContextImpl executioncontext) {
 		this.executionUserParameters = executioncontext.getUserParameters();
 		this.workingDirectoryPath = executioncontext.getWorkingDirectoryPath();
+		this.mirrorDirectoryPath = SakerPath.valueOf(executioncontext.getMirrorDirectory());
 		this.buildDirectoryPath = executioncontext.getBuildDirectoryPath();
 		for (Entry<String, SakerFileProvider> entry : executioncontext.getPathConfiguration().getRootFileProviders()
 				.entrySet()) {
@@ -271,7 +284,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	}
 
 	@Override
-	public void endExecute() {
+	public void endExecute(boolean successful) {
+		this.successful = successful;
 		this.endExecutionNanos = System.nanoTime();
 	}
 
@@ -293,6 +307,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			writeFieldName(os, "duration");
 			writeLong(os, (endNanos - startNanos) / 1_000_000);
 
+			writeFieldName(os, "successful");
+			writeBoolean(os, successful);
+
 			writeFieldName(os, "phase_setup");
 			writeLong(os, (initNanos - startNanos) / 1_000_000);
 			writeFieldName(os, "phase_init");
@@ -309,6 +326,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			writeTypedObject(os, Objects.toString(workingDirectoryPath, null));
 			writeFieldName(os, "build_dir");
 			writeTypedObject(os, Objects.toString(buildDirectoryPath, null));
+			writeFieldName(os, "mirror_dir");
+			writeTypedObject(os, Objects.toString(mirrorDirectoryPath, null));
 
 			writeFieldName(os, "execution_environment_uuid");
 			writeString(os, localEnvironmentInformation.buildEnvironmentUUID.toString());
@@ -355,6 +374,13 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				if (!ObjectUtils.isNullOrEmpty(envinfo.computerName)) {
 					writeFieldName(os, "computer_name");
 					writeString(os, envinfo.computerName);
+				}
+				writeFieldName(os, "saker_build_version");
+				writeString(os, envinfo.sakerBuildVersion);
+
+				if (envinfo.clusterMirrorDirectory != null) {
+					writeFieldName(os, "cluster_mirror_dir");
+					writeString(os, envinfo.clusterMirrorDirectory.toString());
 				}
 
 				Long inittime = clusterInitializationTimeNanos.get(entry.getKey());
@@ -445,9 +471,10 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 			if (this.repositoryConfiguration != null) {
 				writeFieldName(os, "repo_config");
-				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
 
+				os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
 				for (RepositoryConfig rc : this.repositoryConfiguration.getRepositories()) {
+					os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
 					String repoid = rc.getRepositoryIdentifier();
 					if (!ObjectUtils.isNullOrEmpty(repoid)) {
 						writeFieldName(os, "identifier");
@@ -459,9 +486,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 					writeFieldName(os, "service");
 					writeClassPathServiceEnumerator(os, rc.getRepositoryFactoryEnumerator());
+					writeFieldName(os, "");
 				}
-
-				writeFieldName(os, "");
+				writeNull(os);
 			}
 
 			if (this.scriptConfiguration != null) {
@@ -483,7 +510,10 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 						writeFieldName(os, "classpath");
 						if (cpl == null) {
+							os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+							writeFieldName(os, "kind");
 							writeString(os, "builtin-script");
+							writeFieldName(os, "");
 						} else {
 							writeClassPathLocation(os, cpl);
 						}
@@ -498,18 +528,23 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				writeFieldName(os, "");
 			}
 
-			writeFieldName(os, "scripts");
-			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+			//pre-sort
+			NavigableMap<SakerPath, ByteArrayRegion> allscripts = new TreeMap<>();
 			for (TaskBuildTraceImpl ttrace : taskBuildTraces.values()) {
 				if (ttrace.traceInfo == null) {
 					continue;
 				}
-				for (Entry<SakerPath, ByteArrayRegion> entry : ttrace.traceInfo.readScriptContents.entrySet()) {
+				allscripts.putAll(ttrace.traceInfo.readScriptContents);
+			}
+			if (!allscripts.isEmpty()) {
+				writeFieldName(os, "scripts");
+				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+				for (Entry<SakerPath, ByteArrayRegion> entry : allscripts.entrySet()) {
 					writeFieldName(os, entry.getKey().toString());
 					writeByteArray(os, entry.getValue());
 				}
+				writeFieldName(os, "");
 			}
-			writeFieldName(os, "");
 
 			writeFieldName(os, "tasks");
 			os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
@@ -525,6 +560,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				writeFieldName(os, "end");
 				writeLong(os, (ttrace.endNanos - this.startNanos) / 1_000_000);
 
+				if (ttrace.upToDate) {
+					writeFieldName(os, "up_to_date");
+					writeBoolean(os, true);
+				}
+
 				writeFieldName(os, "task_class");
 				writeString(os, ttrace.taskClassName);
 
@@ -533,13 +573,16 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 						writeFieldName(os, "display");
 						writeTypedObject(os, ttrace.traceInfo.standardOutDisplayIdentifier);
 					}
-					if (!ObjectUtils.isNullOrEmpty(ttrace.traceInfo.title)) {
-						writeFieldName(os, "title");
-						writeTypedObject(os, ttrace.traceInfo.title);
-					}
-					if (!ObjectUtils.isNullOrEmpty(ttrace.traceInfo.timelineLabel)) {
-						writeFieldName(os, "label_timeline");
-						writeTypedObject(os, ttrace.traceInfo.timelineLabel);
+					TaskDisplayInformation dinfo = ttrace.traceInfo.displayInformation;
+					if (dinfo != null) {
+						if (!ObjectUtils.isNullOrEmpty(dinfo.title)) {
+							writeFieldName(os, "title");
+							writeTypedObject(os, dinfo.title);
+						}
+						if (!ObjectUtils.isNullOrEmpty(dinfo.timelineLabel)) {
+							writeFieldName(os, "label_timeline");
+							writeTypedObject(os, dinfo.timelineLabel);
+						}
 					}
 
 					if (ttrace.traceInfo.computationTokenCount > 0) {
@@ -663,13 +706,16 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 							writeFieldName(os, "end");
 							writeLong(os, (ibt.endNanos - this.startNanos) / 1_000_000);
 
-							if (!ObjectUtils.isNullOrEmpty(ibt.title)) {
-								writeFieldName(os, "title");
-								writeTypedObject(os, ibt.title);
-							}
-							if (!ObjectUtils.isNullOrEmpty(ibt.timelineLabel)) {
-								writeFieldName(os, "label_timeline");
-								writeTypedObject(os, ibt.timelineLabel);
+							TaskDisplayInformation dinfo = ibt.displayInformation;
+							if (dinfo != null) {
+								if (!ObjectUtils.isNullOrEmpty(dinfo.title)) {
+									writeFieldName(os, "title");
+									writeTypedObject(os, dinfo.title);
+								}
+								if (!ObjectUtils.isNullOrEmpty(dinfo.timelineLabel)) {
+									writeFieldName(os, "label_timeline");
+									writeTypedObject(os, dinfo.timelineLabel);
+								}
 							}
 
 							writeFieldName(os, "task_class");
@@ -1032,6 +1078,36 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 	}
 
+	private static class TaskDisplayInformation implements Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		protected String timelineLabel;
+		protected String title;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public TaskDisplayInformation() {
+		}
+
+		public TaskDisplayInformation(String timelineLabel, String title) {
+			this.timelineLabel = timelineLabel;
+			this.title = title;
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			out.writeObject(title);
+			out.writeObject(timelineLabel);
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			title = (String) in.readObject();
+			timelineLabel = (String) in.readObject();
+		}
+	}
+
 	private static void noException(ThrowingRunnable run) {
 		try {
 			run.run();
@@ -1044,9 +1120,10 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	}
 
 	@RMIWrap(TaskBuildTraceImplRMIWrapper.class)
-	public final class TaskBuildTraceImpl implements ClusterTaskBuildTrace {
-		protected final int eventId = AIFU_eventCounter.incrementAndGet(InternalBuildTraceImpl.this);
-		protected final int taskTraceId = AIFU_traceTaskIdCounter.incrementAndGet(InternalBuildTraceImpl.this);
+	public static final class TaskBuildTraceImpl implements ClusterTaskBuildTrace {
+		private final InternalBuildTraceImpl trace;
+		protected final int eventId;
+		protected final int taskTraceId;
 		protected long startNanos;
 		protected long endNanos;
 		protected String taskClassName;
@@ -1064,6 +1141,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		protected ExceptionView thrownException;
 		protected List<ExceptionView> abortExceptions;
 
+		protected boolean upToDate = false;
+
 		/**
 		 * Synchronized identity hash map.
 		 */
@@ -1072,11 +1151,14 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		protected ConcurrentAppendAccumulator<ExceptionView> ignoredExceptions = new ConcurrentAppendAccumulator<>();
 
-		public TaskBuildTraceImpl() {
+		public TaskBuildTraceImpl(InternalBuildTraceImpl trace) {
+			this.trace = trace;
+			eventId = AIFU_eventCounter.incrementAndGet(trace);
+			taskTraceId = AIFU_traceTaskIdCounter.incrementAndGet(trace);
 		}
 
 		public InternalBuildTraceImpl getEnclosingInternalBuildTraceImpl() {
-			return InternalBuildTraceImpl.this;
+			return trace;
 		}
 
 		public void init(TaskFactory<?> taskfactory, TaskDirectoryPathContext taskDirectoryContext,
@@ -1095,13 +1177,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public void setTimelineLabel(String label) {
-			traceInfo.timelineLabel = label;
-		}
-
-		@Override
-		public void setTitle(String title) {
-			traceInfo.title = title;
+		public void setDisplayInformation(String timelinelabel, String title) {
+			traceInfo.displayInformation = new TaskDisplayInformation(timelinelabel, title);
 		}
 
 		@Override
@@ -1136,15 +1213,10 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public void setClusterInnerTaskTitle(Object innertaskidentity, String title) {
+		public void setClusterInnerTaskDisplayInformation(Object innertaskidentity, String timelinelabel,
+				String title) {
 			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(new Object());
-			innertrace.setTitle(title);
-		}
-
-		@Override
-		public void setClusterInnerTaskTimelineLabel(Object innertaskidentity, String label) {
-			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(new Object());
-			innertrace.setTimelineLabel(label);
+			innertrace.setDisplayInformation(timelinelabel, title);
 		}
 
 		@Override
@@ -1164,7 +1236,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		private InnerTaskBuildTraceImpl getInnerTaskBuildTraceForIdentity(Object innertaskidentity) {
 			InnerTaskBuildTraceImpl innertrace = innerBuildTraces.computeIfAbsent(innertaskidentity,
-					InnerTaskBuildTraceImpl::new);
+					id -> new InnerTaskBuildTraceImpl(trace, id));
 			return innertrace;
 		}
 
@@ -1189,20 +1261,23 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			this.endNanos = nanos;
 		}
 
-		@Override
-		public void classifyFrontendTask(TaskIdentifier workertaskid) {
-			traceInfo.frontendClassifications.add(workertaskid);
-		}
-
-		public void upToDate(TaskExecutionResult<?> taskresult) {
+		public void upToDate(TaskExecutionResult<?> taskresult, TaskInvocationConfiguration capabilities) {
 			this.startNanos = System.nanoTime();
 			this.endNanos = this.startNanos;
+			this.upToDate = true;
 			this.deltas = Collections.emptySet();
 			this.traceInfo = (TaskBuildTraceInfo) taskresult.getBuildTraceInfo();
 			this.taskClassName = taskresult.getFactory().getClass().getName();
 			this.workingDirectory = taskresult.getExecutionWorkingDirectory();
 			this.buildDirectory = taskresult.getExecutionBuildDirectory();
 			this.collectDependencies(taskresult);
+
+			if (this.traceInfo == null) {
+				this.traceInfo = new TaskBuildTraceInfo();
+			} else {
+				this.traceInfo = this.traceInfo.clone();
+			}
+			this.traceInfo.setCapabilityConfig(capabilities);
 		}
 
 		@Override
@@ -1251,18 +1326,24 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			}
 		}
 
-		public final class InnerTaskBuildTraceImpl implements InternalTaskBuildTrace {
-			protected final int taskTraceId = AIFU_traceTaskIdCounter.incrementAndGet(InternalBuildTraceImpl.this);
+		public static final class InnerTaskBuildTraceImpl implements InternalTaskBuildTrace {
+			private static final AtomicReferenceFieldUpdater<InternalBuildTraceImpl.TaskBuildTraceImpl.InnerTaskBuildTraceImpl, TaskDisplayInformation> ARFU_displayInformation = AtomicReferenceFieldUpdater
+					.newUpdater(InternalBuildTraceImpl.TaskBuildTraceImpl.InnerTaskBuildTraceImpl.class,
+							TaskDisplayInformation.class, "displayInformation");
+
+			protected final int taskTraceId;
+
 			protected Object innerTaskIdentity;
 			protected long startNanos;
 			protected long endNanos;
 			protected UUID executionEnvironmentUUID;
 			protected String innerTaskClassName;
 			protected ExceptionView thrownException;
-			protected String title;
-			protected String timelineLabel;
 
-			public InnerTaskBuildTraceImpl(Object innerTaskIdentity) {
+			protected volatile TaskDisplayInformation displayInformation;
+
+			public InnerTaskBuildTraceImpl(InternalBuildTraceImpl ibti, Object innerTaskIdentity) {
+				this.taskTraceId = AIFU_traceTaskIdCounter.incrementAndGet(ibti);
 				this.innerTaskIdentity = innerTaskIdentity;
 			}
 
@@ -1290,13 +1371,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			}
 
 			@Override
-			public void setTimelineLabel(String label) {
-				this.timelineLabel = label;
-			}
-
-			@Override
-			public void setTitle(String title) {
-				this.title = title;
+			public void setDisplayInformation(String timelinelabel, String title) {
+				this.displayInformation = new TaskDisplayInformation(timelinelabel, title);
 			}
 		}
 
@@ -1357,13 +1433,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public void classifyFrontendTask(TaskIdentifier workertaskid) {
-			noException(() -> {
-				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_CLASSIFYFRONTENDTASK, workertaskid);
-			});
-		}
-
-		@Override
 		public InternalTaskBuildTrace startInnerTask(TaskFactory<?> innertaskfactory) {
 			long currentbuildnanos = System.nanoTime() - readNanos + writeNanos;
 			Object innertaskidentity = new Object();
@@ -1389,16 +1458,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public void setTitle(String title) {
+		public void setDisplayInformation(String timelinelabel, String title) {
 			noException(() -> {
-				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETTITLE, title);
-			});
-		}
-
-		@Override
-		public void setTimelineLabel(String label) {
-			noException(() -> {
-				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETTIMELINELABEL, label);
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETDISPLAYINFORMATION, timelinelabel, title);
 			});
 		}
 
@@ -1427,25 +1489,21 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			}
 
 			@Override
-			public void setTimelineLabel(String label) {
+			public void setDisplayInformation(String timelinelabel, String title) {
 				noException(() -> {
-					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETCLUSTERINNERTASKTIMELINELABEL,
-							innerTaskIdentity, label);
-				});
-			}
-
-			@Override
-			public void setTitle(String title) {
-				noException(() -> {
-					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETCLUSTERINNERTASKTITLE, innerTaskIdentity,
-							title);
+					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETCLUSTERINNERTASKDISPLAYINFORMATION,
+							innerTaskIdentity, timelinelabel, title);
 				});
 			}
 		}
 	}
 
-	public static final class TaskBuildTraceInfo implements Externalizable {
+	public static final class TaskBuildTraceInfo implements Externalizable, Cloneable {
 		private static final long serialVersionUID = 1L;
+
+		private static final AtomicReferenceFieldUpdater<InternalBuildTraceImpl.TaskBuildTraceInfo, TaskDisplayInformation> ARFU_displayInformation = AtomicReferenceFieldUpdater
+				.newUpdater(InternalBuildTraceImpl.TaskBuildTraceInfo.class, TaskDisplayInformation.class,
+						"displayInformation");
 
 		protected String standardOutDisplayIdentifier;
 		protected NavigableMap<SakerPath, ByteArrayRegion> readScriptContents = new ConcurrentSkipListMap<>();
@@ -1460,15 +1518,23 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		protected int computationTokenCount;
 		protected TaskExecutionEnvironmentSelector environmentSelector;
 
+		@Deprecated
 		protected Set<TaskIdentifier> frontendClassifications = ConcurrentHashMap.newKeySet();
 
-		protected String title;
-		protected String timelineLabel;
+		protected volatile TaskDisplayInformation displayInformation;
 
-		/**
-		 * For {@link Externalizable}.
-		 */
 		public TaskBuildTraceInfo() {
+		}
+
+		@Override
+		protected TaskBuildTraceInfo clone() {
+			try {
+				TaskBuildTraceInfo result = (TaskBuildTraceInfo) super.clone();
+				result.readScriptContents = new ConcurrentSkipListMap<>(this.readScriptContents);
+				return result;
+			} catch (CloneNotSupportedException e) {
+				throw new AssertionError(e);
+			}
 		}
 
 		public void setCapabilityConfig(TaskInvocationConfiguration capabilityConfig) {
@@ -1484,8 +1550,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		public void writeExternal(ObjectOutput out) throws IOException {
 			try {
 				out.writeObject(standardOutDisplayIdentifier);
-				out.writeObject(title);
-				out.writeObject(timelineLabel);
+				out.writeObject(displayInformation);
 				SerialUtils.writeExternalMap(out, readScriptContents);
 
 				out.writeObject(standardOutBytes);
@@ -1510,8 +1575,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 			try {
 				standardOutDisplayIdentifier = (String) in.readObject();
-				title = (String) in.readObject();
-				timelineLabel = (String) in.readObject();
+				displayInformation = (TaskDisplayInformation) in.readObject();
 				readScriptContents = SerialUtils.readExternalSortedImmutableNavigableMap(in);
 
 				standardOutBytes = (ByteArrayRegion) in.readObject();
@@ -1553,6 +1617,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		protected String computerName;
 
+		protected String sakerBuildVersion;
+		protected SakerPath clusterMirrorDirectory;
+
 		/**
 		 * For {@link Externalizable}.
 		 */
@@ -1572,8 +1639,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			this.javaVmVendor = System.getProperty("java.vm.vendor");
 			this.javaVmName = System.getProperty("java.vm.name");
 			this.javaHome = System.getProperty("java.home");
-			//from it is present in windows
+			//it is present in windows
 			this.computerName = System.getenv("COMPUTERNAME");
+			this.sakerBuildVersion = Versions.VERSION_STRING_FULL;
 		}
 
 		@Override
@@ -1591,6 +1659,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			out.writeObject(javaHome);
 			out.writeInt(availableProcessors);
 			out.writeObject(computerName);
+			out.writeObject(sakerBuildVersion);
+			out.writeObject(clusterMirrorDirectory);
 		}
 
 		@Override
@@ -1608,6 +1678,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			javaHome = (String) in.readObject();
 			availableProcessors = in.readInt();
 			computerName = (String) in.readObject();
+			sakerBuildVersion = (String) in.readObject();
+			clusterMirrorDirectory = (SakerPath) in.readObject();
+		}
+
+		public void setClusterMirrorDirectory(SakerPath mirrordir) {
+			this.clusterMirrorDirectory = mirrordir;
 		}
 	}
 
@@ -1654,11 +1730,14 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public void startBuildCluster(SakerEnvironmentImpl environment) {
+		public void startBuildCluster(SakerEnvironmentImpl environment, Path mirrordir) {
 			long currentbuildnanos = System.nanoTime() - readNanos + writeNanos;
 			noException(() -> {
-				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_STARTBUILDCLUSTER,
-						new EnvironmentInformation(environment), currentbuildnanos);
+				EnvironmentInformation envinfo = new EnvironmentInformation(environment);
+				if (mirrordir != null) {
+					envinfo.setClusterMirrorDirectory(SakerPath.valueOf(mirrordir));
+				}
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_STARTBUILDCLUSTER, envinfo, currentbuildnanos);
 			});
 		}
 	}

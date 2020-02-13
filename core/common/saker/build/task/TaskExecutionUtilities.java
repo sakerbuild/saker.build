@@ -544,12 +544,14 @@ public interface TaskExecutionUtilities {
 	 * @return The result of the task execution.
 	 * @throws NullPointerException
 	 *             If any of the arguments are <code>null</code>.
+	 * @throws TaskExecutionFailedException
+	 *             If the task execution resulted in an exception.
 	 * @throws IllegalTaskOperationException
 	 *             If the task identifier is the same as the caller.
 	 */
 	@RMISerialize
 	public default <R> R runTaskResult(@RMISerialize TaskIdentifier taskid, TaskFactory<R> taskfactory)
-			throws NullPointerException, IllegalTaskOperationException {
+			throws NullPointerException, TaskExecutionFailedException, IllegalTaskOperationException {
 		return runTaskResult(taskid, taskfactory, null);
 	}
 

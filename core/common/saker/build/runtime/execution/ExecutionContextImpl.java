@@ -433,9 +433,14 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 			try {
 				this.buildTrace.startExecute();
-				manager.execute(taskfactory, taskid, this, taskinvokerfactories, buildCacheAccessor, buildTrace);
+				try {
+					manager.execute(taskfactory, taskid, this, taskinvokerfactories, buildCacheAccessor, buildTrace);
+					this.buildTrace.endExecute(true);
+				} catch (Throwable e) {
+					this.buildTrace.endExecute(false);
+					throw e;
+				}
 			} finally {
-				this.buildTrace.endExecute();
 				results = manager.getTaskResults();
 				resultCollection = manager.getResultCollection();
 				NavigableMap<SakerPath, ScriptInformationProvider> scriptinfoproviders = new TreeMap<>(

@@ -50,7 +50,7 @@ public class AbortExceptionTaskTest extends CollectingMetricEnvironmentTestCase 
 		@Override
 		public String run(TaskContext taskcontext) throws Exception {
 			try {
-				taskcontext.getTaskUtilities().runTask(strTaskId("multiabort"), new MultiAbortingTaskFactory());
+				taskcontext.getTaskUtilities().runTaskResult(strTaskId("multiabort"), new MultiAbortingTaskFactory());
 				fail();
 			} catch (TaskExecutionFailedException e) {
 				assertEquals(e.getCause().getMessage(), "first");
@@ -77,7 +77,7 @@ public class AbortExceptionTaskTest extends CollectingMetricEnvironmentTestCase 
 		@Override
 		public String run(TaskContext taskcontext) throws Exception {
 			try {
-				taskcontext.getTaskUtilities().runTask(strTaskId("multiabort"), new MultiAbortThrowingTaskFactory());
+				taskcontext.getTaskUtilities().runTaskResult(strTaskId("multiabort"), new MultiAbortThrowingTaskFactory());
 				fail();
 			} catch (TaskExecutionFailedException e) {
 				assertEquals(e.getCause().getMessage(), "thrown");
@@ -97,10 +97,11 @@ public class AbortExceptionTaskTest extends CollectingMetricEnvironmentTestCase 
 		assertException(RuntimeException.class, () -> runTask("main", task));
 		assertEmpty(getMetric().getRunTaskIdFactories());
 
-		runTask("multiexaminer", new MultiExaminerTaskFactory());
+		assertException(RuntimeException.class, () -> runTask("multiexaminer", new MultiExaminerTaskFactory())).printStackTrace();
 		assertEquals(getMetric().getRunTaskIdResults().get(strTaskId("multiexaminer")), "result");
 
-		runTask("multithrowexaminer", new MultiThrowingExaminerTaskFactory());
+		assertException(RuntimeException.class,
+				() -> runTask("multithrowexaminer", new MultiThrowingExaminerTaskFactory()));
 		assertEquals(getMetric().getRunTaskIdResults().get(strTaskId("multithrowexaminer")), "throwresult");
 	}
 

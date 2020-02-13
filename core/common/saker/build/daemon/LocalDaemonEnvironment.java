@@ -584,7 +584,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 					@Override
 					public void run(TaskInvocationContext context) throws Exception {
 						((InternalExecutionContext) executioncontext).internalGetBuildTrace()
-								.startBuildCluster(environment);
+								.startBuildCluster(environment, modifiedmirrordir);
 						try {
 							project.clusterStarting(realpathconfig, executioncontext.getRepositoryConfiguration(),
 									executioncontext.getScriptConfiguration(), executioncontext.getUserParameters(),

@@ -29,7 +29,10 @@ import java.util.Set;
 import java.util.TreeMap;
 
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
+import saker.build.internal.scripting.language.task.result.SimpleSakerTaskResult;
+import saker.build.task.TaskContext;
 import saker.build.task.TaskFactory;
+import saker.build.task.TaskFuture;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 
@@ -68,6 +71,19 @@ public abstract class SakerTaskFactory implements TaskFactory<SakerTaskResult>, 
 	@Override
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 		scriptPositionKey = in.readObject();
+	}
+
+	protected static SakerTaskResult runForResult(TaskContext taskcontext, TaskIdentifier taskid,
+			SakerTaskFactory taskfactory) {
+		if (taskfactory instanceof SakerLiteralTaskFactory) {
+			return new SimpleSakerTaskResult<>(((SakerLiteralTaskFactory) taskfactory).getValue());
+		}
+		return taskcontext.getTaskUtilities().runTaskResult(taskid, taskfactory);
+	}
+
+	protected static TaskFuture<SakerTaskResult> startForFuture(TaskContext taskcontext, TaskIdentifier taskid,
+			SakerTaskFactory taskfactory) {
+		return taskcontext.getTaskUtilities().startTaskFuture(taskid, taskfactory);
 	}
 
 	private static SakerScriptTaskIdentifier createTaskId(SakerScriptTaskIdentifier currenttaskid,

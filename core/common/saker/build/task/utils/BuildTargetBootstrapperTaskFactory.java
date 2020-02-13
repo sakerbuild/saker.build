@@ -132,7 +132,6 @@ public final class BuildTargetBootstrapperTaskFactory
 		TaskIdentifier runnertaskid = runBootstrappingImpl(taskcontext, this.taskId.buildFilePath,
 				this.taskId.buildTargetName, this.taskId.parameters, this.taskId.workingDirectory,
 				this.taskId.buildDirectory);
-		BuildTrace.classifyFrontendTask(runnertaskid);
 		return new SimpleStructuredObjectTaskResult(runnertaskid);
 	}
 

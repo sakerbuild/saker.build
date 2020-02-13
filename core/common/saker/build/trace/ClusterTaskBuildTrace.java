@@ -27,9 +27,7 @@ public interface ClusterTaskBuildTrace extends InternalTaskBuildTrace {
 	public default void setClusterInnerTaskThrownException(Object innertaskidentity, @RMISerialize ExceptionView e) {
 	}
 
-	public default void setClusterInnerTaskTitle(Object innertaskidentity, String title) {
-	}
-
-	public default void setClusterInnerTaskTimelineLabel(Object innertaskidentity, String label) {
+	public default void setClusterInnerTaskDisplayInformation(Object innertaskidentity, String timelinelabel,
+			String title) {
 	}
 }

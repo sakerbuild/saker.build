@@ -92,7 +92,6 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 				data.Target, data.targetInvocationParameters, workdir, SakerPath.EMPTY);
 		SakerTaskResult result = new TaskInvocationOutputSakerTaskResult(includetaskid);
 		taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
-		BuildTrace.classifyFrontendTask(includetaskid);
 		return result;
 	}
 
