@@ -24,6 +24,7 @@ import saker.build.scripting.ScriptParsingOptions;
 import saker.build.scripting.TargetConfigurationReader;
 import saker.build.scripting.TargetConfigurationReadingResult;
 import saker.build.thirdparty.saker.util.io.ByteSource;
+import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 
 class TargetConfigurationReadingFileDataComputer implements FileDataComputer<TargetConfigurationReadingResult> {
 	private ScriptParsingOptions parseOptions;
@@ -39,7 +40,8 @@ class TargetConfigurationReadingFileDataComputer implements FileDataComputer<Tar
 
 	@Override
 	public TargetConfigurationReadingResult compute(SakerFile file) throws IOException {
-		try (ByteSource input = file.openByteSource()) {
+		try (ByteSource input = InternalTaskBuildTrace.current().openTargetConfigurationReadingInput(parseOptions,
+				file)) {
 			TargetConfigurationReader reader = scriptAccessor.createConfigurationReader();
 			if (reader == null) {
 				throw new NullPointerException(

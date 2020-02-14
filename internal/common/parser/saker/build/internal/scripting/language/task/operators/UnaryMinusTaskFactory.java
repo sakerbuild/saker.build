@@ -55,7 +55,7 @@ public class UnaryMinusTaskFactory extends SelfSakerTaskFactory {
 		TaskIdentifier subtaskid = subject.createSubTaskIdentifier((SakerScriptTaskIdentifier) taskcontext.getTaskId());
 		Object subjectres;
 		try {
-			subjectres = taskcontext.getTaskUtilities().runTaskResult(subtaskid, subject).toResult(taskcontext);
+			subjectres = runForResult(taskcontext, subtaskid, subject).toResult(taskcontext);
 		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
 			throw new OperandExecutionException("Operand failed to evaluate.", e, subtaskid);
 		}

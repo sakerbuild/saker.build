@@ -23,14 +23,14 @@ public class PrintScriptTaskTest extends CollectingMetricEnvironmentTestCase {
 	@Override
 	protected void runTestImpl() throws Throwable {
 		runScriptTask("build");
-		assertEquals(getMetric().getAllPrintedTaskLines(), setOf("hello"));
+		assertEquals(getMetric().getAllPrintedTaskLines(), setOf("[print]hello"));
 
 		runScriptTask("build");
-		assertEquals(getMetric().getAllPrintedTaskLines(), setOf("hello"));
+		assertEquals(getMetric().getAllPrintedTaskLines(), setOf("[print]hello"));
 
 		files.putFile(PATH_WORKING_DIRECTORY.resolve("saker.build"),
 				files.getAllBytes(PATH_WORKING_DIRECTORY.resolve("saker.build")).toString().replace("hello", "mod"));
 		runScriptTask("build");
-		assertEquals(getMetric().getAllPrintedTaskLines(), setOf("mod"));
+		assertEquals(getMetric().getAllPrintedTaskLines(), setOf("[print]mod"));
 	}
 }

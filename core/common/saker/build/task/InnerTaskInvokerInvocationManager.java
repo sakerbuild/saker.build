@@ -30,6 +30,7 @@ import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
+import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 
 public class InnerTaskInvokerInvocationManager implements Closeable {
 	private static final int NO_COMPUTATION_TOKEN_FIXED_THREAD_POOL_SIZE = ComputationToken.getMaxTokenCount() * 3 / 2;
@@ -179,8 +180,18 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 								return;
 							}
 							try (TaskContextReference contextref = new TaskContextReference(taskContext)) {
-								R result = task.run(taskContext);
-								this.putResult(result, false);
+								InternalTaskBuildTrace btrace = ((InternalTaskContext) taskContext)
+										.internalGetBuildTrace().startInnerTask(taskFactory);
+								contextref.initTaskBuildTrace(btrace);
+								try {
+									R result = task.run(taskContext);
+									this.putResult(result, false);
+								} catch (Throwable e) {
+									btrace.setThrownException(e);
+									throw e;
+								} finally {
+									btrace.endInnerTask();
+								}
 							} catch (Exception e) {
 								this.putExceptionResult(e, false);
 							} catch (Throwable e) {
@@ -252,6 +263,9 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 						workpool.offer(() -> {
 							try {
 								try (TaskContextReference contextref = new TaskContextReference(taskContext)) {
+									InternalTaskBuildTrace btrace = ((InternalTaskContext) taskContext)
+											.internalGetBuildTrace().startInnerTask(taskFactory);
+									contextref.initTaskBuildTrace(btrace);
 									while (!duplicationCancelled) {
 										if (Thread.interrupted()) {
 											this.putExceptionResult(new InterruptedException("Inner task interrupted."),
@@ -270,8 +284,15 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 											return;
 										}
 										try {
-											R result = task.run(taskContext);
-											this.putResult(result, false);
+											try {
+												R result = task.run(taskContext);
+												this.putResult(result, false);
+											} catch (Throwable e) {
+												btrace.setThrownException(e);
+												throw e;
+											} finally {
+												btrace.endInnerTask();
+											}
 										} catch (Exception e) {
 											this.putExceptionResult(e, false);
 										} catch (Throwable e) {
@@ -316,8 +337,18 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 						return;
 					}
 					try (TaskContextReference contextref = new TaskContextReference(taskContext)) {
-						R result = task.run(taskContext);
-						this.putResult(result, true);
+						InternalTaskBuildTrace btrace = ((InternalTaskContext) taskContext).internalGetBuildTrace()
+								.startInnerTask(taskFactory);
+						contextref.initTaskBuildTrace(btrace);
+						try {
+							R result = task.run(taskContext);
+							this.putResult(result, true);
+						} catch (Throwable e) {
+							btrace.setThrownException(e);
+							throw e;
+						} finally {
+							btrace.endInnerTask();
+						}
 					} catch (Exception e) {
 						this.putExceptionResult(e, true);
 					} catch (Throwable e) {

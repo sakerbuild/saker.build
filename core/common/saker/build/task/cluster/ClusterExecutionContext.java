@@ -47,6 +47,7 @@ import saker.build.scripting.ScriptParsingFailedException;
 import saker.build.task.EnvironmentSelectionResult;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskExecutionEnvironmentSelector;
+import saker.build.trace.InternalBuildTrace;
 
 class ClusterExecutionContext implements ExecutionContext, InternalExecutionContext {
 	private final SakerEnvironment environment;
@@ -205,6 +206,11 @@ class ClusterExecutionContext implements ExecutionContext, InternalExecutionCont
 	@Override
 	public FilePathContents internalGetFilePathContents(SakerFile file) {
 		return ((InternalExecutionContext) realExecutionContext).internalGetFilePathContents(file);
+	}
+
+	@Override
+	public InternalBuildTrace internalGetBuildTrace() {
+		return ((InternalExecutionContext) realExecutionContext).internalGetBuildTrace();
 	}
 
 	private FileMirrorHandler getMirrorHandlerThrow() throws FileMirroringUnavailableException {

@@ -30,6 +30,7 @@ import saker.build.internal.scripting.language.task.SakerLiteralTaskFactory;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
 import saker.build.internal.scripting.language.task.SakerTaskFactory;
 import saker.build.internal.scripting.language.task.SelfSakerTaskFactory;
+import saker.build.internal.scripting.language.task.TaskInvocationSakerTaskFactory;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.internal.scripting.language.task.result.TaskInvocationOutputSakerTaskResult;
 import saker.build.task.TaskContext;
@@ -39,6 +40,7 @@ import saker.build.task.utils.TaskUtils;
 import saker.build.task.utils.annot.SakerInput;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
+import saker.build.trace.BuildTrace;
 
 public class IncludeTaskFactory extends SelfSakerTaskFactory {
 	private static final long serialVersionUID = 1L;
@@ -59,6 +61,9 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 
 	@Override
 	public SakerTaskResult run(TaskContext taskcontext) throws Exception {
+		taskcontext.setStandardOutDisplayIdentifier(TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE);
+		BuildTrace.classifyTask(BuildTrace.CLASSIFICATION_META);
+
 		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
 
 		NavigableMap<String, TaskIdentifier> parametertaskids = new TreeMap<>();

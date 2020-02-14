@@ -58,6 +58,7 @@ import saker.build.file.content.CommonContentDescriptorSupplier;
 import saker.build.file.content.ContentDescriptorSupplier;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
+import saker.build.file.path.SimpleProviderHolderPathKey;
 import saker.build.file.path.WildcardPath;
 import saker.build.file.provider.DirectoryMountFileProvider;
 import saker.build.file.provider.FileEntry;
@@ -75,6 +76,8 @@ import saker.build.runtime.environment.BuildTaskExecutionResult;
 import saker.build.runtime.environment.EnvironmentParameters;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionParametersImpl;
+import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation;
+import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation.ConnectionInformation;
 import saker.build.runtime.execution.SakerLog.CommonExceptionFormat;
 import saker.build.runtime.execution.SakerLog.ExceptionFormat;
 import saker.build.runtime.execution.SecretInputReader;
@@ -98,6 +101,7 @@ import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.ResourceCloser;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
+import saker.build.thirdparty.saker.util.io.function.IOFunction;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.util.exc.ExceptionView;
 import saker.build.util.java.JavaTools;
@@ -418,6 +422,23 @@ public class BuildCommand {
 
 	/**
 	 * <pre>
+	 * Sets the output path of the build trace for the build execution.
+	 * 
+	 * The path is expected to be in the same format as in the -mount 
+	 * parameter.
+	 * 
+	 * The build trace can be viewed in a browser, by navigating to:
+	 *     https://saker.build/buildtrace
+	 * and opening it on the page.
+	 * (The build trace can be viewed offline, it won't be transferred 
+	 * to our servers.)
+	 * </pre>
+	 */
+	@Parameter("-trace")
+	public String buildTracePath;
+
+	/**
+	 * <pre>
 	 * The build target to execute.
 	 * 
 	 * If not specified then defaults to the following:
@@ -591,36 +612,40 @@ public class BuildCommand {
 		try (ResourceCloser rescloser = new ResourceCloser()) {
 			DaemonEnvironment builddaemonenv = ObjectUtils.nullDefault(remoteenv, localenv);
 			NavigableMap<String, RemoteDaemonConnection> connections;
+			BuildInformation buildinfo = null;
 			if (!connect.isEmpty()) {
+				NavigableMap<String, ConnectionInformation> machinesinfo = new ConcurrentSkipListMap<>();
+				buildinfo = new BuildInformation();
 				connections = new ConcurrentSkipListMap<>();
+				IOFunction<DaemonConnectParam, RemoteDaemonConnection> connector;
+
 				if (builddaemonenv == null) {
 					//XXX make this socket factory configureable
 					SocketFactory socketfactory = SocketFactory.getDefault();
-					ThreadUtils.runParallelItems(connect, c -> {
-						if (RESERVED_CONNECTION_NAMES.contains(c.name)) {
-							throw new IllegalArgumentException(c.name + " is a reserved connection name.");
-						}
-						RemoteDaemonConnection connection = RemoteDaemonConnection.connect(socketfactory,
-								c.address.getSocketAddress());
-						rescloser.add(connection);
-						RemoteDaemonConnection prevc = connections.put(c.name, connection);
-						if (prevc != null) {
-							throw new IllegalArgumentException("Multiple connections specified with name: " + c.name);
-						}
-					});
+					connector = c -> RemoteDaemonConnection.connect(socketfactory, c.address.getSocketAddress());
 				} else {
-					ThreadUtils.runParallelItems(connect, c -> {
-						if (RESERVED_CONNECTION_NAMES.contains(c.name)) {
-							throw new IllegalArgumentException(c.name + " is a reserved connection name.");
-						}
-						RemoteDaemonConnection connection = builddaemonenv.connectTo(c.address.getSocketAddress());
-						rescloser.add(connection);
-						RemoteDaemonConnection prevc = connections.put(c.name, connection);
-						if (prevc != null) {
-							throw new IllegalArgumentException("Multiple connections specified with name: " + c.name);
-						}
-					});
+					connector = c -> builddaemonenv.connectTo(c.address.getSocketAddress());
 				}
+				ThreadUtils.runParallelItems(connect, c -> {
+					if (RESERVED_CONNECTION_NAMES.contains(c.name)) {
+						throw new IllegalArgumentException(c.name + " is a reserved connection name.");
+					}
+					RemoteDaemonConnection connection = connector.apply(c);
+					rescloser.add(connection);
+					RemoteDaemonConnection prevc = connections.put(c.name, connection);
+					if (prevc != null) {
+						throw new IllegalArgumentException("Multiple connections specified with name: " + c.name);
+					}
+					//XXX the following probably implies too many RMI requests, which can delay the start of the build
+					ConnectionInformation conninfo = new ConnectionInformation();
+					conninfo.setConnectionRootFileProviderUUID(SakerPathFiles
+							.getRootFileProviderKey(connection.getDaemonEnvironment().getFileProvider()).getUUID());
+					conninfo.setConnectionBuildEnvironmentUUID(
+							connection.getDaemonEnvironment().getEnvironmentIdentifier());
+					conninfo.setConnectionAddress(c.address.argument);
+					machinesinfo.put(c.name, conninfo);
+				});
+				buildinfo.setConnectionInformations(machinesinfo);
 			} else {
 				connections = Collections.emptyNavigableMap();
 			}
@@ -629,6 +654,7 @@ public class BuildCommand {
 
 			ExecutionParametersImpl params = createExecutionParameters(envcontroller, remoteenv, localenv, workingdir,
 					connections);
+			params.setBuildInfo(buildinfo);
 
 			ExecutionPathConfiguration pathconfiguration = params.getPathConfiguration();
 			workingdir = pathconfiguration.getWorkingDirectory();
@@ -694,6 +720,11 @@ public class BuildCommand {
 		}
 		if (deadlockPollingMillis != null) {
 			params.setDeadlockPollingFrequencyMillis(deadlockPollingMillis);
+		}
+		if (buildTracePath != null) {
+			ProviderHolderPathKey buildtraceoutpathkey = mountPathToPathKey(DaemonPath.valueOf(buildTracePath),
+					remoteenv, localenv, connections);
+			params.setBuildTraceOutputPathKey(buildtraceoutpathkey);
 		}
 		params.setUserParameters(userParameters);
 		params.setIO(ByteSink.valueOf(stdOut), ByteSink.valueOf(stdErr),
@@ -822,47 +853,54 @@ public class BuildCommand {
 		ExecutionPathConfiguration.Builder pathconfigbuilder = ExecutionPathConfiguration.builder(workingdir);
 		for (DirectoryMountParam dm : mount) {
 			DaemonPath path = dm.path;
-			String clientname = path.getClientName();
 			String root = dm.root;
-			SakerFileProvider mountfp;
-			SakerPath mountedmpath = path.getPath();
-			if (clientname == null) {
-				mountfp = getLocalFileProviderFromLocalDaemon(localenv);
-			} else {
-				switch (clientname) {
-					case DAEMON_CLIENT_NAME_LOCAL: {
-						mountfp = getLocalFileProviderFromLocalDaemon(localenv);
-						break;
-					}
-					case DAEMON_CLIENT_NAME_REMOTE: {
-						if (remoteenv == null) {
-							//if there is no remote daemon, then we are running only on local
-							//therefore consider the local as the remote
-							mountfp = getLocalFileProviderFromLocalDaemon(localenv);
-						} else {
-							mountfp = remoteenv.getFileProvider();
-						}
-						break;
-					}
-					case DAEMON_CLIENT_NAME_PROC_WORK_DIR: {
-						mountfp = getLocalFileProviderFromLocalDaemon(localenv);
-						mountedmpath = getUserDir().resolve(mountedmpath.forcedRelative());
-						break;
-					}
-					default: {
-						RemoteDaemonConnection connection = connections.get(clientname);
-						if (connection == null) {
-							throw new IllegalArgumentException("Connection not found with name: " + clientname);
-						}
-						mountfp = connection.getDaemonEnvironment().getFileProvider();
-						break;
-					}
-				}
-			}
+			ProviderHolderPathKey mountpathkey = mountPathToPathKey(path, remoteenv, localenv, connections);
 
-			pathconfigbuilder.addRootProvider(root, DirectoryMountFileProvider.create(mountfp, mountedmpath, root));
+			pathconfigbuilder.addRootProvider(root,
+					DirectoryMountFileProvider.create(mountpathkey.getFileProvider(), mountpathkey.getPath(), root));
 		}
 		return pathconfigbuilder.build();
+	}
+
+	private ProviderHolderPathKey mountPathToPathKey(DaemonPath path, DaemonEnvironment remoteenv,
+			DaemonEnvironment localenv, NavigableMap<String, ? extends RemoteDaemonConnection> connections) {
+		String clientname = path.getClientName();
+		SakerFileProvider mountfp;
+		SakerPath mountedmpath = path.getPath();
+		if (clientname == null) {
+			mountfp = getLocalFileProviderFromLocalDaemon(localenv);
+		} else {
+			switch (clientname) {
+				case DAEMON_CLIENT_NAME_LOCAL: {
+					mountfp = getLocalFileProviderFromLocalDaemon(localenv);
+					break;
+				}
+				case DAEMON_CLIENT_NAME_REMOTE: {
+					if (remoteenv == null) {
+						//if there is no remote daemon, then we are running only on local
+						//therefore consider the local as the remote
+						mountfp = getLocalFileProviderFromLocalDaemon(localenv);
+					} else {
+						mountfp = remoteenv.getFileProvider();
+					}
+					break;
+				}
+				case DAEMON_CLIENT_NAME_PROC_WORK_DIR: {
+					mountfp = getLocalFileProviderFromLocalDaemon(localenv);
+					mountedmpath = getUserDir().resolve(mountedmpath.forcedRelative());
+					break;
+				}
+				default: {
+					RemoteDaemonConnection connection = connections.get(clientname);
+					if (connection == null) {
+						throw new IllegalArgumentException("Connection not found with name: " + clientname);
+					}
+					mountfp = connection.getDaemonEnvironment().getFileProvider();
+					break;
+				}
+			}
+		}
+		return new SimpleProviderHolderPathKey(mountfp, mountedmpath);
 	}
 
 	private static SakerFileProvider getLocalFileProviderFromLocalDaemon(DaemonEnvironment localenv) {

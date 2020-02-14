@@ -45,6 +45,7 @@ import saker.build.task.TaskFactory;
 import saker.build.task.identifier.BuildFileTargetTaskIdentifier;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.trace.BuildTrace;
 
 /**
  * Bootstrapper task for invoking a build target of a build script with the given parameters.

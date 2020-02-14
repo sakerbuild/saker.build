@@ -341,6 +341,8 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 					params.setMirrorDirectory(getMirrorDirectory());
 					params.setDeadlockPollingFrequencyMillis(1500);
 
+					params.setBuildTraceOutputPathKey(testconfig.getBuildTraceOutputPathKey());
+
 					Path workingdirpath = getWorkingDirectory();
 					Path builddirpath = getBuildDirectory();
 					MemoryFileProvider memfiles = new MemoryFileProvider(

@@ -54,8 +54,11 @@ public class NamedClassPathServiceEnumerator<T> implements ClassPathServiceEnume
 	 * 
 	 * @param className
 	 *            The class name of the service to look up.
+	 * @throws NullPointerException
+	 *             If the class name is <code>null</code>.
 	 */
-	public NamedClassPathServiceEnumerator(String className) {
+	public NamedClassPathServiceEnumerator(String className) throws NullPointerException {
+		Objects.requireNonNull(className, "class name");
 		this.className = className;
 	}
 
@@ -79,12 +82,20 @@ public class NamedClassPathServiceEnumerator<T> implements ClassPathServiceEnume
 		return () -> new CreatingIterator<>(found);
 	}
 
+	/**
+	 * Gets the class name that this service enumerator loads.
+	 * 
+	 * @return The class name.
+	 */
+	public String getClassName() {
+		return className;
+	}
+
 	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
 		out.writeUTF(className);
 	}
 
-	@SuppressWarnings("unchecked")
 	@Override
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 		className = in.readUTF();

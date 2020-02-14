@@ -27,7 +27,7 @@ public class SubscriptChangeBugTaskTest extends CollectingMetricEnvironmentTestC
 
 		System.out.println("run 1");
 		runScriptTask("test3");
-		assertEquals(getMetric().getAllPrintedTaskLines(), setOf("{field=CONTENT}"));
+		assertEquals(getMetric().getAllPrintedTaskLines(), setOf("[print]{field=CONTENT}"));
 
 		System.out.println("run 2");
 		files.putFile(bfpath, files.getAllBytes(bfpath).toString().replace("#add", "[nonexistent]#add"));

@@ -738,6 +738,12 @@ public class ForwardingTaskContext implements TaskContext, TaskExecutionUtilitie
 	}
 
 	@Override
+	public SakerFile addFileOverwriteIfNotDirectory(SakerDirectory directory, SakerFile file)
+			throws NullPointerException {
+		return utilities.addFileOverwriteIfNotDirectory(directory, file);
+	}
+
+	@Override
 	public NavigableMap<SakerPath, SakerFile> toPathFileMap(Iterable<? extends SakerFile> files)
 			throws NullPointerException {
 		return utilities.toPathFileMap(files);

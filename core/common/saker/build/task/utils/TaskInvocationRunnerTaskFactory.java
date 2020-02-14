@@ -36,6 +36,7 @@ import saker.build.task.TaskName;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.trace.BuildTrace;
 
 /**
  * {@link TaskFactory} for running a specified task with the given parameters.
@@ -135,6 +136,8 @@ public final class TaskInvocationRunnerTaskFactory<T> implements TaskFactory<T>,
 		if (this.taskId.taskName != null) {
 			taskcontext.setStandardOutDisplayIdentifier(this.taskId.taskName.toString());
 		}
+
+		BuildTrace.classifyTask(BuildTrace.CLASSIFICATION_EXTERNAL);
 
 		if (realsubtask instanceof ParameterizableTask) {
 			ParameterizableTask<?> paramtask = (ParameterizableTask<?>) realsubtask;

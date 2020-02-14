@@ -560,6 +560,8 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 
 	protected List<String> printedLines;
 
+	protected Object buildTraceInfo;
+
 	/**
 	 * For {@link Externalizable}.
 	 */
@@ -745,6 +747,14 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		return reportedMetaDatas;
 	}
 
+	public Object getBuildTraceInfo() {
+		return buildTraceInfo;
+	}
+
+	public void setBuildTraceInfo(Object buildTraceInfo) {
+		this.buildTraceInfo = buildTraceInfo;
+	}
+
 	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
 		out.writeObject(taskId);
@@ -789,6 +799,13 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		SerialUtils.writeExternalCollection(out, ideConfigurations);
 
 		SerialUtils.writeExternalCollection(out, printedLines);
+		try {
+			out.writeObject(buildTraceInfo);
+		} catch (Exception e) {
+			if (TestFlag.ENABLED) {
+				e.printStackTrace();
+			}
+		}
 	}
 
 	//XXX replace print stack traces with something that the user can better examine
@@ -841,6 +858,14 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		createdByTaskIds = SerialUtils.readExternalCollection(ConcurrentHashMap.newKeySet(), in);
 		ideConfigurations = SerialUtils.readExternalImmutableList(in);
 		printedLines = SerialUtils.readExternalImmutableList(in);
+
+		try {
+			this.buildTraceInfo = in.readObject();
+		} catch (Exception e) {
+			if (TestFlag.ENABLED) {
+				e.printStackTrace();
+			}
+		}
 	}
 
 	private static void writeTaggedOutputsMap(ObjectOutput out, Map<Object, Object> taggedoutputs) throws IOException {

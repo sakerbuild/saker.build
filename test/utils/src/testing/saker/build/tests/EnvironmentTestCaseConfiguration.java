@@ -23,6 +23,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
+import saker.build.file.path.ProviderHolderPathKey;
+import saker.build.file.path.SakerPath;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 
@@ -33,6 +35,7 @@ public final class EnvironmentTestCaseConfiguration implements Cloneable {
 	private String environmentStorageDirectory = "common";
 	private Boolean useCommonEnvironment = null;
 	private Map<String, String> environmentUserParameters = null;
+	private ProviderHolderPathKey buildTraceOutputPathKey = null;
 
 	private EnvironmentTestCaseConfiguration() {
 	}
@@ -59,6 +62,10 @@ public final class EnvironmentTestCaseConfiguration implements Cloneable {
 
 	public boolean isProjectFileWatchingEnabled() {
 		return projectFileWatchingEnabled;
+	}
+
+	public ProviderHolderPathKey getBuildTraceOutputPathKey() {
+		return buildTraceOutputPathKey;
 	}
 
 	@Override
@@ -132,6 +139,11 @@ public final class EnvironmentTestCaseConfiguration implements Cloneable {
 			return this;
 		}
 
+		public Builder setBuildTraceOutputPathKey(ProviderHolderPathKey buildTraceOutputPathKey) {
+			result.buildTraceOutputPathKey = buildTraceOutputPathKey;
+			return this;
+		}
+
 		public EnvironmentTestCaseConfiguration build() {
 			return result.clone();
 		}
@@ -196,6 +208,13 @@ public final class EnvironmentTestCaseConfiguration implements Cloneable {
 			return this;
 		}
 
+		public MultiBuilder setBuildTraceOutputPathKey(ProviderHolderPathKey buildTraceOutputPathKey) {
+			for (Builder builder : builders) {
+				builder.setBuildTraceOutputPathKey(buildTraceOutputPathKey);
+			}
+			return this;
+		}
+
 		public Set<EnvironmentTestCaseConfiguration> build() {
 			Set<EnvironmentTestCaseConfiguration> result = new LinkedHashSet<>();
 			for (Builder builder : builders) {
@@ -209,6 +228,7 @@ public final class EnvironmentTestCaseConfiguration implements Cloneable {
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
+		result = prime * result + ((buildTraceOutputPathKey == null) ? 0 : buildTraceOutputPathKey.hashCode());
 		result = prime * result + ((clusterNames == null) ? 0 : clusterNames.hashCode());
 		result = prime * result + ((environmentStorageDirectory == null) ? 0 : environmentStorageDirectory.hashCode());
 		result = prime * result + ((environmentUserParameters == null) ? 0 : environmentUserParameters.hashCode());
@@ -227,6 +247,11 @@ public final class EnvironmentTestCaseConfiguration implements Cloneable {
 		if (getClass() != obj.getClass())
 			return false;
 		EnvironmentTestCaseConfiguration other = (EnvironmentTestCaseConfiguration) obj;
+		if (buildTraceOutputPathKey == null) {
+			if (other.buildTraceOutputPathKey != null)
+				return false;
+		} else if (!buildTraceOutputPathKey.equals(other.buildTraceOutputPathKey))
+			return false;
 		if (clusterNames == null) {
 			if (other.clusterNames != null)
 				return false;
@@ -268,10 +293,15 @@ public final class EnvironmentTestCaseConfiguration implements Cloneable {
 			sb.append(", ");
 			sb.append((clusterNames != null ? "clusterNames=" + clusterNames + ", " : ""));
 		}
-		sb.append((environmentStorageDirectory != null ? ", commonEnvironmentKey=" + environmentStorageDirectory : ""));
+		sb.append((environmentStorageDirectory != null ? ", environmentStorageDirectory=" + environmentStorageDirectory
+				: ""));
 		if (environmentUserParameters != null) {
 			sb.append(", environmentUserParameters=");
 			sb.append(environmentUserParameters);
+		}
+		if (buildTraceOutputPathKey != null) {
+			sb.append(", buildTraceOutputPathKey=");
+			sb.append(buildTraceOutputPathKey);
 		}
 		sb.append("]");
 		return sb.toString();

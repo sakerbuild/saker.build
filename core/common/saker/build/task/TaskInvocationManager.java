@@ -44,6 +44,7 @@ import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionContextImpl;
 import saker.build.task.TaskExecutionManager.ManagerInnerTaskResults;
+import saker.build.task.TaskExecutionManager.TaskExecutorContext;
 import saker.build.task.cluster.TaskInvokerFactory;
 import saker.build.task.cluster.TaskInvokerInformation;
 import saker.build.task.exception.ClusterTaskExecutionFailedException;
@@ -70,6 +71,7 @@ import saker.build.thirdparty.saker.util.io.SerialUtils;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMIArrayListWrapper;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
+import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 import testing.saker.build.flag.TestFlag;
 
 public class TaskInvocationManager implements Closeable {
@@ -211,8 +213,8 @@ public class TaskInvocationManager implements Closeable {
 	//suppress unused TaskContextReference
 	@SuppressWarnings("try")
 	public <R> TaskInvocationResult<R> invokeTaskRunning(TaskFactory<R> factory,
-			TaskInvocationConfiguration capabilities, SelectionResult selectionresult, TaskContext taskcontext)
-			throws InterruptedException, ClusterTaskExecutionFailedException {
+			TaskInvocationConfiguration capabilities, SelectionResult selectionresult,
+			TaskExecutorContext<R> taskcontext) throws InterruptedException, ClusterTaskExecutionFailedException {
 		//TODO if the given number of tokens are available from the start, try request it and run on the local
 		//     machine if available
 		if (capabilities.isRemoteDispatchable() && !ObjectUtils.isNullOrEmpty(invokerFactories)) {
@@ -250,12 +252,15 @@ public class TaskInvocationManager implements Closeable {
 						"TaskFactory " + factory.getClass().getName() + " created null Task."));
 			}
 			R taskres;
-			try (TaskContextReference contextref = new TaskContextReference(taskcontext)) {
+			InternalTaskBuildTrace btrace = taskcontext.internalGetBuildTrace();
+			try (TaskContextReference contextref = new TaskContextReference(taskcontext, btrace)) {
+				btrace.startTaskExecution();
 				taskres = task.run(taskcontext);
 			} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError | AssertionError
 					| Exception e) {
 				return new TaskInvocationResult<>(null, e);
 			} finally {
+				btrace.endTaskExecution();
 				ctoken.closeAll();
 			}
 			return new TaskInvocationResult<>(Optional.ofNullable(taskres), null);

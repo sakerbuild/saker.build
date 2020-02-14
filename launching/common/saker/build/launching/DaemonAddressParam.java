@@ -26,12 +26,14 @@ import sipka.cmdline.api.Converter;
 
 @Converter(method = "parse")
 class DaemonAddressParam {
+	public String argument;
 	public InetSocketAddress address;
 
 	public DaemonAddressParam() {
 	}
 
-	public DaemonAddressParam(InetSocketAddress address) {
+	public DaemonAddressParam(String argument, InetSocketAddress address) {
+		this.argument = argument;
 		this.address = address;
 	}
 
@@ -42,7 +44,7 @@ class DaemonAddressParam {
 		String str = args.next();
 		try {
 			InetSocketAddress inetaddress = parseInetSocketAddress(str);
-			return new DaemonAddressParam(inetaddress);
+			return new DaemonAddressParam(str, inetaddress);
 		} catch (IOException e) {
 			throw new IllegalArgumentException("Failed to resolve address: " + str, e);
 		}

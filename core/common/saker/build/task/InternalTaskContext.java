@@ -28,6 +28,7 @@ import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
+import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 
 public interface InternalTaskContext {
 	@RMICacheResult
@@ -40,6 +41,9 @@ public interface InternalTaskContext {
 
 	public PathSakerFileContents internalGetPathSakerFileContents(SakerPath path);
 
+	@RMICacheResult
+	public InternalTaskBuildTrace internalGetBuildTrace();
+	
 	@RMIWrap(PathSakerFileContents.PathSakerFileContentsRMIWrapper.class)
 	public static class PathSakerFileContents {
 		protected SakerFile file;

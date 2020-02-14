@@ -33,7 +33,8 @@ import saker.build.runtime.classpath.HttpUrlJarFileClassPathLocation;
 /**
  * {@link ClassPathLocation} implementation that loads the saker.nest repository.
  * <p>
- * The repository is downloaded as a JAR from the URL: <code>https://api.nest.saker.build/bundle/download/saker.nest-vVERSION</code>
+ * The repository is downloaded as a JAR from the URL:
+ * <code>https://api.nest.saker.build/bundle/download/saker.nest-vVERSION</code>
  * <p>
  * See also: <a class="javadoc-external-link" href="https://saker.build/saker.nest/index.html">saker.nest repository</a>
  * 
@@ -102,6 +103,15 @@ public class NestRepositoryClassPathLocation implements ClassPathLocation, Exter
 
 	private NestRepositoryClassPathLocation(String version) {
 		this.version = version;
+	}
+
+	/**
+	 * Gets the version of the saker.nest repository that this class path location refers to.
+	 * 
+	 * @return The version.
+	 */
+	public String getVersion() {
+		return version;
 	}
 
 	@Override

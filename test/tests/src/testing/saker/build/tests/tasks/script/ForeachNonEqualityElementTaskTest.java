@@ -28,7 +28,7 @@ import testing.saker.build.tests.VariablesMetricEnvironmentTestCase;
 @SakerTest
 public class ForeachNonEqualityElementTaskTest extends VariablesMetricEnvironmentTestCase {
 	//bug test for foreach iterable not recognizing change
-	
+
 	private List<Object> iterValue;
 
 	@Override
@@ -42,11 +42,11 @@ public class ForeachNonEqualityElementTaskTest extends VariablesMetricEnvironmen
 	protected void runTestImpl() throws Throwable {
 		iterValue = Collections.singletonList(new SerializableContentDescriptor("first"));
 		runScriptTask("build");
-		assertEquals(getMetric().getAllPrintedTaskLines(), setOf(iterValue.stream().map(Object::toString).toArray()));
+		assertEquals(getMetric().getAllPrintedTaskLines(), setOf(iterValue.stream().map(o -> "[print]" + o).toArray()));
 
 		iterValue = Collections.singletonList(new SerializableContentDescriptor("second"));
 		runScriptTask("build");
-		assertEquals(getMetric().getAllPrintedTaskLines(), setOf(iterValue.stream().map(Object::toString).toArray()));
+		assertEquals(getMetric().getAllPrintedTaskLines(), setOf(iterValue.stream().map(o -> "[print]" + o).toArray()));
 	}
 
 }

@@ -42,7 +42,6 @@ import saker.build.thirdparty.saker.util.io.FileUtils;
  */
 @RMIWriter(SerializeRMIObjectWriteHandler.class)
 public final class HttpUrlJarFileClassPathLocation implements ClassPathLocation, Externalizable {
-
 	private static final long serialVersionUID = 1L;
 
 	private URL url;
@@ -138,6 +137,15 @@ public final class HttpUrlJarFileClassPathLocation implements ClassPathLocation,
 	@Override
 	public String getIdentifier() {
 		return this.identifier;
+	}
+
+	/**
+	 * Gets the URL from where this class path location loads itself.
+	 * 
+	 * @return The URL.
+	 */
+	public URL getUrl() {
+		return url;
 	}
 
 	@Override

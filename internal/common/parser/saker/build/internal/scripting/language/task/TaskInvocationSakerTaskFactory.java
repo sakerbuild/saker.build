@@ -98,6 +98,10 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 								"The task \"" + TASKNAME_GLOBAL + "\" missing variable name as unnamed parameter.",
 								scriptposition);
 					}
+					if (varname instanceof SakerLiteralTaskFactory
+							&& ((SakerLiteralTaskFactory) varname).getValue() == null) {
+						return new InvalidScriptDeclarationTaskFactory("Global variable name is null.", scriptposition);
+					}
 					if (parameters.size() > 1) {
 						return new InvalidScriptDeclarationTaskFactory(
 								"The task \"" + TASKNAME_GLOBAL + "\" cannot have multiple parameters.",
@@ -116,6 +120,10 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 								"The task \"" + TASKNAME_STATIC + "\" missing variable name as unnamed parameter.",
 								scriptposition);
 					}
+					if (varname instanceof SakerLiteralTaskFactory
+							&& ((SakerLiteralTaskFactory) varname).getValue() == null) {
+						return new InvalidScriptDeclarationTaskFactory("Static variable name is null.", scriptposition);
+					}
 					if (parameters.size() > 1) {
 						return new InvalidScriptDeclarationTaskFactory(
 								"The task \"" + TASKNAME_STATIC + "\" cannot have multiple parameters.",
@@ -133,6 +141,10 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 						return new InvalidScriptDeclarationTaskFactory(
 								"The task \"" + TASKNAME_VAR + "\" missing variable name as unnamed parameter.",
 								scriptposition);
+					}
+					if (varname instanceof SakerLiteralTaskFactory
+							&& ((SakerLiteralTaskFactory) varname).getValue() == null) {
+						return new InvalidScriptDeclarationTaskFactory("Variable name is null.", scriptposition);
 					}
 					if (parameters.size() > 1) {
 						return new InvalidScriptDeclarationTaskFactory(

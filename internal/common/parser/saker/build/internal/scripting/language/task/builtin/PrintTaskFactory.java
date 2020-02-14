@@ -26,6 +26,7 @@ import saker.build.internal.scripting.language.task.SakerLiteralTaskFactory;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
 import saker.build.internal.scripting.language.task.SakerTaskFactory;
 import saker.build.internal.scripting.language.task.SelfSakerTaskFactory;
+import saker.build.internal.scripting.language.task.TaskInvocationSakerTaskFactory;
 import saker.build.internal.scripting.language.task.result.NoSakerTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.task.TaskContext;
@@ -48,11 +49,11 @@ public class PrintTaskFactory extends SelfSakerTaskFactory {
 
 	@Override
 	public SakerTaskResult run(TaskContext taskcontext) throws Exception {
+		taskcontext.setStandardOutDisplayIdentifier(TaskInvocationSakerTaskFactory.TASKNAME_PRINT);
 		//print "null" if the message is null
 		TaskIdentifier messagetaskid = messageTask
 				.createSubTaskIdentifier((SakerScriptTaskIdentifier) taskcontext.getTaskId());
-		Object taskresult = taskcontext.getTaskUtilities().runTaskResult(messagetaskid, messageTask)
-				.toResult(taskcontext);
+		Object taskresult = runForResult(taskcontext, messagetaskid, messageTask).toResult(taskcontext);
 		String messagestr = Objects.toString(taskresult);
 		taskcontext.println(Objects.toString(messagestr));
 		return new NoSakerTaskResult(taskcontext.getTaskId());

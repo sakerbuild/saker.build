@@ -52,6 +52,7 @@ public class AbortTaskFactory extends SelfSakerTaskFactory {
 
 	@Override
 	public SakerTaskResult run(TaskContext taskcontext) throws Exception {
+		taskcontext.setStandardOutDisplayIdentifier(TaskInvocationSakerTaskFactory.TASKNAME_ABORT);
 		if (messageTask == null) {
 			taskcontext.abortExecution(new BuildAbortedException());
 		} else {
@@ -63,8 +64,7 @@ public class AbortTaskFactory extends SelfSakerTaskFactory {
 			TaskIdentifier messageid = messageTask
 					.createSubTaskIdentifier((SakerScriptTaskIdentifier) taskcontext.getTaskId());
 			try {
-				messagestr = Objects.toString(
-						taskcontext.getTaskUtilities().runTaskResult(messageid, messageTask).toResult(taskcontext),
+				messagestr = Objects.toString(runForResult(taskcontext, messageid, messageTask).toResult(taskcontext),
 						null);
 			} catch (Exception e) {
 				suppress = new OperandExecutionException(

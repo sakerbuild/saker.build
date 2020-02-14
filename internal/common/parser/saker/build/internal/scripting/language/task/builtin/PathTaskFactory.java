@@ -54,8 +54,7 @@ public class PathTaskFactory extends SelfSakerTaskFactory {
 	public SakerTaskResult run(TaskContext taskcontext) throws Exception {
 		TaskIdentifier thistaskid = taskcontext.getTaskId();
 		TaskIdentifier pathtaskid = pathTaskFactory.createSubTaskIdentifier((SakerScriptTaskIdentifier) thistaskid);
-		Object pathtaskres = taskcontext.getTaskUtilities().runTaskResult(pathtaskid, pathTaskFactory)
-				.toResult(taskcontext);
+		Object pathtaskres = runForResult(taskcontext, pathtaskid, pathTaskFactory).toResult(taskcontext);
 		SakerPath p = convertResultToPath(pathtaskid, pathtaskres);
 		if (p.isRelative()) {
 			p = taskcontext.getTaskWorkingDirectory().getSakerPath().resolve(p);

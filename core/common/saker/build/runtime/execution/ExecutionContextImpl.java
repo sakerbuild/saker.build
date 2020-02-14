@@ -96,6 +96,9 @@ import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
+import saker.build.trace.InternalBuildTrace;
+import saker.build.trace.InternalBuildTraceImpl;
+import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
 import saker.build.util.exc.ExceptionView;
 import saker.build.util.property.ScriptParsingConfigurationExecutionProperty;
 
@@ -156,6 +159,8 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	private SecretInputReader secretInputReader;
 	private TaskExecutionManager tasExecutionManager;
 
+	private final InternalBuildTrace buildTrace;
+
 	public ExecutionContextImpl(SakerEnvironmentImpl environment, ExecutionParametersImpl parameters) throws Exception {
 		this.environment = environment;
 		this.buildTimeDateMillis = System.currentTimeMillis();
@@ -163,6 +168,14 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		parameters = new ExecutionParametersImpl(parameters);
 		parameters.defaultize();
 		this.executionParameters = parameters;
+
+		ProviderHolderPathKey buildtraceoutputpath = parameters.getBuildTraceOutputPathKey();
+		if (buildtraceoutputpath != null) {
+			this.buildTrace = new InternalBuildTraceImpl(buildtraceoutputpath);
+			this.buildTrace.startBuild(environment, this);
+		} else {
+			this.buildTrace = NullInternalBuildTrace.INSTANCE;
+		}
 
 		ByteSink pstdout = parameters.getStandardOutput();
 		ByteSink pstderr = parameters.getErrorOutput();
@@ -186,6 +199,8 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	}
 
 	public void initialize(SakerProjectCache project) throws Exception {
+		this.buildTrace.initialize();
+
 		final SakerPath workingdirectorysakerpath = pathConfiguration.getWorkingDirectory();
 		final SakerPath paramsmirrordirectory = executionParameters.getMirrorDirectory();
 		SakerPath builddirectoryabssakerpath = executionParameters.getBuildDirectory();
@@ -329,6 +344,8 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		this.contentDatabase.setProtectionSettings(pathprotectionsettings);
 
 		this.environmentExecutionKey = environment.getStartExecutionKey();
+
+		this.buildTrace.initializeDone(this);
 	}
 
 	@Override
@@ -415,7 +432,14 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 			}
 
 			try {
-				manager.execute(taskfactory, taskid, this, taskinvokerfactories, buildCacheAccessor);
+				this.buildTrace.startExecute();
+				try {
+					manager.execute(taskfactory, taskid, this, taskinvokerfactories, buildCacheAccessor, buildTrace);
+					this.buildTrace.endExecute(true);
+				} catch (Throwable e) {
+					this.buildTrace.endExecute(false);
+					throw e;
+				}
 			} finally {
 				results = manager.getTaskResults();
 				resultCollection = manager.getResultCollection();
@@ -474,10 +498,6 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 	public SakerFileProvider getRootFileProvider(String root) {
 		return pathConfiguration.getRootFileProvider(root);
-	}
-
-	public final long getBuildTimeDateMillis() {
-		return buildTimeDateMillis;
 	}
 
 	public ByteSource getStandardIn() {
@@ -539,7 +559,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		return buildDirectoryPath;
 	}
 
-	public ExecutionParameters getExecutionParameters() {
+	public ExecutionParametersImpl getExecutionParameters() {
 		return executionParameters;
 	}
 
@@ -614,7 +634,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 				}
 				if (project != null) {
 					this.project.executionFinished(this, pathConfiguration, environmentExecutionKey, buildDirectoryPath,
-							fileComputeDataHandler, cacheabletasks, buildCacheAccessor);
+							fileComputeDataHandler, cacheabletasks, buildCacheAccessor, buildTrace);
 				} else {
 					if (contentdb != null) {
 						try {
@@ -632,7 +652,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 					try {
 						environment.executionFinished(environmentExecutionKey);
 					} finally {
-						ioexc = IOUtils.closeExc(ioexc, ownedExecutionCache);
+						ioexc = IOUtils.closeExc(ioexc, ownedExecutionCache, buildTrace);
 					}
 				}
 			}
@@ -676,10 +696,12 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 	public void reportIgnoredException(TaskIdentifier reportertask, ExceptionView exception) {
 		ignoredExceptionViews.computeIfAbsent(reportertask, x -> new ConcurrentAppendAccumulator<>()).add(exception);
+		this.buildTrace.ignoredException(reportertask, exception);
 	}
 
 	public void reportIgnoredException(ExceptionView exception) {
 		nonTaskIgnoredExceptionViews.add(exception);
+		this.buildTrace.ignoredException(null, exception);
 	}
 
 	@Override
@@ -697,6 +719,11 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	@Override
 	public FilePathContents internalGetFilePathContents(SakerFile file) {
 		return new FilePathContents(file.getSakerPath(), file.getContentDescriptor());
+	}
+
+	@Override
+	public InternalBuildTrace internalGetBuildTrace() {
+		return this.buildTrace;
 	}
 
 	private ScriptInformationProvider internalGetScriptInformationProviderForTaskScriptPosition(
