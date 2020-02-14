@@ -34,9 +34,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.NavigableMap;
 import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
@@ -49,6 +51,7 @@ import saker.build.exception.InvalidPathFormatException;
 import saker.build.file.path.PathKey;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
+import saker.build.file.path.SimpleProviderHolderPathKey;
 import saker.build.file.path.WildcardPath;
 import saker.build.file.provider.DirectoryMountFileProvider;
 import saker.build.file.provider.LocalFileProvider;
@@ -73,6 +76,7 @@ import saker.build.ide.support.properties.DaemonConnectionIDEProperty;
 import saker.build.ide.support.properties.HttpUrlJarClassPathLocationIDEProperty;
 import saker.build.ide.support.properties.IDEProjectProperties;
 import saker.build.ide.support.properties.JarClassPathLocationIDEProperty;
+import saker.build.ide.support.properties.MountPathIDEProperty;
 import saker.build.ide.support.properties.NamedClassClassPathServiceEnumeratorIDEProperty;
 import saker.build.ide.support.properties.NestRepositoryClassPathLocationIDEProperty;
 import saker.build.ide.support.properties.NestRepositoryFactoryServiceEnumeratorIDEProperty;
@@ -96,6 +100,8 @@ import saker.build.runtime.environment.RepositoryManager;
 import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionParametersImpl;
+import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation;
+import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation.ConnectionInformation;
 import saker.build.runtime.params.BuiltinScriptAccessorServiceEnumerator;
 import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.runtime.params.ExecutionRepositoryConfiguration;
@@ -148,7 +154,8 @@ public final class SakerIDEProject {
 	private static final String DEFAULT_WORKING_DIRECTORY_ROOT = "wd:";
 	public static final String DEFAULT_BUILD_DIRECTORY_PATH = "build";
 	public static final ProviderMountIDEProperty DEFAULT_MOUNT_IDE_PROPERTY = new ProviderMountIDEProperty(
-			DEFAULT_WORKING_DIRECTORY_ROOT, MOUNT_ENDPOINT_PROJECT_RELATIVE, SakerPath.ROOT_SLASH);
+			DEFAULT_WORKING_DIRECTORY_ROOT,
+			MountPathIDEProperty.create(MOUNT_ENDPOINT_PROJECT_RELATIVE, SakerPath.ROOT_SLASH));
 	public static final ScriptConfigurationIDEProperty DEFAULT_SCRIPT_IDE_PROPERTY = new ScriptConfigurationIDEProperty(
 			"**/*.build", Collections.emptySet(), new BuiltinScriptingLanguageClassPathLocationIDEProperty(),
 			new BuiltinScriptingLanguageServiceEnumeratorIDEProperty());
@@ -159,6 +166,7 @@ public final class SakerIDEProject {
 
 	public static final String NS_DAEMON_CONNECTION = "daemon-connection.";
 	public static final String NS_PROVIDER_MOUNT = "provider-mount.";
+	public static final String NS_BUILD_TRACE_OUT = "build-trace-out.";
 	public static final String NS_EXECUTION_DAEMON_NAME = "execution-daemon-name.";
 	public static final String NS_USER_PARAMETERS = "user-parameters.";
 	public static final String NS_SCRIPT_CONFIGURATION = "script-configuration.";
@@ -316,6 +324,7 @@ public final class SakerIDEProject {
 		validatePropertiesRepositories(properties, errors);
 		validatePropertiesConnections(properties, errors);
 		validatePropertiesMounts(properties, errors);
+		validatePropertiesBuildTraceOutput(properties, errors);
 		validatePropertiesExecutionDaemonConnectionName(properties, errors);
 		validatePropertiesScriptConfigurations(properties, errors);
 		validatePropertiesScriptModellingExclusions(properties, errors);
@@ -413,40 +422,56 @@ public final class SakerIDEProject {
 								new PropertiesValidationErrorResult(NS_PROVIDER_MOUNT + C_ROOT + E_FORMAT, mountprop));
 					}
 				}
-				if (MOUNT_ENDPOINT_LOCAL_FILESYSTEM.equals(clientname)
-						|| MOUNT_ENDPOINT_PROJECT_RELATIVE.equals(clientname)) {
-					//these are fine
-				} else {
-					DaemonConnectionIDEProperty connprop = getDaemonConnectionPropertyForConnectionName(connections,
-							clientname);
-					if (connprop == null) {
-						errors.add(new PropertiesValidationErrorResult(NS_PROVIDER_MOUNT + C_CLIENT + E_MISSING,
-								mountprop));
-					}
-				}
-				if (ObjectUtils.isNullOrEmpty(mountpathstr)) {
-					errors.add(new PropertiesValidationErrorResult(NS_PROVIDER_MOUNT + C_PATH + E_MISSING, mountprop));
-				} else {
-					try {
-						SakerPath mountpath = SakerPath.valueOf(mountpathstr);
-						if (!mountpath.isAbsolute()) {
-							errors.add(new PropertiesValidationErrorResult(NS_PROVIDER_MOUNT + C_PATH + E_RELATIVE,
-									mountprop));
-						} else {
-							if (MOUNT_ENDPOINT_PROJECT_RELATIVE.equals(clientname)) {
-								if (!SakerPath.ROOT_SLASH.equals(mountpath.getRoot())) {
-									errors.add(new PropertiesValidationErrorResult(
-											NS_PROVIDER_MOUNT + C_PATH + E_INVALID_ROOT, mountprop));
-								}
-							}
-						}
-					} catch (RuntimeException e) {
-						errors.add(
-								new PropertiesValidationErrorResult(NS_PROVIDER_MOUNT + C_PATH + E_FORMAT, mountprop));
-					}
-				}
+				validateMountPath(errors, connections, mountprop, clientname, mountpathstr, NS_PROVIDER_MOUNT);
 			}
 		}
+	}
+
+	private static void validateMountPath(Collection<PropertiesValidationErrorResult> errors,
+			Set<? extends DaemonConnectionIDEProperty> connections, Object mountprop, String clientname,
+			String mountpathstr, String ns) {
+		if (MOUNT_ENDPOINT_LOCAL_FILESYSTEM.equals(clientname) || MOUNT_ENDPOINT_PROJECT_RELATIVE.equals(clientname)) {
+			//these are fine
+		} else {
+			DaemonConnectionIDEProperty connprop = getDaemonConnectionPropertyForConnectionName(connections,
+					clientname);
+			if (connprop == null) {
+				errors.add(new PropertiesValidationErrorResult(ns + C_CLIENT + E_MISSING, mountprop));
+			}
+		}
+		if (ObjectUtils.isNullOrEmpty(mountpathstr)) {
+			errors.add(new PropertiesValidationErrorResult(ns + C_PATH + E_MISSING, mountprop));
+		} else {
+			try {
+				SakerPath mountpath = SakerPath.valueOf(mountpathstr);
+				if (!mountpath.isAbsolute()) {
+					errors.add(new PropertiesValidationErrorResult(ns + C_PATH + E_RELATIVE, mountprop));
+				} else {
+					if (MOUNT_ENDPOINT_PROJECT_RELATIVE.equals(clientname)) {
+						if (!SakerPath.ROOT_SLASH.equals(mountpath.getRoot())) {
+							errors.add(new PropertiesValidationErrorResult(ns + C_PATH + E_INVALID_ROOT, mountprop));
+						}
+					}
+				}
+			} catch (RuntimeException e) {
+				errors.add(new PropertiesValidationErrorResult(ns + C_PATH + E_FORMAT, mountprop));
+			}
+		}
+	}
+
+	private static void validatePropertiesBuildTraceOutput(IDEProjectProperties properties,
+			Collection<PropertiesValidationErrorResult> errors) {
+		MountPathIDEProperty btoutprop = properties.getBuildTraceOutput();
+		if (btoutprop == null) {
+			return;
+		}
+		String clientname = btoutprop.getMountClientName();
+		String mountpathstr = btoutprop.getMountPath();
+		if (ObjectUtils.isNullOrEmpty(clientname) && ObjectUtils.isNullOrEmpty(mountpathstr)) {
+			//both are null
+			return;
+		}
+		validateMountPath(errors, properties.getConnections(), btoutprop, clientname, mountpathstr, NS_BUILD_TRACE_OUT);
 	}
 
 	private static void validatePropertiesExecutionDaemonConnectionName(IDEProjectProperties properties,
@@ -1117,6 +1142,7 @@ public final class SakerIDEProject {
 		if (!validatedprops.isValid()) {
 			throw new PropertiesValidationException(ImmutableUtils.makeImmutableLinkedHashSet(validatedprops.errors));
 		}
+		BuildInformation buildinfo = null;
 		//XXX don't connect to daemons which are not used as clusters, and not part of the path configuration
 		Map<String, RemoteDaemonConnection> daemonconnections;
 		String execdaemonnameprop = properties.getExecutionDaemonConnectionName();
@@ -1137,8 +1163,37 @@ public final class SakerIDEProject {
 			}
 			daemonconnections = plugin.connectToDaemonsFromDaemonEnvironment(daemonconnectionproperties,
 					execdaemonconnection.values().iterator().next().getDaemonEnvironment());
+
+			buildinfo = new BuildInformation();
+			NavigableMap<String, ConnectionInformation> connectioninfos = new TreeMap<>();
+			for (Entry<String, RemoteDaemonConnection> entry : execdaemonconnection.entrySet()) {
+				RemoteDaemonConnection connection = entry.getValue();
+				ConnectionInformation conninfo = new ConnectionInformation();
+				conninfo.setConnectionRootFileProviderUUID(SakerPathFiles
+						.getRootFileProviderKey(connection.getDaemonEnvironment().getFileProvider()).getUUID());
+				conninfo.setConnectionBuildEnvironmentUUID(
+						connection.getDaemonEnvironment().getEnvironmentIdentifier());
+				//XXX more efficient lookup
+				String connectionname = entry.getKey();
+				DaemonConnectionIDEProperty cprop = getDaemonConnectionPropertyForConnectionName(
+						daemonconnectionproperties, connectionname);
+				conninfo.setConnectionAddress(cprop.getConnectionName());
+
+				connectioninfos.put(connectionname, conninfo);
+			}
+			buildinfo.setConnectionInformations(connectioninfos);
 		} else {
 			daemonconnections = plugin.connectToDaemonsFromPluginEnvironment(daemonconnectionproperties);
+		}
+
+		MountPathIDEProperty buildtraceoutprop = properties.getBuildTraceOutput();
+		ProviderHolderPathKey buildtraceoutpathkey = null;
+		if (buildtraceoutprop != null) {
+			String btcname = buildtraceoutprop.getMountClientName();
+			String btpath = buildtraceoutprop.getMountPath();
+			if (!ObjectUtils.isNullOrEmpty(btcname) && !ObjectUtils.isNullOrEmpty(btpath)) {
+				buildtraceoutpathkey = getMountPathPropertyPathKey(buildtraceoutprop, daemonconnections);
+			}
 		}
 
 		ExecutionPathConfiguration pathconfiguration = createPathConfiguration(properties, daemonconnections);
@@ -1181,6 +1236,8 @@ public final class SakerIDEProject {
 		}
 
 		parameters.setTaskInvokerFactories(taskinvokerfactories);
+		parameters.setBuildInfo(buildinfo);
+		parameters.setBuildTraceOutputPathKey(buildtraceoutpathkey);
 
 		return parameters;
 	}
@@ -1429,6 +1486,35 @@ public final class SakerIDEProject {
 		return createPathConfiguration(properties, daemonconnections);
 	}
 
+	private ProviderHolderPathKey getMountPathPropertyPathKey(MountPathIDEProperty mountprop,
+			Map<String, RemoteDaemonConnection> daemonconnections) {
+		if (mountprop == null) {
+			throw new NullPointerException("Missing mount.");
+		}
+		String mountclient = mountprop.getMountClientName();
+		if (ObjectUtils.isNullOrEmpty(mountclient)) {
+			throw new IllegalArgumentException("Missing mount client name.");
+		}
+		SakerPath mountedpath = SakerPath.valueOf(mountprop.getMountPath());
+		switch (mountclient) {
+			case MOUNT_ENDPOINT_LOCAL_FILESYSTEM: {
+				return LocalFileProvider.getInstance().getPathKey(mountedpath);
+			}
+			case MOUNT_ENDPOINT_PROJECT_RELATIVE: {
+				return LocalFileProvider.getInstance()
+						.getPathKey(SakerPath.valueOf(projectPath).resolve(mountedpath.replaceRoot(null)));
+			}
+			default: {
+				RemoteDaemonConnection daemonconnection = daemonconnections.get(mountclient);
+				if (daemonconnection == null) {
+					throw new IllegalArgumentException("Daemon connection not found with name: " + mountclient);
+				}
+				SakerFileProvider fp = daemonconnection.getDaemonEnvironment().getFileProvider();
+				return new SimpleProviderHolderPathKey(fp, mountedpath);
+			}
+		}
+	}
+
 	private ExecutionPathConfiguration createPathConfiguration(IDEProjectProperties properties,
 			Map<String, RemoteDaemonConnection> daemonconnections) throws IOException {
 		ExecutionPathConfiguration.Builder pathconfigbuilder = ExecutionPathConfiguration
@@ -1436,35 +1522,12 @@ public final class SakerIDEProject {
 		Set<? extends ProviderMountIDEProperty> mounts = properties.getMounts();
 		if (!ObjectUtils.isNullOrEmpty(mounts)) {
 			for (ProviderMountIDEProperty mount : mounts) {
-				String mountclient = mount.getMountClientName();
+				MountPathIDEProperty mountprop = mount.getMountPathProperty();
+				ProviderHolderPathKey mountpathkey = getMountPathPropertyPathKey(mountprop, daemonconnections);
+
 				String mountroot = mount.getRoot();
-				SakerFileProvider mountprovider;
-				SakerPath mountedpath = SakerPath.valueOf(mount.getMountPath());
-				if (ObjectUtils.isNullOrEmpty(mountclient)) {
-					throw new IllegalArgumentException("Missing mount client name.");
-				}
-				switch (mountclient) {
-					case MOUNT_ENDPOINT_LOCAL_FILESYSTEM: {
-						mountprovider = DirectoryMountFileProvider.create(LocalFileProvider.getInstance(), mountedpath,
-								mountroot);
-						break;
-					}
-					case MOUNT_ENDPOINT_PROJECT_RELATIVE: {
-						mountprovider = DirectoryMountFileProvider.create(LocalFileProvider.getInstance(),
-								SakerPath.valueOf(projectPath).resolve(mountedpath.replaceRoot(null)), mountroot);
-						break;
-					}
-					default: {
-						RemoteDaemonConnection daemonconnection = daemonconnections.get(mountclient);
-						if (daemonconnection == null) {
-							throw new IllegalArgumentException("Daemon connection not found with name: " + mountclient);
-						}
-						SakerFileProvider fp = daemonconnection.getDaemonEnvironment().getFileProvider();
-						mountprovider = DirectoryMountFileProvider.create(fp, mountedpath, mountroot);
-						break;
-					}
-				}
-				pathconfigbuilder.addRootProvider(mountroot, mountprovider);
+				pathconfigbuilder.addRootProvider(mountroot, DirectoryMountFileProvider
+						.create(mountpathkey.getFileProvider(), mountpathkey.getPath(), mountroot));
 			}
 		}
 		return pathconfigbuilder.build();

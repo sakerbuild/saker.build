@@ -236,7 +236,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			traceinfo = new TaskBuildTraceInfo();
 			trace.traceInfo = traceinfo;
 		}
-		traceinfo.standardOutBytes = baos.toByteArrayRegion();
+		traceinfo.standardOutBytes = baos == null ? ByteArrayRegion.EMPTY : baos.toByteArrayRegion();
 		traceinfo.standardErrBytes = ByteArrayRegion.EMPTY;
 	}
 

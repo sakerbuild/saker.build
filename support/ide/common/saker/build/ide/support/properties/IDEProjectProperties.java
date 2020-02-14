@@ -41,6 +41,8 @@ public interface IDEProjectProperties {
 
 	public boolean isRequireTaskIDEConfiguration();
 
+	public MountPathIDEProperty getBuildTraceOutput();
+
 	@Override
 	public int hashCode();
 

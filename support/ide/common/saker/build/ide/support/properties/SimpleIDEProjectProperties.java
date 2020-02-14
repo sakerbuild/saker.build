@@ -55,6 +55,8 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 
 	protected boolean requireTaskIDEConfiguration;
 
+	protected MountPathIDEProperty buildTraceOutput;
+
 	public static IDEProjectProperties empty() {
 		return EMPTY;
 	}
@@ -83,6 +85,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		this.mirrorDirectory = copy.getMirrorDirectory();
 		this.executionDaemonConnectionName = copy.getExecutionDaemonConnectionName();
 		this.requireTaskIDEConfiguration = copy.isRequireTaskIDEConfiguration();
+		this.buildTraceOutput = copy.getBuildTraceOutput();
 	}
 
 	private final void unmodifiablize() {
@@ -150,10 +153,16 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 	}
 
 	@Override
+	public MountPathIDEProperty getBuildTraceOutput() {
+		return buildTraceOutput;
+	}
+
+	@Override
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
 		result = prime * result + ((buildDirectory == null) ? 0 : buildDirectory.hashCode());
+		result = prime * result + ((buildTraceOutput == null) ? 0 : buildTraceOutput.hashCode());
 		result = prime * result + ((connections == null) ? 0 : connections.hashCode());
 		result = prime * result
 				+ ((executionDaemonConnectionName == null) ? 0 : executionDaemonConnectionName.hashCode());
@@ -181,6 +190,11 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 			if (other.buildDirectory != null)
 				return false;
 		} else if (!buildDirectory.equals(other.buildDirectory))
+			return false;
+		if (buildTraceOutput == null) {
+			if (other.buildTraceOutput != null)
+				return false;
+		} else if (!buildTraceOutput.equals(other.buildTraceOutput))
 			return false;
 		if (connections == null) {
 			if (other.connections != null)
@@ -303,6 +317,11 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 
 		public Builder setRequireTaskIDEConfiguration(boolean requireTaskIDEConfiguration) {
 			result.requireTaskIDEConfiguration = requireTaskIDEConfiguration;
+			return this;
+		}
+
+		public Builder setBuildTraceOutput(MountPathIDEProperty buildTraceOutput) {
+			result.buildTraceOutput = buildTraceOutput;
 			return this;
 		}
 

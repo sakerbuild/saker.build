@@ -15,37 +15,36 @@
  */
 package saker.build.ide.support.properties;
 
-public class ProviderMountIDEProperty {
-	private String mountRoot;
-	private MountPathIDEProperty mountPath;
+public class MountPathIDEProperty {
+	private String mountClientName;
+	private String mountPath;
 
-	public ProviderMountIDEProperty(String mountRoot, MountPathIDEProperty mountPath) {
-		this.mountRoot = mountRoot;
+	public MountPathIDEProperty(String mountClientName, String mountPath) {
+		this.mountClientName = mountClientName;
 		this.mountPath = mountPath;
 	}
 
-	public String getRoot() {
-		return mountRoot;
-	}
-
-	public MountPathIDEProperty getMountPathProperty() {
-		return mountPath;
+	public static MountPathIDEProperty create(String mountClientName, String mountPath) {
+		if (mountClientName == null && mountPath == null) {
+			return null;
+		}
+		return new MountPathIDEProperty(mountClientName, mountPath);
 	}
 
 	public String getMountClientName() {
-		return mountPath == null ? null : mountPath.getMountClientName();
+		return mountClientName;
 	}
 
 	public String getMountPath() {
-		return mountPath == null ? null : mountPath.getMountPath();
+		return mountPath;
 	}
 
 	@Override
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
+		result = prime * result + ((mountClientName == null) ? 0 : mountClientName.hashCode());
 		result = prime * result + ((mountPath == null) ? 0 : mountPath.hashCode());
-		result = prime * result + ((mountRoot == null) ? 0 : mountRoot.hashCode());
 		return result;
 	}
 
@@ -57,23 +56,23 @@ public class ProviderMountIDEProperty {
 			return false;
 		if (getClass() != obj.getClass())
 			return false;
-		ProviderMountIDEProperty other = (ProviderMountIDEProperty) obj;
+		MountPathIDEProperty other = (MountPathIDEProperty) obj;
+		if (mountClientName == null) {
+			if (other.mountClientName != null)
+				return false;
+		} else if (!mountClientName.equals(other.mountClientName))
+			return false;
 		if (mountPath == null) {
 			if (other.mountPath != null)
 				return false;
 		} else if (!mountPath.equals(other.mountPath))
-			return false;
-		if (mountRoot == null) {
-			if (other.mountRoot != null)
-				return false;
-		} else if (!mountRoot.equals(other.mountRoot))
 			return false;
 		return true;
 	}
 
 	@Override
 	public String toString() {
-		return getClass().getSimpleName() + "[mountRoot=" + mountRoot + ", mountPath=" + mountPath + "]";
+		return getClass().getSimpleName() + "[mountClientName=" + mountClientName + ", mountPath=" + mountPath + "]";
 	}
 
 }

@@ -433,6 +433,8 @@ public class BuildCommand {
 	 * (The build trace can be viewed offline, it won't be transferred 
 	 * to our servers.)
 	 * </pre>
+	 * 
+	 * @cmd-format &lt;mount-path>
 	 */
 	@Parameter("-trace")
 	public String buildTracePath;

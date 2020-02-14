@@ -4540,6 +4540,7 @@ public class TaskExecutionManager {
 			ManagerTaskFutureImpl<?> future) {
 		List<String> prevprintedlines = prevexecresult.getPrintedLines();
 		if (ObjectUtils.isNullOrEmpty(prevprintedlines)) {
+			this.buildTrace.upToDateTaskStandardOutput(prevexecresult, null);
 			return;
 		}
 		//buffer the lines into a byte buffer and write them in a single call.

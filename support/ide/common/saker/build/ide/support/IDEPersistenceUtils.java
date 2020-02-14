@@ -47,6 +47,7 @@ import saker.build.ide.support.properties.HttpUrlJarClassPathLocationIDEProperty
 import saker.build.ide.support.properties.IDEPluginProperties;
 import saker.build.ide.support.properties.IDEProjectProperties;
 import saker.build.ide.support.properties.JarClassPathLocationIDEProperty;
+import saker.build.ide.support.properties.MountPathIDEProperty;
 import saker.build.ide.support.properties.NamedClassClassPathServiceEnumeratorIDEProperty;
 import saker.build.ide.support.properties.NestRepositoryClassPathLocationIDEProperty;
 import saker.build.ide.support.properties.NestRepositoryFactoryServiceEnumeratorIDEProperty;
@@ -330,6 +331,7 @@ public class IDEPersistenceUtils {
 		String builddir = props.getBuildDirectory();
 		String mirrordir = props.getMirrorDirectory();
 		String execonnectionname = props.getExecutionDaemonConnectionName();
+		MountPathIDEProperty buildtraceout = props.getBuildTraceOutput();
 		objout.writeField("version", 1);
 		if (workdir != null) {
 			objout.writeField("working_dir", workdir);
@@ -342,6 +344,16 @@ public class IDEPersistenceUtils {
 		}
 		if (execonnectionname != null) {
 			objout.writeField("execution_daemon", execonnectionname);
+		}
+		if (buildtraceout != null) {
+			String btcname = buildtraceout.getMountClientName();
+			String btpath = buildtraceout.getMountPath();
+			if (btcname != null) {
+				objout.writeField("build_trace_out_client", btcname);
+			}
+			if (btpath != null) {
+				objout.writeField("build_trace_out_path", btpath);
+			}
 		}
 		objout.writeField("require_ide_config", props.isRequireTaskIDEConfiguration());
 		Set<? extends RepositoryIDEProperty> repositories = props.getRepositories();
@@ -387,16 +399,19 @@ public class IDEPersistenceUtils {
 				for (ProviderMountIDEProperty mount : mounts) {
 					try (StructuredObjectOutput entryobj = arraywriter.writeObject()) {
 						String root = mount.getRoot();
-						String clientname = mount.getMountClientName();
-						String mountpath = mount.getMountPath();
+						MountPathIDEProperty mountpath = mount.getMountPathProperty();
 						if (root != null) {
 							entryobj.writeField("root", root);
 						}
-						if (clientname != null) {
-							entryobj.writeField("client", clientname);
-						}
 						if (mountpath != null) {
-							entryobj.writeField("path", mountpath);
+							String clientname = mountpath.getMountClientName();
+							String mountpathstr = mountpath.getMountPath();
+							if (clientname != null) {
+								entryobj.writeField("client", clientname);
+							}
+							if (mountpathstr != null) {
+								entryobj.writeField("path", mountpathstr);
+							}
 						}
 					}
 				}
@@ -450,6 +465,9 @@ public class IDEPersistenceUtils {
 					ObjectUtils.defaultize(input.readBoolean("require_ide_config"), true));
 		} catch (DataFormatException ignored) {
 		}
+		result.setBuildTraceOutput(MountPathIDEProperty.create(input.readString("build_trace_out_client"),
+				input.readString("build_trace_out_path")));
+
 		try (StructuredArrayObjectInput array = input.readArray("repositories")) {
 			if (array != null) {
 				int len = array.length();
@@ -506,7 +524,7 @@ public class IDEPersistenceUtils {
 						if (root == null && client == null && path == null) {
 							continue;
 						}
-						mounts.add(new ProviderMountIDEProperty(root, client, path));
+						mounts.add(new ProviderMountIDEProperty(root, MountPathIDEProperty.create(client, path)));
 					}
 				}
 				result.setMounts(mounts);
