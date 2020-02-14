@@ -15,6 +15,8 @@
  */
 package saker.build.ide.support.properties;
 
+import saker.build.thirdparty.saker.util.ObjectUtils;
+
 public class MountPathIDEProperty {
 	private String mountClientName;
 	private String mountPath;
@@ -25,7 +27,7 @@ public class MountPathIDEProperty {
 	}
 
 	public static MountPathIDEProperty create(String mountClientName, String mountPath) {
-		if (mountClientName == null && mountPath == null) {
+		if (ObjectUtils.isNullOrEmpty(mountClientName) && ObjectUtils.isNullOrEmpty(mountPath)) {
 			return null;
 		}
 		return new MountPathIDEProperty(mountClientName, mountPath);

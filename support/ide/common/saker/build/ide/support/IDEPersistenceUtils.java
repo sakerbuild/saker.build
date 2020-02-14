@@ -348,10 +348,10 @@ public class IDEPersistenceUtils {
 		if (buildtraceout != null) {
 			String btcname = buildtraceout.getMountClientName();
 			String btpath = buildtraceout.getMountPath();
-			if (btcname != null) {
+			if (!ObjectUtils.isNullOrEmpty(btcname)) {
 				objout.writeField("build_trace_out_client", btcname);
 			}
-			if (btpath != null) {
+			if (!ObjectUtils.isNullOrEmpty(btpath)) {
 				objout.writeField("build_trace_out_path", btpath);
 			}
 		}
