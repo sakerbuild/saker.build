@@ -696,10 +696,12 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 	public void reportIgnoredException(TaskIdentifier reportertask, ExceptionView exception) {
 		ignoredExceptionViews.computeIfAbsent(reportertask, x -> new ConcurrentAppendAccumulator<>()).add(exception);
+		this.buildTrace.ignoredException(reportertask, exception);
 	}
 
 	public void reportIgnoredException(ExceptionView exception) {
 		nonTaskIgnoredExceptionViews.add(exception);
+		this.buildTrace.ignoredException(null, exception);
 	}
 
 	@Override
