@@ -1,7 +1,8 @@
 package saker.build.trace;
 
 import saker.apiextract.api.PublicApi;
-import saker.build.task.identifier.TaskIdentifier;
+import saker.build.task.Task;
+import saker.build.task.TaskContext;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
@@ -22,6 +23,79 @@ import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
  */
 @PublicApi
 public final class BuildTrace {
+	/**
+	 * Classification representing a worker task.
+	 * <p>
+	 * Worker tasks are the ones that perform long running build operations. They are usually computationally heavy, and
+	 * contribute to the actual build outputs.
+	 * <p>
+	 * E.g. compiling sources, downloading files, or other longer operations.
+	 * <p>
+	 * Generally, worker tasks provide meaningful performance information for the developer.
+	 * 
+	 * @see #classifyTask(String)
+	 */
+	public static final String CLASSIFICATION_WORKER = "worker";
+
+	/**
+	 * Classification representing an external task.
+	 * <p>
+	 * External tasks are tasks that generally perform no other operation but directly invoke another task. That is,
+	 * calling {@link Task#run(TaskContext)}, and not starting them through {@link TaskContext}.
+	 * <p>
+	 * Generally, external tasks are only reported by the build system or script language implementation when they
+	 * bootstrap the actually invoked tasks. Under normal circumstances, you don't classify your build tasks as being
+	 * external.
+	 * <p>
+	 * The build trace viewer may decide to omit external tasks from the view in some cases.
+	 * 
+	 * @see #classifyTask(String)
+	 */
+	public static final String CLASSIFICATION_EXTERNAL = "external";
+
+	/**
+	 * Classification representing a meta task.
+	 * <p>
+	 * Meta tasks are considered to contribute little or nothing to the build results and serve only as a configuration
+	 * or control flow task for the build execution.
+	 * <p>
+	 * Generally, meta tasks spend most of their time as waiting for other tasks, or performing other task management
+	 * related operations.
+	 * <p>
+	 * Meta tasks are generally omitted in the build trace viewer.
+	 * 
+	 * @see #classifyTask(String)
+	 */
+	public static final String CLASSIFICATION_META = "meta";
+
+	/**
+	 * Classification representing a frontend task.
+	 * <p>
+	 * Frontend tasks are responsible for parsing the input parameters of a given task and starting a worker task that
+	 * performs the actual build operation.
+	 * <p>
+	 * This classification is similar to {@linkplain #CLASSIFICATION_META meta}, but may be differentiated by the build
+	 * trace if necessary.
+	 * <p>
+	 * Frontent tasks are generally omitted in the build trace viewer.
+	 * 
+	 * @see #classifyTask(String)
+	 */
+	public static final String CLASSIFICATION_FRONTEND = "frontend";
+
+	/**
+	 * Classification representing a configuration task.
+	 * <p>
+	 * Configuration tasks don't perform long running or complex build operations, but only retrieve some configuration
+	 * object based on the input parameters. These configuration objects are usually inputs to other tasks to configure
+	 * their behaviour.
+	 * <p>
+	 * Configuration tasks are may be omitted in the build trace viewer.
+	 * 
+	 * @see #classifyTask(String)
+	 */
+	public static final String CLASSIFICATION_CONFIGURATION = "configuration";
+
 	private BuildTrace() {
 		throw new UnsupportedOperationException();
 	}
@@ -66,6 +140,27 @@ public final class BuildTrace {
 		try {
 			InternalTaskBuildTrace tt = getTaskTrace();
 			tt.setDisplayInformation(timelinelabel, title);
+		} catch (Exception e) {
+			// no exceptions!
+		}
+	}
+
+	/**
+	 * Classifies the current task to be a given semantic type.
+	 * <p>
+	 * Classified tasks can be interpreted differently by the build trace viewer, and display more appropriate
+	 * information to the user based on them.
+	 * 
+	 * @param classification
+	 *            The task classification. See the <code>CLASSIFICATION_*</code> constants in this class.
+	 */
+	public static void classifyTask(String classification) {
+		if (ObjectUtils.isNullOrEmpty(classification)) {
+			return;
+		}
+		try {
+			InternalTaskBuildTrace tt = getTaskTrace();
+			tt.classifyTask(classification);
 		} catch (Exception e) {
 			// no exceptions!
 		}

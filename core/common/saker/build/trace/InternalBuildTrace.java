@@ -153,6 +153,9 @@ public interface InternalBuildTrace extends Closeable {
 
 		public default void setDisplayInformation(String timelinelabel, String title) {
 		}
+
+		public default void classifyTask(String classification) {
+		}
 	}
 
 }

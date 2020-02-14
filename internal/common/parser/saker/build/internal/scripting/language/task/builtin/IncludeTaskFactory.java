@@ -62,6 +62,8 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 	@Override
 	public SakerTaskResult run(TaskContext taskcontext) throws Exception {
 		taskcontext.setStandardOutDisplayIdentifier(TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE);
+		BuildTrace.classifyTask(BuildTrace.CLASSIFICATION_META);
+
 		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
 
 		NavigableMap<String, TaskIdentifier> parametertaskids = new TreeMap<>();
