@@ -144,7 +144,6 @@ public final class FileEntry implements BasicFileAttributes, Externalizable {
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
-		//other fields intentionally left out
 		result = prime * result + type;
 		result = prime * result + Long.hashCode(size);
 		result = prime * result + Long.hashCode(lastModifiedMillis);

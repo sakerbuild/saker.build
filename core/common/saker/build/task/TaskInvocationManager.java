@@ -392,7 +392,11 @@ public class TaskInvocationManager implements Closeable {
 		}
 		ThreadWorkPool invokerpool = invokerPool;
 		if (invokerpool != null) {
-			invokerpool.close();
+			try {
+				invokerpool.close();
+			} catch (Exception e) {
+				executionContext.reportIgnoredException(e);
+			}
 		}
 	}
 

@@ -197,7 +197,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	private SakerPath buildDirectoryPath;
 	private SakerPath mirrorDirectoryPath;
 
-	private NavigableMap<String, PathKey> rootsPathKey = new TreeMap<>();
 	/**
 	 * Maps {@link EnvironmentInformation#buildEnvironmentUUID} to informations.
 	 */
@@ -292,10 +291,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		this.mirrorDirectoryPath = SakerPath.valueOf(executioncontext.getMirrorDirectory());
 		this.buildDirectoryPath = executioncontext.getBuildDirectoryPath();
 		this.pathConfiguration = executioncontext.getPathConfiguration();
-		for (Entry<String, SakerFileProvider> entry : pathConfiguration.getRootFileProviders().entrySet()) {
-			rootsPathKey.put(entry.getKey(),
-					SakerPathFiles.getPathKey(entry.getValue(), SakerPath.valueOf(entry.getKey())));
-		}
 		this.scriptConfiguration = executioncontext.getScriptConfiguration();
 		this.repositoryConfiguration = executioncontext.getRepositoryConfiguration();
 		this.databaseConfiguration = executioncontext.getDatabaseConfiguretion();
@@ -452,6 +447,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 					}
 					writeFieldName(os, "");
 				}
+			}
+
+			NavigableMap<String, PathKey> rootsPathKey = new TreeMap<>();
+			for (Entry<String, SakerFileProvider> entry : pathConfiguration.getRootFileProviders().entrySet()) {
+				rootsPathKey.put(entry.getKey(),
+						SakerPathFiles.getPathKey(entry.getValue(), SakerPath.valueOf(entry.getKey())));
 			}
 
 			writeFieldName(os, "path_config");
@@ -1383,7 +1384,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		@Override
 		public void setClusterInnerTaskDisplayInformation(Object innertaskidentity, String timelinelabel,
 				String title) {
-			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(new Object());
+			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(innertaskidentity);
 			innertrace.setDisplayInformation(timelinelabel, title);
 		}
 

@@ -4331,16 +4331,20 @@ public class TaskExecutionManager {
 				invokerselectionresult.get();
 				Task<? extends R> task = factory.createTask(taskcontext.executionContext);
 				if (task == null) {
-					throw new NullPointerException("Task factory created null task: " + factory.getClass().getName());
+					throw new NullPointerException(
+							"Inner task factory created null task: " + factory.getClass().getName());
 				}
 				R res;
-				try (TaskContextReference contextref = new TaskContextReference(taskcontext,
-						taskcontext.taskBuildTrace)) {
-					taskcontext.taskBuildTrace.startTaskExecution();
+				try (TaskContextReference contextref = new TaskContextReference(taskcontext)) {
+					InternalTaskBuildTrace btrace = taskcontext.taskBuildTrace.startInnerTask(factory);
+					contextref.initTaskBuildTrace(btrace);
 					try {
 						res = task.run(taskcontext);
+					} catch (Throwable e) {
+						btrace.setThrownException(e);
+						throw e;
 					} finally {
-						taskcontext.taskBuildTrace.endTaskExecution();
+						btrace.endInnerTask();
 					}
 				}
 				return new CompletedInnerTaskResults<>(new CompletedInnerTaskOptionalResult<>(res));

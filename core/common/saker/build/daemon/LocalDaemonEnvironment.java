@@ -606,14 +606,15 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 						Object execkey = environment.getStartExecutionKey();
 						try {
 							connectionClassLoaderRegistry.register(resolverid, execresolver);
-							new ClusterTaskInvoker(environment, executionenvironment, executioncontext, mirrorhandler,
+							ClusterTaskInvoker clusterinvoker = new ClusterTaskInvoker(environment,
+									executionenvironment, executioncontext, mirrorhandler,
 									execcache.getLoadedBuildRepositories(), project.getClusterContentDatabase(),
-									execcache.getLoadedScriptProviderLocators()).run(context);
+									execcache.getLoadedScriptProviderLocators());
+							clusterinvoker.run(context);
 						} finally {
 							connectionClassLoaderRegistry.unregister(resolverid, execresolver);
 							project.clusterFinished(execkey);
 						}
-
 					}
 				};
 			} catch (Throwable e) {

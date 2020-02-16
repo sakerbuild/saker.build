@@ -708,6 +708,10 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		this.buildTrace.ignoredException(null, exception);
 	}
 
+	public void reportIgnoredException(Throwable exception) {
+		reportIgnoredException(ExceptionView.create(exception));
+	}
+
 	@Override
 	public ContentDescriptor getContentDescriptor(ProviderHolderPathKey pathkey) {
 		return contentDatabase.getContentDescriptor(pathkey);

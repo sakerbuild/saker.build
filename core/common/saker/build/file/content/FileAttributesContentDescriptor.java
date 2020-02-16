@@ -141,7 +141,16 @@ public final class FileAttributesContentDescriptor implements ContentDescriptor,
 			//current is not a directory
 			return true;
 		}
-		return current.size() != prev.size() || current.lastModifiedTime().compareTo(prev.lastModifiedTime()) != 0;
+		if (current.size() != prev.size()) {
+			return true;
+		}
+		//compare the millis directly, as using compareTo can have different results if the attributes
+		//have different resolution.
+		//e.g. current has microsecond resolution, but prev has millis.
+		if (current.lastModifiedTime().toMillis() != prev.lastModifiedTime().toMillis()) {
+			return true;
+		}
+		return false;
 	}
 
 	/**

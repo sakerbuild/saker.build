@@ -263,9 +263,6 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 						workpool.offer(() -> {
 							try {
 								try (TaskContextReference contextref = new TaskContextReference(taskContext)) {
-									InternalTaskBuildTrace btrace = ((InternalTaskContext) taskContext)
-											.internalGetBuildTrace().startInnerTask(taskFactory);
-									contextref.initTaskBuildTrace(btrace);
 									while (!duplicationCancelled) {
 										if (Thread.interrupted()) {
 											this.putExceptionResult(new InterruptedException("Inner task interrupted."),
@@ -284,6 +281,9 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 											return;
 										}
 										try {
+											InternalTaskBuildTrace btrace = ((InternalTaskContext) taskContext)
+													.internalGetBuildTrace().startInnerTask(taskFactory);
+											contextref.initTaskBuildTrace(btrace);
 											try {
 												R result = task.run(taskContext);
 												this.putResult(result, false);
