@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.util.Set;
 
 import saker.build.file.SakerFile;
+import saker.build.file.path.SakerPath;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionContextImpl;
 import saker.build.scripting.ScriptParsingOptions;
@@ -170,6 +171,9 @@ public interface InternalBuildTrace extends Closeable {
 		}
 
 		public default void classifyTask(String classification) {
+		}
+
+		public default void reportOutputArtifact(SakerPath path, int embedflags) {
 		}
 	}
 

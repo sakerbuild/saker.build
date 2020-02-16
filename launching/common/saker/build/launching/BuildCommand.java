@@ -441,6 +441,20 @@ public class BuildCommand {
 
 	/**
 	 * <pre>
+	 * Instructs the build trace to embed the output build artifacts
+	 * in the created build trace file.
+	 * 
+	 * If this flag is specified, the build artifacts that the 
+	 * build tasks produce will be embedded in the build trace. They
+	 * can be downloaded directly from the build trace view.
+	 * </pre>
+	 */
+	@Parameter("-trace-artifacts-embed")
+	@Flag
+	public boolean buildTraceEmbedArtifacts;
+
+	/**
+	 * <pre>
 	 * The build target to execute.
 	 * 
 	 * If not specified then defaults to the following:
@@ -727,6 +741,7 @@ public class BuildCommand {
 			ProviderHolderPathKey buildtraceoutpathkey = mountPathToPathKey(DaemonPath.valueOf(buildTracePath),
 					remoteenv, localenv, connections);
 			params.setBuildTraceOutputPathKey(buildtraceoutpathkey);
+			params.setBuildTraceEmbedArtifacts(buildTraceEmbedArtifacts);
 		}
 		params.setUserParameters(userParameters);
 		params.setIO(ByteSink.valueOf(stdOut), ByteSink.valueOf(stdErr),

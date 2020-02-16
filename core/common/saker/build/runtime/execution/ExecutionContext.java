@@ -53,6 +53,7 @@ import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapWrapper;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeSetSerializeElementWrapper;
+import saker.build.trace.BuildTrace;
 import saker.build.util.property.IDEConfigurationRequiredExecutionProperty;
 import saker.build.util.property.ScriptParsingConfigurationExecutionProperty;
 
@@ -355,4 +356,16 @@ public interface ExecutionContext extends ExecutionDirectoryContext, ExecutionDi
 			@RMISerialize TaskExecutionEnvironmentSelector environmentselector,
 			@RMIWrap(RMITreeSetSerializeElementWrapper.class) Set<UUID> allowedenvironmentids)
 			throws NullPointerException, TaskEnvironmentSelectionFailedException;
+
+	/**
+	 * Gets if the current build execution records a build trace.
+	 * <p>
+	 * A build trace is a recording of various aspects of the build execution to be displayed later for the user.
+	 * 
+	 * @return <code>true</code> if a build trace is being recorded.
+	 * @see BuildTrace
+	 * @since 0.8.7
+	 */
+	@RMICacheResult
+	public boolean isRecordsBuildTrace();
 }

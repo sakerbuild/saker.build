@@ -71,6 +71,7 @@ import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation.Co
 import saker.build.runtime.params.BuiltinScriptAccessorServiceEnumerator;
 import saker.build.runtime.params.DatabaseConfiguration;
 import saker.build.runtime.params.DatabaseConfiguration.ContentDescriptorConfiguration;
+import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.runtime.params.ExecutionRepositoryConfiguration;
 import saker.build.runtime.params.ExecutionRepositoryConfiguration.RepositoryConfig;
 import saker.build.runtime.params.ExecutionScriptConfiguration;
@@ -104,6 +105,7 @@ import saker.build.thirdparty.saker.util.ConcurrentAppendAccumulator;
 import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
+import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.function.ThrowingRunnable;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSink;
@@ -118,6 +120,8 @@ import testing.saker.build.flag.TestFlag;
 
 @RMIWrap(InternalBuildTraceImplRMIWrapper.class)
 public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
+	private static final int BUILDTRACE_ARTIFACT_EMBED_FLAGS = BuildTrace.ARTIFACT_EMBED_FLAG_CONFIDENTAL;
+
 	protected static final Method METHOD_IGNOREDEXCEPTION = ReflectUtils.getMethodAssert(
 			ClusterInternalBuildTrace.class, "ignoredException", TaskIdentifier.class, ExceptionView.class);
 	protected static final Method METHOD_STARTBUILDCLUSTER = ReflectUtils.getMethodAssert(
@@ -137,6 +141,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			ClusterTaskBuildTrace.class, "setClusterInnerTaskThrownException", Object.class, ExceptionView.class);
 	protected static final Method METHOD_CLASSIFYTASK = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
 			"classifyTask", String.class);
+	protected static final Method METHOD_REPORTOUTPUTARTIFACT = ReflectUtils
+			.getMethodAssert(ClusterTaskBuildTrace.class, "reportOutputArtifact", SakerPath.class, int.class);
 
 	protected static final Method METHOD_SETDISPLAYINFORMATION = ReflectUtils
 			.getMethodAssert(ClusterTaskBuildTrace.class, "setDisplayInformation", String.class, String.class);
@@ -175,6 +181,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 	private final ProviderHolderPathKey buildTraceOutputPathKey;
 	private final transient WeakReference<InternalBuildTraceImpl> baseReference;
+	private boolean embedArtifacts;
 
 	private EnvironmentInformation localEnvironmentInformation;
 	private Map<String, String> executionUserParameters;
@@ -203,11 +210,16 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	private ExecutionScriptConfiguration scriptConfiguration;
 	private ExecutionRepositoryConfiguration repositoryConfiguration;
 	private DatabaseConfiguration databaseConfiguration;
+	private ExecutionPathConfiguration pathConfiguration;
 	private boolean successful;
 
 	public InternalBuildTraceImpl(ProviderHolderPathKey buildtraceoutput) {
 		this.buildTraceOutputPathKey = buildtraceoutput;
 		this.baseReference = new WeakReference<>(this);
+	}
+
+	public void setEmbedArtifacts(boolean embedArtifacts) {
+		this.embedArtifacts = embedArtifacts;
 	}
 
 	@Override
@@ -279,8 +291,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		this.workingDirectoryPath = executioncontext.getWorkingDirectoryPath();
 		this.mirrorDirectoryPath = SakerPath.valueOf(executioncontext.getMirrorDirectory());
 		this.buildDirectoryPath = executioncontext.getBuildDirectoryPath();
-		for (Entry<String, SakerFileProvider> entry : executioncontext.getPathConfiguration().getRootFileProviders()
-				.entrySet()) {
+		this.pathConfiguration = executioncontext.getPathConfiguration();
+		for (Entry<String, SakerFileProvider> entry : pathConfiguration.getRootFileProviders().entrySet()) {
 			rootsPathKey.put(entry.getKey(),
 					SakerPathFiles.getPathKey(entry.getValue(), SakerPath.valueOf(entry.getKey())));
 		}
@@ -563,6 +575,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				writeFieldName(os, "");
 			}
 
+			NavigableMap<SakerPath, Collection<ArtifactOutputInformation>> artifacts = new TreeMap<>();
+
 			writeFieldName(os, "tasks");
 			os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
 			for (Entry<TaskIdentifier, TaskBuildTraceImpl> entry : taskBuildTraces.entrySet()) {
@@ -639,7 +653,13 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 						writeFieldName(os, "stderr");
 						writeByteArray(os, ttrace.traceInfo.standardErrBytes);
 					}
-
+					if (!ObjectUtils.isNullOrEmpty(ttrace.traceInfo.artifacts)) {
+						//handle if multiple tasks report the same outputs
+						//should be rare, but better safe than sorry
+						for (ArtifactOutputInformation artifact : ttrace.traceInfo.artifacts) {
+							artifacts.computeIfAbsent(artifact.path, Functionals.arrayListComputer()).add(artifact);
+						}
+					}
 				}
 
 				if (ttrace.workingDirectory != null && !Objects.equals(workingDirectoryPath, ttrace.workingDirectory)) {
@@ -810,12 +830,88 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				writeFieldName(os, "");
 			}
 			writeNull(os);
+
+			if (!artifacts.isEmpty()) {
+				writeFieldName(os, "artifacts");
+				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+				for (Entry<SakerPath, Collection<ArtifactOutputInformation>> aentry : artifacts.entrySet()) {
+					SakerPath artifactpath = aentry.getKey();
+					Collection<ArtifactOutputInformation> artifactinfos = aentry.getValue();
+
+					writeFieldName(os, artifactpath.toString());
+					os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+					if (shouldEmbedArtifact(artifactinfos)) {
+						ProviderHolderPathKey artifactpathkey = pathConfiguration.getPathKey(artifactpath);
+						try {
+							ByteArrayRegion filebytes = artifactpathkey.getFileProvider()
+									.getAllBytes(artifactpathkey.getPath());
+							if (isAnyConfidental(artifactinfos)) {
+								//should encrypt
+								//TODO support encryption
+								writeFieldName(os, "type");
+								writeString(os, "require-confidental");
+							} else {
+								//can be put as is
+								writeFieldName(os, "type");
+								writeString(os, "bytes");
+
+								writeFieldName(os, "bytes");
+								writeByteArray(os, filebytes);
+							}
+						} catch (IOException e) {
+							writeFieldName(os, "type");
+							writeString(os, "read-error");
+						}
+					} else {
+						writeFieldName(os, "type");
+						writeString(os, "not-embedded");
+					}
+					writeFieldName(os, "");
+				}
+				writeFieldName(os, "");
+			}
+
 		} catch (IOException e) {
 			throw e;
 		} catch (Exception e) {
 			//don't throw this one, be non-intrusive
 			e.printStackTrace();
 		}
+	}
+
+	private static boolean isAnyConfidental(Collection<? extends ArtifactOutputInformation> infos) {
+		for (ArtifactOutputInformation a : infos) {
+			if (((a.embedFlags
+					& BuildTrace.ARTIFACT_EMBED_FLAG_CONFIDENTAL) == BuildTrace.ARTIFACT_EMBED_FLAG_CONFIDENTAL)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean shouldEmbedArtifact(Collection<? extends ArtifactOutputInformation> infos) {
+		boolean mayembed = embedArtifacts;
+		for (ArtifactOutputInformation a : infos) {
+			int e = a.embedFlags & ~BUILDTRACE_ARTIFACT_EMBED_FLAGS;
+			switch (e) {
+				case BuildTrace.ARTIFACT_EMBED_NEVER: {
+					return false;
+				}
+				case BuildTrace.ARTIFACT_EMBED_ALWAYS: {
+					mayembed = true;
+					//continue, additional NEVER may override
+					break;
+				}
+				case BuildTrace.ARTIFACT_EMBED_DEFAULT: {
+					//keep it
+					break;
+				}
+				default: {
+					break;
+				}
+			}
+		}
+		return mayembed;
 	}
 
 	public static InternalBuildTrace current() {
@@ -1122,6 +1218,64 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 	}
 
+	private static class ArtifactOutputInformation implements Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		protected SakerPath path;
+		protected int embedFlags;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public ArtifactOutputInformation() {
+		}
+
+		public ArtifactOutputInformation(SakerPath path, int embedFlags) {
+			this.path = path;
+			this.embedFlags = embedFlags;
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			out.writeObject(path);
+			out.writeInt(embedFlags);
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			path = (SakerPath) in.readObject();
+			embedFlags = in.readInt();
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + embedFlags;
+			result = prime * result + ((path == null) ? 0 : path.hashCode());
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			ArtifactOutputInformation other = (ArtifactOutputInformation) obj;
+			if (embedFlags != other.embedFlags)
+				return false;
+			if (path == null) {
+				if (other.path != null)
+					return false;
+			} else if (!path.equals(other.path))
+				return false;
+			return true;
+		}
+	}
+
 	private static void noException(ThrowingRunnable run) {
 		try {
 			run.run();
@@ -1250,7 +1404,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		private InnerTaskBuildTraceImpl getInnerTaskBuildTraceForIdentity(Object innertaskidentity) {
 			InnerTaskBuildTraceImpl innertrace = innerBuildTraces.computeIfAbsent(innertaskidentity,
-					id -> new InnerTaskBuildTraceImpl(trace, id));
+					id -> new InnerTaskBuildTraceImpl(id));
 			return innertrace;
 		}
 
@@ -1306,6 +1460,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
+		public void reportOutputArtifact(SakerPath path, int embedflags) {
+			traceInfo.artifacts.add(new ArtifactOutputInformation(workingDirectory.tryResolve(path), embedflags));
+		}
+
+		@Override
 		public void deltas(Set<? extends BuildDelta> deltas) {
 			this.deltas.addAll(deltas);
 		}
@@ -1347,7 +1506,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			}
 		}
 
-		public static final class InnerTaskBuildTraceImpl implements InternalTaskBuildTrace {
+		public final class InnerTaskBuildTraceImpl implements InternalTaskBuildTrace {
 			protected final int taskTraceId;
 
 			protected Object innerTaskIdentity;
@@ -1359,8 +1518,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 			protected TaskDisplayInformation displayInformation;
 
-			public InnerTaskBuildTraceImpl(InternalBuildTraceImpl ibti, Object innerTaskIdentity) {
-				this.taskTraceId = AIFU_traceTaskIdCounter.incrementAndGet(ibti);
+			public InnerTaskBuildTraceImpl(Object innerTaskIdentity) {
+				this.taskTraceId = AIFU_traceTaskIdCounter.incrementAndGet(trace);
 				this.innerTaskIdentity = innerTaskIdentity;
 			}
 
@@ -1390,6 +1549,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			@Override
 			public void setDisplayInformation(String timelinelabel, String title) {
 				this.displayInformation = new TaskDisplayInformation(timelinelabel, title);
+			}
+
+			@Override
+			public void reportOutputArtifact(SakerPath path, int embedflags) {
+				TaskBuildTraceImpl.this.reportOutputArtifact(path, embedflags);
 			}
 		}
 
@@ -1434,6 +1598,13 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		public void classifyTask(String classification) {
 			noException(() -> {
 				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_CLASSIFYTASK, classification);
+			});
+		}
+
+		@Override
+		public void reportOutputArtifact(SakerPath path, int embedflags) {
+			noException(() -> {
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_REPORTOUTPUTARTIFACT, path, embedflags);
 			});
 		}
 
@@ -1519,6 +1690,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 							innerTaskIdentity, timelinelabel, title);
 				});
 			}
+
+			@Override
+			public void reportOutputArtifact(SakerPath path, int embedflags) {
+				TaskBuildTraceImplRMIWrapper.this.reportOutputArtifact(path, embedflags);
+			}
 		}
 	}
 
@@ -1543,6 +1719,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		protected String classification;
 		protected boolean structuredOutput;
 
+		protected Set<ArtifactOutputInformation> artifacts = ConcurrentHashMap.newKeySet();
+
 		public TaskBuildTraceInfo() {
 		}
 
@@ -1551,6 +1729,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			try {
 				TaskBuildTraceInfo result = (TaskBuildTraceInfo) super.clone();
 				result.readScriptContents = new ConcurrentSkipListMap<>(this.readScriptContents);
+				result.artifacts = ObjectUtils.addAll(ConcurrentHashMap.newKeySet(), result.artifacts);
 				return result;
 			} catch (CloneNotSupportedException e) {
 				throw new AssertionError(e);
@@ -1585,6 +1764,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				out.writeBoolean(innerTasksComputationals);
 				out.writeInt(computationTokenCount);
 				out.writeObject(environmentSelector);
+				SerialUtils.writeExternalCollection(out, artifacts);
 			} catch (Exception e) {
 				//ignore
 				if (TestFlag.ENABLED) {
@@ -1612,6 +1792,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				innerTasksComputationals = in.readBoolean();
 				computationTokenCount = in.readInt();
 				environmentSelector = (TaskExecutionEnvironmentSelector) in.readObject();
+				artifacts = SerialUtils.readExternalImmutableHashSet(in);
 			} catch (Exception e) {
 				//ignore
 				if (TestFlag.ENABLED) {

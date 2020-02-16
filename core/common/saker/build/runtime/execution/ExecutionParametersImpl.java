@@ -84,6 +84,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 	private long deadlockPollingFrequencyMillis = 3000;
 
 	private ProviderHolderPathKey buildTraceOutputPathKey;
+	private boolean buildTraceEmbedArtifacts;
 
 	private BuildInformation buildInfo;
 
@@ -112,6 +113,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		this.deadlockPollingFrequencyMillis = copy.deadlockPollingFrequencyMillis;
 		this.buildTraceOutputPathKey = copy.buildTraceOutputPathKey;
 		this.buildInfo = copy.buildInfo;
+		this.buildTraceEmbedArtifacts = copy.buildTraceEmbedArtifacts;
 	}
 
 	public void defaultize() throws IOException {
@@ -233,6 +235,10 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		return buildTraceOutputPathKey;
 	}
 
+	public boolean isBuildTraceEmbedArtifacts() {
+		return buildTraceEmbedArtifacts;
+	}
+
 	public BuildInformation getBuildInfo() {
 		return buildInfo;
 	}
@@ -331,6 +337,10 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 
 	public void setBuildTraceOutputPathKey(ProviderHolderPathKey buildTraceOutputPathKey) {
 		this.buildTraceOutputPathKey = buildTraceOutputPathKey;
+	}
+
+	public void setBuildTraceEmbedArtifacts(boolean buildTraceEmbedArtifacts) {
+		this.buildTraceEmbedArtifacts = buildTraceEmbedArtifacts;
 	}
 
 	public void setBuildInfo(BuildInformation buildInfo) {
@@ -494,6 +504,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 			out.writeLong(params.deadlockPollingFrequencyMillis);
 
 			out.writeObject(params.buildTraceOutputPathKey);
+			out.writeBoolean(params.buildTraceEmbedArtifacts);
 			out.writeObject(params.buildInfo);
 		}
 
@@ -532,6 +543,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 			params.deadlockPollingFrequencyMillis = in.readLong();
 
 			params.buildTraceOutputPathKey = (ProviderHolderPathKey) in.readObject();
+			params.buildTraceEmbedArtifacts = in.readBoolean();
 			params.buildInfo = (BuildInformation) in.readObject();
 		}
 

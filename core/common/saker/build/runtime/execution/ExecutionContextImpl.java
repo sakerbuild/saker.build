@@ -171,7 +171,11 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 		ProviderHolderPathKey buildtraceoutputpath = parameters.getBuildTraceOutputPathKey();
 		if (buildtraceoutputpath != null) {
-			this.buildTrace = new InternalBuildTraceImpl(buildtraceoutputpath);
+			InternalBuildTraceImpl ibt = new InternalBuildTraceImpl(buildtraceoutputpath);
+			if (parameters.isBuildTraceEmbedArtifacts()) {
+				ibt.setEmbedArtifacts(true);
+			}
+			this.buildTrace = ibt;
 			this.buildTrace.startBuild(environment, this);
 		} else {
 			this.buildTrace = NullInternalBuildTrace.INSTANCE;
@@ -724,6 +728,11 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	@Override
 	public InternalBuildTrace internalGetBuildTrace() {
 		return this.buildTrace;
+	}
+
+	@Override
+	public boolean isRecordsBuildTrace() {
+		return this.buildTrace != NullInternalBuildTrace.INSTANCE;
 	}
 
 	private ScriptInformationProvider internalGetScriptInformationProviderForTaskScriptPosition(

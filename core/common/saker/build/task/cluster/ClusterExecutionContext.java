@@ -204,6 +204,11 @@ class ClusterExecutionContext implements ExecutionContext, InternalExecutionCont
 	}
 
 	@Override
+	public boolean isRecordsBuildTrace() {
+		return realExecutionContext.isRecordsBuildTrace();
+	}
+
+	@Override
 	public FilePathContents internalGetFilePathContents(SakerFile file) {
 		return ((InternalExecutionContext) realExecutionContext).internalGetFilePathContents(file);
 	}
