@@ -1372,7 +1372,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(new Object());
 			innertrace.init(nanos, executionEnvironmentUUID);
 			innertrace.setInnerTaskClassName(innertaskfactory.getClass().getName());
-			innerBuildTraces.put(innertrace.innerTaskIdentity, innertrace);
 			return innertrace;
 		}
 
@@ -1394,7 +1393,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(innertaskidentity);
 			innertrace.init(nanos, environmentuuid);
 			innertrace.setInnerTaskClassName(innertaskclassname);
-			innerBuildTraces.put(innertrace.innerTaskIdentity, innertrace);
 		}
 
 		@Override

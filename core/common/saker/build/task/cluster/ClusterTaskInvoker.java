@@ -132,7 +132,7 @@ public class ClusterTaskInvoker implements TaskInvoker {
 		try {
 			InnerTaskInvocationHandle<R> resulthandle = innerTaskInvoker.invokeInnerTask(event.getTaskFactory(),
 					clustertaskcontext, event, realtaskcontext, event.getComputationTokenCount(),
-					event.getDuplicationPredicate());
+					event.getDuplicationPredicate(), event.getMaximumEnvironmentFactor());
 			event.setInvocationHandle(resulthandle);
 		} catch (Exception e) {
 			event.failInvocationStart(e);

@@ -270,7 +270,7 @@ public class TaskInvocationManager implements Closeable {
 	public <R> ManagerInnerTaskResults<R> invokeInnerTaskRunning(TaskFactory<R> taskfactory,
 			SelectionResult selectionresult, int duplicationfactor, boolean duplicationcancellable,
 			TaskContext taskcontext, TaskDuplicationPredicate duplicationPredicate,
-			TaskInvocationConfiguration configuration, Set<UUID> allowedenvironmentids) {
+			TaskInvocationConfiguration configuration, Set<UUID> allowedenvironmentids, int maximumenvironmentfactor) {
 		ConcurrentLinkedQueue<ListenerInnerTaskInvocationHandler<R>> invocationhandles = new ConcurrentLinkedQueue<>();
 		final Object resultwaiterlock = new Object();
 		Exception invokerexceptions = null;
@@ -316,7 +316,8 @@ public class TaskInvocationManager implements Closeable {
 						resultwaiterlock, taskcontext);
 				try {
 					InnerTaskInvocationHandle<R> handle = innerTaskInvoker.invokeInnerTask(taskfactory, taskcontext,
-							listener, taskcontext, computationtokencount, duplicationPredicate);
+							listener, taskcontext, computationtokencount, duplicationPredicate,
+							maximumenvironmentfactor);
 					listener.handle = handle;
 					invocationhandles.add(listener);
 				} catch (Exception e) {
@@ -329,7 +330,7 @@ public class TaskInvocationManager implements Closeable {
 			ensureClustersStarted();
 			InnerTaskExecutionRequestImpl<R> request = new InnerTaskExecutionRequestImpl<>(invocationContexts, fut,
 					computationtokencount, taskfactory, taskcontext, duplicationPredicate, selectionresult,
-					duplicationfactor);
+					duplicationfactor, maximumenvironmentfactor);
 			for (TaskInvocationContextImpl invocationcontext : invocationContexts) {
 				if (!posttoenvironmentpredicate.test(invocationcontext.getEnvironmentIdentifier())) {
 					continue;
@@ -536,6 +537,9 @@ public class TaskInvocationManager implements Closeable {
 		@RMICacheResult
 		public int getComputationTokenCount();
 
+		@RMICacheResult
+		public int getMaximumEnvironmentFactor();
+
 		@RMISerialize
 		@RMICacheResult
 		public TaskFactory<R> getTaskFactory();
@@ -633,6 +637,7 @@ public class TaskInvocationManager implements Closeable {
 
 		private final InvokerTaskResultsHandler<R> resultsHandler;
 		private final int computationTokenCount;
+		private final int maximumEnvironmentFactor;
 		private final TaskFactory<R> taskFactory;
 		private final TaskContext taskContext;
 		private final TaskExecutionUtilities taskUtilities;
@@ -642,7 +647,7 @@ public class TaskInvocationManager implements Closeable {
 		public InnerTaskExecutionRequestImpl(Collection<? extends TaskInvocationContext> invocationcontexts,
 				InvokerTaskResultsHandler<R> resultsHandler, int computationTokenCount, TaskFactory<R> taskFactory,
 				TaskContext taskContext, TaskDuplicationPredicate duplicationPredicate, SelectionResult selectionResult,
-				int duplicationfactor) {
+				int duplicationfactor, int maximumenvironmentfactor) {
 			super(invocationcontexts);
 			this.resultsHandler = resultsHandler;
 			this.computationTokenCount = computationTokenCount;
@@ -651,6 +656,7 @@ public class TaskInvocationManager implements Closeable {
 			this.duplicationPredicate = duplicationPredicate;
 			this.selectionResult = selectionResult;
 			this.duplicationCount = duplicationfactor == 0 ? 1 : duplicationfactor;
+			this.maximumEnvironmentFactor = maximumenvironmentfactor;
 
 			this.taskUtilities = taskContext.getTaskUtilities();
 		}
@@ -675,6 +681,10 @@ public class TaskInvocationManager implements Closeable {
 
 		public int getComputationTokenCount() {
 			return computationTokenCount;
+		}
+
+		public int getMaximumEnvironmentFactor() {
+			return maximumEnvironmentFactor;
 		}
 
 		public TaskContext getTaskContext() {
@@ -998,6 +1008,7 @@ public class TaskInvocationManager implements Closeable {
 		private TaskDuplicationPredicate duplicationPredicate;
 		private SelectionResult selectionResult;
 		private TaskExecutionUtilities taskUtilities;
+		private int maximumEnvironmentFactor;
 
 		@SuppressWarnings("unused")
 		//used by the RMI runtime
@@ -1019,6 +1030,7 @@ public class TaskInvocationManager implements Closeable {
 			out.writeRemoteObject(event.getTaskUtilities());
 			out.writeObject(event.getDuplicationPredicate());
 			out.writeSerializedObject(event.getSelectionResult());
+			out.writeInt(event.getMaximumEnvironmentFactor());
 		}
 
 		@SuppressWarnings("unchecked")
@@ -1031,6 +1043,7 @@ public class TaskInvocationManager implements Closeable {
 			taskUtilities = (TaskExecutionUtilities) in.readObject();
 			duplicationPredicate = (TaskDuplicationPredicate) in.readObject();
 			selectionResult = (SelectionResult) in.readObject();
+			maximumEnvironmentFactor = in.readInt();
 		}
 
 		@Override
@@ -1074,6 +1087,11 @@ public class TaskInvocationManager implements Closeable {
 		@Override
 		public int getComputationTokenCount() {
 			return computationTokenCount;
+		}
+
+		@Override
+		public int getMaximumEnvironmentFactor() {
+			return maximumEnvironmentFactor;
 		}
 
 		@Override
@@ -1163,6 +1181,11 @@ public class TaskInvocationManager implements Closeable {
 		@Override
 		public int getComputationTokenCount() {
 			return request.getComputationTokenCount();
+		}
+
+		@Override
+		public int getMaximumEnvironmentFactor() {
+			return request.getMaximumEnvironmentFactor();
 		}
 
 		@Override

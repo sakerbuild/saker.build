@@ -4356,7 +4356,7 @@ public class TaskExecutionManager {
 		boolean duplicationcancellable = parameters.isDuplicationCancellable();
 		ManagerInnerTaskResults<R> result = invocationManager.invokeInnerTaskRunning(factory,
 				invokerselectionresult.get(), dupfactor, duplicationcancellable, taskcontext, duplicationpredicate,
-				configuration, allowedenvironmentids);
+				configuration, allowedenvironmentids, parameters.getMaxEnvironmentFactor());
 		taskcontext.innerTasks.add(result);
 		return result;
 	}

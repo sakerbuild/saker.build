@@ -16,7 +16,6 @@
 package saker.build.task;
 
 import java.io.Closeable;
-import java.io.IOException;
 
 import saker.apiextract.api.ExcludeApi;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
@@ -83,7 +82,7 @@ public final class TaskContextReference implements Closeable {
 	}
 
 	@Override
-	public void close() throws IOException {
+	public void close() {
 		if (previous == null) {
 			CURRENT_THREAD_TASK_CONTEXT.remove();
 		} else {

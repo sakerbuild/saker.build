@@ -43,6 +43,11 @@ public final class InnerTaskExecutionParameters {
 	private NavigableSet<UUID> allowedClusterEnvironmentIdentifiers = null;
 
 	/**
+	 * @since 0.8.8
+	 */
+	private int maxEnvironmentFactor;
+
+	/**
 	 * Creates a new instance with the default parameters.
 	 */
 	public InnerTaskExecutionParameters() {
@@ -85,6 +90,47 @@ public final class InnerTaskExecutionParameters {
 	 */
 	public void setClusterDuplicateFactor(int clusterDuplicateFactor) {
 		this.clusterDuplicateFactor = clusterDuplicateFactor;
+	}
+
+	/**
+	 * Gets the maximum build environment factor.
+	 * <p>
+	 * The maximum build environment factor specifies how many times a task should be duplicated on a given build
+	 * environment. As inner tasks can be duplicated to run on a given environment with multiple concurrent instances,
+	 * the maximum environment factor limits this parallelism.
+	 * <p>
+	 * Using the maximum environment factor can be useful if you have other concurrency limiting factors that are not
+	 * feasible to be limited via {@linkplain TaskFactory#getRequestedComputationTokenCount() computation tokens}.
+	 * <p>
+	 * A good example for using this if your inner tasks use a shared separate JVM to perform its operations. In that
+	 * case setting the maximum environment factor to 1 can be useful to limit too many concurrent inner tasks.
+	 * <p>
+	 * Generally, the value of this property is either set to 1 or be unlimited.
+	 * {@linkplain TaskFactory#getRequestedComputationTokenCount() Computation tokens} are more useful for limiting
+	 * concurrency for greater numbers.
+	 * <p>
+	 * If the maximum environment factor is 0 or negative, it is considered to be not limited.
+	 * <p>
+	 * Note that if this value is greater than 0, it is not guaranteed that a given task will be duplicated at least
+	 * that many times.
+	 * 
+	 * @return The environment factor.
+	 * @since 0.8.8
+	 */
+	public int getMaxEnvironmentFactor() {
+		return maxEnvironmentFactor;
+	}
+
+	/**
+	 * Sets the maximum environment factor.
+	 * 
+	 * @param maxEnvironmentFactor
+	 *            The environment factor.
+	 * @see #getMaxEnvironmentFactor()
+	 * @since 0.8.8
+	 */
+	public void setMaxEnvironmentFactor(int maxEnvironmentFactor) {
+		this.maxEnvironmentFactor = maxEnvironmentFactor;
 	}
 
 	/**
@@ -311,6 +357,7 @@ public final class InnerTaskExecutionParameters {
 			out.writeBoolean(params.duplicationCancellable);
 			SerialUtils.writeExternalCollection(out, params.allowedClusterEnvironmentIdentifiers,
 					(o, e) -> o.writeSerializedObject(e));
+			out.writeInt(params.maxEnvironmentFactor);
 		}
 
 		@Override
@@ -320,6 +367,7 @@ public final class InnerTaskExecutionParameters {
 			params.duplicationPredicate = (TaskDuplicationPredicate) in.readObject();
 			params.duplicationCancellable = in.readBoolean();
 			params.allowedClusterEnvironmentIdentifiers = SerialUtils.readExternalSortedImmutableNavigableSet(in);
+			params.maxEnvironmentFactor = in.readInt();
 		}
 
 		@Override
