@@ -128,8 +128,6 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 			}
 		}
 
-		//suppress unused task context reference warning
-		@SuppressWarnings("try")
 		private void runDuplication(ThreadWorkPool workpool) {
 			// 1 as one duplication was already performed once before this method is called
 			int duplicatedcount = 1;
@@ -169,7 +167,7 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 					}
 				}
 
-				//the task is being duplicated, decrease the counter
+				//the task is being duplicated, increase the counter
 				++duplicatedcount;
 
 				final ComputationToken fct = ct;
