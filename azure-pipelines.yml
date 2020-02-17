@@ -14,13 +14,17 @@ steps:
   displayName: 'Setup JDKs'
 - script: java -jar saker.build.jar -bd build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64)" -trace pwd://build/build_test.trace test
   displayName: 'Test'
+- task: PublishBuildArtifacts@1
+  condition: always()
+  displayName: 'Publish test trace'
+  inputs:
+    pathtoPublish: build/build_test.trace
+    artifactName: test_trace
 - script: java -jar saker.build.jar -bd build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64)" -trace pwd://build/build_exportall.trace exportall
   displayName: 'Export'
 - task: PublishBuildArtifacts@1
-  inputs:
-    pathtoPublish: build/build_test.trace
-    artifactName: trace
-- task: PublishBuildArtifacts@1
+  condition: always()
+  displayName: 'Publish export trace'
   inputs:
     pathtoPublish: build/build_exportall.trace
-    artifactName: trace
+    artifactName: export_trace
