@@ -15,11 +15,17 @@
  */
 package saker.build.trace;
 
+import java.util.Collection;
+import java.util.Map;
+
 import saker.apiextract.api.PublicApi;
 import saker.build.file.path.SakerPath;
+import saker.build.runtime.environment.EnvironmentProperty;
+import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.task.Task;
 import saker.build.task.TaskContext;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.function.ThrowingRunnable;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
 
@@ -253,6 +259,139 @@ public final class BuildTrace {
 		try {
 			InternalTaskBuildTrace tt = getTaskTrace();
 			tt.reportOutputArtifact(path, embedflags);
+		} catch (Exception e) {
+			// no exceptions!
+		}
+	}
+
+	/**
+	 * Gets if any build trace information is being recorded.
+	 * <p>
+	 * If this method returns <code>false</code>, then calling other methods of this interface is a no-op.
+	 * 
+	 * @return <code>true</code> if a build trace is being recorded.
+	 * @since 0.8.9
+	 */
+	public static boolean isRecordsBuildTrace() {
+		try {
+			return !NullInternalBuildTrace.INSTANCE.equals(getTrace());
+		} catch (Exception e) {
+			// no exceptions!
+		}
+		return false;
+	}
+
+	/**
+	 * Runs a given operation if a build trace is being recorded.
+	 * <p>
+	 * The method will check if a build trace is being recorded, and if so, will call the argument runnable.
+	 * <p>
+	 * The method can be used to perform some more performance expensive information reporting if the build tracing is
+	 * enabled. If no build trace is being recorded, this method quickly returns.
+	 * <p>
+	 * If any exception is thrown by the runnable, it will be ignored.
+	 * 
+	 * @param run
+	 *            The runnable to run.
+	 * @see #isRecordsBuildTrace()
+	 * @since 0.8.9
+	 */
+	public static void runWithBuildTrace(ThrowingRunnable run) {
+		if (run == null) {
+			return;
+		}
+		try {
+			if (!isRecordsBuildTrace()) {
+				return;
+			}
+			run.run();
+		} catch (Exception e) {
+			// no exceptions!
+		}
+	}
+
+	/**
+	 * Custom value category for tasks or inner tasks.
+	 * <p>
+	 * This constant can be used with custom value setting functions such as {@link #setValues(Map, String)}.
+	 * <p>
+	 * The values associated with this category are be displayed alongside the task informations in the build trace.
+	 * This includes the views where task details can be examined by the user.
+	 * <p>
+	 * If the values are set from an inner task, the values will be displayed for the calling inner task rather than the
+	 * enclosing task.
+	 * 
+	 * @see #setValues(Map, String)
+	 * @since 0.8.9
+	 */
+	public static final String VALUE_CATEGORY_TASK = "task";
+	/**
+	 * Custom value category for tasks or inner tasks.
+	 * <p>
+	 * This constant can be used with custom value setting functions such as {@link #setValues(Map, String)}.
+	 * <p>
+	 * The values associated with this category are displayed alongside other build environment related information.
+	 * <p>
+	 * When values are set for this category, the values will be associated with the build environment of the caller. If
+	 * the values are set on a build cluster, then they will be associated with that build environment instead of the
+	 * coordinator environment.
+	 * <p>
+	 * In general values that are independent from the current build should be set with this category.
+	 * <p>
+	 * Note that you should <b>not</b> set values when the {@linkplain EnvironmentProperty environment properties} are
+	 * being computed (see {@link EnvironmentProperty#getCurrentValue(SakerEnvironment) getCurrentValue}). As they can
+	 * be cached by the build environment, subsequent builds may not record these values.
+	 * 
+	 * @see #setValues(Map, String)
+	 * @since 0.8.9
+	 */
+	public static final String VALUE_CATEGORY_ENVIRONMENT = "environment";
+
+	/**
+	 * Sets custom values for the specified category.
+	 * <p>
+	 * Custom values are arbitrary string-object pairs that are associated with a given operation or build trace
+	 * category. These values are displayed in the build trace at appropriate places.
+	 * <p>
+	 * The value objects may be ones that are recognized by the build trace recorder. The values should have a plain
+	 * structure, and should not include circular references. The values can be nested in each other. The recognized
+	 * types are the following:
+	 * <ul>
+	 * <li>{@link String}, or {@link CharSequence} instances.</li>
+	 * <li>Boxed primitive numbers and <code>boolean</code>.</li>
+	 * <li>Arrays of other values.</li>
+	 * <li>{@link Collection Collections} and {@link Iterable Iterables} of other values</li>
+	 * <li>{@link Map Maps} with {@link String} keys and other values as values.</li>
+	 * </ul>
+	 * The objects should be provided in a human-readable format as they may be displayed in the build trace viewer as
+	 * is.
+	 * <p>
+	 * When this method is called, the specified values are normalized to an internal representation so any modification
+	 * after this method returns won't affect the recorded values.
+	 * <p>
+	 * The specified category determines where the given values are displayed in the build trace. See the
+	 * <code>VALUE_CATEGORY_*</code> constants for their placement.
+	 * 
+	 * @param values
+	 *            The values to set. If any value in the map is <code>null</code>, the recorded value with the given
+	 *            name will be removed.
+	 * @param category
+	 *            The associated category for the values. See the <code>VALUE_CATEGORY_*</code> constants. If
+	 *            <code>null</code>, {@link #VALUE_CATEGORY_TASK} is assumed.
+	 * @since 0.8.9
+	 */
+	public static void setValues(Map<String, ?> values, String category) {
+		if (values == null) {
+			return;
+		}
+		try {
+			if (category == null || VALUE_CATEGORY_TASK.equals(category)) {
+				InternalTaskBuildTrace tt = getTaskTrace();
+				tt.setValues(values, category);
+				return;
+			}
+			InternalBuildTrace trace = getTrace();
+			trace.setValues(values, category);
 		} catch (Exception e) {
 			// no exceptions!
 		}

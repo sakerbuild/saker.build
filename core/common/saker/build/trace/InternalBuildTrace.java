@@ -18,6 +18,7 @@ package saker.build.trace;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Set;
 
 import saker.build.file.SakerFile;
@@ -38,6 +39,7 @@ import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import saker.build.util.exc.ExceptionView;
@@ -84,9 +86,15 @@ public interface InternalBuildTrace extends Closeable {
 	public default void startBuildCluster(SakerEnvironmentImpl environment, Path mirrordir) {
 	}
 
+	public default void setValues(@RMISerialize Map<String, ?> values, String category) {
+	}
+
 	@RMIWrap(NullInternalBuildTrace.NullInternalBuildTraceRMIWrapper.class)
 	public static final class NullInternalBuildTrace implements InternalBuildTrace, InternalTaskBuildTrace {
 		public static final NullInternalBuildTrace INSTANCE = new NullInternalBuildTrace();
+
+		private NullInternalBuildTrace() {
+		}
 
 		public static class NullInternalBuildTraceRMIWrapper implements RMIWrapper {
 
@@ -113,7 +121,20 @@ public interface InternalBuildTrace extends Closeable {
 			public Object getWrappedObject() {
 				return INSTANCE;
 			}
+		}
 
+		@Override
+		public void setValues(Map<String, ?> values, String category) {
+		}
+
+		@Override
+		public int hashCode() {
+			return getClass().getName().hashCode();
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			return ObjectUtils.isSameClass(this, obj);
 		}
 	}
 
@@ -174,6 +195,9 @@ public interface InternalBuildTrace extends Closeable {
 		}
 
 		public default void reportOutputArtifact(SakerPath path, int embedflags) {
+		}
+
+		public default void setValues(@RMISerialize Map<String, ?> values, String category) {
 		}
 	}
 

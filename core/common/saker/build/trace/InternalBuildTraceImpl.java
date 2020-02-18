@@ -31,8 +31,10 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
@@ -103,6 +105,7 @@ import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.thirdparty.saker.util.ConcurrentAppendAccumulator;
 import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
+import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.function.Functionals;
@@ -126,6 +129,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			ClusterInternalBuildTrace.class, "ignoredException", TaskIdentifier.class, ExceptionView.class);
 	protected static final Method METHOD_STARTBUILDCLUSTER = ReflectUtils.getMethodAssert(
 			ClusterInternalBuildTrace.class, "startBuildCluster", EnvironmentInformation.class, long.class);
+	protected static final Method METHOD_SETCLUSTERVALUES = ReflectUtils
+			.getMethodAssert(ClusterInternalBuildTrace.class, "setClusterValues", UUID.class, Map.class, String.class);
 
 	protected static final Method METHOD_STARTCLUSTERTASKEXECUTION = ReflectUtils
 			.getMethodAssert(ClusterTaskBuildTrace.class, "startClusterTaskExecution", long.class, UUID.class);
@@ -139,6 +144,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			"setThrownException", ExceptionView.class);
 	protected static final Method METHOD_SETCLUSTERINNERTASKTHROWNEXCEPTION = ReflectUtils.getMethodAssert(
 			ClusterTaskBuildTrace.class, "setClusterInnerTaskThrownException", Object.class, ExceptionView.class);
+	protected static final Method METHOD_SETCLUSTERINNERTASKVALUES = ReflectUtils.getMethodAssert(
+			ClusterTaskBuildTrace.class, "setClusterInnerTaskValues", Object.class, Map.class, String.class);
 	protected static final Method METHOD_CLASSIFYTASK = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
 			"classifyTask", String.class);
 	protected static final Method METHOD_REPORTOUTPUTARTIFACT = ReflectUtils
@@ -146,6 +153,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 	protected static final Method METHOD_SETDISPLAYINFORMATION = ReflectUtils
 			.getMethodAssert(ClusterTaskBuildTrace.class, "setDisplayInformation", String.class, String.class);
+	protected static final Method METHOD_SETVALUES = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
+			"setValues", Map.class, String.class);
 	protected static final Method METHOD_SETCLUSTERINNERTASKDISPLAYINFORMATION = ReflectUtils.getMethodAssert(
 			ClusterTaskBuildTrace.class, "setClusterInnerTaskDisplayInformation", Object.class, String.class,
 			String.class);
@@ -166,6 +175,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	public static final byte TYPE_BYTE_ARRAY = 11;
 	public static final byte TYPE_BOOLEAN_TRUE = 12;
 	public static final byte TYPE_BOOLEAN_FALSE = 13;
+	public static final byte TYPE_FLOAT_AS_STRING = 14;
+	public static final byte TYPE_DOUBLE_AS_STRING = 15;
 
 	private static final InheritableThreadLocal<WeakReference<InternalBuildTraceImpl>> baseReferenceThreadLocal = new InheritableThreadLocal<>();
 
@@ -183,7 +194,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	private final transient WeakReference<InternalBuildTraceImpl> baseReference;
 	private boolean embedArtifacts;
 
-	private EnvironmentInformation localEnvironmentInformation;
+	private EnvironmentReference localEnvironmentReference;
 	private Map<String, String> executionUserParameters;
 	private long buildTimeDateMillis;
 	private long startNanos;
@@ -200,7 +211,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	/**
 	 * Maps {@link EnvironmentInformation#buildEnvironmentUUID} to informations.
 	 */
-	private NavigableMap<UUID, EnvironmentInformation> environmentInformations = new ConcurrentSkipListMap<>();
+	private NavigableMap<UUID, EnvironmentReference> environmentInformations = new ConcurrentSkipListMap<>();
 	private NavigableMap<UUID, Long> clusterInitializationTimeNanos = new ConcurrentSkipListMap<>();
 
 	private ConcurrentPrependAccumulator<ExceptionView> ignoredExceptions = new ConcurrentPrependAccumulator<>();
@@ -211,6 +222,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	private DatabaseConfiguration databaseConfiguration;
 	private ExecutionPathConfiguration pathConfiguration;
 	private boolean successful;
+
+	/**
+	 * Maps category strings to linked hash maps that should be synchronized on.
+	 */
+	private ConcurrentSkipListMap<String, LinkedHashMap<String, Object>> values = new ConcurrentSkipListMap<>();
 
 	public InternalBuildTraceImpl(ProviderHolderPathKey buildtraceoutput) {
 		this.buildTraceOutputPathKey = buildtraceoutput;
@@ -231,6 +247,134 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 	private TaskBuildTraceImpl getTaskTraceForTaskId(TaskIdentifier taskid) {
 		return taskBuildTraces.computeIfAbsent(taskid, x -> new TaskBuildTraceImpl(this));
+	}
+
+	private void setEnvironmentNormalizedValues(Map<String, ?> values, UUID environmentuuid) {
+		Map<String, Object> valmap;
+		if (localEnvironmentReference.environmentInfo.buildEnvironmentUUID.equals(environmentuuid)) {
+			valmap = localEnvironmentReference.values;
+		} else {
+			valmap = this.environmentInformations.computeIfAbsent(environmentuuid,
+					x -> new EnvironmentReference()).values;
+		}
+		setNormalizedValuesToMap(values, valmap);
+	}
+
+	@Override
+	public void setValues(Map<String, ?> values, String category) {
+		if (category == null) {
+			return;
+		}
+		values = normalizeValues(values);
+		if (BuildTrace.VALUE_CATEGORY_ENVIRONMENT.equals(category)) {
+			setEnvironmentNormalizedValues(values, localEnvironmentReference.environmentInfo.buildEnvironmentUUID);
+			return;
+		}
+		Map<String, Object> valmap = this.values.computeIfAbsent(category, Functionals.linkedHashMapComputer());
+		setNormalizedValuesToMap(values, valmap);
+	}
+
+	@Override
+	public void setClusterValues(UUID environmentid, Map<String, ?> values, String category) {
+		if (category == null) {
+			return;
+		}
+		values = normalizeValues(values);
+
+		if (BuildTrace.VALUE_CATEGORY_ENVIRONMENT.equals(category)) {
+			setEnvironmentNormalizedValues(values, environmentid);
+			return;
+		}
+
+		Map<String, Object> valmap = this.values.computeIfAbsent(category, Functionals.linkedHashMapComputer());
+		setNormalizedValuesToMap(values, valmap);
+	}
+
+	private static void setNormalizedValuesToMap(Map<String, ?> values, Map<String, Object> valmap) {
+		synchronized (valmap) {
+			for (Entry<String, ?> entry : values.entrySet()) {
+				Object v = entry.getValue();
+				if (v == null) {
+					valmap.remove(entry.getKey());
+				} else {
+					valmap.put(entry.getKey(), v);
+				}
+			}
+		}
+	}
+
+	private static Map<String, ?> normalizeValues(Map<String, ?> values) {
+		Map<String, Object> result = new LinkedHashMap<>(values);
+		for (Entry<String, Object> entry : result.entrySet()) {
+			Object val = entry.getValue();
+			//if it normalizes to null, keep it to signal value removal
+			entry.setValue(normalizeValue(val));
+		}
+		return result;
+	}
+
+	private static Object normalizeValue(Object val) {
+		if (val == null) {
+			return val;
+		}
+		if (val instanceof CharSequence) {
+			//String returns identity
+			return val.toString();
+		}
+		if (val instanceof Number) {
+			//keep floating or integral representation
+			if (val instanceof Float || val instanceof Double) {
+				return ((Number) val).doubleValue();
+			}
+			return ((Number) val).longValue();
+		}
+		if (val.getClass().isArray()) {
+			val = ImmutableUtils.unmodifiableReflectionArrayList(val);
+			//continue with collectionized array
+		}
+		if (val instanceof Collection<?>) {
+			List<Object> vallist = new ArrayList<>(((Collection<?>) val));
+			for (ListIterator<Object> it = vallist.listIterator(); it.hasNext();) {
+				Object v = normalizeValue(it.next());
+				if (v == null) {
+					it.remove();
+				} else {
+					it.set(v);
+				}
+			}
+			return vallist;
+		}
+		if (val instanceof Iterable<?>) {
+			List<Object> vallist = new ArrayList<>();
+			Iterator<?> it = ((Iterable<?>) val).iterator();
+			while (it.hasNext()) {
+				Object v = normalizeValue(it.next());
+				if (v != null) {
+					vallist.add(v);
+				}
+			}
+			return vallist;
+		}
+		if (val instanceof Map<?, ?>) {
+			Map<?, ?> m = (Map<?, ?>) val;
+			Map<String, Object> resultmap = new LinkedHashMap<>();
+			for (Entry<?, ?> entry : m.entrySet()) {
+				Object key = entry.getKey();
+				if (!(key instanceof String)) {
+					//ignore
+					continue;
+				}
+				Object normval = normalizeValue(entry.getValue());
+				if (normval == null) {
+					//ignore
+					continue;
+				}
+				resultmap.put((String) key, normval);
+			}
+			return resultmap;
+		}
+		//unrecognized type
+		return null;
 	}
 
 	@Override
@@ -271,8 +415,10 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		this.startNanos = System.nanoTime();
 		this.buildTimeDateMillis = executioncontext.getBuildTimeMillis();
 
-		localEnvironmentInformation = new EnvironmentInformation(environment);
-		environmentInformations.put(localEnvironmentInformation.buildEnvironmentUUID, localEnvironmentInformation);
+		EnvironmentInformation localenvinfo = new EnvironmentInformation(environment);
+		this.localEnvironmentReference = environmentInformations.computeIfAbsent(localenvinfo.buildEnvironmentUUID,
+				x -> new EnvironmentReference());
+		this.localEnvironmentReference.environmentInfo = localenvinfo;
 
 		BuildInformation buildinfo = executioncontext.getExecutionParameters().getBuildInfo();
 		this.buildInformation = buildinfo;
@@ -280,7 +426,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 	@Override
 	public void startBuildCluster(EnvironmentInformation envinfo, long nanos) {
-		environmentInformations.put(envinfo.buildEnvironmentUUID, envinfo);
+		environmentInformations.computeIfAbsent(envinfo.buildEnvironmentUUID,
+				x -> new EnvironmentReference()).environmentInfo = envinfo;
 		clusterInitializationTimeNanos.put(envinfo.buildEnvironmentUUID, nanos);
 	}
 
@@ -354,15 +501,16 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			writeTypedObject(os, Objects.toString(mirrorDirectoryPath, null));
 
 			writeFieldName(os, "execution_environment_uuid");
-			writeString(os, localEnvironmentInformation.buildEnvironmentUUID.toString());
+			writeString(os, localEnvironmentReference.environmentInfo.buildEnvironmentUUID.toString());
 
 			writeFieldName(os, "ide_config_required");
 			writeBoolean(os, ideConfigurationRequired);
 
 			writeFieldName(os, "environments");
 			os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
-			for (Entry<UUID, EnvironmentInformation> entry : environmentInformations.entrySet()) {
-				EnvironmentInformation envinfo = entry.getValue();
+			for (Entry<UUID, EnvironmentReference> entry : environmentInformations.entrySet()) {
+				EnvironmentReference envref = entry.getValue();
+				EnvironmentInformation envinfo = envref.environmentInfo;
 
 				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
 
@@ -411,6 +559,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				if (inittime != null) {
 					writeFieldName(os, "initialization_time");
 					writeLong(os, (inittime - startNanos) / 1_000_000);
+				}
+
+				if (!envref.values.isEmpty()) {
+					writeFieldName(os, "values");
+					writeObject(os, envref.values);
 				}
 
 				writeFieldName(os, "");
@@ -558,6 +711,22 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				writeFieldName(os, "");
 			}
 
+			if (!this.values.isEmpty()) {
+				writeFieldName(os, "values");
+				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+				for (Entry<String, LinkedHashMap<String, Object>> entry : this.values.entrySet()) {
+					LinkedHashMap<String, Object> categoryvals = entry.getValue();
+					if (ObjectUtils.isNullOrEmpty(categoryvals)) {
+						continue;
+					}
+
+					String category = entry.getKey();
+					writeFieldName(os, category);
+					writeObject(os, categoryvals);
+				}
+				writeFieldName(os, "");
+			}
+
 			//pre-sort
 			NavigableMap<SakerPath, ByteArrayRegion> allscripts = new TreeMap<>();
 			for (TaskBuildTraceImpl ttrace : taskBuildTraces.values()) {
@@ -673,7 +842,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				}
 
 				if (ttrace.executionEnvironmentUUID != null
-						&& !localEnvironmentInformation.buildEnvironmentUUID.equals(ttrace.executionEnvironmentUUID)) {
+						&& !localEnvironmentReference.environmentInfo.buildEnvironmentUUID
+								.equals(ttrace.executionEnvironmentUUID)) {
 					writeFieldName(os, "execution_env");
 					writeString(os, ttrace.executionEnvironmentUUID.toString());
 				}
@@ -727,6 +897,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 					writeNull(os);
 				}
 
+				if (!ttrace.values.isEmpty()) {
+					writeFieldName(os, "values");
+					writeObject(os, ttrace.values);
+				}
+
 				if (!ObjectUtils.isNullOrEmpty(ttrace.innerBuildTraces)) {
 					writeFieldName(os, "inner_tasks");
 					os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
@@ -757,7 +932,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 							writeString(os, ibt.innerTaskClassName);
 
 							if (ibt.executionEnvironmentUUID != null
-									&& !localEnvironmentInformation.buildEnvironmentUUID
+									&& !localEnvironmentReference.environmentInfo.buildEnvironmentUUID
 											.equals(ibt.executionEnvironmentUUID)) {
 								writeFieldName(os, "execution_env");
 								writeString(os, ibt.executionEnvironmentUUID.toString());
@@ -765,6 +940,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 							if (ibt.thrownException != null) {
 								writeFieldName(os, "exception");
 								writeByteArray(os, printExceptionToBytes(ibt.thrownException));
+							}
+
+							if (!ibt.values.isEmpty()) {
+								writeFieldName(os, "values");
+								writeObject(os, ibt.values);
 							}
 
 							writeFieldName(os, "");
@@ -1136,6 +1316,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			writeArrayCollection(os, (Collection<?>) val);
 		} else if (val instanceof Map<?, ?>) {
 			writeObject(os, (Map<String, ?>) val);
+		} else if (val instanceof Float) {
+			os.writeByte(TYPE_FLOAT_AS_STRING);
+			writeStringImpl(os, val.toString());
+		} else if (val instanceof Double) {
+			os.writeByte(TYPE_DOUBLE_AS_STRING);
+			writeStringImpl(os, val.toString());
 		} else {
 			//unrecognized type
 			os.writeByte(TYPE_OBJECT);
@@ -1313,6 +1499,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		protected boolean upToDate = false;
 
 		/**
+		 * Should be synchronized on itself when used.
+		 */
+		protected LinkedHashMap<String, Object> values = new LinkedHashMap<>();
+
+		/**
 		 * Synchronized identity hash map.
 		 */
 		protected Map<Object, InnerTaskBuildTraceImpl> innerBuildTraces = Collections
@@ -1346,6 +1537,15 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
+		public void setValues(Map<String, ?> values, String category) {
+			if (BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
+				setNormalizedValuesToMap(normalizeValues(values), this.values);
+			} else {
+				//TODO other categories
+			}
+		}
+
+		@Override
 		public void setDisplayInformation(String timelinelabel, String title) {
 			traceInfo.displayInformation = new TaskDisplayInformation(timelinelabel, title);
 		}
@@ -1364,6 +1564,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		public void setClusterInnerTaskThrownException(Object innertaskidentity, ExceptionView e) {
 			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(innertaskidentity);
 			innertrace.setThrownException(e);
+		}
+
+		@Override
+		public void setClusterInnerTaskValues(Object innertaskidentity, Map<String, ?> values, String category) {
+			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(innertaskidentity);
+			innertrace.setValues(values, category);
 		}
 
 		@Override
@@ -1517,6 +1723,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 			protected TaskDisplayInformation displayInformation;
 
+			/**
+			 * Should be synchronized on itself when used.
+			 */
+			protected LinkedHashMap<String, Object> values = new LinkedHashMap<>();
+
 			public InnerTaskBuildTraceImpl(Object innerTaskIdentity) {
 				this.taskTraceId = AIFU_traceTaskIdCounter.incrementAndGet(trace);
 				this.innerTaskIdentity = innerTaskIdentity;
@@ -1553,6 +1764,15 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			@Override
 			public void reportOutputArtifact(SakerPath path, int embedflags) {
 				TaskBuildTraceImpl.this.reportOutputArtifact(path, embedflags);
+			}
+
+			@Override
+			public void setValues(Map<String, ?> values, String category) {
+				if (BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
+					setNormalizedValuesToMap(normalizeValues(values), this.values);
+				} else {
+					//TODO other categories
+				}
 			}
 		}
 
@@ -1658,6 +1878,13 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			});
 		}
 
+		@Override
+		public void setValues(Map<String, ?> values, String category) {
+			noException(() -> {
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETVALUES, normalizeValues(values), category);
+			});
+		}
+
 		private class ClusterInnerTaskBuildTraceImpl implements InternalTaskBuildTrace {
 			private final Object innerTaskIdentity;
 
@@ -1693,6 +1920,14 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			@Override
 			public void reportOutputArtifact(SakerPath path, int embedflags) {
 				TaskBuildTraceImplRMIWrapper.this.reportOutputArtifact(path, embedflags);
+			}
+
+			@Override
+			public void setValues(Map<String, ?> values, String category) {
+				noException(() -> {
+					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETCLUSTERINNERTASKVALUES, innerTaskIdentity,
+							normalizeValues(values), category);
+				});
 			}
 		}
 	}
@@ -1801,6 +2036,22 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 	}
 
+	public static class EnvironmentReference {
+		protected EnvironmentInformation environmentInfo;
+		/**
+		 * Should be synchronized on itself when used.
+		 */
+		protected LinkedHashMap<String, Object> values = new LinkedHashMap<>();
+
+		public EnvironmentReference() {
+		}
+
+		public EnvironmentReference(EnvironmentInformation environmentInfo) {
+			this.environmentInfo = environmentInfo;
+		}
+
+	}
+
 	public static class EnvironmentInformation implements Externalizable {
 		private static final long serialVersionUID = 1L;
 
@@ -1896,6 +2147,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		private long writeNanos;
 		private long readNanos;
 
+		private UUID environmentUUID;
+
 		public InternalBuildTraceImplRMIWrapper() {
 			this.readNanos = System.nanoTime();
 		}
@@ -1936,12 +2189,25 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		@Override
 		public void startBuildCluster(SakerEnvironmentImpl environment, Path mirrordir) {
 			long currentbuildnanos = System.nanoTime() - readNanos + writeNanos;
+			environmentUUID = environment.getEnvironmentIdentifier();
 			noException(() -> {
 				EnvironmentInformation envinfo = new EnvironmentInformation(environment);
 				if (mirrordir != null) {
 					envinfo.setClusterMirrorDirectory(SakerPath.valueOf(mirrordir));
 				}
 				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_STARTBUILDCLUSTER, envinfo, currentbuildnanos);
+			});
+		}
+
+		@Override
+		public void setValues(Map<String, ?> values, String category) {
+			if (category == null) {
+				return;
+			}
+			noException(() -> {
+				Map<String, ?> normalizedvals = normalizeValues(values);
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETCLUSTERVALUES, environmentUUID, normalizedvals,
+						category);
 			});
 		}
 	}

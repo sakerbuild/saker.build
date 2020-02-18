@@ -1,5 +1,6 @@
 package saker.build.trace;
 
+import java.util.Map;
 import java.util.UUID;
 
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
@@ -29,5 +30,9 @@ public interface ClusterTaskBuildTrace extends InternalTaskBuildTrace {
 
 	public default void setClusterInnerTaskDisplayInformation(Object innertaskidentity, String timelinelabel,
 			String title) {
+	}
+
+	public default void setClusterInnerTaskValues(Object innertaskidentity, @RMISerialize Map<String, ?> values,
+			String category) {
 	}
 }
