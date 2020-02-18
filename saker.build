@@ -436,22 +436,22 @@ test(
 		Verbose: true,
 	)
 }
+testjava8(){
+	include(
+		test, 
+		jre: saker.java.sdk(8),
+	)
+}
 testjava9(){
 	include(
 		test, 
 		jre: saker.java.sdk(9),
-		testclasses: [
-			**.JavaToolsTest,
-		],
 	)
 }
 testjava10(){
 	include(
 		test, 
 		jre: saker.java.sdk(10),
-		testclasses: [
-			**.JavaToolsTest,
-		],
 	)
 }
 testjava11(){
@@ -464,9 +464,18 @@ testjava12(){
 	include(
 		test, 
 		jre: saker.java.sdk(12),
-		testclasses: [
-			**.JavaToolsTest,
-		],
+	)
+}
+testjava13(){
+	include(
+		test, 
+		jre: saker.java.sdk(12),
+	)
+}
+testjava14(){
+	include(
+		test, 
+		jre: saker.java.sdk(12),
 	)
 }
 testwatcher(
