@@ -971,6 +971,10 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 							artifacts.computeIfAbsent(artifact.path, Functionals.arrayListComputer()).add(artifact);
 						}
 					}
+					if (!ttrace.traceInfo.values.isEmpty()) {
+						writeFieldName(os, "values");
+						writeObject(os, ttrace.traceInfo.values);
+					}
 				}
 
 				if (ttrace.workingDirectory != null && !Objects.equals(workingDirectoryPath, ttrace.workingDirectory)) {
@@ -1036,11 +1040,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 						writeByteArray(os, printExceptionToBytes(it.next()));
 					}
 					writeNull(os);
-				}
-
-				if (!ttrace.values.isEmpty()) {
-					writeFieldName(os, "values");
-					writeObject(os, ttrace.values);
 				}
 
 				if (!ObjectUtils.isNullOrEmpty(ttrace.innerBuildTraces)) {
@@ -1642,11 +1641,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		protected boolean upToDate = false;
 
 		/**
-		 * Should be synchronized on itself when used.
-		 */
-		protected LinkedHashMap<String, Object> values = new LinkedHashMap<>();
-
-		/**
 		 * Synchronized identity hash map.
 		 */
 		protected Map<Object, InnerTaskBuildTraceImpl> innerBuildTraces = Collections
@@ -1682,7 +1676,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		@Override
 		public void setValues(Map<?, ?> values, String category) {
 			if (BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
-				setNormalizedValuesToMap(normalizeValues(values), this.values);
+				setNormalizedValuesToMap(normalizeValues(values), this.traceInfo.values);
 			} else {
 				//TODO other categories
 			}
@@ -1691,7 +1685,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		@Override
 		public void addValues(Map<?, ?> values, String category) {
 			if (BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
-				addNormalizedValuesToMap(normalizeValues(values), this.values);
+				addNormalizedValuesToMap(normalizeValues(values), this.traceInfo.values);
 			} else {
 				//TODO other categories
 			}
@@ -2137,6 +2131,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		protected Set<ArtifactOutputInformation> artifacts = ConcurrentHashMap.newKeySet();
 
+		/**
+		 * Should be synchronized on itself when used.
+		 */
+		protected Map<String, Object> values = new LinkedHashMap<>();
+
 		public TaskBuildTraceInfo() {
 		}
 
@@ -2181,6 +2180,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				out.writeInt(computationTokenCount);
 				out.writeObject(environmentSelector);
 				SerialUtils.writeExternalCollection(out, artifacts);
+				synchronized (values) {
+					SerialUtils.writeExternalMap(out, values);
+				}
 			} catch (Exception e) {
 				//ignore
 				if (TestFlag.ENABLED) {
@@ -2209,6 +2211,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				computationTokenCount = in.readInt();
 				environmentSelector = (TaskExecutionEnvironmentSelector) in.readObject();
 				artifacts = SerialUtils.readExternalImmutableHashSet(in);
+				values = SerialUtils.readExternalImmutableLinkedHashMap(in);
 			} catch (Exception e) {
 				//ignore
 				if (TestFlag.ENABLED) {
