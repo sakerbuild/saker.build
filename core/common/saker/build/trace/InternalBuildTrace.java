@@ -86,7 +86,7 @@ public interface InternalBuildTrace extends Closeable {
 	public default void startBuildCluster(SakerEnvironmentImpl environment, Path mirrordir) {
 	}
 
-	public default void setValues(@RMISerialize Map<String, ?> values, String category) {
+	public default void setValues(@RMISerialize Map<?, ?> values, String category) {
 	}
 
 	@RMIWrap(NullInternalBuildTrace.NullInternalBuildTraceRMIWrapper.class)
@@ -124,7 +124,7 @@ public interface InternalBuildTrace extends Closeable {
 		}
 
 		@Override
-		public void setValues(Map<String, ?> values, String category) {
+		public void setValues(Map<?, ?> values, String category) {
 		}
 
 		@Override
@@ -197,7 +197,7 @@ public interface InternalBuildTrace extends Closeable {
 		public default void reportOutputArtifact(SakerPath path, int embedflags) {
 		}
 
-		public default void setValues(@RMISerialize Map<String, ?> values, String category) {
+		public default void setValues(@RMISerialize Map<?, ?> values, String category) {
 		}
 	}
 

@@ -261,17 +261,17 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	}
 
 	@Override
-	public void setValues(Map<String, ?> values, String category) {
+	public void setValues(Map<?, ?> values, String category) {
 		if (category == null) {
 			return;
 		}
-		values = normalizeValues(values);
+		Map<String, ?> normvalues = normalizeValues(values);
 		if (BuildTrace.VALUE_CATEGORY_ENVIRONMENT.equals(category)) {
-			setEnvironmentNormalizedValues(values, localEnvironmentReference.environmentInfo.buildEnvironmentUUID);
+			setEnvironmentNormalizedValues(normvalues, localEnvironmentReference.environmentInfo.buildEnvironmentUUID);
 			return;
 		}
 		Map<String, Object> valmap = this.values.computeIfAbsent(category, Functionals.linkedHashMapComputer());
-		setNormalizedValuesToMap(values, valmap);
+		setNormalizedValuesToMap(normvalues, valmap);
 	}
 
 	@Override
@@ -303,78 +303,96 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 	}
 
-	private static Map<String, ?> normalizeValues(Map<String, ?> values) {
-		Map<String, Object> result = new LinkedHashMap<>(values);
-		for (Entry<String, Object> entry : result.entrySet()) {
-			Object val = entry.getValue();
+	private static Map<String, ?> normalizeValues(Map<?, ?> values) {
+		Map<String, Object> result = new LinkedHashMap<>();
+		Set<Object> seenobjects = ObjectUtils.newIdentityHashSet();
+		for (Entry<?, ?> entry : values.entrySet()) {
+			Object key = entry.getKey();
+			if (!(key instanceof String)) {
+				//currently only strings are supported
+				continue;
+			}
 			//if it normalizes to null, keep it to signal value removal
-			entry.setValue(normalizeValue(val));
+			Object nval = normalizeValue(entry.getValue(), seenobjects);
+			result.put(key.toString(), nval);
 		}
 		return result;
 	}
 
-	private static Object normalizeValue(Object val) {
+	private static Object normalizeValue(Object val, Set<Object> seenobjects) {
 		if (val == null) {
 			return val;
 		}
-		if (val instanceof CharSequence) {
-			//String returns identity
-			return val.toString();
+		if (!seenobjects.add(val)) {
+			//we're already normalizing this value. there's a loop
+			//return null to break it
+			return null;
 		}
-		if (val instanceof Number) {
-			//keep floating or integral representation
-			if (val instanceof Float || val instanceof Double) {
-				return ((Number) val).doubleValue();
+		try {
+			if (val instanceof Boolean) {
+				return val;
 			}
-			return ((Number) val).longValue();
-		}
-		if (val.getClass().isArray()) {
-			val = ImmutableUtils.unmodifiableReflectionArrayList(val);
-			//continue with collectionized array
-		}
-		if (val instanceof Collection<?>) {
-			List<Object> vallist = new ArrayList<>(((Collection<?>) val));
-			for (ListIterator<Object> it = vallist.listIterator(); it.hasNext();) {
-				Object v = normalizeValue(it.next());
-				if (v == null) {
-					it.remove();
-				} else {
-					it.set(v);
-				}
+			if (val instanceof CharSequence) {
+				//String returns identity
+				return val.toString();
 			}
-			return vallist;
-		}
-		if (val instanceof Iterable<?>) {
-			List<Object> vallist = new ArrayList<>();
-			Iterator<?> it = ((Iterable<?>) val).iterator();
-			while (it.hasNext()) {
-				Object v = normalizeValue(it.next());
-				if (v != null) {
-					vallist.add(v);
+			if (val instanceof Number) {
+				//keep floating or integral representation
+				if (val instanceof Float || val instanceof Double) {
+					return ((Number) val).doubleValue();
 				}
+				return ((Number) val).longValue();
 			}
-			return vallist;
-		}
-		if (val instanceof Map<?, ?>) {
-			Map<?, ?> m = (Map<?, ?>) val;
-			Map<String, Object> resultmap = new LinkedHashMap<>();
-			for (Entry<?, ?> entry : m.entrySet()) {
-				Object key = entry.getKey();
-				if (!(key instanceof String)) {
-					//ignore
-					continue;
-				}
-				Object normval = normalizeValue(entry.getValue());
-				if (normval == null) {
-					//ignore
-					continue;
-				}
-				resultmap.put((String) key, normval);
+			if (val.getClass().isArray()) {
+				val = ImmutableUtils.unmodifiableReflectionArrayList(val);
+				//continue with collectionized array
 			}
-			return resultmap;
+			if (val instanceof Collection<?>) {
+				List<Object> vallist = new ArrayList<>(((Collection<?>) val));
+				for (ListIterator<Object> it = vallist.listIterator(); it.hasNext();) {
+					Object v = normalizeValue(it.next(), seenobjects);
+					if (v == null) {
+						it.remove();
+					} else {
+						it.set(v);
+					}
+				}
+				return vallist;
+			}
+			if (val instanceof Iterable<?>) {
+				List<Object> vallist = new ArrayList<>();
+				Iterator<?> it = ((Iterable<?>) val).iterator();
+				while (it.hasNext()) {
+					Object v = normalizeValue(it.next(), seenobjects);
+					if (v != null) {
+						vallist.add(v);
+					}
+				}
+				return vallist;
+			}
+			if (val instanceof Map<?, ?>) {
+				Map<?, ?> m = (Map<?, ?>) val;
+				Map<String, Object> resultmap = new LinkedHashMap<>();
+				for (Entry<?, ?> entry : m.entrySet()) {
+					Object key = entry.getKey();
+					if (!(key instanceof String)) {
+						//ignore
+						continue;
+					}
+					Object normval = normalizeValue(entry.getValue(), seenobjects);
+					if (normval == null) {
+						//ignore
+						continue;
+					}
+					resultmap.put((String) key, normval);
+				}
+				return resultmap;
+			}
+			//unrecognized type
+			return null;
+		} finally {
+			seenobjects.remove(val);
 		}
-		//unrecognized type
-		return null;
 	}
 
 	@Override
@@ -1310,6 +1328,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			writeInt(os, (int) val);
 		} else if (val instanceof Long) {
 			writeLong(os, (long) val);
+		} else if (val instanceof Boolean) {
+			writeBoolean(os, (boolean) val);
 		} else if (val.getClass().isArray()) {
 			writeArray(os, val);
 		} else if (val instanceof Collection<?>) {
@@ -1466,7 +1486,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	private static void noException(ThrowingRunnable run) {
 		try {
 			run.run();
-		} catch (Exception e) {
+		} catch (Exception | StackOverflowError e) {
 			//ignore
 			if (TestFlag.ENABLED) {
 				e.printStackTrace();
@@ -1537,7 +1557,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public void setValues(Map<String, ?> values, String category) {
+		public void setValues(Map<?, ?> values, String category) {
 			if (BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
 				setNormalizedValuesToMap(normalizeValues(values), this.values);
 			} else {
@@ -1767,7 +1787,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			}
 
 			@Override
-			public void setValues(Map<String, ?> values, String category) {
+			public void setValues(Map<?, ?> values, String category) {
 				if (BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
 					setNormalizedValuesToMap(normalizeValues(values), this.values);
 				} else {
@@ -1879,7 +1899,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public void setValues(Map<String, ?> values, String category) {
+		public void setValues(Map<?, ?> values, String category) {
 			noException(() -> {
 				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETVALUES, normalizeValues(values), category);
 			});
@@ -1923,7 +1943,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			}
 
 			@Override
-			public void setValues(Map<String, ?> values, String category) {
+			public void setValues(Map<?, ?> values, String category) {
 				noException(() -> {
 					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETCLUSTERINNERTASKVALUES, innerTaskIdentity,
 							normalizeValues(values), category);
@@ -2200,7 +2220,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public void setValues(Map<String, ?> values, String category) {
+		public void setValues(Map<?, ?> values, String category) {
 			if (category == null) {
 				return;
 			}

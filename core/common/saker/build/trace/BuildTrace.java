@@ -125,7 +125,7 @@ public final class BuildTrace {
 	private static InternalBuildTrace getTrace() {
 		try {
 			return InternalBuildTrace.current();
-		} catch (Exception e) {
+		} catch (Exception | StackOverflowError e) {
 			// this should never happen, but handle just in case as we may not throw
 			return NullInternalBuildTrace.INSTANCE;
 		}
@@ -162,7 +162,7 @@ public final class BuildTrace {
 		try {
 			InternalTaskBuildTrace tt = getTaskTrace();
 			tt.setDisplayInformation(timelinelabel, title);
-		} catch (Exception e) {
+		} catch (Exception | StackOverflowError e) {
 			// no exceptions!
 		}
 	}
@@ -183,7 +183,7 @@ public final class BuildTrace {
 		try {
 			InternalTaskBuildTrace tt = getTaskTrace();
 			tt.classifyTask(classification);
-		} catch (Exception e) {
+		} catch (Exception | StackOverflowError e) {
 			// no exceptions!
 		}
 	}
@@ -259,7 +259,7 @@ public final class BuildTrace {
 		try {
 			InternalTaskBuildTrace tt = getTaskTrace();
 			tt.reportOutputArtifact(path, embedflags);
-		} catch (Exception e) {
+		} catch (Exception | StackOverflowError e) {
 			// no exceptions!
 		}
 	}
@@ -275,7 +275,7 @@ public final class BuildTrace {
 	public static boolean isRecordsBuildTrace() {
 		try {
 			return !NullInternalBuildTrace.INSTANCE.equals(getTrace());
-		} catch (Exception e) {
+		} catch (Exception | StackOverflowError e) {
 			// no exceptions!
 		}
 		return false;
@@ -305,7 +305,7 @@ public final class BuildTrace {
 				return;
 			}
 			run.run();
-		} catch (Exception e) {
+		} catch (Exception | StackOverflowError e) {
 			// no exceptions!
 		}
 	}
@@ -371,6 +371,9 @@ public final class BuildTrace {
 	 * <p>
 	 * The specified category determines where the given values are displayed in the build trace. See the
 	 * <code>VALUE_CATEGORY_*</code> constants for their placement.
+	 * <p>
+	 * <b>Note:</b> Although this method takes a map with wildcard key type as its argument, only {@link String} keys
+	 * are supported. It is wildcard for compatibility as we may support non-string keys in the future.
 	 * 
 	 * @param values
 	 *            The values to set. If any value in the map is <code>null</code>, the recorded value with the given
@@ -380,7 +383,7 @@ public final class BuildTrace {
 	 *            <code>null</code>, {@link #VALUE_CATEGORY_TASK} is assumed.
 	 * @since 0.8.9
 	 */
-	public static void setValues(Map<String, ?> values, String category) {
+	public static void setValues(Map<?, ?> values, String category) {
 		if (values == null) {
 			return;
 		}
@@ -392,7 +395,7 @@ public final class BuildTrace {
 			}
 			InternalBuildTrace trace = getTrace();
 			trace.setValues(values, category);
-		} catch (Exception e) {
+		} catch (Exception | StackOverflowError e) {
 			// no exceptions!
 		}
 	}
