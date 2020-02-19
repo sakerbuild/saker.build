@@ -14,4 +14,8 @@ public interface ClusterInternalBuildTrace extends InternalBuildTrace {
 	public default void setClusterValues(@RMISerialize UUID environmentid, @RMISerialize Map<String, ?> values,
 			String category) {
 	}
+
+	public default void addClusterValues(@RMISerialize UUID environmentid, @RMISerialize Map<String, ?> values,
+			String category) {
+	}
 }

@@ -338,9 +338,14 @@ public final class BuildTrace {
 	 * <p>
 	 * In general values that are independent from the current build should be set with this category.
 	 * <p>
-	 * Note that you should <b>not</b> set values when the {@linkplain EnvironmentProperty environment properties} are
-	 * being computed (see {@link EnvironmentProperty#getCurrentValue(SakerEnvironment) getCurrentValue}). As they can
-	 * be cached by the build environment, subsequent builds may not record these values.
+	 * <b>Note</b> that you should <b>not</b> set values when the {@linkplain EnvironmentProperty environment
+	 * properties} are being computed (see {@link EnvironmentProperty#getCurrentValue(SakerEnvironment)
+	 * getCurrentValue}). As they can be cached by the build environment, subsequent builds may not record these values.
+	 * <br>
+	 * To set build trace values related to environment properties, implement the
+	 * {@link TraceContributorEnvironmentProperty} interface in your {@link EnvironmentProperty}. The
+	 * {@link TraceContributorEnvironmentProperty#contributeBuildTraceInformation(Object, saker.build.exception.PropertyComputationFailedException)
+	 * contributeBuildTraceInformation} method will be automatically called for the property to contribute its values.
 	 * 
 	 * @see #setValues(Map, String)
 	 * @since 0.8.9
@@ -395,6 +400,73 @@ public final class BuildTrace {
 			}
 			InternalBuildTrace trace = getTrace();
 			trace.setValues(values, category);
+		} catch (Exception | StackOverflowError e) {
+			// no exceptions!
+		}
+	}
+
+	/**
+	 * Adds custom values for the specified category.
+	 * <p>
+	 * This method works similarly to {@link #setValues(Map, String)}, however it doesn't replace already existing
+	 * values but merges them.
+	 * <p>
+	 * The merging is done based on the type of the already existing, and the currently added value. If there's no
+	 * existing value, it is simply set. The following table demonstrates the merging action for the added value based
+	 * on the types.
+	 * <table>
+	 * <tr>
+	 * <th>Existing\Added types</th>
+	 * <th>Collection</th>
+	 * <th>Map</th>
+	 * <th>Primitive</th>
+	 * </tr>
+	 * <tr>
+	 * <td>Collection</td>
+	 * <td>addAll</td>
+	 * <td>ignore</td>
+	 * <td>add</td>
+	 * </tr>
+	 * <tr>
+	 * <td>Map</td>
+	 * <td>ignore</td>
+	 * <td>putAll</td>
+	 * <td>ignore</td>
+	 * </tr>
+	 * <tr>
+	 * <td>Primitive</td>
+	 * <td>asCollection</td>
+	 * <td>ignore</td>
+	 * <td>asCollection</td>
+	 * </tr>
+	 * </table>
+	 * The <i>addAll</i> action will cause the resulting value to be a collection with the existing element(s) first.
+	 * <br>
+	 * The <i>add</i> action will append the element to the existing collection. <br>
+	 * The <i>putAll</i> action will add all map entries to the existing collection. The map values are merged
+	 * recursively. <br>
+	 * The <i>asCollection</i> action will cause the existing and added values to be converted to a collection. <br>
+	 * The <i>ignore</i> action will cause the existing value to be unmodified.
+	 * 
+	 * @param values
+	 *            The values to add. If any value in the map is <code>null</code>, it will be ignored.
+	 * @param category
+	 *            The associated category for the values. See the <code>VALUE_CATEGORY_*</code> constants. If
+	 *            <code>null</code>, {@link #VALUE_CATEGORY_TASK} is assumed.
+	 * @since 0.8.9
+	 */
+	public static void addValues(Map<?, ?> values, String category) {
+		if (values == null) {
+			return;
+		}
+		try {
+			if (category == null || VALUE_CATEGORY_TASK.equals(category)) {
+				InternalTaskBuildTrace tt = getTaskTrace();
+				tt.addValues(values, category);
+				return;
+			}
+			InternalBuildTrace trace = getTrace();
+			trace.addValues(values, category);
 		} catch (Exception | StackOverflowError e) {
 			// no exceptions!
 		}

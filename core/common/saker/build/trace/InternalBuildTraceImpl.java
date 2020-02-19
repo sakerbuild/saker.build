@@ -47,6 +47,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
+import saker.build.exception.PropertyComputationFailedException;
 import saker.build.file.SakerFile;
 import saker.build.file.content.CommonContentDescriptorSupplier;
 import saker.build.file.content.ContentDescriptorSupplier;
@@ -66,6 +67,7 @@ import saker.build.runtime.classpath.JarFileClassPathLocation;
 import saker.build.runtime.classpath.NamedCheckingClassPathServiceEnumerator;
 import saker.build.runtime.classpath.NamedClassPathServiceEnumerator;
 import saker.build.runtime.classpath.ServiceLoaderClassPathServiceEnumerator;
+import saker.build.runtime.environment.EnvironmentProperty;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionContextImpl;
 import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation;
@@ -131,6 +133,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			ClusterInternalBuildTrace.class, "startBuildCluster", EnvironmentInformation.class, long.class);
 	protected static final Method METHOD_SETCLUSTERVALUES = ReflectUtils
 			.getMethodAssert(ClusterInternalBuildTrace.class, "setClusterValues", UUID.class, Map.class, String.class);
+	protected static final Method METHOD_ADDCLUSTERVALUES = ReflectUtils
+			.getMethodAssert(ClusterInternalBuildTrace.class, "addClusterValues", UUID.class, Map.class, String.class);
 
 	protected static final Method METHOD_STARTCLUSTERTASKEXECUTION = ReflectUtils
 			.getMethodAssert(ClusterTaskBuildTrace.class, "startClusterTaskExecution", long.class, UUID.class);
@@ -146,6 +150,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			ClusterTaskBuildTrace.class, "setClusterInnerTaskThrownException", Object.class, ExceptionView.class);
 	protected static final Method METHOD_SETCLUSTERINNERTASKVALUES = ReflectUtils.getMethodAssert(
 			ClusterTaskBuildTrace.class, "setClusterInnerTaskValues", Object.class, Map.class, String.class);
+	protected static final Method METHOD_ADDCLUSTERINNERTASKVALUES = ReflectUtils.getMethodAssert(
+			ClusterTaskBuildTrace.class, "addClusterInnerTaskValues", Object.class, Map.class, String.class);
 	protected static final Method METHOD_CLASSIFYTASK = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
 			"classifyTask", String.class);
 	protected static final Method METHOD_REPORTOUTPUTARTIFACT = ReflectUtils
@@ -155,6 +161,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			.getMethodAssert(ClusterTaskBuildTrace.class, "setDisplayInformation", String.class, String.class);
 	protected static final Method METHOD_SETVALUES = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
 			"setValues", Map.class, String.class);
+	protected static final Method METHOD_ADDVALUES = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
+			"addValues", Map.class, String.class);
 	protected static final Method METHOD_SETCLUSTERINNERTASKDISPLAYINFORMATION = ReflectUtils.getMethodAssert(
 			ClusterTaskBuildTrace.class, "setClusterInnerTaskDisplayInformation", Object.class, String.class,
 			String.class);
@@ -249,6 +257,17 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		return taskBuildTraces.computeIfAbsent(taskid, x -> new TaskBuildTraceImpl(this));
 	}
 
+	private void addEnvironmentNormalizedValues(Map<String, ?> values, UUID environmentuuid) {
+		Map<String, Object> valmap;
+		if (localEnvironmentReference.environmentInfo.buildEnvironmentUUID.equals(environmentuuid)) {
+			valmap = localEnvironmentReference.values;
+		} else {
+			valmap = this.environmentInformations.computeIfAbsent(environmentuuid,
+					x -> new EnvironmentReference()).values;
+		}
+		addNormalizedValuesToMap(values, valmap);
+	}
+
 	private void setEnvironmentNormalizedValues(Map<String, ?> values, UUID environmentuuid) {
 		Map<String, Object> valmap;
 		if (localEnvironmentReference.environmentInfo.buildEnvironmentUUID.equals(environmentuuid)) {
@@ -275,6 +294,20 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	}
 
 	@Override
+	public void addValues(Map<?, ?> values, String category) {
+		if (category == null) {
+			return;
+		}
+		Map<String, ?> normvalues = normalizeValues(values);
+		if (BuildTrace.VALUE_CATEGORY_ENVIRONMENT.equals(category)) {
+			addEnvironmentNormalizedValues(normvalues, localEnvironmentReference.environmentInfo.buildEnvironmentUUID);
+			return;
+		}
+		Map<String, Object> valmap = this.values.computeIfAbsent(category, Functionals.linkedHashMapComputer());
+		addNormalizedValuesToMap(normvalues, valmap);
+	}
+
+	@Override
 	public void setClusterValues(UUID environmentid, Map<String, ?> values, String category) {
 		if (category == null) {
 			return;
@@ -288,6 +321,84 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		Map<String, Object> valmap = this.values.computeIfAbsent(category, Functionals.linkedHashMapComputer());
 		setNormalizedValuesToMap(values, valmap);
+	}
+
+	@Override
+	public void addClusterValues(UUID environmentid, Map<String, ?> values, String category) {
+		if (category == null) {
+			return;
+		}
+		values = normalizeValues(values);
+
+		if (BuildTrace.VALUE_CATEGORY_ENVIRONMENT.equals(category)) {
+			addEnvironmentNormalizedValues(values, environmentid);
+			return;
+		}
+
+		Map<String, Object> valmap = this.values.computeIfAbsent(category, Functionals.linkedHashMapComputer());
+		addNormalizedValuesToMap(values, valmap);
+	}
+
+	private static Object mergeValueImpl(Object existing, Object v) {
+		if (existing == null) {
+			return v;
+		}
+		if (existing instanceof Collection<?>) {
+			if (v instanceof Collection<?>) {
+				return ObjectUtils.newArrayList((Collection<?>) existing, (Collection<?>) v);
+			}
+			if (v instanceof Map<?, ?>) {
+				//ignore
+				return existing;
+			}
+			ArrayList<Object> res = new ArrayList<>((Collection<?>) existing);
+			res.add(v);
+			return res;
+		}
+		if (existing instanceof Map<?, ?>) {
+			if (v instanceof Map<?, ?>) {
+				LinkedHashMap<Object, Object> result = new LinkedHashMap<>((Map<?, ?>) existing);
+				for (Entry<?, ?> entry : ((Map<?, ?>) v).entrySet()) {
+					Object ev = entry.getValue();
+					if (ev == null) {
+						continue;
+					}
+					result.compute(entry.getKey(), (k, cv) -> {
+						return mergeValueImpl(cv, ev);
+					});
+				}
+				return result;
+			}
+			//ignore
+			return existing;
+		}
+		//existing is primitive
+
+		if (v instanceof Map<?, ?>) {
+			//ignore
+			return existing;
+		}
+		if (v instanceof Collection<?>) {
+			List<Object> result = new ArrayList<>();
+			result.add(existing);
+			result.addAll((Collection<?>) v);
+			return result;
+		}
+		return ImmutableUtils.asUnmodifiableArrayList(existing, v);
+	}
+
+	private static void addNormalizedValuesToMap(Map<String, ?> values, Map<String, Object> valmap) {
+		synchronized (valmap) {
+			for (Entry<String, ?> entry : values.entrySet()) {
+				Object v = entry.getValue();
+				if (v == null) {
+					continue;
+				}
+				valmap.compute(entry.getKey(), (k, cv) -> {
+					return mergeValueImpl(cv, v);
+				});
+			}
+		}
 	}
 
 	private static void setNormalizedValuesToMap(Map<String, ?> values, Map<String, Object> valmap) {
@@ -476,6 +587,18 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	public void endExecute(boolean successful) {
 		this.successful = successful;
 		this.endExecutionNanos = System.nanoTime();
+	}
+
+	@Override
+	public <T> void environmentPropertyAccessed(SakerEnvironmentImpl environment, EnvironmentProperty<T> property,
+			T value, PropertyComputationFailedException e) {
+		if (!(property instanceof TraceContributorEnvironmentProperty<?>)) {
+			return;
+		}
+		noException(() -> {
+			TraceContributorEnvironmentProperty<? super T> contributor = (TraceContributorEnvironmentProperty<? super T>) property;
+			contributor.contributeBuildTraceInformation(value, e);
+		});
 	}
 
 	@Override
@@ -1566,6 +1689,15 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
+		public void addValues(Map<?, ?> values, String category) {
+			if (BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
+				addNormalizedValuesToMap(normalizeValues(values), this.values);
+			} else {
+				//TODO other categories
+			}
+		}
+
+		@Override
 		public void setDisplayInformation(String timelinelabel, String title) {
 			traceInfo.displayInformation = new TaskDisplayInformation(timelinelabel, title);
 		}
@@ -1590,6 +1722,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		public void setClusterInnerTaskValues(Object innertaskidentity, Map<String, ?> values, String category) {
 			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(innertaskidentity);
 			innertrace.setValues(values, category);
+		}
+
+		@Override
+		public void addClusterInnerTaskValues(Object innertaskidentity, Map<String, ?> values, String category) {
+			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(innertaskidentity);
+			innertrace.addValues(values, category);
 		}
 
 		@Override
@@ -1794,6 +1932,15 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 					//TODO other categories
 				}
 			}
+
+			@Override
+			public void addValues(Map<?, ?> values, String category) {
+				if (BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
+					addNormalizedValuesToMap(normalizeValues(values), this.values);
+				} else {
+					//TODO other categories
+				}
+			}
 		}
 
 	}
@@ -1905,6 +2052,13 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			});
 		}
 
+		@Override
+		public void addValues(Map<?, ?> values, String category) {
+			noException(() -> {
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_ADDVALUES, normalizeValues(values), category);
+			});
+		}
+
 		private class ClusterInnerTaskBuildTraceImpl implements InternalTaskBuildTrace {
 			private final Object innerTaskIdentity;
 
@@ -1946,6 +2100,14 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			public void setValues(Map<?, ?> values, String category) {
 				noException(() -> {
 					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETCLUSTERINNERTASKVALUES, innerTaskIdentity,
+							normalizeValues(values), category);
+				});
+			}
+
+			@Override
+			public void addValues(Map<?, ?> values, String category) {
+				noException(() -> {
+					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_ADDCLUSTERINNERTASKVALUES, innerTaskIdentity,
 							normalizeValues(values), category);
 				});
 			}
@@ -2228,6 +2390,30 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				Map<String, ?> normalizedvals = normalizeValues(values);
 				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETCLUSTERVALUES, environmentUUID, normalizedvals,
 						category);
+			});
+		}
+
+		@Override
+		public void addValues(Map<?, ?> values, String category) {
+			if (category == null) {
+				return;
+			}
+			noException(() -> {
+				Map<String, ?> normalizedvals = normalizeValues(values);
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_ADDCLUSTERVALUES, environmentUUID, normalizedvals,
+						category);
+			});
+		}
+
+		@Override
+		public <T> void environmentPropertyAccessed(SakerEnvironmentImpl environment, EnvironmentProperty<T> property,
+				T value, PropertyComputationFailedException e) {
+			if (!(property instanceof TraceContributorEnvironmentProperty<?>)) {
+				return;
+			}
+			noException(() -> {
+				TraceContributorEnvironmentProperty<? super T> contributor = (TraceContributorEnvironmentProperty<? super T>) property;
+				contributor.contributeBuildTraceInformation(value, e);
 			});
 		}
 	}

@@ -20,6 +20,10 @@ public class TraceTestUtils {
 
 	public static Object getTraceField(ProviderHolderPathKey pathkey, Object... fieldpath) throws IOException {
 		Map<String, Object> bt = readBuildTrace(pathkey);
+		return getTraceField(bt, fieldpath);
+	}
+
+	public static Object getTraceField(Map<String, Object> bt, Object... fieldpath) {
 		Object c = bt;
 		for (Object o : fieldpath) {
 			if (o instanceof String) {

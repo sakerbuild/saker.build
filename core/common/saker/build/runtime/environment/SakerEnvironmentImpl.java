@@ -74,6 +74,8 @@ import saker.build.thirdparty.saker.util.io.DynamicFilterByteSink;
 import saker.build.thirdparty.saker.util.io.DynamicFilterByteSource;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
+import saker.build.trace.InternalBuildTrace;
+import saker.build.trace.InternalBuildTraceImpl;
 import saker.build.util.cache.CacheKey;
 import saker.build.util.cache.SakerDataCache;
 import saker.build.util.config.JVMSynchronizationObjects;
@@ -287,28 +289,33 @@ public final class SakerEnvironmentImpl implements Closeable {
 		}
 	}
 
-	@SuppressWarnings("unchecked")
 	public <T> T getEnvironmentPropertyCurrentValue(SakerEnvironment useenvironment,
 			EnvironmentProperty<T> environmentproperty) {
 		Objects.requireNonNull(environmentproperty, "property");
 		Supplier<?> result = checkedEnvironmentProperties.get(environmentproperty);
-		if (result != null) {
-			return (T) result.get();
+		if (result == null) {
+			synchronized (environmentPropertyCalculateLocks.computeIfAbsent(environmentproperty,
+					Functionals.objectComputer())) {
+				result = checkedEnvironmentProperties.get(environmentproperty);
+				if (result == null) {
+					try {
+						T cval = environmentproperty.getCurrentValue(useenvironment);
+						result = Functionals.valSupplier(cval);
+					} catch (Exception e) {
+						result = new PropertyComputationFailedThrowingSupplier(e);
+					}
+					checkedEnvironmentProperties.putIfAbsent(environmentproperty, result);
+				}
+			}
 		}
-		synchronized (environmentPropertyCalculateLocks.computeIfAbsent(environmentproperty,
-				Functionals.objectComputer())) {
-			result = checkedEnvironmentProperties.get(environmentproperty);
-			if (result != null) {
-				return (T) result.get();
-			}
-			try {
-				T cval = environmentproperty.getCurrentValue(useenvironment);
-				result = Functionals.valSupplier(cval);
-			} catch (Exception e) {
-				result = new PropertyComputationFailedThrowingSupplier(e);
-			}
-			checkedEnvironmentProperties.putIfAbsent(environmentproperty, result);
-			return (T) result.get();
+		try {
+			@SuppressWarnings("unchecked")
+			T resultval = (T) result.get();
+			InternalBuildTrace.current().environmentPropertyAccessed(this, environmentproperty, resultval, null);
+			return resultval;
+		} catch (PropertyComputationFailedException e) {
+			InternalBuildTrace.current().environmentPropertyAccessed(this, environmentproperty, null, e);
+			throw e;
 		}
 	}
 

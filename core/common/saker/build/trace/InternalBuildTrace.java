@@ -21,8 +21,10 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
 
+import saker.build.exception.PropertyComputationFailedException;
 import saker.build.file.SakerFile;
 import saker.build.file.path.SakerPath;
+import saker.build.runtime.environment.EnvironmentProperty;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionContextImpl;
 import saker.build.scripting.ScriptParsingOptions;
@@ -89,6 +91,13 @@ public interface InternalBuildTrace extends Closeable {
 	public default void setValues(@RMISerialize Map<?, ?> values, String category) {
 	}
 
+	public default void addValues(@RMISerialize Map<?, ?> values, String category) {
+	}
+
+	public default <T> void environmentPropertyAccessed(SakerEnvironmentImpl environment,
+			EnvironmentProperty<T> property, T value, PropertyComputationFailedException e) {
+	}
+
 	@RMIWrap(NullInternalBuildTrace.NullInternalBuildTraceRMIWrapper.class)
 	public static final class NullInternalBuildTrace implements InternalBuildTrace, InternalTaskBuildTrace {
 		public static final NullInternalBuildTrace INSTANCE = new NullInternalBuildTrace();
@@ -125,6 +134,10 @@ public interface InternalBuildTrace extends Closeable {
 
 		@Override
 		public void setValues(Map<?, ?> values, String category) {
+		}
+
+		@Override
+		public void addValues(Map<?, ?> values, String category) {
 		}
 
 		@Override
@@ -198,6 +211,9 @@ public interface InternalBuildTrace extends Closeable {
 		}
 
 		public default void setValues(@RMISerialize Map<?, ?> values, String category) {
+		}
+
+		public default void addValues(@RMISerialize Map<?, ?> values, String category) {
 		}
 	}
 
