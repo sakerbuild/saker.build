@@ -43,6 +43,8 @@ public interface IDEProjectProperties {
 
 	public MountPathIDEProperty getBuildTraceOutput();
 
+	public boolean isBuildTraceEmbedArtifacts();
+
 	@Override
 	public int hashCode();
 

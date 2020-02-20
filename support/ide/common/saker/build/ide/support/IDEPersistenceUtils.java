@@ -345,6 +345,7 @@ public class IDEPersistenceUtils {
 		if (execonnectionname != null) {
 			objout.writeField("execution_daemon", execonnectionname);
 		}
+		objout.writeField("build_trace_embed_artifacts", props.isBuildTraceEmbedArtifacts());
 		if (buildtraceout != null) {
 			String btcname = buildtraceout.getMountClientName();
 			String btpath = buildtraceout.getMountPath();
@@ -467,6 +468,8 @@ public class IDEPersistenceUtils {
 		}
 		result.setBuildTraceOutput(MountPathIDEProperty.create(input.readString("build_trace_out_client"),
 				input.readString("build_trace_out_path")));
+		result.setBuildTraceEmbedArtifacts(
+				ObjectUtils.defaultize(input.readBoolean("build_trace_embed_artifacts"), false));
 
 		try (StructuredArrayObjectInput array = input.readArray("repositories")) {
 			if (array != null) {

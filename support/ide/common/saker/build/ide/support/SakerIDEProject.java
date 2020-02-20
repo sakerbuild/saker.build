@@ -1238,6 +1238,7 @@ public final class SakerIDEProject {
 		parameters.setTaskInvokerFactories(taskinvokerfactories);
 		parameters.setBuildInfo(buildinfo);
 		parameters.setBuildTraceOutputPathKey(buildtraceoutpathkey);
+		parameters.setBuildTraceEmbedArtifacts(properties.isBuildTraceEmbedArtifacts());
 
 		return parameters;
 	}

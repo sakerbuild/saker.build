@@ -56,6 +56,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 	protected boolean requireTaskIDEConfiguration;
 
 	protected MountPathIDEProperty buildTraceOutput;
+	private boolean buildTraceEmbedArtifacts;
 
 	public static IDEProjectProperties empty() {
 		return EMPTY;
@@ -86,6 +87,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		this.executionDaemonConnectionName = copy.getExecutionDaemonConnectionName();
 		this.requireTaskIDEConfiguration = copy.isRequireTaskIDEConfiguration();
 		this.buildTraceOutput = copy.getBuildTraceOutput();
+		this.buildTraceEmbedArtifacts = copy.isBuildTraceEmbedArtifacts();
 	}
 
 	private final void unmodifiablize() {
@@ -158,12 +160,18 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 	}
 
 	@Override
+	public boolean isBuildTraceEmbedArtifacts() {
+		return buildTraceEmbedArtifacts;
+	}
+
+	@Override
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
 		result = prime * result + ((buildDirectory == null) ? 0 : buildDirectory.hashCode());
 		result = prime * result + ((buildTraceOutput == null) ? 0 : buildTraceOutput.hashCode());
 		result = prime * result + ((connections == null) ? 0 : connections.hashCode());
+		result = prime * result + (buildTraceEmbedArtifacts ? 1231 : 1237);
 		result = prime * result
 				+ ((executionDaemonConnectionName == null) ? 0 : executionDaemonConnectionName.hashCode());
 		result = prime * result + ((mirrorDirectory == null) ? 0 : mirrorDirectory.hashCode());
@@ -200,6 +208,8 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 			if (other.connections != null)
 				return false;
 		} else if (!connections.equals(other.connections))
+			return false;
+		if (buildTraceEmbedArtifacts != other.buildTraceEmbedArtifacts)
 			return false;
 		if (executionDaemonConnectionName == null) {
 			if (other.executionDaemonConnectionName != null)
@@ -322,6 +332,11 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 
 		public Builder setBuildTraceOutput(MountPathIDEProperty buildTraceOutput) {
 			result.buildTraceOutput = buildTraceOutput;
+			return this;
+		}
+
+		public Builder setBuildTraceEmbedArtifacts(boolean buildTraceEmbedArtifacts) {
+			result.buildTraceEmbedArtifacts = buildTraceEmbedArtifacts;
 			return this;
 		}
 
