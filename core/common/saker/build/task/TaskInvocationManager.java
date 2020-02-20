@@ -320,6 +320,7 @@ public class TaskInvocationManager implements Closeable {
 							maximumenvironmentfactor);
 					listener.handle = handle;
 					invocationhandles.add(listener);
+					fut.setLocallyRunnable(true);
 				} catch (Exception e) {
 					invokerexceptions = IOUtils.addExc(invokerexceptions, e);
 				}
@@ -1687,12 +1688,17 @@ public class TaskInvocationManager implements Closeable {
 		private final Object resultWaiterLock;
 		private boolean duplicationCancellable;
 		private volatile boolean allClustersFailed;
+		private boolean locallyRunnable;
 
 		public InvokerTaskResultsHandler(ConcurrentLinkedQueue<ListenerInnerTaskInvocationHandler<R>> invocationHandles,
 				Object resultwaiterlock, boolean duplicationCancellable) {
 			this.invocationHandles = invocationHandles;
 			this.resultWaiterLock = resultwaiterlock;
 			this.duplicationCancellable = duplicationCancellable;
+		}
+
+		public void setLocallyRunnable(boolean locallyRunnable) {
+			this.locallyRunnable = locallyRunnable;
 		}
 
 		public void allClustersFailed() {
@@ -1705,7 +1711,7 @@ public class TaskInvocationManager implements Closeable {
 		@Override
 		public InnerTaskResultHolder<R> getNext() throws InterruptedException {
 			while (true) {
-				if (allClustersFailed) {
+				if (!locallyRunnable && allClustersFailed) {
 					//XXX cause exceptions
 					throw new InnerTaskInitializationException(
 							"Failed to start inner task on the execution environments.");

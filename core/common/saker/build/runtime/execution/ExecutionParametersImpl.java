@@ -505,7 +505,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 
 			out.writeObject(params.buildTraceOutputPathKey);
 			out.writeBoolean(params.buildTraceEmbedArtifacts);
-			out.writeObject(params.buildInfo);
+			out.writeSerializedObject(params.buildInfo);
 		}
 
 		@Override
