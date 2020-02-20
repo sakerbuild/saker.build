@@ -70,7 +70,7 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 	private Map<FileProviderKey, ConcurrentNavigableMap<SakerPath, DirectoryWatcher>> watchers = new HashMap<>();
 	private Set<WildcardPath> excludeWildcardPaths = Collections.emptyNavigableSet();
 
-	private boolean closed = false;
+	private volatile boolean closed = false;
 
 	public BasicScriptModellingEnvironment(SakerIDEPlugin plugin, ScriptModellingEnvironmentConfiguration configuration,
 			SakerEnvironmentImpl environment) {
@@ -139,6 +139,23 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 			//do not install watcher for this directory or children
 			return;
 		}
+		if (closed) {
+			return;
+		}
+		DirectoryWatcher presentwatcher = watchers.get(path);
+		if (presentwatcher != null) {
+			if (!this.configurationVersionKey.equals(presentwatcher.configVersion)) {
+				presentwatcher.removeListener();
+				//don't return, proceed with installing a new one
+			} else if (presentwatcher.isInstalled()) {
+				//already installed
+				return;
+			} else {
+				//reinstall
+				installDirectoryWatcherLocked(fp, path, watchers, presentwatcher);
+				return;
+			}
+		}
 		DirectoryWatcher watcher = new DirectoryWatcher(this, fp, path, watchers, this.configurationVersionKey);
 		installDirectoryWatcherLocked(fp, path, watchers, watcher);
 	}
@@ -179,6 +196,10 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 		if (!watcher.configVersion.equals(this.configurationVersionKey)) {
 			return;
 		}
+		if (closed) {
+			watcher.removeListener();
+			return;
+		}
 		installDirectoryWatcherLocked(fp, path, watchers, watcher);
 	}
 
@@ -189,6 +210,10 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 			return;
 		}
 		if (!watcher.configVersion.equals(this.configurationVersionKey)) {
+			watcher.removeListener();
+			return;
+		}
+		if (closed) {
 			watcher.removeListener();
 			return;
 		}
@@ -210,9 +235,13 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 	}
 
 	private void uninstallWatchers() {
-		for (NavigableMap<SakerPath, DirectoryWatcher> watchedmap : watchers.values()) {
-			for (DirectoryWatcher watcher : watchedmap.values()) {
-				watcher.removeListener();
+		for (ConcurrentNavigableMap<SakerPath, DirectoryWatcher> watchedmap : watchers.values()) {
+			while (true) {
+				Entry<SakerPath, DirectoryWatcher> entry = watchedmap.pollFirstEntry();
+				if (entry == null) {
+					break;
+				}
+				entry.getValue().removeListener();
 			}
 		}
 		watchers.clear();
@@ -360,11 +389,12 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 				.newUpdater(BasicScriptModellingEnvironment.DirectoryWatcher.class,
 						FileEventListener.ListenerToken.class, "token");
 
+		protected final Object configVersion;
+
 		private volatile FileEventListener.ListenerToken token;
 		private SakerFileProvider fileProvider;
 		private SakerPath path;
 		private ConcurrentNavigableMap<SakerPath, DirectoryWatcher> watchers;
-		protected Object configVersion;
 		private BasicScriptModellingEnvironment environment;
 
 		public DirectoryWatcher(BasicScriptModellingEnvironment env, SakerFileProvider fileProvider, SakerPath path,
@@ -374,6 +404,10 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 			this.path = path;
 			this.watchers = watchers;
 			this.configVersion = configVersion;
+		}
+
+		public boolean isInstalled() {
+			return token != null;
 		}
 
 		public synchronized void initToken(FileEventListener.ListenerToken token) {
