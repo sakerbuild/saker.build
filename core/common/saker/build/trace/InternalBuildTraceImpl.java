@@ -231,6 +231,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	private ExecutionPathConfiguration pathConfiguration;
 	private boolean successful;
 
+	private NavigableMap<SakerPath, ByteArrayRegion> readScriptContents = new ConcurrentSkipListMap<>();
+
 	/**
 	 * Maps category strings to linked hash maps that should be synchronized on.
 	 */
@@ -574,6 +576,19 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	}
 
 	@Override
+	public void openTargetConfigurationFile(ScriptParsingOptions parsingoptions, SakerFile file) {
+		noException(() -> {
+			readScriptContents.computeIfAbsent(parsingoptions.getScriptPath(), p -> {
+				try {
+					return file.getBytesImpl();
+				} catch (Exception | StackOverflowError e) {
+					return null;
+				}
+			});
+		});
+	}
+
+	@Override
 	public void initialize() {
 		this.initNanos = System.nanoTime();
 	}
@@ -868,18 +883,10 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				writeFieldName(os, "");
 			}
 
-			//pre-sort
-			NavigableMap<SakerPath, ByteArrayRegion> allscripts = new TreeMap<>();
-			for (TaskBuildTraceImpl ttrace : taskBuildTraces.values()) {
-				if (ttrace.traceInfo == null) {
-					continue;
-				}
-				allscripts.putAll(ttrace.traceInfo.readScriptContents);
-			}
-			if (!allscripts.isEmpty()) {
+			if (!readScriptContents.isEmpty()) {
 				writeFieldName(os, "scripts");
 				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
-				for (Entry<SakerPath, ByteArrayRegion> entry : allscripts.entrySet()) {
+				for (Entry<SakerPath, ByteArrayRegion> entry : readScriptContents.entrySet()) {
 					writeFieldName(os, entry.getKey().toString());
 					writeByteArray(os, entry.getValue());
 				}
@@ -1827,14 +1834,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public ByteSource openTargetConfigurationReadingInput(ScriptParsingOptions parsingoptions, SakerFile file)
-				throws IOException {
-			ByteArrayRegion filebytes = file.getBytes();
-			traceInfo.readScriptContents.put(parsingoptions.getScriptPath(), filebytes);
-			return new UnsyncByteArrayInputStream(filebytes);
-		}
-
-		@Override
 		public void closeStandardIO(UnsyncByteArrayOutputStream stdout, UnsyncByteArrayOutputStream stderr) {
 			traceInfo.standardOutBytes = stdout.toByteArrayRegion();
 			traceInfo.standardErrBytes = stderr.toByteArrayRegion();
@@ -2113,7 +2112,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		private static final long serialVersionUID = 1L;
 
 		protected String standardOutDisplayIdentifier;
-		protected NavigableMap<SakerPath, ByteArrayRegion> readScriptContents = new ConcurrentSkipListMap<>();
 
 		protected ByteArrayRegion standardOutBytes = ByteArrayRegion.EMPTY;
 		protected ByteArrayRegion standardErrBytes = ByteArrayRegion.EMPTY;
@@ -2143,7 +2141,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		protected TaskBuildTraceInfo clone() {
 			try {
 				TaskBuildTraceInfo result = (TaskBuildTraceInfo) super.clone();
-				result.readScriptContents = new ConcurrentSkipListMap<>(this.readScriptContents);
 				result.artifacts = ObjectUtils.addAll(ConcurrentHashMap.newKeySet(), result.artifacts);
 				return result;
 			} catch (CloneNotSupportedException e) {
@@ -2165,7 +2162,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			try {
 				out.writeObject(standardOutDisplayIdentifier);
 				out.writeObject(displayInformation);
-				SerialUtils.writeExternalMap(out, readScriptContents);
 
 				out.writeObject(standardOutBytes);
 				out.writeObject(standardErrBytes);
@@ -2196,7 +2192,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			try {
 				standardOutDisplayIdentifier = (String) in.readObject();
 				displayInformation = (TaskDisplayInformation) in.readObject();
-				readScriptContents = SerialUtils.readExternalSortedImmutableNavigableMap(in);
 
 				standardOutBytes = (ByteArrayRegion) in.readObject();
 				standardErrBytes = (ByteArrayRegion) in.readObject();

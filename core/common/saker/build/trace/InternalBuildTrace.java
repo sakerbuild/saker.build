@@ -98,6 +98,9 @@ public interface InternalBuildTrace extends Closeable {
 			EnvironmentProperty<T> property, T value, PropertyComputationFailedException e) {
 	}
 
+	public default void openTargetConfigurationFile(ScriptParsingOptions parsingoptions, SakerFile file) {
+	}
+
 	@RMIWrap(NullInternalBuildTrace.NullInternalBuildTraceRMIWrapper.class)
 	public static final class NullInternalBuildTrace implements InternalBuildTrace, InternalTaskBuildTrace {
 		public static final NullInternalBuildTrace INSTANCE = new NullInternalBuildTrace();
@@ -178,11 +181,6 @@ public interface InternalBuildTrace extends Closeable {
 		}
 
 		public default void close(TaskContext taskcontext, TaskExecutionResult<?> taskresult) {
-		}
-
-		public default ByteSource openTargetConfigurationReadingInput(ScriptParsingOptions parsingoptions,
-				SakerFile file) throws IOException {
-			return file.openByteSource();
 		}
 
 		public default void startTaskExecution() {

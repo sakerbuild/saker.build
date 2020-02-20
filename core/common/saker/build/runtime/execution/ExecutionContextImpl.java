@@ -789,6 +789,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 			TargetConfigurationReadingResult readresult;
 			try {
+				buildTrace.openTargetConfigurationFile(parseoptions, file);;
 				readresult = computeFileContentData(file,
 						new TargetConfigurationReadingFileDataComputer(scriptaccessor, parseoptions));
 			} catch (IOException e) {
