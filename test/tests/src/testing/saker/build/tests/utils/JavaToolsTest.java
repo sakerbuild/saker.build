@@ -39,6 +39,7 @@ public class JavaToolsTest extends SakerTestCase {
 		JavaTools.getSystemDocumentationTool();
 		JavaTools.getSystemJavaCompiler();
 		ToolProvider.getSystemJavaCompiler();
+		assertNonNull(JavaTools.getJarSignerMainClass());
 	}
 
 }

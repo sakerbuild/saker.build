@@ -34,6 +34,7 @@ import saker.build.util.java.JavaTools;
 public class JavaCompilerAccessor {
 	private static final String JAVACTOOL_CLASS_NAME = "com.sun.tools.javac.api.JavacTool";
 	private static final String JAVADOCTOOL_CLASS_NAME = "com.sun.tools.javadoc.api.JavadocTool";
+	private static final String JARSIGNER_MAIN_CLASS_NAME = "sun.security.tools.jarsigner.Main";
 	private static final String TOOLS_JAR_NAME = "tools.jar";
 
 	private static final Map<String, JarClassLoaderDataFinder> jdkJarDataFinders = new ConcurrentSkipListMap<>();
@@ -53,11 +54,15 @@ public class JavaCompilerAccessor {
 
 	private static <T> T getSystemTool(Class<T> clazz, String name) {
 		try {
-			Class<?> foundclass = Class.forName(name, false, getJDKToolsClassLoader());
+			Class<?> foundclass = getSystemToolClass(name);
 			return foundclass.asSubclass(clazz).getConstructor().newInstance();
 		} catch (Exception e) {
 			throw new RuntimeException("Failed to instantiate java tool class: " + name, e);
 		}
+	}
+
+	private static Class<?> getSystemToolClass(String name) throws ClassNotFoundException, IOException {
+		return Class.forName(name, false, getJDKToolsClassLoader());
 	}
 
 	public synchronized static ClassLoader getJDKToolsClassLoader() throws IOException {
@@ -82,6 +87,14 @@ public class JavaCompilerAccessor {
 
 	public static ClassLoaderResolver getJDKToolsClassLoaderResolver() {
 		return JDKToolsClassLoaderResolver.INSTANCE;
+	}
+
+	public static Class<?> getJarSignerMainClass() {
+		try {
+			return getSystemToolClass(JARSIGNER_MAIN_CLASS_NAME);
+		} catch (ClassNotFoundException | IOException e) {
+			throw new RuntimeException("Failed to get jarsigner tool class: " + JARSIGNER_MAIN_CLASS_NAME, e);
+		}
 	}
 
 	private static Path getJDKJarPath(String jarname) {

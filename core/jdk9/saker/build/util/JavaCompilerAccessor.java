@@ -60,6 +60,14 @@ public class JavaCompilerAccessor {
 		return JDKToolsClassLoaderResolver.INSTANCE;
 	}
 
+	public static Class<?> getJarSignerMainClass() {
+		try {
+			return Class.forName("sun.security.tools.jarsigner.Main", false, PLATFORM_CLASSLOADER);
+		} catch (Exception e) {
+			throw new RuntimeException("Failed to get jarsigner tool class.", e);
+		}
+	}
+
 	private static enum JDKToolsClassLoaderResolver implements ClassLoaderResolver {
 		INSTANCE;
 

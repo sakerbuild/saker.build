@@ -111,6 +111,29 @@ public class JavaTools {
 	}
 
 	/**
+	 * Gets the main class for the jarsigner tool.
+	 * <p>
+	 * The method retrieves the class that contains the <code>main(String[])</code> method for the jarsigner utility.
+	 * <p>
+	 * For JDK8, the method will retrieve the <code>sun.security.tools.jarsigner.Main</code> from the
+	 * <code>tools.jar</code> of the JDK.
+	 * <p>
+	 * For JDK9 or later, the method will get the <code>sun.security.tools.jarsigner.Main</code> class from the platform
+	 * classloader.
+	 * <p>
+	 * In general, it is recommended that callers use the {@link jdk.security.jarsigner.JarSigner} class to perform JAR
+	 * signing operations on JDK 9 or later.
+	 * 
+	 * @return The main class for the jarsigner utility.
+	 * @throws RuntimeException
+	 *             If the class was not found. Callers should gracefully handle this scenario.
+	 * @since 0.8.10
+	 */
+	public static Class<?> getJarSignerMainClass() throws RuntimeException {
+		return JavaCompilerAccessor.getJarSignerMainClass();
+	}
+
+	/**
 	 * Gets a classloader that can load the JDK related compiler and documentational classes.
 	 * <p>
 	 * The returned classloader can be used as a parent classloader to access classes for the Java Compiler API. (E.g.
