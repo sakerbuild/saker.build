@@ -225,4 +225,22 @@ public interface StructuredTaskResult {
 		//here doesn't break it
 		return handle.clone();
 	}
+
+	/**
+	 * Creates a structured task result object that returns the argument literal object.
+	 * <p>
+	 * The argument <b>must not</b> be a structured task result in nature. That is, it should be suitable to be directly
+	 * returned from the {@link #toResult(TaskResultResolver)} function.
+	 * <p>
+	 * The returned structured task result implements {@link Object#hashCode()} and {@link Object#equals(Object)} that
+	 * is based on the enclosed value.
+	 * 
+	 * @param literal
+	 *            The value to enclose in a structured task result.
+	 * @return The structured task result with the argument value.
+	 * @since 0.8.10
+	 */
+	public static StructuredTaskResult createLiteral(Object literal) {
+		return new LiteralStructuredTaskResult(literal);
+	}
 }

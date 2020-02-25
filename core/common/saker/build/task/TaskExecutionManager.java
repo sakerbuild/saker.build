@@ -5293,7 +5293,7 @@ public class TaskExecutionManager {
 		if (!result.nonFileDeltas.contains(TaskChangeDeltaImpl.INSTANCE)) {
 			//collect the execution property deltas after task change detection
 			//    as waiting for a task might cause the properties to be different
-			//e.g. a dependent tak modifies a local file that we depend on using an execution property
+			//e.g. a dependent task modifies a local file that we depend on using an execution property
 			//file dependency collecting should be after determining the task dependencies.
 			//    as waiting for a task might cause different files to be present
 

@@ -19,6 +19,7 @@ import java.util.Map;
 
 import javax.tools.ToolProvider;
 
+import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.util.java.JavaTools;
 import testing.saker.SakerTest;
 import testing.saker.SakerTestCase;
@@ -39,7 +40,9 @@ public class JavaToolsTest extends SakerTestCase {
 		JavaTools.getSystemDocumentationTool();
 		JavaTools.getSystemJavaCompiler();
 		ToolProvider.getSystemJavaCompiler();
-		assertNonNull(JavaTools.getJarSignerMainClass());
+		Class<?> jarisgnermain = JavaTools.getJarSignerMainClass();
+		assertNonNull(jarisgnermain);
+		ReflectUtils.getMethodAssert(jarisgnermain, "main", String[].class);
 	}
 
 }

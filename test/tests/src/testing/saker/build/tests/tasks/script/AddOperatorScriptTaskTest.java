@@ -15,8 +15,11 @@
  */
 package testing.saker.build.tests.tasks.script;
 
+import java.util.LinkedHashMap;
+
 import testing.saker.SakerTest;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
+import testing.saker.build.tests.TestUtils;
 
 @SakerTest
 public class AddOperatorScriptTaskTest extends CollectingMetricEnvironmentTestCase {
@@ -40,6 +43,9 @@ public class AddOperatorScriptTaskTest extends CollectingMetricEnvironmentTestCa
 		assertEquals(result.getTargetTaskResult("floatintadd"), 1L + 2.3d);
 		assertEquals(result.getTargetTaskResult("intsecondadd"), 1L + 10L);
 		assertEquals(result.getTargetTaskResult("secondsecondadd"), 10L + 10L);
+
+		assertEquals(result.getTargetTaskResult("mapadd"),
+				TestUtils.mapBuilder(new LinkedHashMap<>()).put("a", "b").put("c", "x").put("e", "f").build());
 	}
 
 }

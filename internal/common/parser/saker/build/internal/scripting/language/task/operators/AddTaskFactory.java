@@ -84,8 +84,8 @@ public class AddTaskFactory extends BinaryOperatorTaskFactory {
 		if (leftres instanceof StructuredMapTaskResult && rightres instanceof StructuredMapTaskResult) {
 			NavigableMap<String, StructuredTaskResult> mapelems = new TreeMap<>(
 					StringUtils.nullsFirstStringComparator());
-			addToMapResult((StructuredMapTaskResult) leftres, mapelems, thistaskid);
-			addToMapResult((StructuredMapTaskResult) rightres, mapelems, thistaskid);
+			addToMapResult((StructuredMapTaskResult) leftres, mapelems);
+			addToMapResult((StructuredMapTaskResult) rightres, mapelems);
 			SakerMapTaskResult result = new SakerMapTaskResult(mapelems);
 			taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
 			return result;
@@ -265,14 +265,9 @@ public class AddTaskFactory extends BinaryOperatorTaskFactory {
 		}
 	}
 
-	private static void addToMapResult(StructuredMapTaskResult value, Map<String, StructuredTaskResult> mapelems,
-			TaskIdentifier thistaskid) {
-		value.forEach((key, vtid) -> {
-			StructuredTaskResult present = mapelems.putIfAbsent(key, vtid);
-			if (present != null) {
-				throw new OperandExecutionException("Map key present multiple times: " + key, thistaskid);
-			}
-		});
+	private static void addToMapResult(StructuredMapTaskResult value, Map<String, StructuredTaskResult> mapelems) {
+		//don't throw an exception in case of overwriting
+		value.forEach(mapelems::put);
 
 	}
 

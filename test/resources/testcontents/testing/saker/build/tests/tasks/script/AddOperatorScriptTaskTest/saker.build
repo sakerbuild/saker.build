@@ -13,6 +13,8 @@ build(
 	out floatintadd = 1 + 2.3,
 	out intsecondadd = 1 + $second[num],
 	out secondsecondadd = $second[num] + $second[num],
+	
+	out mapadd = { a:b, c:d, } + { c:x, e:f },
 ) {
 	$strlist2 = [x, y, z]
 	$second = include(Path: second.build)

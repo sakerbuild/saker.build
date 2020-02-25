@@ -798,7 +798,8 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 	 * 
 	 * @param other
 	 *            The path to relativize against.
-	 * @return The relativized path if succeeded, or the parameter reference.
+	 * @return The relativized path if succeeded, or the parameter path.
+	 * @see #relativize(SakerPath)
 	 */
 	public SakerPath tryRelativize(SakerPath other) {
 		if (!isRelativizable(other)) {

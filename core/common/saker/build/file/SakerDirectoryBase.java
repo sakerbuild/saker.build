@@ -547,11 +547,11 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 	}
 
 	private final SakerDirectory getDirectoryCreateImpl(String name) {
-		SakerFileBase dir = getImpl(name);
-		if (dir != null && dir instanceof SakerDirectory) {
-			return (SakerDirectory) dir;
+		SakerFileBase existing = getImpl(name);
+		if (existing instanceof SakerDirectory) {
+			return (SakerDirectory) existing;
 		}
-		return createAndAddDirectory(dir, name);
+		return createAndAddDirectory(existing, name);
 	}
 
 	private SakerDirectory createAndAddDirectory(SakerFileBase existing, String name) {
