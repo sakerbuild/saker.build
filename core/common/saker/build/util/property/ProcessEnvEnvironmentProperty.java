@@ -30,9 +30,12 @@ import saker.build.runtime.environment.SakerEnvironment;
  * 
  * @since 0.8.10
  */
-public class ProcessEnvEnvironmentProperty implements EnvironmentProperty<String>, Externalizable {
+public final class ProcessEnvEnvironmentProperty implements EnvironmentProperty<String>, Externalizable {
 	private static final long serialVersionUID = 1L;
 
+	/**
+	 * The name of the environment variable.
+	 */
 	protected String name;
 
 	/**
