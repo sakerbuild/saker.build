@@ -115,7 +115,7 @@ language tasks_lang {
 		include marker as params_start("\(") 1;
 		include first_parameter 1;
 		inorder *{
-			include comma_or_newline +;
+			include comma_or_newline 1;
 			include parameter 1;
 		}
 		include WHITESPACE *;
@@ -129,7 +129,7 @@ language tasks_lang {
 				include marker as list_boundary("\[") 1;
 				include expression_placeholder as list_element 1;
 				inorder * {
-					include comma_or_newline +;
+					include comma_or_newline 1;
 					include expression_placeholder as list_element 1;
 				}
 				include WHITESPACE *;
@@ -146,7 +146,7 @@ language tasks_lang {
 					}
 				}
 				inorder * {
-					include comma_or_newline +;
+					include comma_or_newline 1;
 					include map_element 1;
 				}
 				include WHITESPACE *;
@@ -219,13 +219,13 @@ language tasks_lang {
 					}
 					inorder * {
 						anyorder * {
-							include comma_or_newline +;
+							include comma_or_newline 1;
 							include WHITESPACE *;
 						}
 						include localvar 1;		
 					}
 					anyorder * {
-						include comma_or_newline +;
+						include comma_or_newline 1;
 						include WHITESPACE *;
 					}
 				}
@@ -442,7 +442,7 @@ language tasks_lang {
 			include marker as target_params_start("\(") 1;
 			include task_target_parameter ?;
 			inorder * {
-				include comma_or_newline +;
+				include comma_or_newline 1;
 				include task_target_parameter ?;
 			}
 			include WHITESPACE *;
