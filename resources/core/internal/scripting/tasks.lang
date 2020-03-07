@@ -9,7 +9,7 @@ language tasks_lang {
 	firstorder general_step;
 	
 	value linecomment {
-		skip "((?!###)#)" 1;
+		skip "(?!###)#" 1;
 		matches "[^\n\r]+" *;
 	}
 	value multilinecomment {
@@ -19,14 +19,19 @@ language tasks_lang {
 	}
 	
 	anyorder WHITESPACE {
-		skip "([\s]+)" *;
+		skip "[\s]+" *;
 		include linecomment *;
 		include multilinecomment *;	
 	}
 	anyorder NB_WHITESPACE {
-		skip "([ \t\x0B\f]+)" *;
+		skip "[ \t\x0B\f]+" *;
 		include linecomment *;
 		include multilinecomment *;	
+	}
+	
+	inorder comma_or_newline {
+		include NB_WHITESPACE *;
+		skip ",|(\r\n|\r|\n)" 1;
 	}
 	
 	value expression;
@@ -110,8 +115,7 @@ language tasks_lang {
 		include marker as params_start("\(") 1;
 		include first_parameter 1;
 		inorder *{
-			include WHITESPACE *;
-			skip "," 1;
+			include comma_or_newline +;
 			include parameter 1;
 		}
 		include WHITESPACE *;
@@ -125,8 +129,7 @@ language tasks_lang {
 				include marker as list_boundary("\[") 1;
 				include expression_placeholder as list_element 1;
 				inorder * {
-					include WHITESPACE *;
-					skip "," 1;
+					include comma_or_newline +;
 					include expression_placeholder as list_element 1;
 				}
 				include WHITESPACE *;
@@ -143,8 +146,7 @@ language tasks_lang {
 					}
 				}
 				inorder * {
-					include WHITESPACE *;
-					skip "," 1;
+					include comma_or_newline +;
 					include map_element 1;
 				}
 				include WHITESPACE *;
@@ -217,13 +219,13 @@ language tasks_lang {
 					}
 					inorder * {
 						anyorder * {
-							skip "," 1;
+							include comma_or_newline +;
 							include WHITESPACE *;
 						}
 						include localvar 1;		
 					}
 					anyorder * {
-						skip "," 1;
+						include comma_or_newline +;
 						include WHITESPACE *;
 					}
 				}
@@ -343,13 +345,6 @@ language tasks_lang {
 		}
 	}
 	
-	value commas {
-		anyorder 1{
-			skip "," 1;
-			include WHITESPACE *;
-		}
-	}
-	
 	value expression_step {
 		include expression as expression_content 1;
 		include EXPRESSION_CLOSING 1;	
@@ -447,8 +442,7 @@ language tasks_lang {
 			include marker as target_params_start("\(") 1;
 			include task_target_parameter ?;
 			inorder * {
-				include WHITESPACE *;
-				skip "," 1;
+				include comma_or_newline +;
 				include task_target_parameter ?;
 			}
 			include WHITESPACE *;

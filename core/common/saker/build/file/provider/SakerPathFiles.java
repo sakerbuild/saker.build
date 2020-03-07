@@ -2514,6 +2514,9 @@ public class SakerPathFiles {
 	 * @see SakerPath#isRelative()
 	 */
 	public static boolean hasRelativePath(SortedSet<? extends SakerPath> paths) {
+		if (paths == null) {
+			return false;
+		}
 		ObjectUtils.requireNaturalOrder(paths);
 
 		return !paths.isEmpty() && paths.first().isRelative();
@@ -2532,6 +2535,9 @@ public class SakerPathFiles {
 	 * @see SakerPath#isAbsolute()
 	 */
 	public static boolean hasAbsolutePath(SortedSet<? extends SakerPath> paths) {
+		if (paths == null) {
+			return false;
+		}
 		ObjectUtils.requireNaturalOrder(paths);
 
 		return !paths.isEmpty() && paths.last().isAbsolute();
@@ -2550,6 +2556,9 @@ public class SakerPathFiles {
 	 * @see SakerPath#isRelative()
 	 */
 	public static boolean hasRelativePath(SortedMap<? extends SakerPath, ?> paths) {
+		if (paths == null) {
+			return false;
+		}
 		ObjectUtils.requireNaturalOrder(paths);
 
 		return !paths.isEmpty() && paths.firstKey().isRelative();
@@ -2568,6 +2577,9 @@ public class SakerPathFiles {
 	 * @see SakerPath#isAbsolute()
 	 */
 	public static boolean hasAbsolutePath(SortedMap<? extends SakerPath, ?> paths) {
+		if (paths == null) {
+			return false;
+		}
 		ObjectUtils.requireNaturalOrder(paths);
 
 		return !paths.isEmpty() && paths.lastKey().isAbsolute();
@@ -2585,6 +2597,9 @@ public class SakerPathFiles {
 	 * @return <code>true</code> if there is at least one subpath in the set.
 	 */
 	public static boolean hasSubPath(NavigableSet<SakerPath> paths, SakerPath testpath) {
+		if (paths == null || testpath == null) {
+			return false;
+		}
 		ObjectUtils.requireNaturalOrder(paths);
 
 		SakerPath higher = paths.higher(testpath);
@@ -2603,6 +2618,9 @@ public class SakerPathFiles {
 	 * @return <code>true</code> if the set contains the path or there is at least one subpath in it.
 	 */
 	public static boolean hasPathOrSubPath(NavigableSet<SakerPath> paths, SakerPath testpath) {
+		if (paths == null || testpath == null) {
+			return false;
+		}
 		ObjectUtils.requireNaturalOrder(paths);
 
 		SakerPath ceiling = paths.ceiling(testpath);
@@ -2617,9 +2635,12 @@ public class SakerPathFiles {
 	 * @param paths
 	 *            The paths.
 	 * @return A subset of the argument which only contains the relative paths of the argument.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
 	 * @see SakerPath#isRelative()
 	 */
-	public static NavigableSet<SakerPath> getPathSubSetRelatives(NavigableSet<SakerPath> paths) {
+	public static NavigableSet<SakerPath> getPathSubSetRelatives(NavigableSet<SakerPath> paths)
+			throws NullPointerException {
 		ObjectUtils.requireNaturalOrder(paths);
 
 		return paths.headSet(SakerPath.FIRST_ABSOLUTE_PATH, false);
@@ -2633,9 +2654,11 @@ public class SakerPathFiles {
 	 * @param paths
 	 *            The paths.
 	 * @return A subset of the argument which only contains the relative paths of the argument.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
 	 * @see SakerPath#isRelative()
 	 */
-	public static SortedSet<SakerPath> getPathSubSetRelatives(SortedSet<SakerPath> paths) {
+	public static SortedSet<SakerPath> getPathSubSetRelatives(SortedSet<SakerPath> paths) throws NullPointerException {
 		ObjectUtils.requireNaturalOrder(paths);
 
 		return paths.headSet(SakerPath.FIRST_ABSOLUTE_PATH);
@@ -2649,9 +2672,12 @@ public class SakerPathFiles {
 	 * @param paths
 	 *            The paths.
 	 * @return A subset of the argument which only contains the absolute paths of the argument.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
 	 * @see SakerPath#isAbsolute()
 	 */
-	public static NavigableSet<SakerPath> getPathSubSetAbsolutes(NavigableSet<SakerPath> paths) {
+	public static NavigableSet<SakerPath> getPathSubSetAbsolutes(NavigableSet<SakerPath> paths)
+			throws NullPointerException {
 		ObjectUtils.requireNaturalOrder(paths);
 
 		return paths.tailSet(SakerPath.FIRST_ABSOLUTE_PATH, false);
@@ -2667,9 +2693,12 @@ public class SakerPathFiles {
 	 * @param paths
 	 *            The path map.
 	 * @return A submap of the argument which only contains entries that are mapped to a relative path.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
 	 * @see SakerPath#isRelative()
 	 */
-	public static <V> NavigableMap<SakerPath, V> getPathSubMapRelatives(NavigableMap<SakerPath, V> paths) {
+	public static <V> NavigableMap<SakerPath, V> getPathSubMapRelatives(NavigableMap<SakerPath, V> paths)
+			throws NullPointerException {
 		ObjectUtils.requireNaturalOrder(paths);
 
 		return paths.headMap(SakerPath.FIRST_ABSOLUTE_PATH, false);
@@ -2685,9 +2714,12 @@ public class SakerPathFiles {
 	 * @param paths
 	 *            The path map.
 	 * @return A submap of the argument which only contains entries that are mapped to a absolute path.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
 	 * @see SakerPath#isAbsolute()
 	 */
-	public static <V> NavigableMap<SakerPath, V> getPathSubMapAbsolutes(NavigableMap<SakerPath, V> paths) {
+	public static <V> NavigableMap<SakerPath, V> getPathSubMapAbsolutes(NavigableMap<SakerPath, V> paths)
+			throws NullPointerException {
 		ObjectUtils.requireNaturalOrder(paths);
 
 		return paths.tailMap(SakerPath.FIRST_ABSOLUTE_PATH, false);
@@ -2707,10 +2739,13 @@ public class SakerPathFiles {
 	 *            <code>boolean</code> indicating whether to include the directory base path in the result subset or
 	 *            not.
 	 * @return The subset which only contains paths that start with the specified directory base path.
+	 * @throws NullPointerException
+	 *             If any of the arguments are <code>null</code>.
 	 */
 	public static NavigableSet<SakerPath> getPathSubSetDirectoryChildren(NavigableSet<SakerPath> paths,
-			SakerPath dirpath, boolean includedirectory) {
+			SakerPath dirpath, boolean includedirectory) throws NullPointerException {
 		ObjectUtils.requireNaturalOrder(paths);
+		Objects.requireNonNull(dirpath, "dir path");
 
 		return paths.subSet(dirpath, includedirectory, dirpath.nextSiblingPathInNaturalOrder(), false);
 	}
@@ -2730,10 +2765,13 @@ public class SakerPathFiles {
 	 *            <code>boolean</code> indicating whether to include the directory base path in the result subset or
 	 *            not.
 	 * @return The submap which only contains entries with keys that start with the specified directory base path.
+	 * @throws NullPointerException
+	 *             If any of the arguments are <code>null</code>.
 	 */
 	public static <V> NavigableMap<SakerPath, V> getPathSubMapDirectoryChildren(NavigableMap<SakerPath, V> paths,
-			SakerPath dirpath, boolean includedirectory) {
+			SakerPath dirpath, boolean includedirectory) throws NullPointerException {
 		ObjectUtils.requireNaturalOrder(paths);
+		Objects.requireNonNull(dirpath, "dir path");
 
 		return paths.subMap(dirpath, includedirectory, dirpath.nextSiblingPathInNaturalOrder(), false);
 	}
@@ -2756,10 +2794,14 @@ public class SakerPathFiles {
 	 *            <code>boolean</code> indicating whether to include the directory base path in the result subset or
 	 *            not.
 	 * @return The submap which only contains entries with keys that start with the specified directory base path.
+	 * @throws NullPointerException
+	 *             If any of the arguments are <code>null</code>.
 	 */
 	public static <V> ConcurrentNavigableMap<SakerPath, V> getPathSubMapDirectoryChildren(
-			ConcurrentNavigableMap<SakerPath, V> paths, SakerPath dirpath, boolean includedirectory) {
+			ConcurrentNavigableMap<SakerPath, V> paths, SakerPath dirpath, boolean includedirectory)
+			throws NullPointerException {
 		ObjectUtils.requireNaturalOrder(paths);
+		Objects.requireNonNull(dirpath, "dir path");
 
 		return paths.subMap(dirpath, includedirectory, dirpath.nextSiblingPathInNaturalOrder(), false);
 	}
@@ -2777,6 +2819,9 @@ public class SakerPathFiles {
 	 * @see SakerPath#getRoot()
 	 */
 	public static boolean hasDifferentRootedPaths(SortedSet<? extends SakerPath> paths) {
+		if (paths == null) {
+			return false;
+		}
 		ObjectUtils.requireNaturalOrder(paths);
 
 		if (paths.isEmpty()) {
@@ -2815,6 +2860,9 @@ public class SakerPathFiles {
 	 *             if not found.
 	 */
 	public static SakerPath getPathOrParent(NavigableSet<SakerPath> paths, SakerPath path) {
+		if (paths == null || path == null) {
+			return null;
+		}
 		ObjectUtils.requireNaturalOrder(paths);
 		requireAbsolutePath(path);
 
@@ -2851,6 +2899,9 @@ public class SakerPathFiles {
 	 *             <code>null</code> if not found.
 	 */
 	public static <V> Entry<SakerPath, V> getPathOrParentEntry(NavigableMap<SakerPath, V> paths, SakerPath path) {
+		if (paths == null || path == null) {
+			return null;
+		}
 		ObjectUtils.requireNaturalOrder(paths);
 		requireAbsolutePath(path);
 
@@ -2886,6 +2937,9 @@ public class SakerPathFiles {
 	 * @return <code>true</code>, if the path for the file is a direct child path of the directory.
 	 */
 	public static boolean isPathInDirectory(SakerPath directory, SakerPath file) {
+		if (directory == null || file == null) {
+			return false;
+		}
 		return file.startsWith(directory) && file.getNameCount() == directory.getNameCount() + 1;
 	}
 
@@ -2904,6 +2958,9 @@ public class SakerPathFiles {
 	 * @see SakerPath#isForwardRelative()
 	 */
 	public static boolean hasNonForwardRelative(SortedSet<SakerPath> paths) {
+		if (paths == null) {
+			return false;
+		}
 		ObjectUtils.requireNaturalOrder(paths);
 
 		if (paths.isEmpty()) {
@@ -2938,6 +2995,9 @@ public class SakerPathFiles {
 	 * @see SakerPath#isForwardRelative()
 	 */
 	public static boolean isOnlyForwardRelatives(SortedSet<SakerPath> paths) {
+		if (paths == null) {
+			return false;
+		}
 		ObjectUtils.requireNaturalOrder(paths);
 
 		if (paths.isEmpty()) {

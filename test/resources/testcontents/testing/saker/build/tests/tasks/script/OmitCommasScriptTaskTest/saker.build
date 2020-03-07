@@ -1,0 +1,56 @@
+build(
+	out o1 = 1
+	out o2 = 2
+	out o3 = 3 # comment
+	out o4 = 4, out o5 = 5
+	out o6 = 6 ###
+		mlinecomment
+	###
+	out o7 = 7 ### ###
+	out o8 = 8 ###
+		mline2
+	###, out o9 = 9
+	out o10 = 10
+	
+	out i1 = include(
+		inc
+		i1: 1
+		i2: 2, i3: 3
+		i4: 4
+	)[o]
+	
+	out l1 = [
+		1
+		2, 3
+		4
+	]
+	out m1 = {
+		k1: v1
+		k2: v2, k3: v3,
+		k4: v4
+	}
+) {
+	foreach $item in $l1
+		with 
+			$loc1 = $item
+			$loc2 = $item + 2, $loc3 = $item * 2
+			$loc4
+		{
+		$loc4 = $item / 2
+		print("{$loc1} {$loc2} {$loc3} {$loc4} {$item}")
+	}
+}
+
+inc(
+	out o = x
+	
+	in i1
+	in i2
+	in i3
+	in i4
+) {
+	print($i1)
+	print($i2)
+	print($i3)
+	print($i4)
+}

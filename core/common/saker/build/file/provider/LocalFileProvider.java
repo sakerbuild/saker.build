@@ -1815,6 +1815,16 @@ public final class LocalFileProvider implements SakerFileProvider {
 	}
 
 	/**
+	 * @see #writeTo(Path, ByteSink, OpenOption...)
+	 */
+	//TODO doc: since 0.8.10
+	public long writeToStream(SakerPath path, OutputStream os, OpenOption... openoptions) throws IOException {
+		Path ppath = toRealPath(path);
+
+		return writeToStreamImpl(ppath, os, openoptions);
+	}
+
+	/**
 	 * @see #writeToFile(ByteSource, SakerPath, OpenOption...)
 	 */
 	public long writeToFile(InputStream is, Path path, OpenOption... openoptions) throws IOException {

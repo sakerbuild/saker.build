@@ -132,8 +132,9 @@ public class WildcardTest extends SakerTestCase {
 		assertIncludes("**", "bd:/");
 		assertIncludes("**", "bd:/folder");
 
-		assertIncludes("dir/**", "dir/a");
 		assertIncludes("dir/**", "dir");
+		assertIncludes("dir/**", "dir/a");
+		assertIncludes("dir/**", "dir/a/b");
 		assertFalse(WildcardPath.valueOf("dir/**/*").includes(SakerPath.valueOf("dir")));
 
 		assertIncludes("**/*folder*/**", "folder");
