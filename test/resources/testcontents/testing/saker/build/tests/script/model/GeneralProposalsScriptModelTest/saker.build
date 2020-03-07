@@ -5,6 +5,13 @@ example.task(
 		
 	},
 )
+# to test that proposals work after entry without comma
+example.task(
+	MapParam1: {
+		EnumField5: FIRST
+		
+	},
+)
 example.task(
 	EnumParam1: F,
 )

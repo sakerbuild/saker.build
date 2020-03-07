@@ -38,6 +38,12 @@ public class GeneralProposalsScriptModelTest extends ScriptModelTestCase {
 		assertProposals(model, endIndexOf(filedata, "EnumField5: ,"))
 				.assertPresentOrder("Field1", "Field2", "ListField4", "MapField3").assertNotPresent("EnumField5");
 
+		assertProposals(model, endIndexOf(filedata, "EnumField5: ,\r\n"))
+				.assertPresentOrder("Field1", "Field2", "ListField4", "MapField3").assertNotPresent("EnumField5");
+
+		assertProposals(model, endIndexOf(filedata, "EnumField5: FIRST\r\n"))
+				.assertPresentOrder("Field1", "Field2", "ListField4", "MapField3").assertNotPresent("EnumField5");
+
 		assertProposals(model, endIndexOf(filedata, "$taskres[")).assertPresentDisplayType("RetField1", T_FIELD)
 				.assertNotPresent("RetField2");
 		assertProposals(model, endIndexOf(filedata, "$taskres[][")).assertPresentDisplayType("RetField2", T_FIELD)
