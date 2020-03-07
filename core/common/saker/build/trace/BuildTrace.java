@@ -118,6 +118,35 @@ public final class BuildTrace {
 	 */
 	public static final String CLASSIFICATION_CONFIGURATION = "configuration";
 
+	/**
+	 * Classification representing a task that performs transformation operations.
+	 * <p>
+	 * The tasks which are classified as transformation tasks serve the purpose of transforming various information in
+	 * other form. In general, they are similar to {@linkplain #CLASSIFICATION_CONFIGURATION configuration tasks}, but
+	 * they can perform longer running operations in cases where they need to.
+	 * <p>
+	 * Some examples for transformation tasks are:
+	 * <ul>
+	 * <li>Tasks which extract some files from an archive.</li>
+	 * <li>Task that constructs a file tree in the required format based on some inputs.</li>
+	 * <li>Tasks that convert files or other information to a different encoding or format. (E.g. convert JSON to
+	 * XML)</li>
+	 * </ul>
+	 * In general transformation tasks don't perform compilations, or overall data validations, but rather change the
+	 * representation of the data to a format that can be consumed in a specific way.
+	 * <p>
+	 * Transformation tasks are usually not displayed in the build trace, unless they throw exceptions or emit warnings.
+	 * <p>
+	 * Note that tasks that derive resources based on their inputs, or perform meaningful operations on them are
+	 * recommended to be classified as {@linkplain #CLASSIFICATION_WORKER worker tasks}. E.g. a task that creates a ZIP
+	 * archive based on its inputs should be classfied as worker task. However, if the ZIP is created for the sole
+	 * purpose of consuming by another task, then it should be a transformation task.
+	 * 
+	 * @see #classifyTask(String)
+	 * @since 0.8.10
+	 */
+	public static final String CLASSIFICATION_TRANSFORMATION = "transformation";
+
 	private BuildTrace() {
 		throw new UnsupportedOperationException();
 	}
