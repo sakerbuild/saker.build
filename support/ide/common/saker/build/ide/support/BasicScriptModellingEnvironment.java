@@ -223,7 +223,10 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 				installDirectoryWatcher(fp, path, watcher.watchers);
 			} else if (attrs.isRegularFile()) {
 				//construct the model my getting it
-				getModelLocked(path);
+				SpawnedModel model = getModelLocked(path);
+				if (model != null) {
+					model.model.invalidateModel();
+				}
 			}
 		} catch (IOException | RMIRuntimeException e) {
 			//file not found

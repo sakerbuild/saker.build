@@ -146,7 +146,7 @@ public final class SakerIDEProject {
 
 	public static final String DEFAULT_BUILD_FILE_NAME = "saker.build";
 	private static final String CONFIG_FILE_ROOT_OBJECT_NAME = "saker.build.ide.project.config";
-	private static final String PROPERTIES_FILE_NAME = "." + CONFIG_FILE_ROOT_OBJECT_NAME;
+	public static final String PROPERTIES_FILE_NAME = "." + CONFIG_FILE_ROOT_OBJECT_NAME;
 
 	private static final String IDE_CONFIG_FILE_ROOT_OBJECT_NAME = "saker.build.ideconfigs";
 	private static final String IDE_CONFIG_FILE_NAME = "." + IDE_CONFIG_FILE_ROOT_OBJECT_NAME;

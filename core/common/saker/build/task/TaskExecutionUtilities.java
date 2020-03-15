@@ -1482,6 +1482,12 @@ public interface TaskExecutionUtilities {
 	 * <p>
 	 * If the file at the given path is a directory, a {@link SakerDirectory} instance will be returned that contains
 	 * all the files which are present in the given directory. (The directory may be lazily populated.)
+	 * <p>
+	 * Note that we recommend using {@link #createProviderPathFile(String, ProviderHolderPathKey, ContentDescriptor)}
+	 * when when creating {@link SakerFile SakerFiles} for externally modified files. You should specify your own
+	 * content descriptor for the modified file as in case where the file modification times are used to detect file
+	 * changes, some changes may be unnoticed on file systems that have larger granularity. (E.g. if the file
+	 * modification times are stored as seconds.)
 	 * 
 	 * @param name
 	 *            The name to create the file with.

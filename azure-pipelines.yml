@@ -30,10 +30,9 @@ strategy:
 steps:
 - script: curl https://api.nest.saker.build/bundle/download/saker.build-v$(curl -s https://mirror.nest.saker.build/badges/saker.build/latest.txt) -o saker.build.jar
   displayName: 'Download saker.build'
-- script: |
-    set -e
-    curl -s https://gist.githubusercontent.com/Sipkab/1505a8659af20003ae09295e99d3cba3/raw/azure_ubuntu_jdksetup_variables.sh -o /tmp/azure_ubuntu_jdksetup_variables.sh
-    bash /tmp/azure_ubuntu_jdksetup_variables.sh $(J_JDKS)
+- script: curl -s https://gist.githubusercontent.com/Sipkab/1505a8659af20003ae09295e99d3cba3/raw/azure_ubuntu_jdksetup_variables.sh -o /tmp/azure_ubuntu_jdksetup_variables.sh
+  displayName: 'Download JDK setup script'
+- script: bash /tmp/azure_ubuntu_jdksetup_variables.sh $(J_JDKS)
   displayName: 'Setup JDKs'
 - script: |
     java -jar saker.build.jar -bd build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64)" -trace pwd://build/build_test.trace "testjava$(J_JAVA_MAJOR)"

@@ -73,7 +73,7 @@ public final class SakerIDEPlugin implements Closeable {
 	}
 
 	private static final String CONFIG_FILE_ROOT_OBJECT_NAME = "saker.build.ide.plugin.config";
-	private static final String IDE_PLUGIN_PROPERTIES_FILE_NAME = "." + CONFIG_FILE_ROOT_OBJECT_NAME;
+	public static final String IDE_PLUGIN_PROPERTIES_FILE_NAME = "." + CONFIG_FILE_ROOT_OBJECT_NAME;
 
 	private Path pluginDirectory;
 	private Path sakerJarPath;
