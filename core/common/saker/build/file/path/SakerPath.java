@@ -184,6 +184,10 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 		if (isSlashCharacter(lastchar)) {
 			//remove the trailing slash
 			checkroot = root.substring(0, len - 1);
+			if (checkroot.length() < 2) {
+				//the root must have at least 2 chars, one letter, one :
+				throw new InvalidPathFormatException("Invalid root: " + root);
+			}
 		} else {
 			checkroot = root;
 		}
@@ -1128,6 +1132,9 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 	 */
 	public SakerPath replaceRoot(String newroot) {
 		if (newroot == null) {
+			if (this.root == null) {
+				return this;
+			}
 			return new SakerPath(null, names);
 		}
 		return new SakerPath(normalizeRoot(newroot), names);

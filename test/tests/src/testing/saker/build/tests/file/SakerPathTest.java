@@ -157,6 +157,11 @@ public class SakerPathTest extends SakerTestCase {
 
 		assertException(IllegalArgumentException.class,
 				() -> SakerPath.valueOf("some/path").append(SakerPath.valueOf("..")));
+
+		assertFalse(SakerPath.isValidRootName("\\\\"));
+		assertException(IllegalArgumentException.class, () -> SakerPath.normalizeRoot("\\\\"));
+		assertFalse(SakerPath.isValidRootName("//"));
+		assertException(IllegalArgumentException.class, () -> SakerPath.normalizeRoot("//"));
 	}
 
 	private static void testPathNormalization() throws Throwable {
