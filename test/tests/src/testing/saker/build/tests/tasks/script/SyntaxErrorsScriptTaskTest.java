@@ -38,6 +38,8 @@ public class SyntaxErrorsScriptTaskTest extends CollectingMetricEnvironmentTestC
 
 		res = environment.run(mainbuildfile, "missingif", parameters, project);
 		ScriptTestUtils.assertHasScriptTrace(res.getPositionedExceptionView(), mainbuildfile, 9, 4, 1);
+		
+		runScriptTask("build", PATH_WORKING_DIRECTORY.resolve("semicolons.build"));
 
 	}
 
