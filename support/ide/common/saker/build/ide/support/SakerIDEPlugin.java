@@ -384,7 +384,7 @@ public final class SakerIDEPlugin implements Closeable {
 		return ImmutableUtils.unmodifiableMap(result);
 	}
 
-	public static Set<? extends Entry<String, String>> unmodifiablizeEntrySet(
+	public static Set<? extends Entry<String, String>> makeImmutableEntrySet(
 			Set<? extends Entry<String, String>> entries) {
 		if (entries == null) {
 			return null;

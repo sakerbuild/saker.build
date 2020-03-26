@@ -17,12 +17,12 @@ package saker.build.ide.support.properties;
 
 import java.util.Collections;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import saker.build.ide.support.SakerIDEPlugin;
 import saker.build.ide.support.SakerIDEProject;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
-import saker.build.thirdparty.saker.util.ObjectUtils;
 
 public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 	private static final SimpleIDEProjectProperties EMPTY = new SimpleIDEProjectProperties();
@@ -41,12 +41,12 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		DEFAULTS_INSTANCE = defaultprops;
 	}
 
-	protected Set<RepositoryIDEProperty> repositories;
-	protected Set<? extends Map.Entry<String, String>> userParameters;
-	protected Set<DaemonConnectionIDEProperty> connections;
-	protected Set<ProviderMountIDEProperty> mounts;
-	protected Set<ScriptConfigurationIDEProperty> scriptConfigurations;
-	protected Set<String> scriptModellingExclusions;
+	protected Set<RepositoryIDEProperty> repositories = Collections.emptySet();
+	protected Set<? extends Map.Entry<String, String>> userParameters = Collections.emptySet();
+	protected Set<DaemonConnectionIDEProperty> connections = Collections.emptySet();
+	protected Set<ProviderMountIDEProperty> mounts = Collections.emptySet();
+	protected Set<ScriptConfigurationIDEProperty> scriptConfigurations = Collections.emptySet();
+	protected Set<String> scriptModellingExclusions = Collections.emptySet();
 
 	protected String workingDirectory;
 	protected String buildDirectory;
@@ -56,7 +56,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 	protected boolean requireTaskIDEConfiguration;
 
 	protected MountPathIDEProperty buildTraceOutput;
-	private boolean buildTraceEmbedArtifacts;
+	protected boolean buildTraceEmbedArtifacts;
 
 	public static IDEProjectProperties empty() {
 		return EMPTY;
@@ -74,12 +74,12 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 	}
 
 	private SimpleIDEProjectProperties(IDEProjectProperties copy) {
-		this.repositories = ObjectUtils.cloneLinkedHashSet(copy.getRepositories());
-		this.userParameters = SakerIDEPlugin.unmodifiablizeEntrySet(copy.getUserParameters());
-		this.connections = ObjectUtils.cloneLinkedHashSet(copy.getConnections());
-		this.mounts = ObjectUtils.cloneLinkedHashSet(copy.getMounts());
-		this.scriptConfigurations = ObjectUtils.cloneLinkedHashSet(copy.getScriptConfigurations());
-		this.scriptModellingExclusions = ObjectUtils.cloneTreeSet(copy.getScriptModellingExclusions());
+		this.repositories = ImmutableUtils.makeImmutableLinkedHashSet(copy.getRepositories());
+		this.userParameters = SakerIDEPlugin.makeImmutableEntrySet(copy.getUserParameters());
+		this.connections = ImmutableUtils.makeImmutableLinkedHashSet(copy.getConnections());
+		this.mounts = ImmutableUtils.makeImmutableLinkedHashSet(copy.getMounts());
+		this.scriptConfigurations = ImmutableUtils.makeImmutableLinkedHashSet(copy.getScriptConfigurations());
+		this.scriptModellingExclusions = ImmutableUtils.makeImmutableNavigableSet(copy.getScriptModellingExclusions());
 
 		this.workingDirectory = copy.getWorkingDirectory();
 		this.buildDirectory = copy.getBuildDirectory();
@@ -88,15 +88,6 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		this.requireTaskIDEConfiguration = copy.isRequireTaskIDEConfiguration();
 		this.buildTraceOutput = copy.getBuildTraceOutput();
 		this.buildTraceEmbedArtifacts = copy.isBuildTraceEmbedArtifacts();
-	}
-
-	private final void unmodifiablize() {
-		this.repositories = ImmutableUtils.unmodifiableSet(this.repositories);
-		this.userParameters = ImmutableUtils.unmodifiableSet(this.userParameters);
-		this.connections = ImmutableUtils.unmodifiableSet(this.connections);
-		this.mounts = ImmutableUtils.unmodifiableSet(this.mounts);
-		this.scriptConfigurations = ImmutableUtils.unmodifiableSet(this.scriptConfigurations);
-		this.scriptModellingExclusions = ImmutableUtils.unmodifiableSet(this.scriptModellingExclusions);
 	}
 
 	@Override
@@ -260,7 +251,8 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		return new Builder();
 	}
 
-	public static Builder builder(IDEProjectProperties copy) {
+	public static Builder builder(IDEProjectProperties copy) throws NullPointerException {
+		Objects.requireNonNull(copy, "copy");
 		return new Builder(copy);
 	}
 
@@ -276,27 +268,31 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		}
 
 		public Builder setRepositories(Set<? extends RepositoryIDEProperty> repositories) {
-			result.repositories = ObjectUtils.cloneLinkedHashSet(repositories);
+			result.repositories = repositories == null ? Collections.emptySet()
+					: ImmutableUtils.makeImmutableLinkedHashSet(repositories);
 			return this;
 		}
 
 		public Builder setUserParameters(Set<? extends Map.Entry<String, String>> userParameters) {
-			result.userParameters = SakerIDEPlugin.unmodifiablizeEntrySet(userParameters);
+			result.userParameters = userParameters == null ? Collections.emptySet()
+					: SakerIDEPlugin.makeImmutableEntrySet(userParameters);
 			return this;
 		}
 
 		public Builder setConnections(Set<? extends DaemonConnectionIDEProperty> connections) {
-			result.connections = ObjectUtils.cloneLinkedHashSet(connections);
+			result.connections = connections == null ? Collections.emptySet()
+					: ImmutableUtils.makeImmutableLinkedHashSet(connections);
 			return this;
 		}
 
 		public Builder setMounts(Set<? extends ProviderMountIDEProperty> mounts) {
-			result.mounts = ObjectUtils.cloneLinkedHashSet(mounts);
+			result.mounts = mounts == null ? Collections.emptySet() : ImmutableUtils.makeImmutableLinkedHashSet(mounts);
 			return this;
 		}
 
 		public Builder setScriptConfigurations(Set<? extends ScriptConfigurationIDEProperty> scriptConfigurations) {
-			result.scriptConfigurations = ObjectUtils.cloneLinkedHashSet(scriptConfigurations);
+			result.scriptConfigurations = scriptConfigurations == null ? Collections.emptySet()
+					: ImmutableUtils.makeImmutableLinkedHashSet(scriptConfigurations);
 			return this;
 		}
 
@@ -321,7 +317,8 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		}
 
 		public Builder setScriptModellingExclusions(Set<String> scriptModellingExclusions) {
-			result.scriptModellingExclusions = scriptModellingExclusions;
+			result.scriptModellingExclusions = scriptModellingExclusions == null ? Collections.emptySet()
+					: ImmutableUtils.makeImmutableNavigableSet(scriptModellingExclusions);
 			return this;
 		}
 
@@ -342,15 +339,15 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 
 		public IDEProjectProperties build() {
 			SimpleIDEProjectProperties res = this.result;
+			if (res == null) {
+				throw new IllegalStateException("Builder already used.");
+			}
 			this.result = null;
-			res.unmodifiablize();
 			return res;
 		}
 
 		public IDEProjectProperties buildReuse() {
-			SimpleIDEProjectProperties res = new SimpleIDEProjectProperties(this.result);
-			res.unmodifiablize();
-			return res;
+			return new SimpleIDEProjectProperties(this.result);
 		}
 	}
 

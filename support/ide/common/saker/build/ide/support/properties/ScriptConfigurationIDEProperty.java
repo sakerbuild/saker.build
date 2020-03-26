@@ -32,7 +32,7 @@ public class ScriptConfigurationIDEProperty {
 		this.classPathLocation = classPathLocation;
 		this.serviceEnumerator = serviceEnumerator;
 		this.scriptOptions = scriptOptions == null ? Collections.emptySet()
-				: SakerIDEPlugin.unmodifiablizeEntrySet(scriptOptions);
+				: SakerIDEPlugin.makeImmutableEntrySet(scriptOptions);
 		this.scriptsWildcard = scriptsWildcard;
 	}
 

@@ -16,12 +16,35 @@
 package saker.build.ide.support;
 
 import java.util.Set;
+import java.util.function.Function;
 
 import saker.build.file.path.SakerPath;
 import saker.build.file.path.WildcardPath;
+import saker.build.ide.support.properties.BuiltinScriptingLanguageClassPathLocationIDEProperty;
+import saker.build.ide.support.properties.BuiltinScriptingLanguageServiceEnumeratorIDEProperty;
+import saker.build.ide.support.properties.ClassPathLocationIDEProperty;
+import saker.build.ide.support.properties.ClassPathServiceEnumeratorIDEProperty;
+import saker.build.ide.support.properties.DaemonConnectionIDEProperty;
+import saker.build.ide.support.properties.HttpUrlJarClassPathLocationIDEProperty;
 import saker.build.ide.support.properties.IDEProjectProperties;
+import saker.build.ide.support.properties.JarClassPathLocationIDEProperty;
+import saker.build.ide.support.properties.MountPathIDEProperty;
+import saker.build.ide.support.properties.NamedClassClassPathServiceEnumeratorIDEProperty;
+import saker.build.ide.support.properties.NestRepositoryClassPathLocationIDEProperty;
+import saker.build.ide.support.properties.NestRepositoryFactoryServiceEnumeratorIDEProperty;
+import saker.build.ide.support.properties.PropertiesValidationErrorResult;
 import saker.build.ide.support.properties.ProviderMountIDEProperty;
+import saker.build.ide.support.properties.RepositoryIDEProperty;
 import saker.build.ide.support.properties.ScriptConfigurationIDEProperty;
+import saker.build.ide.support.properties.ServiceLoaderClassPathEnumeratorIDEProperty;
+import saker.build.ide.support.ui.wizard.ClassPathTypeChooserSakerWizardPage;
+import saker.build.ide.support.ui.wizard.RepositoryIdentifierSakerWizardPage;
+import saker.build.ide.support.ui.wizard.SakerWizardManager;
+import saker.build.ide.support.ui.wizard.SakerWizardPage;
+import saker.build.ide.support.ui.wizard.ScriptConfigurationSakerWizardPage;
+import saker.build.ide.support.ui.wizard.ServiceEnumeratorRedirectingSakerWizardPage;
+import saker.build.ide.support.ui.wizard.WizardPageHistoryLink;
+import saker.build.runtime.params.NestRepositoryClassPathLocation;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 
 public class SakerIDESupportUtils {
@@ -57,6 +80,9 @@ public class SakerIDESupportUtils {
 	}
 
 	public static boolean isScriptModellingConfigurationAppliesTo(SakerPath execpath, IDEProjectProperties properties) {
+		if (properties == null || execpath == null) {
+			return false;
+		}
 		Set<? extends ScriptConfigurationIDEProperty> scriptconfigs = properties.getScriptConfigurations();
 		if (ObjectUtils.isNullOrEmpty(scriptconfigs)) {
 			return false;
@@ -198,6 +224,17 @@ public class SakerIDESupportUtils {
 		return null;
 	}
 
+	public static String normalizePath(String path) {
+		if (path == null) {
+			return null;
+		}
+		try {
+			return SakerPath.valueOf(path).toString();
+		} catch (IllegalArgumentException e) {
+			return path;
+		}
+	}
+
 	public static SakerPath tryParsePath(String path) {
 		if (path == null) {
 			return null;
@@ -206,6 +243,566 @@ public class SakerIDESupportUtils {
 			return SakerPath.valueOf(path);
 		} catch (IllegalArgumentException e) {
 			return null;
+		}
+	}
+
+	public static String tryNormalizePathRoot(String root) {
+		if (root == null) {
+			return null;
+		}
+		try {
+			return SakerPath.normalizeRoot(root);
+		} catch (IllegalArgumentException e) {
+			return root;
+		}
+	}
+
+	public static DaemonConnectionIDEProperty getConnectionPropertyWithName(
+			Iterable<? extends DaemonConnectionIDEProperty> connections, String name) {
+		if (ObjectUtils.isNullOrEmpty(connections) || ObjectUtils.isNullOrEmpty(name)) {
+			return null;
+		}
+		for (DaemonConnectionIDEProperty prop : connections) {
+			if (name.equals(prop.getConnectionName())) {
+				return prop;
+			}
+		}
+		return null;
+	}
+
+	public static String createValidationErrorMessage(PropertiesValidationErrorResult err) {
+		try {
+			return createValidationErrorMessageImpl(err);
+		} catch (Exception e) {
+			return "Failed to construct error message: " + e;
+		}
+	}
+
+	public static String classPathLocationToLabel(ClassPathLocationIDEProperty property) {
+		if (property == null) {
+			return null;
+		}
+		return property.accept(ClassPathLocationToStringVisitor.INSTANCE, null);
+	}
+
+	public static String serviceEnumeratorToLabel(ClassPathServiceEnumeratorIDEProperty property) {
+		if (property == null) {
+			return null;
+		}
+		return property.accept(ClassPathServiceEnumeratorToStringVisitor.INSTANCE, null);
+	}
+
+	public static String serviceEnumeratorToTitleLabel(ClassPathServiceEnumeratorIDEProperty property) {
+		if (property == null) {
+			return null;
+		}
+		return property.accept(ClassPathServiceEnumeratorTitleVisitor.INSTANCE, null);
+	}
+
+	public static final String WIZARD_CONFIGURATION_EDIT_CLASSPATH = "saker.wizard.config.edit.classpath";
+	public static final String WIZARD_CONFIGURATION_EDIT_SERVICE = "saker.wizard.config.edit.service";
+	public static final String WIZARD_CONFIGURATION_EDIT_SCRIPTCONFIG = "saker.wizard.config.edit.scriptconfig";
+	public static final String WIZARD_CONFIGURATION_EDIT_REPOSITORYID = "saker.wizard.config.edit.repositoryid";
+
+	public static final String WIZARDPAGE_CONFIGURATION_EDIT_INITIAL_CLASSPATH = "saker.wizardpage.config.edit.init.classpath";
+	public static final String WIZARDPAGE_CONFIGURATION_EDIT_INITIAL_SERVICE = "saker.wizardpage.config.edit.init.service";
+	public static final String WIZARDPAGE_CONFIGURATION_EDIT_INITIAL_SCRIPTCONFIG = "saker.wizardpage.config.edit.init.scriptconfig";
+	public static final String WIZARDPAGE_CONFIGURATION_EDIT_INITIAL_REPOSITORYID = "saker.wizardpage.config.edit.init.repositoryid";
+
+	public static void editScriptConfigurationWithWizardManager(SakerWizardManager<?> manager,
+			ScriptConfigurationIDEProperty property) {
+		if (property == null) {
+			return;
+		}
+		manager.setConfiguration(WIZARD_CONFIGURATION_EDIT_CLASSPATH, property.getClassPathLocation());
+		manager.setConfiguration(WIZARD_CONFIGURATION_EDIT_SERVICE, property.getServiceEnumerator());
+		manager.setConfiguration(WIZARD_CONFIGURATION_EDIT_SCRIPTCONFIG, property);
+	}
+
+	public static void editRepositoryConfigurationWithWizardManager(SakerWizardManager<?> manager,
+			RepositoryIDEProperty property) {
+		if (property == null) {
+			return;
+		}
+		manager.setConfiguration(WIZARD_CONFIGURATION_EDIT_CLASSPATH, property.getClassPathLocation());
+		manager.setConfiguration(WIZARD_CONFIGURATION_EDIT_SERVICE, property.getServiceEnumerator());
+		manager.setConfiguration(WIZARD_CONFIGURATION_EDIT_REPOSITORYID, property.getRepositoryIdentifier());
+	}
+
+	public static SakerWizardPage createScriptConfigurationWizardSteps(
+			SakerWizardManager<? super SakerWizardPage> manager) {
+		ClassPathTypeChooserSakerWizardPage typechooser = manager
+				.getWizardPage(ClassPathTypeChooserSakerWizardPage.class);
+		ServiceEnumeratorRedirectingSakerWizardPage servicenumeratorpage = manager
+				.getWizardPage(ServiceEnumeratorRedirectingSakerWizardPage.class);
+		ScriptConfigurationSakerWizardPage scriptconfigpage = manager
+				.getWizardPage(ScriptConfigurationSakerWizardPage.class);
+
+		typechooser.setNextPage(servicenumeratorpage);
+		servicenumeratorpage.setNextPage(scriptconfigpage);
+
+		typechooser.setPageConfiguration(WIZARDPAGE_CONFIGURATION_EDIT_INITIAL_CLASSPATH, true);
+		servicenumeratorpage.setPageConfiguration(WIZARDPAGE_CONFIGURATION_EDIT_INITIAL_SERVICE, true);
+		scriptconfigpage.setPageConfiguration(WIZARDPAGE_CONFIGURATION_EDIT_INITIAL_SCRIPTCONFIG, true);
+
+		return typechooser;
+	}
+
+	public static SakerWizardPage createRepositoryConfigurationWizardSteps(
+			SakerWizardManager<? super SakerWizardPage> manager) {
+		ClassPathTypeChooserSakerWizardPage typechooser = manager
+				.getWizardPage(ClassPathTypeChooserSakerWizardPage.class);
+		ServiceEnumeratorRedirectingSakerWizardPage servicenumeratorpage = manager
+				.getWizardPage(ServiceEnumeratorRedirectingSakerWizardPage.class);
+		RepositoryIdentifierSakerWizardPage identifierpage = manager
+				.getWizardPage(RepositoryIdentifierSakerWizardPage.class);
+
+		typechooser.setNextPage(servicenumeratorpage);
+		servicenumeratorpage.setNextPage(identifierpage);
+
+		typechooser.setPageConfiguration(WIZARDPAGE_CONFIGURATION_EDIT_INITIAL_CLASSPATH, true);
+		servicenumeratorpage.setPageConfiguration(WIZARDPAGE_CONFIGURATION_EDIT_INITIAL_SERVICE, true);
+		identifierpage.setPageConfiguration(WIZARDPAGE_CONFIGURATION_EDIT_INITIAL_REPOSITORYID, true);
+
+		return typechooser;
+	}
+
+	public static <T> T iterateOverWizardPages(SakerWizardPage page,
+			Function<? super SakerWizardPage, ? extends T> consumer) {
+		WizardPageHistoryLink historylink = null;
+		while (page != null) {
+			T res = consumer.apply(page);
+			if (res != null) {
+				return res;
+			}
+			SakerWizardPage np = page.getNextPage();
+			if (np == null) {
+				break;
+			}
+			historylink = WizardPageHistoryLink.next(historylink, page);
+			while (true) {
+				SakerWizardPage redirected = np.redirectPage(historylink);
+				if (redirected == null) {
+					break;
+				}
+				np = redirected;
+			}
+			page = np;
+		}
+		return null;
+	}
+
+	public static SakerWizardPage findEditorInitialPageWithPriorities(SakerWizardPage startpage,
+			String... initialpageconfigids) {
+		if (ObjectUtils.isNullOrEmpty(initialpageconfigids)) {
+			return null;
+		}
+		SakerWizardPage[] result = new SakerWizardPage[initialpageconfigids.length];
+		SakerWizardPage found = iterateOverWizardPages(startpage, page -> {
+			for (int i = 0; i < initialpageconfigids.length; i++) {
+				String confid = initialpageconfigids[i];
+				if (confid == null) {
+					continue;
+				}
+				if (page.getPageConfiguration(confid) != null) {
+					if (i == 0) {
+						return page;
+					}
+					result[i] = page;
+				}
+			}
+			return null;
+		});
+		if (found != null) {
+			return found;
+		}
+		//we can start from 1 as if we would've found the first, then it would've been returned already
+		for (int i = 1; i < result.length; i++) {
+			SakerWizardPage rp = result[i];
+			if (rp != null) {
+				return rp;
+			}
+		}
+		return null;
+	}
+
+	private static class ClassPathLocationToStringVisitor
+			implements ClassPathLocationIDEProperty.Visitor<String, Void> {
+		public static final ClassPathLocationToStringVisitor INSTANCE = new ClassPathLocationToStringVisitor();
+
+		@Override
+		public String visit(JarClassPathLocationIDEProperty property, Void param) {
+			String connname = property.getConnectionName();
+			if (!ObjectUtils.isNullOrEmpty(connname)) {
+				if (SakerIDEProject.MOUNT_ENDPOINT_LOCAL_FILESYSTEM.equals(connname)
+						|| SakerIDEProject.MOUNT_ENDPOINT_PROJECT_RELATIVE.equals(connname)) {
+					return ObjectUtils.nullDefault(normalizePath(property.getJarPath()), "");
+				}
+				return connname + ":/" + normalizePath(property.getJarPath());
+			}
+			return ObjectUtils.nullDefault(normalizePath(property.getJarPath()), "");
+		}
+
+		@Override
+		public String visit(HttpUrlJarClassPathLocationIDEProperty property, Void param) {
+			return ObjectUtils.nullDefault(property.getUrl(), "");
+		}
+
+		@Override
+		public String visit(BuiltinScriptingLanguageClassPathLocationIDEProperty property, Void param) {
+			return "SakerScript";
+		}
+
+		@Override
+		public String visit(NestRepositoryClassPathLocationIDEProperty property, Void param) {
+			String ver = property.getVersion();
+			if (!ObjectUtils.isNullOrEmpty(ver)) {
+				return "Nest repository v" + ver;
+			}
+			return "Nest repository v" + NestRepositoryClassPathLocation.DEFAULT_VERSION + " (default)";
+		}
+	}
+
+	private static class ClassPathServiceEnumeratorTitleVisitor
+			implements ClassPathServiceEnumeratorIDEProperty.Visitor<String, Void> {
+		public static final ClassPathServiceEnumeratorTitleVisitor INSTANCE = new ClassPathServiceEnumeratorTitleVisitor();
+
+		@Override
+		public String visit(ServiceLoaderClassPathEnumeratorIDEProperty property, Void param) {
+			return "Service";
+		}
+
+		@Override
+		public String visit(NamedClassClassPathServiceEnumeratorIDEProperty property, Void param) {
+			return "Class name";
+		}
+
+		@Override
+		public String visit(BuiltinScriptingLanguageServiceEnumeratorIDEProperty property, Void param) {
+			return "Service relation";
+		}
+
+		@Override
+		public String visit(NestRepositoryFactoryServiceEnumeratorIDEProperty property, Void param) {
+			return "Service relation";
+		}
+	}
+
+	private static class ClassPathServiceEnumeratorToStringVisitor
+			implements ClassPathServiceEnumeratorIDEProperty.Visitor<String, Void> {
+		public static final ClassPathServiceEnumeratorToStringVisitor INSTANCE = new ClassPathServiceEnumeratorToStringVisitor();
+
+		@Override
+		public String visit(ServiceLoaderClassPathEnumeratorIDEProperty property, Void param) {
+			return property.getServiceClass();
+		}
+
+		@Override
+		public String visit(NamedClassClassPathServiceEnumeratorIDEProperty property, Void param) {
+			return property.getClassName();
+		}
+
+		@Override
+		public String visit(BuiltinScriptingLanguageServiceEnumeratorIDEProperty property, Void param) {
+			return "SakerScript";
+		}
+
+		@Override
+		public String visit(NestRepositoryFactoryServiceEnumeratorIDEProperty property, Void param) {
+			return "Nest repository";
+		}
+	}
+
+	private static String createValidationErrorMessageImpl(PropertiesValidationErrorResult err) {
+		String type = err.errorType;
+		switch (type) {
+			case SakerIDEProject.NS_DAEMON_CONNECTION + SakerIDEProject.C_ADDRESS + SakerIDEProject.E_MISSING: {
+				DaemonConnectionIDEProperty property = (DaemonConnectionIDEProperty) err.relatedSubject;
+				String cname = property.getConnectionName();
+				return "Daemon connection address is missing." + (cname == null ? "" : " (" + cname + ")");
+			}
+			case SakerIDEProject.NS_DAEMON_CONNECTION + SakerIDEProject.C_NAME + SakerIDEProject.E_MISSING: {
+				DaemonConnectionIDEProperty property = (DaemonConnectionIDEProperty) err.relatedSubject;
+				String address = property.getNetAddress();
+				return "Daemon connection name is missing." + (address == null ? "" : " (" + address + ")");
+			}
+			case SakerIDEProject.NS_DAEMON_CONNECTION + SakerIDEProject.C_NAME + SakerIDEProject.E_RESERVED: {
+				DaemonConnectionIDEProperty property = (DaemonConnectionIDEProperty) err.relatedSubject;
+				return "Daemon connection name is reserved: " + property.getConnectionName();
+			}
+			case SakerIDEProject.NS_DAEMON_CONNECTION + SakerIDEProject.C_NAME + SakerIDEProject.E_DUPLICATE: {
+				DaemonConnectionIDEProperty property = (DaemonConnectionIDEProperty) err.relatedSubject;
+				return "Duplicate daemon connection name: " + property.getConnectionName();
+			}
+
+			case SakerIDEProject.NS_PROVIDER_MOUNT + SakerIDEProject.C_ROOT + SakerIDEProject.E_MISSING: {
+				return "Missing mount root.";
+			}
+			case SakerIDEProject.NS_PROVIDER_MOUNT + SakerIDEProject.C_ROOT + SakerIDEProject.E_DUPLICATE: {
+				ProviderMountIDEProperty property = (ProviderMountIDEProperty) err.relatedSubject;
+				return "Duplicate mounted root: " + tryNormalizePathRoot(property.getRoot());
+			}
+			case SakerIDEProject.NS_PROVIDER_MOUNT + SakerIDEProject.C_ROOT + SakerIDEProject.E_FORMAT: {
+				ProviderMountIDEProperty property = (ProviderMountIDEProperty) err.relatedSubject;
+				return "Invalid mount root format: " + tryNormalizePathRoot(property.getRoot());
+			}
+			case SakerIDEProject.NS_PROVIDER_MOUNT + SakerIDEProject.C_CLIENT + SakerIDEProject.E_MISSING: {
+				return "Missing mount file system endpoint.";
+			}
+			case SakerIDEProject.NS_PROVIDER_MOUNT + SakerIDEProject.C_PATH + SakerIDEProject.E_MISSING: {
+				return "Missing mounted path.";
+			}
+			case SakerIDEProject.NS_PROVIDER_MOUNT + SakerIDEProject.C_PATH + SakerIDEProject.E_RELATIVE: {
+				ProviderMountIDEProperty property = (ProviderMountIDEProperty) err.relatedSubject;
+				return "Mounted path must be absolute: " + normalizePath(property.getMountPath());
+			}
+			case SakerIDEProject.NS_PROVIDER_MOUNT + SakerIDEProject.C_PATH + SakerIDEProject.E_INVALID_ROOT: {
+				ProviderMountIDEProperty property = (ProviderMountIDEProperty) err.relatedSubject;
+				return "Mounted path root is invalid: " + normalizePath(property.getMountPath());
+			}
+			case SakerIDEProject.NS_PROVIDER_MOUNT + SakerIDEProject.C_PATH + SakerIDEProject.E_FORMAT: {
+				ProviderMountIDEProperty property = (ProviderMountIDEProperty) err.relatedSubject;
+				return "Invalid mounted path format: " + normalizePath(property.getMountPath());
+			}
+
+			case SakerIDEProject.NS_BUILD_TRACE_OUT + SakerIDEProject.C_CLIENT + SakerIDEProject.E_MISSING: {
+				return "Build trace output: Missing file system endpoint.";
+			}
+			case SakerIDEProject.NS_BUILD_TRACE_OUT + SakerIDEProject.C_PATH + SakerIDEProject.E_MISSING: {
+				return "Build trace output: Missing path.";
+			}
+			case SakerIDEProject.NS_BUILD_TRACE_OUT + SakerIDEProject.C_PATH + SakerIDEProject.E_RELATIVE: {
+				MountPathIDEProperty property = (MountPathIDEProperty) err.relatedSubject;
+				return "Build trace output: Output path must be absolute: " + normalizePath(property.getMountPath());
+			}
+			case SakerIDEProject.NS_BUILD_TRACE_OUT + SakerIDEProject.C_PATH + SakerIDEProject.E_INVALID_ROOT: {
+				MountPathIDEProperty property = (MountPathIDEProperty) err.relatedSubject;
+				return "Build trace output: Output path root is invalid: " + normalizePath(property.getMountPath());
+			}
+			case SakerIDEProject.NS_BUILD_TRACE_OUT + SakerIDEProject.C_PATH + SakerIDEProject.E_FORMAT: {
+				MountPathIDEProperty property = (MountPathIDEProperty) err.relatedSubject;
+				return "Build trace output: Invalid path format: " + normalizePath(property.getMountPath());
+			}
+
+			case SakerIDEProject.NS_EXECUTION_DAEMON_NAME + SakerIDEProject.E_MISSING_DAEMON: {
+				return "Daemon connection not found for execution daemon name: " + err.relatedSubject;
+			}
+			case SakerIDEProject.NS_USER_PARAMETERS + SakerIDEProject.E_INVALID_KEY: {
+				return "Invalid user parameter key: "
+						+ (err.relatedSubject == null ? "null" : "\"" + err.relatedSubject + "\"");
+			}
+			case SakerIDEProject.NS_USER_PARAMETERS + SakerIDEProject.E_DUPLICATE_KEY: {
+				return "Duplicate user parameter key: " + "\"" + err.relatedSubject + "\"";
+			}
+
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_WILDCARD + SakerIDEProject.E_MISSING: {
+				return "Missing wildcard for script configuration.";
+			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_WILDCARD + SakerIDEProject.E_DUPLICATE: {
+				ScriptConfigurationIDEProperty property = (ScriptConfigurationIDEProperty) err.relatedSubject;
+				return "Duplicate wildcard for script configuration: " + property.getScriptsWildcard();
+			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_WILDCARD + SakerIDEProject.E_FORMAT: {
+				ScriptConfigurationIDEProperty property = (ScriptConfigurationIDEProperty) err.relatedSubject;
+				return "Invalid wildcard format for script configuration: " + property.getScriptsWildcard();
+			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_OPTIONS + SakerIDEProject.E_INVALID_KEY: {
+				String key = (String) ((Object[]) err.relatedSubject)[1];
+				return "Invalid script configuration option key: " + (key == null ? "null" : "\"" + key + "\"");
+			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_OPTIONS
+					+ SakerIDEProject.E_DUPLICATE_KEY: {
+				String key = (String) ((Object[]) err.relatedSubject)[1];
+				return "Duplicate script configuration option key: " + (key == null ? "null" : "\"" + key + "\"");
+			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_CLASSPATH + SakerIDEProject.E_MISSING: {
+				return "Missing script configuration class path.";
+			}
+
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_CLASSPATH + SakerIDEProject.C_JAR
+					+ SakerIDEProject.C_CONNECTION + SakerIDEProject.E_MISSING_DAEMON: {
+				return "Script configuration JAR class path daemon connection is missing.";
+			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_CLASSPATH + SakerIDEProject.C_JAR
+					+ SakerIDEProject.C_PATH + SakerIDEProject.E_MISSING: {
+				return "Script configuration JAR file path is missing.";
+			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_CLASSPATH + SakerIDEProject.C_JAR
+					+ SakerIDEProject.C_PATH + SakerIDEProject.E_FORMAT: {
+				ScriptConfigurationIDEProperty property = (ScriptConfigurationIDEProperty) err.relatedSubject;
+				JarClassPathLocationIDEProperty cplocation = (JarClassPathLocationIDEProperty) property
+						.getClassPathLocation();
+				return "Invalid script configuration JAR file path format: " + normalizePath(cplocation.getJarPath());
+			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_CLASSPATH + SakerIDEProject.C_HTTP_URL_JAR
+					+ SakerIDEProject.C_URL + SakerIDEProject.E_MISSING: {
+				return "Script configuration class path  HTTP/HTTPS URL is missing.";
+			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_CLASSPATH + SakerIDEProject.C_HTTP_URL_JAR
+					+ SakerIDEProject.C_URL + SakerIDEProject.E_PROTOCOL: {
+				ScriptConfigurationIDEProperty property = (ScriptConfigurationIDEProperty) err.relatedSubject;
+				HttpUrlJarClassPathLocationIDEProperty cplocation = (HttpUrlJarClassPathLocationIDEProperty) property
+						.getClassPathLocation();
+				return "Invalid script configuration class path HTTP/HTTPS URL protocol: " + cplocation.getUrl();
+			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_CLASSPATH + SakerIDEProject.C_HTTP_URL_JAR
+					+ SakerIDEProject.C_URL + SakerIDEProject.E_FORMAT: {
+				ScriptConfigurationIDEProperty property = (ScriptConfigurationIDEProperty) err.relatedSubject;
+				HttpUrlJarClassPathLocationIDEProperty cplocation = (HttpUrlJarClassPathLocationIDEProperty) property
+						.getClassPathLocation();
+				return "Invalid script configuration class path  HTTP/HTTPS URL format: " + cplocation.getUrl();
+			}
+			//the following can't happen
+//			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_CLASSPATH
+//					+ SakerIDEProject.C_BUILTIN_SCRIPTING + SakerIDEProject.E_ILLEGAL: {
+//				break;
+//			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_CLASSPATH
+					+ SakerIDEProject.C_NEST_REPOSITORY + SakerIDEProject.E_ILLEGAL: {
+				return "Invalid class path for script configuration.";
+			}
+
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_SERVICE + SakerIDEProject.E_MISSING: {
+				return "Script language implementation loader is missing.";
+			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_SERVICE + SakerIDEProject.C_SERVICE_LOADER
+					+ SakerIDEProject.C_CLASS + SakerIDEProject.E_MISSING: {
+				return "Script language service loader class is missing.";
+			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_SERVICE + SakerIDEProject.C_NAMED_CLASS
+					+ SakerIDEProject.C_CLASS + SakerIDEProject.E_MISSING: {
+				return "Script language implementation class name is missing.";
+			}
+			//the following can't happen
+//			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_SERVICE
+//					+ SakerIDEProject.C_BUILTIN_SCRIPTING + SakerIDEProject.E_ILLEGAL: {
+//				break;
+//			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_SERVICE + SakerIDEProject.C_NEST_REPOSITORY
+					+ SakerIDEProject.E_ILLEGAL: {
+				return "Invalid service configuration for script configuration.";
+			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_SERVICE + SakerIDEProject.C_NEST_REPOSITORY
+					+ SakerIDEProject.E_VERSION_FORMAT: {
+				return "Invalid version number format for saker.nest repository classpath.";
+			}
+			case SakerIDEProject.NS_SCRIPT_CONFIGURATION + SakerIDEProject.C_CLASSPATH + SakerIDEProject.C_SERVICE
+					+ SakerIDEProject.E_INVALID_COMBINATION: {
+				return "Invalid class path and service combination for script configuration.";
+			}
+
+			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_IDENTIFIER
+					+ SakerIDEProject.E_DUPLICATE: {
+				RepositoryIDEProperty property = (RepositoryIDEProperty) err.relatedSubject;
+				return "Duplicate repository identifier: " + property.getRepositoryIdentifier();
+			}
+
+			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_CLASSPATH + SakerIDEProject.C_JAR
+					+ SakerIDEProject.C_CONNECTION + SakerIDEProject.E_MISSING_DAEMON: {
+				return "Repository configuration JAR class path daemon connection is missing.";
+			}
+			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_CLASSPATH + SakerIDEProject.C_JAR
+					+ SakerIDEProject.C_PATH + SakerIDEProject.E_MISSING: {
+				return "Repository configuration JAR file path is missing.";
+			}
+			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_CLASSPATH + SakerIDEProject.C_JAR
+					+ SakerIDEProject.C_PATH + SakerIDEProject.E_FORMAT: {
+				RepositoryIDEProperty property = (RepositoryIDEProperty) err.relatedSubject;
+				JarClassPathLocationIDEProperty cplocation = (JarClassPathLocationIDEProperty) property
+						.getClassPathLocation();
+				return "Invalid repository configuration JAR file path format: "
+						+ normalizePath(cplocation.getJarPath());
+			}
+			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_CLASSPATH
+					+ SakerIDEProject.C_HTTP_URL_JAR + SakerIDEProject.C_URL + SakerIDEProject.E_MISSING: {
+				return "Repository configuration class path HTTP/HTTPS URL is missing.";
+			}
+			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_CLASSPATH
+					+ SakerIDEProject.C_HTTP_URL_JAR + SakerIDEProject.C_URL + SakerIDEProject.E_PROTOCOL: {
+				RepositoryIDEProperty property = (RepositoryIDEProperty) err.relatedSubject;
+				HttpUrlJarClassPathLocationIDEProperty cplocation = (HttpUrlJarClassPathLocationIDEProperty) property
+						.getClassPathLocation();
+				return "Invalid repository configuration class path HTTP/HTTPS URL protocol: " + cplocation.getUrl();
+			}
+			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_CLASSPATH
+					+ SakerIDEProject.C_HTTP_URL_JAR + SakerIDEProject.C_URL + SakerIDEProject.E_FORMAT: {
+				RepositoryIDEProperty property = (RepositoryIDEProperty) err.relatedSubject;
+				HttpUrlJarClassPathLocationIDEProperty cplocation = (HttpUrlJarClassPathLocationIDEProperty) property
+						.getClassPathLocation();
+				return "Invalid repository configuration class path  HTTP/HTTPS URL format: " + cplocation.getUrl();
+			}
+			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_CLASSPATH
+					+ SakerIDEProject.C_BUILTIN_SCRIPTING + SakerIDEProject.E_ILLEGAL: {
+				return "Invalid class path for repository configuration.";
+			}
+			//the following can't happen
+//			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_CLASSPATH
+//					+ SakerIDEProject.C_NEST_REPOSITORY + SakerIDEProject.E_ILLEGAL: {
+//				break;
+//			}
+
+			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_SERVICE + SakerIDEProject.E_MISSING: {
+				return "Repository implementation loader is missing.";
+			}
+			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_SERVICE
+					+ SakerIDEProject.C_SERVICE_LOADER + SakerIDEProject.C_CLASS + SakerIDEProject.E_MISSING: {
+				return "Repository service loader class is missing.";
+			}
+			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_SERVICE + SakerIDEProject.C_NAMED_CLASS
+					+ SakerIDEProject.C_CLASS + SakerIDEProject.E_MISSING: {
+				return "Repository implementation class name is missing.";
+			}
+			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_SERVICE
+					+ SakerIDEProject.C_BUILTIN_SCRIPTING + SakerIDEProject.E_ILLEGAL: {
+				return "Invalid service configuration for repository configuration.";
+			}
+			//the following can't happen
+//			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_SERVICE
+//					+ SakerIDEProject.C_NEST_REPOSITORY + SakerIDEProject.E_ILLEGAL: {
+//				break;
+//			}
+			case SakerIDEProject.NS_REPOSITORY_CONFIGURATION + SakerIDEProject.C_CLASSPATH + SakerIDEProject.C_SERVICE
+					+ SakerIDEProject.E_INVALID_COMBINATION: {
+				return "Invalid class path and service combination for repository configuration.";
+			}
+
+			case SakerIDEProject.NS_MIRROR_DIRECTORY + SakerIDEProject.E_FORMAT: {
+				return "Invalid mirror directory format: " + err.relatedSubject;
+			}
+			case SakerIDEProject.NS_MIRROR_DIRECTORY + SakerIDEProject.E_RELATIVE: {
+				return "Mirror directory must be absolute: " + err.relatedSubject;
+			}
+
+			case SakerIDEProject.NS_WORKING_DIRECTORY + SakerIDEProject.E_MISSING: {
+				return "Missing working directory configuration.";
+			}
+			case SakerIDEProject.NS_WORKING_DIRECTORY + SakerIDEProject.E_FORMAT: {
+				return "Invalid working directory format: " + err.relatedSubject;
+			}
+			case SakerIDEProject.NS_WORKING_DIRECTORY + SakerIDEProject.E_RELATIVE: {
+				return "Working directory must be absolute: " + err.relatedSubject;
+			}
+			case SakerIDEProject.NS_WORKING_DIRECTORY + SakerIDEProject.E_ROOT_NOT_FOUND: {
+				return "Working directory root not found: " + err.relatedSubject;
+			}
+
+			case SakerIDEProject.NS_BUILD_DIRECTORY + SakerIDEProject.E_FORMAT: {
+				return "Invalid build directory format: " + err.relatedSubject;
+			}
+			case SakerIDEProject.NS_BUILD_DIRECTORY + SakerIDEProject.E_ROOT_NOT_FOUND: {
+				return "Build directory root not found: " + err.relatedSubject;
+			}
+
+			case SakerIDEProject.NS_SCRIPT_MODELLING_EXCLUSION + SakerIDEProject.E_FORMAT: {
+				return "Invalid script modelling exclusion format: " + err.relatedSubject;
+			}
+			case SakerIDEProject.NS_SCRIPT_MODELLING_EXCLUSION + SakerIDEProject.E_DUPLICATE: {
+				return "Duplicate script modelling exclusion wildcard: " + err.relatedSubject;
+			}
+
+			default: {
+				return "Unrecognized error: " + type + " : " + err.relatedSubject;
+			}
 		}
 	}
 }

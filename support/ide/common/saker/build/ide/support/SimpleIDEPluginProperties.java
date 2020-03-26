@@ -36,7 +36,7 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 
 	private SimpleIDEPluginProperties(IDEPluginProperties copy) {
 		this.storageDirectory = copy.getStorageDirectory();
-		this.userParameters = SakerIDEPlugin.unmodifiablizeEntrySet(copy.getUserParameters());
+		this.userParameters = SakerIDEPlugin.makeImmutableEntrySet(copy.getUserParameters());
 	}
 
 	private final void unmodifiablize() {
@@ -78,7 +78,7 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 		}
 
 		public Builder setUserParameters(Set<? extends Entry<String, String>> userParameters) {
-			result.userParameters = SakerIDEPlugin.unmodifiablizeEntrySet(userParameters);
+			result.userParameters = SakerIDEPlugin.makeImmutableEntrySet(userParameters);
 			return this;
 		}
 

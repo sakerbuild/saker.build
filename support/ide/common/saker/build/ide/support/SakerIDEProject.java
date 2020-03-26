@@ -404,15 +404,14 @@ public final class SakerIDEProject {
 			Set<? extends DaemonConnectionIDEProperty> connections = properties.getConnections();
 			Set<String> roots = new TreeSet<>();
 			for (ProviderMountIDEProperty mountprop : mounts) {
-				String rootstr = mountprop.getRoot();
+				String root = SakerIDESupportUtils.tryNormalizePathRoot(mountprop.getRoot());
 				String clientname = mountprop.getMountClientName();
 				String mountpathstr = mountprop.getMountPath();
 
-				if (ObjectUtils.isNullOrEmpty(rootstr)) {
+				if (ObjectUtils.isNullOrEmpty(root)) {
 					errors.add(new PropertiesValidationErrorResult(NS_PROVIDER_MOUNT + C_ROOT + E_MISSING, mountprop));
 				} else {
 					try {
-						String root = SakerPath.normalizeRoot(rootstr);
 						if (!roots.add(root)) {
 							errors.add(new PropertiesValidationErrorResult(NS_PROVIDER_MOUNT + C_ROOT + E_DUPLICATE,
 									mountprop));
@@ -448,7 +447,8 @@ public final class SakerIDEProject {
 					errors.add(new PropertiesValidationErrorResult(ns + C_PATH + E_RELATIVE, mountprop));
 				} else {
 					if (MOUNT_ENDPOINT_PROJECT_RELATIVE.equals(clientname)) {
-						if (!SakerPath.ROOT_SLASH.equals(mountpath.getRoot())) {
+						if (!SakerPath.ROOT_SLASH
+								.equals(SakerIDESupportUtils.tryNormalizePathRoot(mountpath.getRoot()))) {
 							errors.add(new PropertiesValidationErrorResult(ns + C_PATH + E_INVALID_ROOT, mountprop));
 						}
 					}
@@ -829,9 +829,9 @@ public final class SakerIDEProject {
 			String errornamespace, Collection<PropertiesValidationErrorResult> errors) {
 		Set<? extends ProviderMountIDEProperty> mounts = properties.getMounts();
 		if (mounts != null) {
-			String root = path.getRoot();
+			String root = SakerIDESupportUtils.tryNormalizePathRoot(path.getRoot());
 			for (ProviderMountIDEProperty mount : mounts) {
-				if (root.equals(mount.getRoot())) {
+				if (root.equals(SakerIDESupportUtils.tryNormalizePathRoot(mount.getRoot()))) {
 					//found root
 					return true;
 				}
