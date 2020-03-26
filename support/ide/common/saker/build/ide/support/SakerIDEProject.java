@@ -87,6 +87,7 @@ import saker.build.ide.support.properties.RepositoryIDEProperty;
 import saker.build.ide.support.properties.ScriptConfigurationIDEProperty;
 import saker.build.ide.support.properties.ServiceLoaderClassPathEnumeratorIDEProperty;
 import saker.build.ide.support.properties.SimpleIDEProjectProperties;
+import saker.build.ide.support.util.EmptySakerFileProvider;
 import saker.build.ide.support.util.ThreadedResourceLoader;
 import saker.build.runtime.classpath.ClassPathLocation;
 import saker.build.runtime.classpath.ClassPathServiceEnumerator;
@@ -132,6 +133,11 @@ import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.NetworkUtils;
 
 public final class SakerIDEProject {
+	private static final SakerPath SCRIPTING_PSEUDO_PATH = SakerPath.valueOf("scriptingpseudoroot:");
+	private static final Set<String> SCRIPTING_PSEUDO_ROOTS = Collections.singleton(SCRIPTING_PSEUDO_PATH.getRoot());
+	private static final EmptySakerFileProvider SCRIPTING_PSEUDO_EMPTY_FILE_PROVIDER = new EmptySakerFileProvider(
+			SCRIPTING_PSEUDO_ROOTS);
+
 	public interface ProjectResourceListener {
 		public default void scriptModellingEnvironmentClosing(ScriptModellingEnvironment env) {
 		}
@@ -157,8 +163,8 @@ public final class SakerIDEProject {
 			DEFAULT_WORKING_DIRECTORY_ROOT,
 			MountPathIDEProperty.create(MOUNT_ENDPOINT_PROJECT_RELATIVE, SakerPath.ROOT_SLASH));
 	public static final ScriptConfigurationIDEProperty DEFAULT_SCRIPT_IDE_PROPERTY = new ScriptConfigurationIDEProperty(
-			"**/*.build", Collections.emptySet(), new BuiltinScriptingLanguageClassPathLocationIDEProperty(),
-			new BuiltinScriptingLanguageServiceEnumeratorIDEProperty());
+			"**/*.build", Collections.emptySet(), BuiltinScriptingLanguageClassPathLocationIDEProperty.INSTANCE,
+			BuiltinScriptingLanguageServiceEnumeratorIDEProperty.INSTANCE);
 	public static final RepositoryIDEProperty DEFAULT_REPOSITORY_IDE_PROPERTY = new RepositoryIDEProperty(
 			new NestRepositoryClassPathLocationIDEProperty(),
 			ExecutionRepositoryConfiguration.NEST_REPOSITORY_IDENTIFIER,
@@ -438,20 +444,19 @@ public final class SakerIDEProject {
 				errors.add(new PropertiesValidationErrorResult(ns + C_CLIENT + E_MISSING, mountprop));
 			}
 		}
-		if (ObjectUtils.isNullOrEmpty(mountpathstr)) {
+		if (mountpathstr == null) {
 			errors.add(new PropertiesValidationErrorResult(ns + C_PATH + E_MISSING, mountprop));
 		} else {
 			try {
 				SakerPath mountpath = SakerPath.valueOf(mountpathstr);
-				if (!mountpath.isAbsolute()) {
-					errors.add(new PropertiesValidationErrorResult(ns + C_PATH + E_RELATIVE, mountprop));
-				} else {
-					if (MOUNT_ENDPOINT_PROJECT_RELATIVE.equals(clientname)) {
-						if (!SakerPath.ROOT_SLASH
-								.equals(SakerIDESupportUtils.tryNormalizePathRoot(mountpath.getRoot()))) {
-							errors.add(new PropertiesValidationErrorResult(ns + C_PATH + E_INVALID_ROOT, mountprop));
-						}
+				if (MOUNT_ENDPOINT_PROJECT_RELATIVE.equals(clientname)) {
+					//relative mount path is allowed if it is project relative
+					if (mountpath.isAbsolute() && !SakerPath.ROOT_SLASH.equals(mountpath.getRoot())) {
+						errors.add(new PropertiesValidationErrorResult(ns + C_PATH + E_INVALID_ROOT, mountprop));
 					}
+				} else if (!mountpath.isAbsolute()) {
+					//if not project relative, the mount path must be absolute
+					errors.add(new PropertiesValidationErrorResult(ns + C_PATH + E_RELATIVE, mountprop));
 				}
 			} catch (RuntimeException e) {
 				errors.add(new PropertiesValidationErrorResult(ns + C_PATH + E_FORMAT, mountprop));
@@ -603,13 +608,13 @@ public final class SakerIDEProject {
 	static {
 		SERVICE_CLASSPATH_COMBINATIONS.put(new NestRepositoryFactoryServiceEnumeratorIDEProperty(),
 				new NestRepositoryClassPathLocationIDEProperty());
-		SERVICE_CLASSPATH_COMBINATIONS.put(new BuiltinScriptingLanguageServiceEnumeratorIDEProperty(),
-				new BuiltinScriptingLanguageClassPathLocationIDEProperty());
+		SERVICE_CLASSPATH_COMBINATIONS.put(BuiltinScriptingLanguageServiceEnumeratorIDEProperty.INSTANCE,
+				BuiltinScriptingLanguageClassPathLocationIDEProperty.INSTANCE);
 
 		CLASSPATH_SERVICE_COMBINATIONS.put(new NestRepositoryClassPathLocationIDEProperty(),
 				new NestRepositoryFactoryServiceEnumeratorIDEProperty());
-		CLASSPATH_SERVICE_COMBINATIONS.put(new BuiltinScriptingLanguageClassPathLocationIDEProperty(),
-				new BuiltinScriptingLanguageServiceEnumeratorIDEProperty());
+		CLASSPATH_SERVICE_COMBINATIONS.put(BuiltinScriptingLanguageClassPathLocationIDEProperty.INSTANCE,
+				BuiltinScriptingLanguageServiceEnumeratorIDEProperty.INSTANCE);
 	}
 
 	private static boolean isValidClassPathServiceCombination(ClassPathServiceEnumeratorIDEProperty service,
@@ -1333,12 +1338,13 @@ public final class SakerIDEProject {
 		Collection<DaemonConnectionIDEProperty> connprops = getDaemonConnectionPropertiesForPathConfiguration(
 				properties);
 		Map<String, RemoteDaemonConnection> daemonconnections = plugin.connectToDaemonsFromPluginEnvironment(connprops);
-		ExecutionPathConfiguration pathconfig = createPathConfiguration(properties, daemonconnections);
-		ExecutionScriptConfiguration scriptconfig = createScriptConfiguration(properties);
+		ExecutionPathConfiguration pathconfig = tryCreatePathConfigurationForScripting(properties, daemonconnections);
+		ExecutionScriptConfiguration scriptconfig = tryCreateScriptConfigurationForScripting(properties);
 		Set<WildcardPath> excludepaths = createScriptingExcludePaths(properties, pathconfig);
-		ExecutionRepositoryConfiguration repoconfig = createRepositoryConfiguration(properties);
+		ExecutionRepositoryConfiguration repoconfig = tryCreateRepositoryConfigurationForScripting(properties);
 
-		Collection<? extends RepositoryConfig> repositoryconfigs = repoconfig.getRepositories();
+		Collection<? extends RepositoryConfig> repositoryconfigs = repoconfig == null ? Collections.emptySet()
+				: repoconfig.getRepositories();
 		List<ExternalScriptInformationProvider> externalscriptinfoproviders = new ArrayList<>();
 		Map<String, String> userparammap = SakerIDEPlugin.entrySetToMap(properties.getUserParameters());
 		if (!ObjectUtils.isNullOrEmpty(repositoryconfigs)) {
@@ -1380,13 +1386,85 @@ public final class SakerIDEProject {
 		return scriptenvconfig;
 	}
 
+	private ExecutionRepositoryConfiguration tryCreateRepositoryConfigurationForScripting(
+			IDEProjectProperties properties) {
+		try {
+			return createRepositoryConfiguration(properties);
+		} catch (Exception e) {
+			displayException(e);
+			return null;
+		}
+	}
+
+	private ExecutionScriptConfiguration tryCreateScriptConfigurationForScripting(IDEProjectProperties properties) {
+		try {
+			return createScriptConfiguration(properties);
+		} catch (Exception e) {
+			displayException(e);
+			return null;
+		}
+	}
+
+	private ExecutionPathConfiguration tryCreatePathConfigurationForScripting(IDEProjectProperties properties,
+			Map<String, RemoteDaemonConnection> daemonconnections) {
+		try {
+			String workingdirproperty = properties.getWorkingDirectory();
+			SakerPath wdpath = null;
+			if (!ObjectUtils.isNullOrEmpty(workingdirproperty)) {
+				wdpath = SakerPath.valueOf(workingdirproperty);
+				if (wdpath.isRelative()) {
+					//working dir is relative. override with a custom one as relative paths are not allowed
+					wdpath = null;
+				}
+			}
+			ExecutionPathConfiguration.Builder pathconfigbuilder;
+			if (wdpath == null) {
+				pathconfigbuilder = ExecutionPathConfiguration.builder(SCRIPTING_PSEUDO_PATH);
+				pathconfigbuilder.addRootProvider(SCRIPTING_PSEUDO_PATH.getRoot(),
+						SCRIPTING_PSEUDO_EMPTY_FILE_PROVIDER);
+			} else {
+				pathconfigbuilder = ExecutionPathConfiguration.builder(wdpath);
+			}
+			Set<? extends ProviderMountIDEProperty> mounts = properties.getMounts();
+			if (!ObjectUtils.isNullOrEmpty(mounts)) {
+				for (ProviderMountIDEProperty mount : mounts) {
+					String normalizedmountroot;
+					try {
+						normalizedmountroot = SakerPath.normalizeRoot(mount.getRoot());
+					} catch (Exception e) {
+						displayException(e);
+						//can't deal with invalid roots
+						continue;
+					}
+					MountPathIDEProperty mountprop = mount.getMountPathProperty();
+					ProviderHolderPathKey mountpathkey;
+					try {
+						mountpathkey = getMountPathPropertyPathKey(mountprop, daemonconnections);
+					} catch (Exception e) {
+						displayException(e);
+						//failed to resolve the mount provider and path key, fall back to pseudo provider
+						mountpathkey = SakerPathFiles.getPathKey(SCRIPTING_PSEUDO_EMPTY_FILE_PROVIDER,
+								SCRIPTING_PSEUDO_PATH);
+					}
+
+					pathconfigbuilder.addRootProvider(normalizedmountroot, DirectoryMountFileProvider
+							.create(mountpathkey.getFileProvider(), mountpathkey.getPath(), normalizedmountroot));
+				}
+			}
+			return pathconfigbuilder.build();
+		} catch (Exception e) {
+			displayException(e);
+			return null;
+		}
+	}
+
 	private static Set<WildcardPath> createScriptingExcludePaths(IDEProjectProperties properties,
-			ExecutionPathConfiguration pathconfig) throws IOException {
+			ExecutionPathConfiguration pathconfig) {
 		Set<WildcardPath> result = new HashSet<>();
 		String builddir = properties.getBuildDirectory();
 		if (!ObjectUtils.isNullOrEmpty(builddir)) {
 			SakerPath buildpath = SakerPath.valueOf(builddir);
-			if (buildpath.isRelative()) {
+			if (pathconfig != null && buildpath.isRelative()) {
 				buildpath = pathconfig.getWorkingDirectory().resolve(buildpath);
 			}
 			result.add(WildcardPath.valueOf(buildpath + "/**"));
@@ -1397,7 +1475,7 @@ public final class SakerIDEProject {
 			//only exclude the mirror path if the execution daemon is in-process
 			try {
 				SakerPath mirrorpath = SakerPath.valueOf(mirrordir);
-				if (mirrorpath.isAbsolute()) {
+				if (pathconfig != null && mirrorpath.isAbsolute()) {
 					//the specified mirror path should be absolute
 					try {
 						SakerPath execmirrorpath = pathconfig.toExecutionPath(LocalFileProvider.toRealPath(mirrorpath));
@@ -1435,9 +1513,11 @@ public final class SakerIDEProject {
 		throw new IOException("Daemon not found for name: " + name);
 	}
 
+	/**
+	 * @throws IOException
+	 *             sneaky thrown by visitor
+	 */
 	private ExecutionScriptConfiguration createScriptConfiguration(IDEProjectProperties properties) throws IOException {
-		//visitor sneaky throws IOException
-
 		Set<? extends ScriptConfigurationIDEProperty> scriptconfigs = properties.getScriptConfigurations();
 		ExecutionScriptConfiguration.Builder builder = ExecutionScriptConfiguration.builder();
 		if (!ObjectUtils.isNullOrEmpty(scriptconfigs)) {
@@ -1454,10 +1534,12 @@ public final class SakerIDEProject {
 		return builder.build();
 	}
 
+	/**
+	 * @throws IOException
+	 *             sneaky thrown by visitor
+	 */
 	private ExecutionRepositoryConfiguration createRepositoryConfiguration(IDEProjectProperties properties)
 			throws IOException {
-		//visitor sneaky throws IOException
-
 		ExecutionRepositoryConfiguration.Builder builder = ExecutionRepositoryConfiguration.builder();
 		Set<? extends RepositoryIDEProperty> repositories = properties.getRepositories();
 		if (!ObjectUtils.isNullOrEmpty(repositories)) {
@@ -1517,7 +1599,7 @@ public final class SakerIDEProject {
 	}
 
 	private ExecutionPathConfiguration createPathConfiguration(IDEProjectProperties properties,
-			Map<String, RemoteDaemonConnection> daemonconnections) throws IOException {
+			Map<String, RemoteDaemonConnection> daemonconnections) {
 		ExecutionPathConfiguration.Builder pathconfigbuilder = ExecutionPathConfiguration
 				.builder(SakerPath.valueOf(properties.getWorkingDirectory()));
 		Set<? extends ProviderMountIDEProperty> mounts = properties.getMounts();
@@ -1631,7 +1713,7 @@ public final class SakerIDEProject {
 		@Override
 		public ScriptProviderLocation visit(BuiltinScriptingLanguageClassPathLocationIDEProperty property, Void param) {
 			ClassPathServiceEnumeratorIDEProperty serviceenumerator = scriptProperty.getServiceEnumerator();
-			if (!new BuiltinScriptingLanguageServiceEnumeratorIDEProperty().equals(serviceenumerator)) {
+			if (!BuiltinScriptingLanguageServiceEnumeratorIDEProperty.INSTANCE.equals(serviceenumerator)) {
 				throw new IllegalArgumentException(
 						"Invalid script service enumerator for builtin scripting language class path: "
 								+ serviceenumerator);

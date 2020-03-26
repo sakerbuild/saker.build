@@ -40,6 +40,7 @@ import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ScriptAccessorClassPathCacheKey;
 import saker.build.runtime.execution.ScriptAccessorClassPathData;
 import saker.build.runtime.params.ExecutionPathConfiguration;
+import saker.build.runtime.params.ExecutionScriptConfiguration;
 import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptOptionsConfig;
 import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptProviderLocation;
 import saker.build.scripting.ScriptAccessProvider;
@@ -54,7 +55,9 @@ import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.function.Functionals;
+import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.IOUtils;
+import saker.build.thirdparty.saker.util.io.function.IOSupplier;
 
 public class BasicScriptModellingEnvironment implements ScriptModellingEnvironment {
 	//TODO use environment load listener on the plugin
@@ -80,10 +83,12 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 
 		excludeWildcardPaths = ImmutableUtils.makeImmutableNavigableSet(configuration.getExcludedScriptPaths());
 
-		ExecutionPathConfiguration pathconfig = this.configuration.getPathConfiguration();
-		SakerPath workingdir = pathconfig.getWorkingDirectory();
-		SakerFileProvider workingdirfp = pathconfig.getFileProvider(workingdir);
-		installWatchers(workingdirfp, workingdir);
+		ExecutionPathConfiguration pathconfig = configuration.getPathConfiguration();
+		if (pathconfig != null) {
+			SakerPath workingdir = pathconfig.getWorkingDirectory();
+			SakerFileProvider workingdirfp = pathconfig.getFileProvider(workingdir);
+			installWatchers(workingdirfp, workingdir);
+		}
 	}
 
 	@Override
@@ -120,10 +125,12 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 
 			excludeWildcardPaths = ImmutableUtils.makeImmutableNavigableSet(configuration.getExcludedScriptPaths());
 
-			ExecutionPathConfiguration pathconfig = this.configuration.getPathConfiguration();
-			SakerPath workingdir = pathconfig.getWorkingDirectory();
-			SakerFileProvider workingdirfp = pathconfig.getFileProvider(workingdir);
-			installWatchers(workingdirfp, workingdir);
+			ExecutionPathConfiguration pathconfig = configuration.getPathConfiguration();
+			if (pathconfig != null) {
+				SakerPath workingdir = pathconfig.getWorkingDirectory();
+				SakerFileProvider workingdirfp = pathconfig.getFileProvider(workingdir);
+				installWatchers(workingdirfp, workingdir);
+			}
 		}
 	}
 
@@ -312,6 +319,9 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 	//this method is protected, so it can be overridden, and the exception from this method can be handled by subclasses
 	protected SpawnedModel createModelForPath(SakerPath scriptpath) throws Exception {
 		ExecutionPathConfiguration pathconfig = configuration.getPathConfiguration();
+		if (pathconfig == null) {
+			return null;
+		}
 		SakerFileProvider fp = pathconfig.getFileProviderIfPresent(scriptpath);
 		if (fp == null) {
 			return null;
@@ -320,8 +330,11 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 			//do not create model for files in exluded paths
 			return null;
 		}
-		ScriptOptionsConfig pathscriptconfig = configuration.getScriptConfiguration()
-				.getScriptOptionsConfig(scriptpath);
+		ExecutionScriptConfiguration scriptconfig = configuration.getScriptConfiguration();
+		if (scriptconfig == null) {
+			return null;
+		}
+		ScriptOptionsConfig pathscriptconfig = scriptconfig.getScriptOptionsConfig(scriptpath);
 		if (pathscriptconfig == null) {
 			return null;
 		}
@@ -342,8 +355,9 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 			spawnedengine = new SpawnedEngine(createdmodellingengine);
 			accessorKeyModellingEngines.put(accessorkey, spawnedengine);
 		}
-		return new SpawnedModel(spawnedengine.engine, spawnedengine.createModel(
-				new SimpleScriptParsingOptions(scriptpath, pathscriptconfig.getOptions()), fp, scriptpath));
+		return new SpawnedModel(spawnedengine.engine,
+				spawnedengine.createModel(new SimpleScriptParsingOptions(scriptpath, pathscriptconfig.getOptions()),
+						() -> fp.openInput(scriptpath)));
 	}
 
 	protected final static class SpawnedEngine implements Closeable {
@@ -356,7 +370,13 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 
 		public ScriptSyntaxModel createModel(ScriptParsingOptions parsingoptions, SakerFileProvider fp,
 				SakerPath path) {
-			ScriptSyntaxModel result = engine.createModel(parsingoptions, () -> fp.openInput(path));
+			IOSupplier<? extends ByteSource> inputsupplier = () -> fp.openInput(path);
+			return createModel(parsingoptions, inputsupplier);
+		}
+
+		public ScriptSyntaxModel createModel(ScriptParsingOptions parsingoptions,
+				IOSupplier<? extends ByteSource> inputsupplier) {
+			ScriptSyntaxModel result = engine.createModel(parsingoptions, inputsupplier);
 			createdModels.add(result);
 			return result;
 		}

@@ -18,6 +18,7 @@ package saker.build.ide.support.properties;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 
 public class BuiltinScriptingLanguageClassPathLocationIDEProperty implements ClassPathLocationIDEProperty {
+	public static final BuiltinScriptingLanguageClassPathLocationIDEProperty INSTANCE = new BuiltinScriptingLanguageClassPathLocationIDEProperty();
 
 	public BuiltinScriptingLanguageClassPathLocationIDEProperty() {
 	}

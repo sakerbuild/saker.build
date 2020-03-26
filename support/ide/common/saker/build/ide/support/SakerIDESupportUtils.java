@@ -72,7 +72,7 @@ public class SakerIDESupportUtils {
 			return null;
 		}
 		for (ProviderMountIDEProperty prop : mounts) {
-			if (pathroot.equals(prop.getRoot())) {
+			if (pathroot.equals(tryNormalizePathRoot(prop.getRoot()))) {
 				return prop;
 			}
 		}
@@ -88,9 +88,21 @@ public class SakerIDESupportUtils {
 			return false;
 		}
 
-		if (execpath == null) {
-			return false;
+		Set<String> exclusions = properties.getScriptModellingExclusions();
+		if (!ObjectUtils.isNullOrEmpty(exclusions)) {
+			for (String excl : exclusions) {
+				WildcardPath exclwc;
+				try {
+					exclwc = WildcardPath.valueOf(excl);
+				} catch (IllegalArgumentException e) {
+					continue;
+				}
+				if (exclwc.includes(execpath)) {
+					return false;
+				}
+			}
 		}
+
 		for (ScriptConfigurationIDEProperty scprop : scriptconfigs) {
 			String wcstr = scprop.getScriptsWildcard();
 			if (ObjectUtils.isNullOrEmpty(wcstr)) {
@@ -100,25 +112,12 @@ public class SakerIDESupportUtils {
 			try {
 				scriptwc = WildcardPath.valueOf(wcstr);
 			} catch (IllegalArgumentException e) {
-				return false;
+				continue;
 			}
-			if (scriptwc.includes(execpath)) {
-				Set<String> exclusions = properties.getScriptModellingExclusions();
-				if (!ObjectUtils.isNullOrEmpty(exclusions)) {
-					for (String excl : exclusions) {
-						WildcardPath exclwc;
-						try {
-							exclwc = WildcardPath.valueOf(excl);
-						} catch (IllegalArgumentException e) {
-							continue;
-						}
-						if (exclwc.includes(execpath)) {
-							return false;
-						}
-					}
-				}
-				return true;
+			if (!scriptwc.includes(execpath)) {
+				continue;
 			}
+			return true;
 		}
 		return false;
 	}
@@ -141,8 +140,8 @@ public class SakerIDESupportUtils {
 			String rootstr = mountprop.getRoot();
 			String mountpathstr = mountprop.getMountPath();
 			String clientname = mountprop.getMountClientName();
-			if (ObjectUtils.isNullOrEmpty(rootstr) || ObjectUtils.isNullOrEmpty(mountpathstr)
-					|| ObjectUtils.isNullOrEmpty(clientname)) {
+			//only null check for mount path, as it can be relative for project relative
+			if (ObjectUtils.isNullOrEmpty(rootstr) || mountpathstr == null || ObjectUtils.isNullOrEmpty(clientname)) {
 				continue;
 			}
 			String root;

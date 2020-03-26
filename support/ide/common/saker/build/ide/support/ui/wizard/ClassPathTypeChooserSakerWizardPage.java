@@ -126,8 +126,8 @@ public class ClassPathTypeChooserSakerWizardPage extends AbstractSakerWizardPage
 
 	public void selectSakerScript() {
 		continuation = Optional.empty();
-		property = new BuiltinScriptingLanguageClassPathLocationIDEProperty();
-		serviceEnumerator = new BuiltinScriptingLanguageServiceEnumeratorIDEProperty();
+		property = BuiltinScriptingLanguageClassPathLocationIDEProperty.INSTANCE;
+		serviceEnumerator = BuiltinScriptingLanguageServiceEnumeratorIDEProperty.INSTANCE;
 		selected = SELECTED_SAKERSCRIPT;
 	}
 

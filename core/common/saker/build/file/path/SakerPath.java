@@ -1129,8 +1129,11 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 	 * @param newroot
 	 *            The new root.
 	 * @return The result path.
+	 * @throws InvalidPathFormatException
+	 *             If the root format is invalid.
+	 * @see #isValidRootName(CharSequence)
 	 */
-	public SakerPath replaceRoot(String newroot) {
+	public SakerPath replaceRoot(String newroot) throws InvalidPathFormatException {
 		if (newroot == null) {
 			if (this.root == null) {
 				return this;

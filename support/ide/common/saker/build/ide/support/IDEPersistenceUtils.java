@@ -609,7 +609,7 @@ public class IDEPersistenceUtils {
 							break;
 						}
 						case "builtin-scripting-classpath": {
-							cplocation = new BuiltinScriptingLanguageClassPathLocationIDEProperty();
+							cplocation = BuiltinScriptingLanguageClassPathLocationIDEProperty.INSTANCE;
 							break;
 						}
 						case "nest-repository-classpath": {
@@ -660,7 +660,7 @@ public class IDEPersistenceUtils {
 							break;
 						}
 						case "builtin-scripting-service": {
-							return new BuiltinScriptingLanguageServiceEnumeratorIDEProperty();
+							return BuiltinScriptingLanguageServiceEnumeratorIDEProperty.INSTANCE;
 						}
 						case "nest-repository-service": {
 							return new NestRepositoryFactoryServiceEnumeratorIDEProperty();

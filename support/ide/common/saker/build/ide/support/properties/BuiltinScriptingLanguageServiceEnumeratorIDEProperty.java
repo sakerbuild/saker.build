@@ -18,6 +18,7 @@ package saker.build.ide.support.properties;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 
 public class BuiltinScriptingLanguageServiceEnumeratorIDEProperty implements ClassPathServiceEnumeratorIDEProperty {
+	public static final BuiltinScriptingLanguageServiceEnumeratorIDEProperty INSTANCE = new BuiltinScriptingLanguageServiceEnumeratorIDEProperty();
 
 	public BuiltinScriptingLanguageServiceEnumeratorIDEProperty() {
 	}
