@@ -22,9 +22,9 @@ public class ClassPathTypeChooserSakerWizardPage extends AbstractSakerWizardPage
 	public static final int SELECTED_NEST_REPOSITORY = 3;
 	public static final int SELECTED_SAKERSCRIPT = 4;
 
-	public static final String LABEL_JAVA_ARCHIVE = "Java Archive";
+	public static final String LABEL_JAVA_ARCHIVE = "Java archive";
 	public static final String LABEL_NETWORK_ARCHIVE_HTTP = "Network archive (HTTP)";
-	public static final String LABEL_NEST_REPOSITORY_CLASS_PATH = "Nest repository class path";
+	public static final String LABEL_NEST_REPOSITORY_CLASS_PATH = "Saker.nest repository class path";
 	public static final String LABEL_SAKER_SCRIPT_CLASS_PATH = "SakerScript class path";
 
 	private Optional<AbstractSakerWizardPage> continuation;

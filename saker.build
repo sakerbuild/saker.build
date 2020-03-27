@@ -226,6 +226,7 @@ testexport(
 	in buildconfig = include(Target: _configure, testing: true, apidocumenting: false)[buildconfig],
 	
 	out export,
+	out exportide,
 	out runnercompile,
 	out testutilscompile,
 	
@@ -236,6 +237,10 @@ testexport(
 	$export = include(
 		Target: export,
 		buildconfig: $buildconfig,
+	)
+	$exportide = include(
+		Target: exportide,
+		buildconfig: $buildconfig
 	)
 	$runnercompile = include(
 		Target: compile,
@@ -294,7 +299,10 @@ testexport(
 	$testscompile = include(
 		Target: compile,
 		Path: test/tests/tests.build,
-		TestUtilsClassPath: $testutilscompile[javac],
+		TestUtilsClassPath: [
+			$testutilscompile[javac],
+			$export[compile][idesupportcompile][javac],
+		],
 		buildconfig: $buildconfig,
 	)
 }
@@ -485,6 +493,70 @@ testwatcher(
 		testclasses: [
 			**.watcher.**.*Test
 		],
+	)
+}
+testidesupport(
+	in buildconfig = include(Target: _configure, testing: true, apidocumenting: false)[buildconfig],
+	
+	in jre = saker.java.sdk(8),
+) {
+	$testexport = include(
+		Target: testexport,
+		buildconfig: $buildconfig,
+	)
+	
+	$export = $testexport[export]
+	$exportide = $testexport[exportide]
+
+	$runnercompile = $testexport[runnercompile]
+	
+	$testutilscompile = $testexport[testutilscompile]
+	
+	$runnerjar = $testexport[runnerjar]
+	$testutilsjar = $testexport[testutilsjar]
+	
+	$testscompile = $testexport[testscompile]
+	
+	$test = saker.java.test(
+		TestRunnerClassPath: [
+			$runnercompile[javac][ClassDirectory],
+		],
+		ClassPath: [
+			$export[Path],
+			$exportide[idesupportjar][Path],
+		],
+		TestClassPath: [
+			$testscompile[javac][ClassDirectory],
+			$testutilscompile[javac][ClassDirectory],
+		],
+		DependencyClassPath: [
+			$export[compile][compilebyjdkmajor][8][InternalParser],
+			$export[compile][compilebyjdkmajor][8][CorePass],
+			$exportide[export][compile][idesupportcompile][javac],
+		],
+		TestInvokerClass: testing.saker.SakerJavaTestingInvoker,
+		TestClasses: [
+			testing.saker.idesupport.**.*Test
+		],
+		NonDeterministicTests: [
+			**,
+		],
+		TestInvokerParameters: {
+			SakerJarPath: std.file.mirror($export[Path]),
+			#2min
+			TimeoutMillis: 120000,
+			TestsBaseBuildDirectory: std.file.mirror.path(std.file.place(test/build)),
+		},
+		IgnoreFileChanges: [
+			std.file.place(test/build),
+			$export[Path],
+		],
+		#ProcessJVMParameters: [ "-agentlib:jdwp=transport=dt_socket,address=localhost:5432,server=y,suspend=y,quiet=y" ],
+		MaxJVMCount: 1,
+		FailFast: true,
+		AbortOnFail: true,
+		JavaSDK: $jre,
+		Verbose: true,
 	)
 }
 

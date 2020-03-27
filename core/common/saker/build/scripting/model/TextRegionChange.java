@@ -117,7 +117,8 @@ public class TextRegionChange implements Externalizable {
 
 	@Override
 	public String toString() {
-		return getClass().getSimpleName() + "[" + offset + ", (" + length + "): " + text + "]";
+		return getClass().getSimpleName() + "[" + offset + ": " + (offset + length) + " (" + length + "): " + text
+				+ "]";
 	}
 
 	@Override
