@@ -747,7 +747,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 					result.add(new FlattenedToken(scope.value, PRECEDENCE_LEVEL_13_TERNARY, scope.value));
 					Statement falseexpplaceholder = scope.value.firstScope("exp_false");
 					if (falseexpplaceholder == null) {
-						result.add(new FlattenedToken(null, PRECEDENCE_MISSING_EXPRESSION, falseexpplaceholder));
+						result.add(new FlattenedToken(null, PRECEDENCE_MISSING_EXPRESSION, scope.value));
 						break;
 					}
 					Statement falseexp = falseexpplaceholder.firstScope("expression");

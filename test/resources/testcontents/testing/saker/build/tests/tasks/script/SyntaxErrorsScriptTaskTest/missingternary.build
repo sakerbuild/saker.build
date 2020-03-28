@@ -1,0 +1,16 @@
+build {
+	$condition = false
+	include(
+		secondtarget,
+		MyParam: $condition 
+				? "1", 
+				: "2",
+	)
+}
+
+
+secondtarget(
+	in MyParam
+) {
+	print($MyParam)
+}
