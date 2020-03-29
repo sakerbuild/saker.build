@@ -31,14 +31,14 @@ public final class TaskExecutionFailedException extends TaskExecutionException {
 	 * @see TaskExecutionException#TaskExecutionException(Throwable, TaskIdentifier)
 	 */
 	TaskExecutionFailedException(Throwable cause, TaskIdentifier taskIdentifier) {
-		super(null, cause, true, true, taskIdentifier);
+		super(null, cause, true, taskIdentifier);
 	}
 
 	/**
 	 * @see TaskExecutionException#TaskExecutionException(String, Throwable, TaskIdentifier)
 	 */
 	TaskExecutionFailedException(String message, Throwable cause, TaskIdentifier taskIdentifier) {
-		super(message, cause, true, true, taskIdentifier);
+		super(message, cause, true, taskIdentifier);
 	}
 
 }

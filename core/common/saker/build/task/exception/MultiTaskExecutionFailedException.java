@@ -57,9 +57,13 @@ public class MultiTaskExecutionFailedException extends TaskExecutionException {
 	void addException(TaskIdentifier taskid, TaskException exc) {
 		TaskException prev = taskExceptions.putIfAbsent(taskid, exc);
 		if (prev != null) {
-			prev.addSuppressed(exc);
+			if (prev != exc) {
+				prev.addSuppressed(exc);
+			}
+			//else same exception added multiple times
+		} else {
+			addSuppressed(exc);
 		}
-		addSuppressed(exc);
 	}
 
 	/**

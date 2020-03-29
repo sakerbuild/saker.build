@@ -792,7 +792,7 @@ public class SakerLog {
 			Set<ExceptionView> printed, SakerPath workingdir, ExceptionFormat format) throws IOException {
 		String ls = System.lineSeparator();
 		if (!printed.add(ev)) {
-			ps.append("\t[CIRCULAR REFERENCE:" + ev + "]");
+			ps.append(prefix + caption + "\t[CIRCULAR REFERENCE:" + ev + "]");
 			ps.append(ls);
 		} else {
 			StackTraceElement[] trace = ev.getStackTrace();

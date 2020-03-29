@@ -17,6 +17,8 @@ package saker.build.task.exception;
 
 /**
  * Common superclass for all exceptions that are thrown during build execution.
+ * <p>
+ * Suppression is always enabled for {@link TaskException} subclasses.
  */
 public class TaskException extends RuntimeException {
 	private static final long serialVersionUID = 1L;
@@ -29,10 +31,22 @@ public class TaskException extends RuntimeException {
 	}
 
 	/**
+	 * Constructs a new instance with the specified detail message, cause, and writable stack trace enabled or disabled.
+	 * <p>
+	 * The suppression is always enabled for {@link TaskException} instances.
+	 * 
+	 * @param message
+	 *            the detail message.
+	 * @param cause
+	 *            the cause. (A {@code null} value is permitted, and indicates that the cause is nonexistent or
+	 *            unknown.)
+	 * @param writableStackTrace
+	 *            whether or not the stack trace should be writable
 	 * @see RuntimeException#RuntimeException(String, Throwable, boolean, boolean)
+	 * @since saker.build 0.8.11
 	 */
-	protected TaskException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
-		super(message, cause, enableSuppression, writableStackTrace);
+	protected TaskException(String message, Throwable cause, boolean writableStackTrace) {
+		super(message, cause, true, writableStackTrace);
 	}
 
 	/**

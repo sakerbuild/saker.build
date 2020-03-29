@@ -100,11 +100,11 @@ public class TaskExecutionException extends TaskException {
 	 *            Whether or not the stack trace should be writable.
 	 * @param taskIdentifier
 	 *            The related task identifier.
-	 * @see TaskException#TaskException(String, Throwable, boolean, boolean)
+	 * @see TaskException#TaskException(String, Throwable, boolean)
 	 */
-	protected TaskExecutionException(String message, Throwable cause, boolean enableSuppression,
-			boolean writableStackTrace, TaskIdentifier taskIdentifier) {
-		super(message, cause, enableSuppression, writableStackTrace);
+	protected TaskExecutionException(String message, Throwable cause, boolean writableStackTrace,
+			TaskIdentifier taskIdentifier) {
+		super(message, cause, writableStackTrace);
 		this.taskIdentifier = taskIdentifier;
 	}
 

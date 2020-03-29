@@ -3950,14 +3950,12 @@ public class TaskExecutionManager {
 				offerTaskRunnable(() -> {
 					TaskResultHolder<?> taskres = executeImpl(factory, taskid, executioncontext, null,
 							DEFAULT_EXECUTION_PARAMETERS, null).getTaskResult();
-					//XXX the following TODO is outdated?
-					//TODO if the task throws an exception or aborts then the root task will not be set.
 					if (taskres instanceof TaskExecutionResult<?>) {
 						//if output may not be a TaskExecutionResult if it failed
 						((TaskExecutionResult<?>) taskres).setRootTask(true);
 					}
-					//throw an exception if the execution fails;
-					getOutputOrThrow(taskres);
+					//throw an exception if the execution fails
+//					getOutputOrThrow(taskres);
 				}, taskid, createTaskThreadName(factory));
 				for (TaskExecutionThread t; (t = taskThreads.take()) != null;) {
 					while (true) {
@@ -5937,7 +5935,7 @@ public class TaskExecutionManager {
 				}
 				boolean hasabortedexception = !ObjectUtils.isNullOrEmpty(abortexceptions);
 				if (hasabortedexception) {
-					if (result != null) {
+//					if (result != null) {
 //						InvalidTaskResultException exc = new InvalidTaskResultException(
 //								"Task reported exception, but did not return null result. (" + result + ")", taskid);
 //						for (Throwable abexc : abortexceptions) {
@@ -5949,7 +5947,7 @@ public class TaskExecutionManager {
 //						future.failed(this, taskrunningexception, abortexceptions, taskcontext.resultDependencies);
 //						return;
 //						throw exc;
-					}
+//					}
 				}
 				if (TestFlag.ENABLED) {
 					TestFlag.metric().taskFinished(taskid, factory, result, executionresult.getTaggedOutputs(),

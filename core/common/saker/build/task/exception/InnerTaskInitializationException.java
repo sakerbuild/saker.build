@@ -25,11 +25,10 @@ public class InnerTaskInitializationException extends TaskException {
 	private static final long serialVersionUID = 1L;
 
 	/**
-	 * @see TaskException#TaskException(String, Throwable, boolean, boolean)
+	 * @see TaskException#TaskException(String, Throwable, boolean)
 	 */
-	protected InnerTaskInitializationException(String message, Throwable cause, boolean enableSuppression,
-			boolean writableStackTrace) {
-		super(message, cause, enableSuppression, writableStackTrace);
+	protected InnerTaskInitializationException(String message, Throwable cause, boolean writableStackTrace) {
+		super(message, cause, writableStackTrace);
 	}
 
 	/**

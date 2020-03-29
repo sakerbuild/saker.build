@@ -573,7 +573,7 @@ public class TaskUtils {
 		Objects.requireNonNull(exceptionview, "exception view");
 		Objects.requireNonNull(ps, "print stream");
 		Objects.requireNonNull(format, "exception format");
-		if (!exceptionview.getExceptionClassName().equals(MultiTaskExecutionFailedException.class.getName())) {
+		if (!MultiTaskExecutionFailedException.class.getName().equals(exceptionview.getExceptionClassName())) {
 			SakerLog.printFormatException(exceptionview, ps, workingdir, format);
 			return;
 		}

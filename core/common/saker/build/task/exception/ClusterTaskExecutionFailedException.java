@@ -29,11 +29,10 @@ public class ClusterTaskExecutionFailedException extends ClusterTaskException {
 	}
 
 	/**
-	 * @see ClusterTaskException#ClusterTaskException(String, Throwable, boolean, boolean)
+	 * @see ClusterTaskException#ClusterTaskException(String, Throwable, boolean)
 	 */
-	protected ClusterTaskExecutionFailedException(String message, Throwable cause, boolean enableSuppression,
-			boolean writableStackTrace) {
-		super(message, cause, enableSuppression, writableStackTrace);
+	protected ClusterTaskExecutionFailedException(String message, Throwable cause, boolean writableStackTrace) {
+		super(message, cause, writableStackTrace);
 	}
 
 	/**

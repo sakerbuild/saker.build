@@ -34,11 +34,10 @@ public class InvalidTaskInvocationConfigurationException extends TaskException {
 	}
 
 	/**
-	 * @see TaskException#TaskException(String, Throwable, boolean, boolean)
+	 * @see TaskException#TaskException(String, Throwable, boolean)
 	 */
-	protected InvalidTaskInvocationConfigurationException(String message, Throwable cause, boolean enableSuppression,
-			boolean writableStackTrace) {
-		super(message, cause, enableSuppression, writableStackTrace);
+	protected InvalidTaskInvocationConfigurationException(String message, Throwable cause, boolean writableStackTrace) {
+		super(message, cause, writableStackTrace);
 	}
 
 	/**

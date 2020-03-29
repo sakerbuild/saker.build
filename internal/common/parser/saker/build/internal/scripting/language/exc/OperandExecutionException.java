@@ -24,9 +24,9 @@ public class OperandExecutionException extends SakerScriptEvaluationException {
 		super(message, taskIdentifier);
 	}
 
-	protected OperandExecutionException(String message, Throwable cause, boolean enableSuppression,
-			boolean writableStackTrace, TaskIdentifier taskIdentifier) {
-		super(message, cause, enableSuppression, writableStackTrace, taskIdentifier);
+	protected OperandExecutionException(String message, Throwable cause, boolean writableStackTrace,
+			TaskIdentifier taskIdentifier) {
+		super(message, cause, writableStackTrace, taskIdentifier);
 	}
 
 	public OperandExecutionException(String message, Throwable cause, TaskIdentifier taskIdentifier) {

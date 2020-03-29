@@ -37,11 +37,11 @@ public class TaskResultWaitingFailedException extends TaskExecutionException {
 	}
 
 	/**
-	 * @see TaskExecutionException#TaskExecutionException(String, Throwable, boolean, boolean, TaskIdentifier)
+	 * @see TaskExecutionException#TaskExecutionException(String, Throwable, boolean, TaskIdentifier)
 	 */
-	protected TaskResultWaitingFailedException(String message, Throwable cause, boolean enableSuppression,
-			boolean writableStackTrace, TaskIdentifier taskIdentifier) {
-		super(message, cause, enableSuppression, writableStackTrace, taskIdentifier);
+	protected TaskResultWaitingFailedException(String message, Throwable cause, boolean writableStackTrace,
+			TaskIdentifier taskIdentifier) {
+		super(message, cause, writableStackTrace, taskIdentifier);
 	}
 
 	/**
