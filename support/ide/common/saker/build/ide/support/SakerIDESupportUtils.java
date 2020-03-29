@@ -15,6 +15,7 @@
  */
 package saker.build.ide.support;
 
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -45,6 +46,8 @@ import saker.build.ide.support.ui.wizard.ScriptConfigurationSakerWizardPage;
 import saker.build.ide.support.ui.wizard.ServiceEnumeratorRedirectingSakerWizardPage;
 import saker.build.ide.support.ui.wizard.WizardPageHistoryLink;
 import saker.build.runtime.params.NestRepositoryClassPathLocation;
+import saker.build.scripting.model.FormattedTextContent;
+import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 
 public class SakerIDESupportUtils {
@@ -364,6 +367,46 @@ public class SakerIDESupportUtils {
 		identifierpage.setPageConfiguration(WIZARDPAGE_CONFIGURATION_EDIT_INITIAL_REPOSITORYID, true);
 
 		return typechooser;
+	}
+
+	public static String resolveInformationTitle(String title, String subtitle) {
+		if (!ObjectUtils.isNullOrEmpty(title)) {
+			return title;
+		}
+		if (!ObjectUtils.isNullOrEmpty(subtitle)) {
+			return subtitle;
+		}
+		return "";
+	}
+
+	public static String resolveInformationSubTitle(String title, String subtitle) {
+		if (!ObjectUtils.isNullOrEmpty(title)) {
+			//there's a title, so we can just return the subtitle accordingly
+			return ObjectUtils.nullDefault(subtitle, "");
+		}
+		//return empty, as the subtitle is automatically promoted to the title and is not used as the subtitle
+		return "";
+	}
+
+	public static Entry<String, String> resolveTitlesAsEntry(String title, String subtitle) {
+		return ImmutableUtils.makeImmutableMapEntry(resolveInformationTitle(title, subtitle),
+				resolveInformationSubTitle(title, subtitle));
+	}
+
+	public static boolean isNullOrEmpty(FormattedTextContent text) {
+		if (text == null) {
+			return true;
+		}
+		Set<String> formats = text.getAvailableFormats();
+		if (ObjectUtils.isNullOrEmpty(formats)) {
+			return true;
+		}
+		for (String f : formats) {
+			if (!ObjectUtils.isNullOrEmpty(text.getFormattedText(f))) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	public static <T> T iterateOverWizardPages(SakerWizardPage page,

@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import saker.build.file.path.SakerPath;
@@ -36,9 +37,11 @@ import saker.build.ide.support.SakerIDEProject;
 import saker.build.ide.support.SakerIDEProject.ProjectResourceListener;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.scripting.ScriptParsingFailedException;
+import saker.build.scripting.model.PartitionedTextContent;
 import saker.build.scripting.model.ScriptModellingEnvironment;
 import saker.build.scripting.model.ScriptSyntaxModel;
 import saker.build.scripting.model.ScriptToken;
+import saker.build.scripting.model.ScriptTokenInformation;
 import saker.build.scripting.model.TextRegionChange;
 import saker.build.scripting.model.TokenStyle;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
@@ -112,6 +115,68 @@ public class ScriptEditorModel implements Closeable {
 			}
 			return model.getUpToDateModel();
 		}
+	}
+
+	public ScriptSyntaxModel getModelMaybeOutOfDate() {
+		ModelReference model = this.model;
+		if (model == null) {
+			return null;
+		}
+		return model.getModel();
+	}
+
+	public ScriptTokenInformation getTokenInformationAtPosition(int start, int length) {
+		ScriptSyntaxModel m = getUpToDateModel();
+		if (m == null) {
+			return null;
+		}
+		Iterable<? extends ScriptToken> tokens = m.getTokens(start, length);
+		if (tokens == null) {
+			return null;
+		}
+		Iterator<? extends ScriptToken> it = tokens.iterator();
+		if (it == null) {
+			return null;
+		}
+		int end = start + length;
+		while (it.hasNext()) {
+			ScriptToken token = it.next();
+			if (token == null) {
+				continue;
+			}
+			int tokenoffset = token.getOffset();
+			int tokenlen = token.getLength();
+			int tokenendoffset = tokenoffset + tokenlen;
+			if (tokenoffset > end || tokenendoffset < start) {
+				//not in range
+				continue;
+			}
+			ScriptTokenInformation tokeninfo = m.getTokenInformation(token);
+			if (tokeninfo == null) {
+				continue;
+			}
+			PartitionedTextContent description = tokeninfo.getDescription();
+			if (description == null) {
+				continue;
+			}
+			if (tokenendoffset == start) {
+				//we should prefer the next token if it starts at the offset as the region
+				if (it.hasNext()) {
+					ScriptToken ntoken = it.next();
+					if (ntoken != null && ntoken.getOffset() == start) {
+						ScriptTokenInformation ntokeninfo = m.getTokenInformation(ntoken);
+						if (ntokeninfo != null) {
+							PartitionedTextContent ndescription = ntokeninfo.getDescription();
+							if (ndescription != null) {
+								return tokeninfo;
+							}
+						}
+					}
+				}
+			}
+			return tokeninfo;
+		}
+		return null;
 	}
 
 	public SakerPath getScriptExecutionPath() {
@@ -506,12 +571,14 @@ public class ScriptEditorModel implements Closeable {
 
 	private class ModelReference {
 		protected final ScriptSyntaxModel model;
+		protected final Semaphore updateSemaphore = new Semaphore(1);
 
 		protected String fullInput;
 		protected List<TextRegionChange> regionChanges = null;
 
 		protected Object updateVersion = new Object();
 		protected boolean updateCalled = false;
+		protected boolean invalidated = false;
 
 		private UpdaterThread updaterThread;
 
@@ -539,6 +606,10 @@ public class ScriptEditorModel implements Closeable {
 					String fullinput;
 					List<TextRegionChange> mrregionchanges;
 					synchronized (ModelReference.this) {
+						if (invalidated) {
+							//model reference no longer used
+							return;
+						}
 						mrregionchanges = ModelReference.this.regionChanges;
 						regionchanges = ImmutableUtils.makeImmutableList(mrregionchanges);
 						if (updateCalled) {
@@ -556,10 +627,19 @@ public class ScriptEditorModel implements Closeable {
 					}
 					try {
 						try {
-							if (regionchanges == null) {
-								model.createModel(getCurrentDataSupplier(fullinput));
-							} else {
-								model.updateModel(regionchanges, getCurrentDataSupplier(fullinput));
+							updateSemaphore.acquireUninterruptibly();
+							try {
+								if (invalidated) {
+									//model reference no longer used
+									return;
+								}
+								if (regionchanges == null) {
+									model.createModel(getCurrentDataSupplier(fullinput));
+								} else {
+									model.updateModel(regionchanges, getCurrentDataSupplier(fullinput));
+								}
+							} finally {
+								updateSemaphore.release();
 							}
 						} catch (ScriptParsingFailedException e) {
 							throw e;
@@ -671,6 +751,10 @@ public class ScriptEditorModel implements Closeable {
 			return model;
 		}
 
+		public ScriptSyntaxModel getModel() {
+			return model;
+		}
+
 		private IOSupplier<? extends ByteSource> getCurrentDataSupplier(String text) {
 			if (text == null) {
 				return null;
@@ -712,10 +796,18 @@ public class ScriptEditorModel implements Closeable {
 			startUpdaterThreadLocked();
 		}
 
-		public synchronized void invalidateModel() {
-			this.updateCalled = false;
-			this.regionChanges = null;
-			this.model.invalidateModel();
+		public void invalidateModel() {
+			synchronized (this) {
+				this.updateCalled = false;
+				this.regionChanges = null;
+				this.invalidated = true;
+			}
+			updateSemaphore.acquireUninterruptibly();
+			try {
+				this.model.invalidateModel();
+			} finally {
+				updateSemaphore.release();
+			}
 		}
 
 		public synchronized void update(String fullinput) {
