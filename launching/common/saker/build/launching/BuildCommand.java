@@ -53,6 +53,7 @@ import saker.build.daemon.EnvironmentBuildExecutionInvoker;
 import saker.build.daemon.RemoteDaemonConnection;
 import saker.build.daemon.files.DaemonPath;
 import saker.build.exception.BuildExecutionFailedException;
+import saker.build.exception.BuildTargetNotFoundException;
 import saker.build.exception.InvalidPathFormatException;
 import saker.build.file.content.CommonContentDescriptorSupplier;
 import saker.build.file.content.ContentDescriptorSupplier;
@@ -688,7 +689,7 @@ public class BuildCommand {
 					this.buildScriptFile = defaultbuildfilepath;
 				} else {
 					if (buildfiles.size() != 1) {
-						throw new IllegalArgumentException("Failed to determine build file to use: " + buildfiles);
+						throw new BuildTargetNotFoundException("Failed to determine build file to use: " + buildfiles);
 					}
 					this.buildScriptFile = buildfiles.first();
 				}

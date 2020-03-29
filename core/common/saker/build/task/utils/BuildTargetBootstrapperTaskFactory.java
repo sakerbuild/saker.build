@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.TreeMap;
 
 import saker.apiextract.api.PublicApi;
+import saker.build.exception.BuildTargetNotFoundException;
 import saker.build.exception.InvalidPathFormatException;
 import saker.build.file.SakerFile;
 import saker.build.file.path.SakerPath;
@@ -45,7 +46,7 @@ import saker.build.task.TaskFactory;
 import saker.build.task.identifier.BuildFileTargetTaskIdentifier;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ObjectUtils;
-import saker.build.trace.BuildTrace;
+import saker.build.thirdparty.saker.util.StringUtils;
 
 /**
  * Bootstrapper task for invoking a build target of a build script with the given parameters.
@@ -186,7 +187,7 @@ public final class BuildTargetBootstrapperTaskFactory
 		ExecutionContext execcontext = taskcontext.getExecutionContext();
 		SakerFile buildfile = taskcontext.getTaskUtilities().resolveAtPath(buildFilePath);
 		if (buildfile == null) {
-			throw new FileNotFoundException("Build file not found at: " + buildFilePath);
+			throw new BuildTargetNotFoundException("Build script file not found at: " + buildFilePath);
 		}
 		taskcontext.getTaskUtilities().reportInputFileDependency(null, buildfile);
 		TargetConfiguration tc = execcontext.getTargetConfiguration(taskcontext, buildfile);
@@ -195,15 +196,16 @@ public final class BuildTargetBootstrapperTaskFactory
 			Set<String> targetnames = tc.getTargetNames();
 			targetname = TaskUtils.chooseDefaultTargetName(targetnames);
 			if (targetname == null) {
-				throw new IllegalArgumentException("Failed to determine build target to invoke: " + targetnames);
+				throw new BuildTargetNotFoundException("Failed to determine build target to invoke in: " + buildFilePath
+						+ " Available targets: " + targetnames);
 			}
 		} else {
 			targetname = buildTargetName;
 		}
 		BuildTargetTaskFactory bttask = tc.getTask(targetname);
 		if (bttask == null) {
-			throw new IllegalArgumentException("Build target not found with name: " + targetname + " in file: "
-					+ buildFilePath + " Available targets: " + tc.getTargetNames());
+			throw new BuildTargetNotFoundException("Build target not found with name: " + targetname + " in file: "
+					+ buildFilePath + " Available targets: " + StringUtils.toStringJoin(", ", tc.getTargetNames()));
 		}
 		NavigableSet<String> targetparamnames = bttask.getTargetInputParameterNames();
 		NavigableMap<String, TaskIdentifier> paramscopy = ObjectUtils.newTreeMap(parameters);
