@@ -474,7 +474,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				break;
 			}
 			case "expression_step": {
-				createExpressionOutline(stm.firstScope("expression_content"), parent);
+				createExpressionOutline(stm.firstScope("expression_content").firstScope("expression"), parent);
 				break;
 			}
 			default: {
@@ -1158,8 +1158,12 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			final SakerTaskFactory result;
 			switch (stm.getName()) {
 				case "expression_step": {
-					Statement expstm = stm.firstScope("expression_content");
-					posstm = expstm;
+					Statement expplaceholder = stm.firstScope("expression_content");
+					Statement expstm = expplaceholder.firstScope("expression");
+					if (expstm == null) {
+						return null;
+					}
+					posstm = expstm == null ? expplaceholder : expstm;
 					result = parseTaskExpressionConstantize(expstm, parsingstate);
 					break;
 				}
@@ -1174,10 +1178,18 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 						List<SakerTaskFactory> truetasks = new ArrayList<>();
 						List<SakerTaskFactory> falsetasks = new ArrayList<>();
 						for (Statement substm : scopeToConditionTrueSteps(stm)) {
-							truetasks.add(parseTaskStep(substm.getScopes().get(0).value, parsingstate));
+							SakerTaskFactory subtask = parseTaskStep(substm.getScopes().get(0).value, parsingstate);
+							if (subtask == null) {
+								continue;
+							}
+							truetasks.add(subtask);
 						}
 						for (Statement substm : scopeToConditionFalseSteps(stm)) {
-							falsetasks.add(parseTaskStep(substm.getScopes().get(0).value, parsingstate));
+							SakerTaskFactory subtask = parseTaskStep(substm.getScopes().get(0).value, parsingstate);
+							if (subtask == null) {
+								continue;
+							}
+							falsetasks.add(subtask);
 						}
 						SakerTaskFactory condition = parseTaskExpressionConstantize(conditionexpstm, parsingstate);
 						result = ConditionTaskFactory.create(condition, truetasks, falsetasks);
@@ -1200,7 +1212,11 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			List<Statement> steps = scopeToTaskSteps(stm);
 			for (Statement stepstm : steps) {
 				Pair<String, Statement> steppair = stepstm.getScopes().get(0);
-				result.addTask(parseTaskStep(steppair.value, parsingstate));
+				SakerTaskFactory step = parseTaskStep(steppair.value, parsingstate);
+				if (step == null) {
+					continue;
+				}
+				result.addTask(step);
 			}
 			return result;
 		}
@@ -1596,6 +1612,10 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 					for (Statement globstm : globalstatements) {
 						for (Pair<String, Statement> s : globstm.getScopes()) {
 							SakerTaskFactory factory = parseTaskStep(s.value, new ExpressionParsingState(null));
+							if (factory == null) {
+								//no declared task
+								continue;
+							}
 							globalexpressions.add(factory);
 						}
 					}
@@ -1894,7 +1914,11 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 
 				Set<SakerTaskFactory> subtasks = new LinkedHashSet<>();
 				for (Statement substepstm : substeps) {
-					subtasks.add(parseTaskStep(substepstm.getScopes().get(0).value, subexpparsingstate));
+					SakerTaskFactory step = parseTaskStep(substepstm.getScopes().get(0).value, subexpparsingstate);
+					if (step == null) {
+						continue;
+					}
+					subtasks.add(step);
 				}
 				return ForeachTaskFactory.create(iterabletask, valuetask, loopvarnames, localinitializers, subtasks,
 						foreachposition);

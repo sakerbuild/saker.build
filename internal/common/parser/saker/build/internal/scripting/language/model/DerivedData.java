@@ -266,6 +266,9 @@ public class DerivedData {
 	}
 
 	public Set<String> getTargetVariableNames(Statement targetcontext) {
+		if (targetcontext == null) {
+			return Collections.emptyNavigableSet();
+		}
 		ensureScriptIdentifiers();
 		Statement targetscope = getTargetScopeStatement(this, targetcontext);
 		NavigableSet<String> result = targetVariableNames.get(targetscope);

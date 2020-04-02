@@ -346,8 +346,8 @@ language tasks_lang {
 	}
 	
 	value expression_step {
-		include expression as expression_content 1;
-		include EXPRESSION_CLOSING +;	
+		include expression_placeholder as expression_content 1;
+		include EXPRESSION_CLOSING 1;
 	}
 	
 	value condition_step {

@@ -62,7 +62,6 @@ public abstract class BaseScriptInformationRoot<T> {
 		init(textcontent, null, null);
 	}
 
-	//can be overridden
 	protected abstract T createInformationEntry(TextPartition partition);
 
 	public List<T> getEntries() {

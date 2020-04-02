@@ -203,7 +203,7 @@ public class ScriptModelInformationAnalyzer {
 					return parentstm.firstScope("expression_placeholder").firstScope("expression");
 				}
 				case "expression_step": {
-					return parentstm.firstScope("expression_content");
+					return parentstm.firstScope("expression_content").firstScope("expression");
 				}
 				case "qualifier": {
 					Statement parensexp = parentstm.firstScope("qualifier_inline_expression");
@@ -283,7 +283,8 @@ public class ScriptModelInformationAnalyzer {
 					return new ExpressionReceiverBase(paramexpstm, receivertypes, associatedreceivertypes);
 				}
 				case "expression_step": {
-					return new ExpressionReceiverBase(parentstm.firstScope("expression_content"),
+					return new ExpressionReceiverBase(
+							parentstm.firstScope("expression_content").firstScope("expression"),
 							Collections.emptySet());
 				}
 				case "qualifier": {

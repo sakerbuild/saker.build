@@ -257,9 +257,13 @@ public final class SakerIDEProject {
 
 	protected SakerIDEProject(SakerIDEPlugin plugin) {
 		this.plugin = plugin;
-		this.scriptingEnvironmentExecutionCache = createScriptingEnvironmentExecutionCacheSupplier(
-				plugin.getPluginEnvironment());
+		this.scriptingEnvironmentExecutionCache = createScriptingEnvironmentExecutionCacheSupplier();
 		plugin.addPluginResourceListener(pluginResourceListener);
+	}
+
+	private LazySupplier<SakerExecutionCache> createScriptingEnvironmentExecutionCacheSupplier() {
+		return LazySupplier
+				.of(() -> new RepositoryLoadExceptionHandlingSakerExecutionCache(plugin.getPluginEnvironment()));
 	}
 
 	private LazySupplier<SakerExecutionCache> createScriptingEnvironmentExecutionCacheSupplier(
@@ -1015,17 +1019,10 @@ public final class SakerIDEProject {
 				//create some default script configuration so we can create the modelling environment
 				return null;
 			}
-			return new BasicScriptModellingEnvironment(plugin, scriptenvconfig, environment) {
-				@Override
-				protected SpawnedModel createModelForPath(SakerPath scriptpath) throws Exception {
-					try {
-						return super.createModelForPath(scriptpath);
-					} catch (Exception e) {
-						displayException(e);
-						throw e;
-					}
-				}
-			};
+			//Note: we could override createModelForPath and display any exceptions in regards
+			//    with retrieving the model, however, that is detrimental to user experience
+			//    we don't want to spam the user with exceptions regarding the script modelling
+			return new BasicScriptModellingEnvironment(plugin, scriptenvconfig, environment);
 		} catch (Exception e) {
 			displayException(e);
 			return null;

@@ -3971,19 +3971,15 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				if (offset == endpos && stm.isScopesEmpty()) {
 					//only suggest if we are after the $ sign, and got no children
 
-					ProposalFactory proposalfactory = proposalFactoryForPosition(offset, offset);
+					ProposalFactory proposalfactory = proposalFactoryForPosition(startpos, endpos);
 
 					for (String varname : getEnclosingForeachVariableNames(statementstack)) {
-						SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_FOREACH_VARIABLE,
+						SimpleLiteralCompletionProposal proposal = createForeachVariableProposal(proposalfactory,
 								varname);
-						proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_FOREACH_VARIABLE);
-						proposal.setDisplayString("$" + varname);
 						result.add(proposal);
 					}
 					for (String varname : getUsedTargetVariableNames(derived, stm)) {
-						SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_VARIABLE, varname);
-						proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_VARIABLE);
-						proposal.setDisplayString("$" + varname);
+						SimpleLiteralCompletionProposal proposal = createVariableProposal(proposalfactory, varname);
 						result.add(proposal);
 					}
 				}
@@ -3992,7 +3988,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			case "target_block_end": {
 				if (offset == endpos) {
 					//only suggest if we are after the } sign
-					addTaskProposals(derived, null, proposalFactoryForPosition(offset, offset), collector, analyzer);
+					ProposalFactory proposalfactory = proposalFactoryForPosition(offset, offset);
+					addTaskProposals(derived, null, proposalfactory, collector, analyzer);
+					addVariableProposals(derived, result, statementstack, proposalfactory);
 				}
 				break;
 			}
@@ -4001,7 +3999,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			case "condition_true_statement_block":
 			case "condition_false_statement_block":
 			case "global_step_scope": {
-				addTaskProposals(derived, null, proposalFactoryForPosition(offset, offset), collector, analyzer);
+				ProposalFactory proposalfactory = proposalFactoryForPosition(offset, offset);
+				addTaskProposals(derived, null, proposalfactory, collector, analyzer);
+				addVariableProposals(derived, result, statementstack, proposalfactory);
 				break;
 			}
 			case "map_key": {
@@ -4237,20 +4237,19 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				}
 				if (isInScope(statementstack,
 						ImmutableUtils.asUnmodifiableArrayList("literal", "operator_subject", "dereference"))) {
+					Statement derefparent = findFirstParentToken(statementstack, "dereference");
+					ProposalFactory derefproposalfactory = proposalFactoryForPosition(derefparent.getOffset(), endpos);
 					for (String varname : getEnclosingForeachVariableNames(statementstack)) {
 						if (isPhraseStartsWithProposal(varname, base)) {
-							SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_FOREACH_VARIABLE,
-									varname);
-							proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_FOREACH_VARIABLE);
-							proposal.setDisplayString("$" + varname);
+							SimpleLiteralCompletionProposal proposal = createForeachVariableProposal(
+									derefproposalfactory, varname);
 							result.add(proposal);
 						}
 					}
 					for (String varname : getUsedTargetVariableNames(derived, stm)) {
 						if (isPhraseStartsWithProposal(varname, base)) {
-							SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_VARIABLE, varname);
-							proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_VARIABLE);
-							proposal.setDisplayString("$" + varname);
+							SimpleLiteralCompletionProposal proposal = createVariableProposal(derefproposalfactory,
+									varname);
 							result.add(proposal);
 						}
 					}
@@ -4873,6 +4872,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				}
 			}
 		}
+
+		addVariableProposals(derived, result, statementstack, proposalfactory);
+
 		addEnumProposals(collector, receivertypes, null, proposalfactory);
 		addExternalLiteralProposals(result, null, receivertypes, proposalfactory, collector, analyzer);
 		addTaskProposals(derived, null, proposalfactory, collector, analyzer);
@@ -4902,6 +4904,34 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				result.add(proposal);
 			}
 		}
+	}
+
+	private static void addVariableProposals(DerivedData derived, Collection<? super ScriptCompletionProposal> result,
+			Deque<? extends Statement> statementstack, ProposalFactory proposalfactory) {
+		for (String varname : getEnclosingForeachVariableNames(statementstack)) {
+			SimpleLiteralCompletionProposal proposal = createForeachVariableProposal(proposalfactory, varname);
+			result.add(proposal);
+		}
+		for (String varname : getUsedTargetVariableNames(derived, statementstack.peekFirst())) {
+			SimpleLiteralCompletionProposal proposal = createVariableProposal(proposalfactory, varname);
+			result.add(proposal);
+		}
+	}
+
+	private static SimpleLiteralCompletionProposal createVariableProposal(ProposalFactory proposalfactory,
+			String varname) {
+		SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_VARIABLE, "$" + varname);
+		proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_VARIABLE);
+		proposal.setDisplayString("$" + varname);
+		return proposal;
+	}
+
+	private static SimpleLiteralCompletionProposal createForeachVariableProposal(ProposalFactory proposalfactory,
+			String varname) {
+		SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_FOREACH_VARIABLE, "$" + varname);
+		proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_FOREACH_VARIABLE);
+		proposal.setDisplayString("$" + varname);
+		return proposal;
 	}
 
 	private void addGenericExpressionProposals(DerivedData derived, Collection<? super ScriptCompletionProposal> result,

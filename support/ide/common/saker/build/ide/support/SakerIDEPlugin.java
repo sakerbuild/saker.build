@@ -158,6 +158,7 @@ public final class SakerIDEPlugin implements Closeable {
 
 	public void start(DaemonLaunchParameters daemonparams) throws IOException {
 		synchronized (configurationChangeLock) {
+			//TODO make sure plugin is not closed
 			if (this.pluginDaemonEnvironment != null) {
 				throw new IllegalStateException("Already started.");
 			}

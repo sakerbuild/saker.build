@@ -29,6 +29,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import saker.build.file.path.SakerPath;
@@ -65,19 +66,29 @@ public class ScriptEditorModel implements Closeable {
 
 	private int tokenTheme = TokenStyle.THEME_LIGHT;
 
-	private final Object inputAccessLock = new Object();
+	protected final Object inputAccessLock = new Object();
 
-	private Map<String, Set<? extends TokenStyle>> tokenStyles = Collections.emptyMap();
-	private boolean closed = false;
+	protected Map<String, Set<? extends TokenStyle>> tokenStyles = Collections.emptyMap();
+	protected boolean closed = false;
 
 	private SakerIDEProject project;
 	private final ScriptRelatedResourceListener listener = new ScriptRelatedResourceListener();
 
 	private final Collection<ModelUpdateListener> modelUpdateListeners = Collections.newSetFromMap(new WeakHashMap<>());
 
+	public ScriptEditorModel() {
+	}
+
+	public ScriptEditorModel(SakerPath scriptExecutionPath) {
+		this.scriptExecutionPath = scriptExecutionPath;
+	}
+
 	public void setEnvironment(SakerIDEProject project) {
 		synchronized (inputAccessLock) {
 			if (closed) {
+				return;
+			}
+			if (project == this.project) {
 				return;
 			}
 			if (this.project != null) {
@@ -108,11 +119,11 @@ public class ScriptEditorModel implements Closeable {
 	}
 
 	public ScriptSyntaxModel getUpToDateModel() {
+		ModelReference model = this.model;
+		if (model == null) {
+			return null;
+		}
 		synchronized (inputAccessLock) {
-			ModelReference model = this.model;
-			if (model == null) {
-				return null;
-			}
 			return model.getUpToDateModel();
 		}
 	}
@@ -192,6 +203,9 @@ public class ScriptEditorModel implements Closeable {
 			if (closed) {
 				return;
 			}
+			if (Objects.equals(this.scriptExecutionPath, scriptExecutionPath)) {
+				return;
+			}
 			this.scriptExecutionPath = scriptExecutionPath;
 			reinitModelLocked();
 		}
@@ -251,7 +265,7 @@ public class ScriptEditorModel implements Closeable {
 		if (nmodel == null) {
 			return;
 		}
-		this.model = new ModelReference(nmodel);
+		this.model = new ModelReference(this, nmodel);
 		if (this.text != null) {
 			this.model.update(this.text.toString());
 		}
@@ -468,10 +482,15 @@ public class ScriptEditorModel implements Closeable {
 			if (closed) {
 				return;
 			}
-			this.text = new StringBuilder(input);
+			String instr = input.toString();
+			if (this.text != null && instr.contentEquals(this.text)) {
+				//not changed
+				return;
+			}
+			this.text = new StringBuilder(instr);
 			ModelReference modelref = this.model;
 			if (modelref != null) {
-				modelref.update(this.text.toString());
+				modelref.update(instr);
 			}
 		}
 	}
@@ -569,7 +588,13 @@ public class ScriptEditorModel implements Closeable {
 		}
 	}
 
-	private class ModelReference {
+	private static class ModelReference {
+		private static final AtomicReferenceFieldUpdater<ScriptEditorModel.ModelReference, UpdaterThread> ARFU_updaterThread = AtomicReferenceFieldUpdater
+				.newUpdater(ScriptEditorModel.ModelReference.class, UpdaterThread.class, "updaterThread");
+
+		private static final AtomicLongFieldUpdater<ScriptEditorModel.ModelReference> ALFU_postedUpdateCounter = AtomicLongFieldUpdater
+				.newUpdater(ScriptEditorModel.ModelReference.class, "postedUpdateCounter");
+
 		protected final ScriptSyntaxModel model;
 		protected final Semaphore updateSemaphore = new Semaphore(1);
 
@@ -577,12 +602,17 @@ public class ScriptEditorModel implements Closeable {
 		protected List<TextRegionChange> regionChanges = null;
 
 		protected Object updateVersion = new Object();
-		protected boolean updateCalled = false;
 		protected boolean invalidated = false;
 
-		private UpdaterThread updaterThread;
+		protected volatile long postedUpdateCounter;
+		protected volatile long processedUpdateCounter;
 
-		public ModelReference(ScriptSyntaxModel model) {
+		protected volatile UpdaterThread updaterThread;
+
+		protected ScriptEditorModel editor;
+
+		public ModelReference(ScriptEditorModel editor, ScriptSyntaxModel model) {
+			this.editor = editor;
 			this.model = model;
 		}
 
@@ -591,35 +621,37 @@ public class ScriptEditorModel implements Closeable {
 			public UpdaterThread() {
 				super((Runnable) null, "Build script updater");
 				setDaemon(true);
-				setUncaughtExceptionHandler(new UncaughtExceptionHandler() {
-					@Override
-					public void uncaughtException(Thread t, Throwable e) {
-						project.displayException(e);
-					}
-				});
 			}
 
 			@Override
 			public void run() {
 				while (true) {
+					long postedupdctr;
+					long processedupdctr;
+
 					List<TextRegionChange> regionchanges;
 					String fullinput;
 					List<TextRegionChange> mrregionchanges;
 					synchronized (ModelReference.this) {
 						if (invalidated) {
 							//model reference no longer used
-							return;
+							if (ARFU_updaterThread.compareAndSet(ModelReference.this, this, null)) {
+								ModelReference.this.notifyAll();
+							}
+							break;
+						}
+						postedupdctr = ModelReference.this.postedUpdateCounter;
+						processedupdctr = ModelReference.this.processedUpdateCounter;
+						if (postedupdctr == processedupdctr) {
+							//model up to date
+							if (ARFU_updaterThread.compareAndSet(ModelReference.this, this, null)) {
+								ModelReference.this.notifyAll();
+							}
+							break;
 						}
 						mrregionchanges = ModelReference.this.regionChanges;
 						regionchanges = ImmutableUtils.makeImmutableList(mrregionchanges);
-						if (updateCalled) {
-							//model up to date
-							updaterThread = null;
-							ModelReference.this.notifyAll();
-							break;
-						}
 						fullinput = ModelReference.this.fullInput;
-						updateCalled = true;
 						if (mrregionchanges == null) {
 							mrregionchanges = new ArrayList<>();
 							ModelReference.this.regionChanges = mrregionchanges;
@@ -633,96 +665,96 @@ public class ScriptEditorModel implements Closeable {
 									//model reference no longer used
 									return;
 								}
+								IOSupplier<? extends ByteSource> currentdatasupplier = getCurrentDataSupplier(
+										fullinput);
 								if (regionchanges == null) {
-									model.createModel(getCurrentDataSupplier(fullinput));
+									model.createModel(currentdatasupplier);
 								} else {
-									model.updateModel(regionchanges, getCurrentDataSupplier(fullinput));
+									model.updateModel(regionchanges, currentdatasupplier);
 								}
 							} finally {
 								updateSemaphore.release();
 							}
-						} catch (ScriptParsingFailedException e) {
-							throw e;
-						} catch (Throwable e) {
-							project.displayException(e);
-							throw e;
+							synchronized (ModelReference.this) {
+								ModelReference.this.processedUpdateCounter = postedupdctr;
+								updateVersion = new Object();
+								if (regionchanges != null) {
+									mrregionchanges.subList(0, regionchanges.size()).clear();
+								}
+								if (postedupdctr != ModelReference.this.postedUpdateCounter) {
+									//run the loop again as there were changes
+									continue;
+								}
+								if (ARFU_updaterThread.compareAndSet(ModelReference.this, this, null)) {
+									ModelReference.this.notifyAll();
+								}
+								editor.callModelListeners(model);
+								break;
+							}
+						} catch (IOException | ScriptParsingFailedException e) {
+							synchronized (ModelReference.this) {
+								//consider the model up-to-date even in case of failure
+								ModelReference.this.processedUpdateCounter = postedupdctr;
+								if (regionchanges == null) {
+									mrregionchanges = null;
+									ModelReference.this.regionChanges = null;
+								}
+								if (postedupdctr != ModelReference.this.postedUpdateCounter) {
+									//run the loop again as there were additional changes
+									continue;
+								}
+								if (ARFU_updaterThread.compareAndSet(ModelReference.this, this, null)) {
+									ModelReference.this.notifyAll();
+								}
+								break;
+							}
 						}
+					} catch (Throwable e) {
+						editor.project.displayException(e);
 						synchronized (ModelReference.this) {
-							updateVersion = new Object();
-							if (regionchanges != null) {
-								mrregionchanges.subList(0, regionchanges.size()).clear();
-							}
-							if (!updateCalled || mrregionchanges != ModelReference.this.regionChanges
-									|| !ObjectUtils.isNullOrEmpty(mrregionchanges)
-									|| !Objects.equals(fullinput, ModelReference.this.fullInput)) {
-								//run the loop again as there were changes
-								continue;
-							}
-							updaterThread = null;
-							ModelReference.this.notifyAll();
-							callModelListeners(model);
-							break;
-						}
-					} catch (IOException | ScriptParsingFailedException e) {
-						synchronized (ModelReference.this) {
-							if (regionchanges == null) {
-								mrregionchanges = null;
-								ModelReference.this.regionChanges = null;
-							}
-							if (!updateCalled || mrregionchanges != ModelReference.this.regionChanges
-									|| !Objects.equals(mrregionchanges, regionchanges)
-									|| !Objects.equals(fullinput, ModelReference.this.fullInput)) {
+							if (postedupdctr != ModelReference.this.postedUpdateCounter) {
 								//run the loop again as there were additional changes
 								continue;
 							}
-							updaterThread = null;
-							ModelReference.this.notifyAll();
-							break;
+							if (ARFU_updaterThread.compareAndSet(ModelReference.this, this, null)) {
+								ModelReference.this.notifyAll();
+							}
 						}
 					}
 				}
 			}
 		}
 
-		private void startUpdaterThreadLocked() {
-			try {
-				waitUpdaterThread();
-				UpdaterThread thread = new UpdaterThread();
-				this.updaterThread = thread;
-				thread.start();
-			} catch (InterruptedException e) {
-				project.displayException(e);
-				throw new RuntimeException(e);
-			}
-		}
-
-		private void startWaitUpdatedModelLocked() {
-			if (updateCalled) {
+		private void postUpdateLocked() {
+			ALFU_postedUpdateCounter.incrementAndGet(this);
+			if (this.updaterThread != null) {
+				//the updater thread is running, it will loop again, as we incremented the update coutner 
 				return;
 			}
-			startUpdaterThreadLocked();
-			try {
-				waitUpdaterThread();
-			} catch (InterruptedException e) {
-				project.displayException(e);
-				throw new RuntimeException(e);
-			}
+			//else restart the thread
+			UpdaterThread thread = new UpdaterThread();
+			this.updaterThread = thread;
+			thread.start();
 		}
 
-		private void waitUpdaterThread() throws InterruptedException {
-			while (this.updaterThread != null) {
-				if (this.updaterThread.getState() == State.TERMINATED) {
-					//some fatal error in thread, maybe it failed to null out
-					this.updaterThread = null;
-					break;
+		private void waitUpdaterThread() {
+			try {
+				while (this.updaterThread != null) {
+					if (this.updaterThread.getState() == State.TERMINATED) {
+						//some fatal error in thread, maybe it failed to null out
+						this.updaterThread = null;
+						break;
+					}
+					//some timeout to be more error tolerant
+					this.wait(1000);
 				}
-				//some timeout to be more error tolerant
-				this.wait(1000);
+			} catch (InterruptedException e) {
+				editor.project.displayException(e);
+				throw new RuntimeException(e);
 			}
 		}
 
 		public synchronized TokenStateReference getTokenState() {
-			startWaitUpdatedModelLocked();
 			Iterable<? extends ScriptToken> tokens = model.getTokens(0, Integer.MAX_VALUE);
 			if (tokens == null) {
 				return new TokenStateReference(Collections.emptyList(), updateVersion);
@@ -737,7 +769,7 @@ public class ScriptEditorModel implements Closeable {
 				String type = t.getType();
 				TokenStyle style;
 				if (type != null) {
-					style = findAppropriateStyleForTheme(tokenStyles.get(type), tokenTheme);
+					style = findAppropriateStyleForTheme(editor.tokenStyles.get(type), editor.tokenTheme);
 				} else {
 					style = null;
 				}
@@ -747,7 +779,9 @@ public class ScriptEditorModel implements Closeable {
 		}
 
 		public synchronized ScriptSyntaxModel getUpToDateModel() {
-			startWaitUpdatedModelLocked();
+			if (this.postedUpdateCounter != this.processedUpdateCounter) {
+				waitUpdaterThread();
+			}
 			return model;
 		}
 
@@ -755,7 +789,7 @@ public class ScriptEditorModel implements Closeable {
 			return model;
 		}
 
-		private IOSupplier<? extends ByteSource> getCurrentDataSupplier(String text) {
+		private static IOSupplier<? extends ByteSource> getCurrentDataSupplier(String text) {
 			if (text == null) {
 				return null;
 			}
@@ -771,14 +805,12 @@ public class ScriptEditorModel implements Closeable {
 			this.fullInput = fullinput;
 			if (regionChanges == null) {
 				if (!Objects.equals(prevfullinput, fullinput)) {
-					this.updateCalled = false;
-					startUpdaterThreadLocked();
+					postUpdateLocked();
 				}
 				return;
 			}
 			this.regionChanges.add(change);
-			this.updateCalled = false;
-			startUpdaterThreadLocked();
+			postUpdateLocked();
 		}
 
 		public synchronized void textChange(List<TextRegionChange> changes, String fullinput) {
@@ -786,19 +818,17 @@ public class ScriptEditorModel implements Closeable {
 			this.fullInput = fullinput;
 			if (regionChanges == null) {
 				if (!Objects.equals(prevfullinput, fullinput)) {
-					this.updateCalled = false;
-					startUpdaterThreadLocked();
+					postUpdateLocked();
 				}
 				return;
 			}
 			this.regionChanges.addAll(changes);
-			this.updateCalled = false;
-			startUpdaterThreadLocked();
+			postUpdateLocked();
 		}
 
 		public void invalidateModel() {
 			synchronized (this) {
-				this.updateCalled = false;
+				ALFU_postedUpdateCounter.incrementAndGet(this);
 				this.regionChanges = null;
 				this.invalidated = true;
 			}
@@ -815,9 +845,8 @@ public class ScriptEditorModel implements Closeable {
 				return;
 			}
 			this.fullInput = fullinput;
-			this.updateCalled = false;
 			this.regionChanges = null;
-			startUpdaterThreadLocked();
+			postUpdateLocked();
 		}
 	}
 
