@@ -385,6 +385,12 @@ public class BuildCommand {
 	 * - compact
 	 *   - Interal stack traces are removed, and no indicator of such removal
 	 *       is displayed on the printed information.
+	 * - script_only
+	 *   - Only script traces are displayed for the exceptions.
+	 *       No Java stack traces are displayed.
+	 * - java_trace
+	 *   - Only Java stack traces are displayed for the exceptions.
+	 *       No build script traces are displayed.
 	 * </pre>
 	 */
 	@Parameter("-stacktrace")

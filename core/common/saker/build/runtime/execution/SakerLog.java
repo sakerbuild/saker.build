@@ -508,7 +508,36 @@ public class SakerLog {
 				}
 				return true;
 			}
-		};
+		},
+		/**
+		 * Exception format that only includes script traces, but no Java stack traces.
+		 * 
+		 * @since saker.build 0.8.11
+		 */
+		SCRIPT_ONLY(false) {
+			@Override
+			public boolean includeStackTraceElement(StackTraceElement elem) {
+				return false;
+			}
+		},
+		/**
+		 * Exception format that only includes Java stack traces, but no script traces.
+		 * 
+		 * @since saker.build 0.8.11
+		 */
+		JAVA_TRACE(true) {
+			@Override
+			public boolean includeStackTraceElement(StackTraceElement elem) {
+				return true;
+			}
+
+			@Override
+			public boolean isIncludeScriptTrace() {
+				return false;
+			}
+		},
+
+		;
 
 		//XXX make the default value configureable using system properties
 		/**
