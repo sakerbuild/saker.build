@@ -39,6 +39,7 @@ import saker.build.scripting.model.ScriptModellingEnvironment;
 import saker.build.scripting.model.ScriptSyntaxModel;
 import saker.build.scripting.model.SimplePartitionedTextContent;
 import saker.build.scripting.model.SimpleTextPartition;
+import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.StringUtils;
 
 public class FilePathLiteralCompletionProposal implements ScriptCompletionProposal {
@@ -80,10 +81,15 @@ public class FilePathLiteralCompletionProposal implements ScriptCompletionPropos
 
 	@Override
 	public PartitionedTextContent getInformation() {
+		String[] infometa = { SakerParsedModel.INFORMATION_META_DATA_FILE_TYPE_FILE };
 		SimpleTextPartition partition = new SimpleTextPartition(
 				SakerParsedModel.createFileInformationTitle(executionPath, attrs), null,
-				createFileInformationTextContent(attrs, executionPath, pathKey, modellingEnvironment));
-		SakerParsedModel.setFileInformationSchema(partition, attrs);
+				createFileInformationTextContent(attrs, executionPath, pathKey, modellingEnvironment, infometa));
+
+		partition.setSchemaIdentifier(SakerParsedModel.INFORMATION_SCHEMA_FILE);
+		partition.setSchemaMetaData(
+				ImmutableUtils.singletonNavigableMap(SakerParsedModel.INFORMATION_META_DATA_FILE_TYPE, infometa[0]));
+
 		return new SimplePartitionedTextContent(partition);
 	}
 
@@ -152,6 +158,16 @@ public class FilePathLiteralCompletionProposal implements ScriptCompletionPropos
 
 	public static FormattedTextContent createFileInformationTextContent(FileEntry attrs, SakerPath executionPath,
 			ProviderHolderPathKey pathKey, ScriptModellingEnvironment modellingEnvironment) {
+		return createFileInformationTextContent(attrs, executionPath, pathKey, modellingEnvironment, null);
+	}
+
+	public static FormattedTextContent createFileInformationTextContent(FileEntry attrs, SakerPath executionPath,
+			ProviderHolderPathKey pathKey, ScriptModellingEnvironment modellingEnvironment, String[] outinfometadata) {
+		if (outinfometadata != null) {
+			//file as default
+			outinfometadata[0] = SakerParsedModel.INFORMATION_META_DATA_FILE_TYPE_FILE;
+		}
+
 		MultiFormatTextContentWriter writer = new MultiFormatTextContentWriter();
 		writer.paragraph("Path: " + executionPath);
 		writer.paragraph("Local path: "
@@ -168,6 +184,9 @@ public class FilePathLiteralCompletionProposal implements ScriptCompletionPropos
 				writer.paragraph("Last modified: " + DATE_FORMATTER.format(new Date(attrs.getLastModifiedMillis())));
 
 				if (bsfile) {
+					if (outinfometadata != null) {
+						outinfometadata[0] = SakerParsedModel.INFORMATION_META_DATA_FILE_TYPE_BUILD_SCRIPT;
+					}
 					try {
 						Set<String> tnames = model.getTargetNames();
 						if (tnames != null) {
@@ -182,6 +201,9 @@ public class FilePathLiteralCompletionProposal implements ScriptCompletionPropos
 				break;
 			}
 			case FileEntry.TYPE_DIRECTORY: {
+				if (outinfometadata != null) {
+					outinfometadata[0] = SakerParsedModel.INFORMATION_META_DATA_FILE_TYPE_DIRECTORY;
+				}
 				writer.paragraph("Type: directory");
 				break;
 			}

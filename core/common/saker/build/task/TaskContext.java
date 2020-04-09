@@ -190,7 +190,7 @@ import saker.build.util.property.IDEConfigurationRequiredExecutionProperty;
  * used by multiple tasks. This can be useful when multiple tasks might access the same computed data from files as
  * unnecessary redundant computations can be avoided. See {@link #computeFileContentData(SakerFile, FileDataComputer)}.
  * <p>
- * Methods of this class may throw (but not required in all ceses) {@link IllegalTaskOperationException} if it detects
+ * Methods of this class may throw (but not required in all cases) {@link IllegalTaskOperationException} if it detects
  * that they are being called after the corresponding task execution has finished. References to task contexts should
  * not be retained after the task execution is over.
  * <p>

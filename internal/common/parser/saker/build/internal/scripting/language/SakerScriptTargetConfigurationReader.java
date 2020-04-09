@@ -91,6 +91,7 @@ import saker.build.scripting.TargetConfigurationReadingResult;
 import saker.build.scripting.model.SimpleStructureOutlineEntry;
 import saker.build.scripting.model.StructureOutlineEntry;
 import saker.build.task.BuildTargetTaskFactory;
+import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.StringUtils;
 import saker.build.thirdparty.saker.util.io.ByteSource;
@@ -336,6 +337,18 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		List<Statement> parsedtargets = statement.scopeTo("task_target");
 		for (Statement target : parsedtargets) {
 			result.addAll(getTargetNamesFromTargetStatement(target));
+		}
+		return result;
+	}
+
+	public static Set<Entry<String, Statement>> getTargetNameEntries(Statement statement) {
+		Set<Entry<String, Statement>> result = new LinkedHashSet<>();
+		List<Statement> parsedtargets = statement.scopeTo("task_target");
+		for (Statement target : parsedtargets) {
+			List<String> names = getTargetNamesFromTargetStatement(target);
+			for (String n : names) {
+				result.add(ImmutableUtils.makeImmutableMapEntry(n, target));
+			}
 		}
 		return result;
 	}

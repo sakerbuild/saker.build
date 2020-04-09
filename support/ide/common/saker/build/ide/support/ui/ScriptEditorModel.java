@@ -123,9 +123,7 @@ public class ScriptEditorModel implements Closeable {
 		if (model == null) {
 			return null;
 		}
-		synchronized (inputAccessLock) {
-			return model.getUpToDateModel();
-		}
+		return model.getUpToDateModel();
 	}
 
 	public ScriptSyntaxModel getModelMaybeOutOfDate() {
@@ -232,10 +230,17 @@ public class ScriptEditorModel implements Closeable {
 		}
 	}
 
-	private void callModelListeners(ScriptSyntaxModel model) {
+	private void callModelListenersLocked(ModelReference modelref, TokenStateReference ntokenstate) {
+		if (modelref != this.model) {
+			return;
+		}
+		ScriptSyntaxModel model = modelref == null ? null : modelref.model;
 		List<ModelUpdateListener> listeners;
 		synchronized (modelUpdateListeners) {
 			listeners = ImmutableUtils.makeImmutableList(modelUpdateListeners);
+		}
+		if (ntokenstate != null) {
+			this.currentTokenState = ntokenstate;
 		}
 		for (ModelUpdateListener l : listeners) {
 			try {
@@ -281,24 +286,32 @@ public class ScriptEditorModel implements Closeable {
 		ModelReference model = ARFU_model.getAndSet(this, null);
 		if (model != null) {
 			model.invalidateModel();
-			callModelListeners(null);
+			callModelListenersLocked(null, null);
 		}
 		this.currentTokenState = new TokenStateReference();
 		this.tokenStyles = Collections.emptyMap();
 	}
 
 	public void setTokenTheme(int tokenTheme) {
+		TokenStateReference tokenstateref;
 		synchronized (inputAccessLock) {
 			if (closed) {
 				return;
 			}
 			this.tokenTheme = tokenTheme;
-			updateCurrentTokenStateStylesLocked(this.tokenStyles);
+			tokenstateref = currentTokenState;
 		}
+		updateCurrentTokenStateStyles(this.tokenStyles, tokenstateref);
 	}
 
 	private void updateCurrentTokenStateStylesLocked(Map<String, Set<? extends TokenStyle>> styles) {
-		Object[] currenttokens = currentTokenState.currentTokenState.toArray();
+		TokenStateReference tokenstateref = currentTokenState;
+		updateCurrentTokenStateStyles(styles, tokenstateref);
+	}
+
+	private void updateCurrentTokenStateStyles(Map<String, Set<? extends TokenStyle>> styles,
+			TokenStateReference tokenstateref) {
+		Object[] currenttokens = tokenstateref.currentTokenState.toArray();
 		for (int i = 0; i < currenttokens.length; i++) {
 			TokenState token = (TokenState) currenttokens[i];
 			TokenStyle style = findAppropriateStyleForTheme(styles.get(token.getType()), tokenTheme);
@@ -306,7 +319,7 @@ public class ScriptEditorModel implements Closeable {
 		}
 		@SuppressWarnings("unchecked")
 		List<TokenState> ntokenstate = (List<TokenState>) (List<?>) ImmutableUtils.unmodifiableArrayList(currenttokens);
-		this.currentTokenState = new TokenStateReference(ntokenstate);
+		tokenstateref.currentTokenState = ntokenstate;
 	}
 
 	private static TokenStyle findAppropriateStyleForTheme(Set<? extends TokenStyle> styles, int theme) {
@@ -342,6 +355,7 @@ public class ScriptEditorModel implements Closeable {
 		if (ObjectUtils.isNullOrEmpty(changes)) {
 			return;
 		}
+		TokenStateReference ntokenstate;
 		synchronized (inputAccessLock) {
 			if (closed) {
 				return;
@@ -350,21 +364,23 @@ public class ScriptEditorModel implements Closeable {
 				return;
 			}
 			//keep the token state version
-			this.currentTokenState = new TokenStateReference(
-					updateTokenStateWithChange(currentTokenState.currentTokenState, changes),
-					currentTokenState.version);
+			ntokenstate = new TokenStateReference(currentTokenState.currentTokenState, currentTokenState.version);
+			this.currentTokenState = ntokenstate;
 			applyTextChange(this.text, changes);
 			ModelReference modelref = this.model;
 			if (modelref != null) {
 				modelref.textChange(changes, Objects.toString(this.text, null));
 			}
 		}
+		//update the tokens outside of the actual lock
+		ntokenstate.currentTokenState = updateTokenStateWithChange(currentTokenState.currentTokenState, changes);
 	}
 
 	public void textChange(TextRegionChange change) {
 		if (change == null) {
 			return;
 		}
+		TokenStateReference ntokenstate;
 		synchronized (inputAccessLock) {
 			if (closed) {
 				return;
@@ -373,14 +389,16 @@ public class ScriptEditorModel implements Closeable {
 				return;
 			}
 			//keep the token state version
-			this.currentTokenState = new TokenStateReference(
-					updateTokenStateWithChange(currentTokenState.currentTokenState, change), currentTokenState.version);
+			ntokenstate = new TokenStateReference(currentTokenState.currentTokenState, currentTokenState.version);
+			this.currentTokenState = ntokenstate;
 			applyTextChange(this.text, change);
 			ModelReference modelref = this.model;
 			if (modelref != null) {
 				modelref.textChange(change, Objects.toString(this.text, null));
 			}
 		}
+		//update the tokens outside of the actual lock
+		ntokenstate.currentTokenState = updateTokenStateWithChange(currentTokenState.currentTokenState, change);
 	}
 
 	public static List<TokenState> updateTokenStateWithChange(List<TokenState> states,
@@ -490,22 +508,14 @@ public class ScriptEditorModel implements Closeable {
 			this.text = new StringBuilder(instr);
 			ModelReference modelref = this.model;
 			if (modelref != null) {
+				System.out.println("ScriptEditorModel.resetInput() " + input.length());
 				modelref.update(instr);
 			}
 		}
 	}
 
 	public List<TokenState> getCurrentTokenState() {
-		synchronized (inputAccessLock) {
-			ModelReference modelref = this.model;
-			if (modelref == null) {
-				return currentTokenState.currentTokenState;
-			}
-			if (!Objects.equals(currentTokenState.version, modelref.updateVersion)) {
-				this.currentTokenState = modelref.getTokenState();
-			}
-			return this.currentTokenState.currentTokenState;
-		}
+		return currentTokenState.currentTokenState;
 	}
 
 	@Override
@@ -524,6 +534,30 @@ public class ScriptEditorModel implements Closeable {
 		synchronized (modelUpdateListeners) {
 			modelUpdateListeners.clear();
 		}
+	}
+
+	protected TokenStateReference getTokenStateFromModel(ScriptSyntaxModel model, Object version) {
+		Iterable<? extends ScriptToken> tokens = model.getTokens(0, Integer.MAX_VALUE);
+		if (tokens == null) {
+			return new TokenStateReference(Collections.emptyList(), version);
+		}
+		Iterator<? extends ScriptToken> it = tokens.iterator();
+		if (!it.hasNext()) {
+			return new TokenStateReference(Collections.emptyList(), version);
+		}
+		ArrayList<TokenState> resultlist = new ArrayList<>();
+		do {
+			ScriptToken t = it.next();
+			String type = t.getType();
+			TokenStyle style;
+			if (type != null) {
+				style = findAppropriateStyleForTheme(tokenStyles.get(type), tokenTheme);
+			} else {
+				style = null;
+			}
+			resultlist.add(new TokenState(t.getOffset(), t.getLength(), style, type));
+		} while (it.hasNext());
+		return new TokenStateReference(ImmutableUtils.unmodifiableList(resultlist), version);
 	}
 
 	private final class ScriptRelatedResourceListener implements ProjectResourceListener, PluginResourceListener {
@@ -675,21 +709,25 @@ public class ScriptEditorModel implements Closeable {
 							} finally {
 								updateSemaphore.release();
 							}
-							synchronized (ModelReference.this) {
-								ModelReference.this.processedUpdateCounter = postedupdctr;
-								updateVersion = new Object();
-								if (regionchanges != null) {
-									mrregionchanges.subList(0, regionchanges.size()).clear();
+							Object nupdateversion = new Object();
+							TokenStateReference ntokenstate = editor.getTokenStateFromModel(model, nupdateversion);
+							synchronized (editor.inputAccessLock) {
+								synchronized (ModelReference.this) {
+									ModelReference.this.processedUpdateCounter = postedupdctr;
+									updateVersion = nupdateversion;
+									if (regionchanges != null) {
+										mrregionchanges.subList(0, regionchanges.size()).clear();
+									}
+									if (postedupdctr != ModelReference.this.postedUpdateCounter) {
+										//run the loop again as there were changes
+										continue;
+									}
+									if (ARFU_updaterThread.compareAndSet(ModelReference.this, this, null)) {
+										ModelReference.this.notifyAll();
+									}
+									editor.callModelListenersLocked(ModelReference.this, ntokenstate);
+									break;
 								}
-								if (postedupdctr != ModelReference.this.postedUpdateCounter) {
-									//run the loop again as there were changes
-									continue;
-								}
-								if (ARFU_updaterThread.compareAndSet(ModelReference.this, this, null)) {
-									ModelReference.this.notifyAll();
-								}
-								editor.callModelListeners(model);
-								break;
 							}
 						} catch (IOException | ScriptParsingFailedException e) {
 							synchronized (ModelReference.this) {
@@ -710,7 +748,6 @@ public class ScriptEditorModel implements Closeable {
 							}
 						}
 					} catch (Throwable e) {
-						editor.project.displayException(e);
 						synchronized (ModelReference.this) {
 							if (postedupdctr != ModelReference.this.postedUpdateCounter) {
 								//run the loop again as there were additional changes
@@ -720,6 +757,7 @@ public class ScriptEditorModel implements Closeable {
 								ModelReference.this.notifyAll();
 							}
 						}
+						editor.project.displayException(e);
 					}
 				}
 			}
@@ -755,27 +793,9 @@ public class ScriptEditorModel implements Closeable {
 		}
 
 		public synchronized TokenStateReference getTokenState() {
-			Iterable<? extends ScriptToken> tokens = model.getTokens(0, Integer.MAX_VALUE);
-			if (tokens == null) {
-				return new TokenStateReference(Collections.emptyList(), updateVersion);
-			}
-			Iterator<? extends ScriptToken> it = tokens.iterator();
-			if (!it.hasNext()) {
-				return new TokenStateReference(Collections.emptyList(), updateVersion);
-			}
-			ArrayList<TokenState> resultlist = new ArrayList<>();
-			do {
-				ScriptToken t = it.next();
-				String type = t.getType();
-				TokenStyle style;
-				if (type != null) {
-					style = findAppropriateStyleForTheme(editor.tokenStyles.get(type), editor.tokenTheme);
-				} else {
-					style = null;
-				}
-				resultlist.add(new TokenState(t.getOffset(), t.getLength(), style, type));
-			} while (it.hasNext());
-			return new TokenStateReference(ImmutableUtils.unmodifiableList(resultlist), updateVersion);
+			ScriptSyntaxModel model = this.model;
+			Object version = updateVersion;
+			return editor.getTokenStateFromModel(model, version);
 		}
 
 		public synchronized ScriptSyntaxModel getUpToDateModel() {
@@ -851,7 +871,7 @@ public class ScriptEditorModel implements Closeable {
 	}
 
 	private static class TokenStateReference {
-		protected final List<TokenState> currentTokenState;
+		protected List<TokenState> currentTokenState;
 		protected final Object version;
 
 		public TokenStateReference() {

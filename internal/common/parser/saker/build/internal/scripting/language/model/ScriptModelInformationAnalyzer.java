@@ -528,7 +528,7 @@ public class ScriptModelInformationAnalyzer {
 							SakerParsedModel.getTargetStatementScriptDoc(includedderived, tasktargetstm), targetnames,
 							includescriptpath);
 					for (String tn : targetnames) {
-						targetenums.put(tn, new TargetDeducingFieldInformation(paramname, targetinfo));
+						targetenums.put(tn, new TargetDeducingFieldInformation(tn, targetinfo));
 					}
 				}
 				SimpleTypeInformation buildtargettype = new SimpleTypeInformation(TypeInformationKind.BUILD_TARGET);

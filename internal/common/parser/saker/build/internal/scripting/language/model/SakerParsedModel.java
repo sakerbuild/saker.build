@@ -55,6 +55,7 @@ import saker.build.internal.scripting.language.model.proposal.FilePathLiteralCom
 import saker.build.internal.scripting.language.model.proposal.SimpleLiteralCompletionProposal;
 import saker.build.internal.scripting.language.task.TaskInvocationSakerTaskFactory;
 import saker.build.runtime.params.ExecutionPathConfiguration;
+import saker.build.runtime.params.ExecutionScriptConfiguration;
 import saker.build.scripting.ScriptParsingFailedException;
 import saker.build.scripting.ScriptParsingOptions;
 import saker.build.scripting.model.FormattedTextContent;
@@ -221,6 +222,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 	private static final String PROPOSAL_META_DATA_FILE_TYPE = "file_type";
 	private static final String PROPOSAL_META_DATA_FILE_TYPE_FILE = "file";
+	private static final String PROPOSAL_META_DATA_FILE_TYPE_BUILD_SCRIPT = "build_script";
 	private static final String PROPOSAL_META_DATA_FILE_TYPE_DIRECTORY = "dir";
 
 	public static final String INFORMATION_SCHEMA = "saker.script";
@@ -241,6 +243,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 	public static final String INFORMATION_META_DATA_FILE_TYPE = "file_type";
 	public static final String INFORMATION_META_DATA_FILE_TYPE_FILE = "file";
+	public static final String INFORMATION_META_DATA_FILE_TYPE_BUILD_SCRIPT = "build_script";
 	public static final String INFORMATION_META_DATA_FILE_TYPE_DIRECTORY = "dir";
 
 	private static final Set<String> VARIABLE_TASK_NAMES = ImmutableUtils
@@ -319,7 +322,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		TokenStyle darktargetnamestyle = SimpleTokenStyle.makeDarkStyleWithForeground(targetnamestyle,
 				rgb(32, 180, 32));
 		TokenStyle darkparamstyle = SimpleTokenStyle.makeDarkStyleWithForeground(paramstyle, rgb(194, 100, 16));
-		TokenStyle darktaskstepstyle = SimpleTokenStyle.makeDarkStyleWithForeground(taskstepstyle, rgb(75, 235, 115));
+		TokenStyle darktaskstepstyle = SimpleTokenStyle.makeDarkStyleWithForeground(taskstepstyle, rgb(60, 215, 98));
 		TokenStyle darkoperationstep = SimpleTokenStyle.makeDarkStyleWithForeground(operationstep, rgb(60, 210, 100));
 		TokenStyle darkkeywordstyle = SimpleTokenStyle.makeDarkStyleWithForeground(keywordstyle, rgb(178, 89, 178));
 		TokenStyle darkerrorstyle = SimpleTokenStyle.makeDarkStyleWithForeground(errorstyle, rgb(255, 90, 90));
@@ -776,6 +779,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		long nanos = System.nanoTime();
 		try {
 			ParsingResult repaired = derived.getStatement().repair(derived.getParsingInformation(), reparations);
+			System.out.println("SakerParsedModel.updateModel() repair finished in "
+					+ (System.nanoTime() - nanos) / 1_000_000 + " ms");
+			nanos = System.nanoTime();
 			synchronized (this) {
 				//null out async parser as we do it in this thread
 				this.asyncParseDerivedVersion = null;
@@ -3701,14 +3707,19 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			type = TYPE_FILE;
 		}
 		SakerPath childerpath = dirpathkey.getPath().resolve(fname);
+		SakerPath fileexecutionpath = direxecutionpath.resolve(fname);
+
 		//character escaping is handled by proposal factory
 		SimpleProviderHolderPathKey childpathkey = new SimpleProviderHolderPathKey(dirpathkey, childerpath);
 		SimpleLiteralCompletionProposal simpleproposal = proposalfactory.create(type, propliteral);
 		simpleproposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_FILE);
-		simpleproposal.setMetaData(PROPOSAL_META_DATA_FILE_TYPE,
-				attrs.isDirectory() ? PROPOSAL_META_DATA_FILE_TYPE_DIRECTORY : PROPOSAL_META_DATA_FILE_TYPE_FILE);
+		if (attrs.isDirectory()) {
+			simpleproposal.setMetaData(PROPOSAL_META_DATA_FILE_TYPE, PROPOSAL_META_DATA_FILE_TYPE_DIRECTORY);
+		} else {
+			simpleproposal.setMetaData(PROPOSAL_META_DATA_FILE_TYPE,
+					getExecutionFileFileTypeProposalSchemaMetaData(fileexecutionpath));
+		}
 
-		SakerPath fileexecutionpath = direxecutionpath.resolve(fname);
 		FilePathLiteralCompletionProposal prop = new FilePathLiteralCompletionProposal(simpleproposal,
 				modellingEnvironment, childpathkey, attrs, fileexecutionpath);
 		result.add(prop);
@@ -3727,6 +3738,22 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			} catch (IOException e) {
 			}
 		}
+	}
+
+	private String getExecutionFileFileTypeProposalSchemaMetaData(SakerPath fileexecutionpath) {
+		ScriptModellingEnvironment modellingenv = modellingEnvironment;
+		if (modellingenv != null) {
+			ScriptModellingEnvironmentConfiguration envconfig = modellingenv.getConfiguration();
+			if (envconfig != null) {
+				ExecutionScriptConfiguration scriptconfig = envconfig.getScriptConfiguration();
+				if (scriptconfig != null) {
+					if (scriptconfig.getScriptParsingOptions(fileexecutionpath) != null) {
+						return PROPOSAL_META_DATA_FILE_TYPE_BUILD_SCRIPT;
+					}
+				}
+			}
+		}
+		return PROPOSAL_META_DATA_FILE_TYPE_FILE;
 	}
 
 	private static class ParameterProposalKey {
@@ -4387,13 +4414,15 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			if (!TypeInformationKind.BUILD_TARGET.equalsIgnoreCase(typeinfo.getKind())) {
 				continue;
 			}
-			Set<String> targetnames = derived.getTargetNames();
-			if (!ObjectUtils.isNullOrEmpty(targetnames)) {
-				for (String targetname : targetnames) {
+			Set<Entry<String, Statement>> targetentries = derived.getTargetNameEntries();
+			if (!ObjectUtils.isNullOrEmpty(targetentries)) {
+				for (Entry<String, Statement> entry : targetentries) {
+					String targetname = entry.getKey();
 					if (base == null || isPhraseStartsWithProposal(targetname, base)) {
 						SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_BUILD_TARGET,
 								targetname);
 						proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_BUILD_TARGET);
+						proposal.setInformation(partitioned(createBuildTargetTextPartition(derived, entry.getValue())));
 						result.add(proposal);
 					}
 				}

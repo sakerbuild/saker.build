@@ -27,6 +27,7 @@ import java.util.NavigableSet;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.Map.Entry;
 
 import saker.build.internal.scripting.language.SakerScriptTargetConfigurationReader;
 import saker.build.internal.scripting.language.model.SakerParsedModel.SyntaxScriptToken;
@@ -75,6 +76,10 @@ public class DerivedData {
 
 	public Set<String> getTargetNames() {
 		return SakerScriptTargetConfigurationReader.getTargetNames(getStatement());
+	}
+
+	public Set<Entry<String, Statement>> getTargetNameEntries() {
+		return SakerScriptTargetConfigurationReader.getTargetNameEntries(getStatement());
 	}
 
 	public ScriptParsingOptions getScriptParsingOptions() {
