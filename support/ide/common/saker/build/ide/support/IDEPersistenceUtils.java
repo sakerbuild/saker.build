@@ -74,6 +74,11 @@ public class IDEPersistenceUtils {
 		}
 		Set<? extends Entry<String, String>> userparams = props.getUserParameters();
 		writeStringMap(out, userparams, "user_parameters");
+
+		String excformat = props.getExceptionFormat();
+		if (excformat != null) {
+			out.writeField("exception_format", excformat);
+		}
 	}
 
 	public static IDEPluginProperties readIDEPluginProperties(StructuredObjectInput input) throws IOException {
@@ -96,6 +101,11 @@ public class IDEPersistenceUtils {
 				Set<Entry<String, String>> map = readStringMap(array);
 				result.setUserParameters(map);
 			}
+		}
+
+		String excformat = input.readString("exception_format");
+		if (excformat != null) {
+			result.setExceptionFormat(excformat);
 		}
 
 		return result.build();

@@ -22,6 +22,8 @@ public interface IDEPluginProperties {
 	public String getStorageDirectory();
 
 	public Set<? extends Entry<String, String>> getUserParameters();
+	
+	public String getExceptionFormat();
 
 	@Override
 	public int hashCode();

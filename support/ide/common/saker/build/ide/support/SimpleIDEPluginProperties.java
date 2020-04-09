@@ -15,11 +15,13 @@
  */
 package saker.build.ide.support;
 
+import java.util.Collections;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 
 import saker.build.ide.support.properties.IDEPluginProperties;
-import saker.build.thirdparty.saker.util.ImmutableUtils;
+import saker.build.runtime.execution.SakerLog.CommonExceptionFormat;
 
 public class SimpleIDEPluginProperties implements IDEPluginProperties {
 	private static final IDEPluginProperties EMPTY = new SimpleIDEPluginProperties();
@@ -29,7 +31,8 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 	}
 
 	private String storageDirectory;
-	private Set<? extends Entry<String, String>> userParameters;
+	private Set<? extends Entry<String, String>> userParameters = Collections.emptySet();
+	private String exceptionFormat;
 
 	private SimpleIDEPluginProperties() {
 	}
@@ -37,10 +40,7 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 	private SimpleIDEPluginProperties(IDEPluginProperties copy) {
 		this.storageDirectory = copy.getStorageDirectory();
 		this.userParameters = SakerIDEPlugin.makeImmutableEntrySet(copy.getUserParameters());
-	}
-
-	private final void unmodifiablize() {
-		this.userParameters = ImmutableUtils.unmodifiableSet(this.userParameters);
+		this.exceptionFormat = copy.getExceptionFormat();
 	}
 
 	@Override
@@ -53,12 +53,54 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 		return userParameters;
 	}
 
+	@Override
+	public String getExceptionFormat() {
+		return exceptionFormat;
+	}
+
 	public static Builder builder() {
 		return new Builder();
 	}
 
 	public static Builder builder(IDEPluginProperties copy) {
 		return new Builder(copy);
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((exceptionFormat == null) ? 0 : exceptionFormat.hashCode());
+		result = prime * result + ((storageDirectory == null) ? 0 : storageDirectory.hashCode());
+		result = prime * result + ((userParameters == null) ? 0 : userParameters.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		SimpleIDEPluginProperties other = (SimpleIDEPluginProperties) obj;
+		if (exceptionFormat == null) {
+			if (other.exceptionFormat != null)
+				return false;
+		} else if (!exceptionFormat.equals(other.exceptionFormat))
+			return false;
+		if (storageDirectory == null) {
+			if (other.storageDirectory != null)
+				return false;
+		} else if (!storageDirectory.equals(other.storageDirectory))
+			return false;
+		if (userParameters == null) {
+			if (other.userParameters != null)
+				return false;
+		} else if (!userParameters.equals(other.userParameters))
+			return false;
+		return true;
 	}
 
 	public static final class Builder {
@@ -78,20 +120,40 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 		}
 
 		public Builder setUserParameters(Set<? extends Entry<String, String>> userParameters) {
-			result.userParameters = SakerIDEPlugin.makeImmutableEntrySet(userParameters);
+			result.userParameters = userParameters == null ? Collections.emptySet()
+					: SakerIDEPlugin.makeImmutableEntrySet(userParameters);
 			return this;
+		}
+
+		/**
+		 * Sets the exception format to be used to display build exceptions.
+		 * <p>
+		 * See {@link CommonExceptionFormat}.
+		 * 
+		 * @param exceptionFormat
+		 *            The execption format.
+		 * @return <code>this</code>
+		 */
+		public Builder setExceptionFormat(String exceptionFormat) {
+			result.exceptionFormat = exceptionFormat;
+			return this;
+		}
+
+		public Builder setExceptionFormat(CommonExceptionFormat exceptionFormat) {
+			return this.setExceptionFormat(Objects.toString(exceptionFormat, null));
 		}
 
 		public IDEPluginProperties build() {
 			SimpleIDEPluginProperties res = this.result;
+			if (res == null) {
+				throw new IllegalStateException("Builder already used.");
+			}
 			this.result = null;
-			res.unmodifiablize();
 			return res;
 		}
 
 		public IDEPluginProperties buildReuse() {
 			SimpleIDEPluginProperties res = new SimpleIDEPluginProperties(this.result);
-			res.unmodifiablize();
 			return res;
 		}
 	}

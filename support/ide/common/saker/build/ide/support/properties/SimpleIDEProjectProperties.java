@@ -160,9 +160,9 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		final int prime = 31;
 		int result = 1;
 		result = prime * result + ((buildDirectory == null) ? 0 : buildDirectory.hashCode());
+		result = prime * result + (buildTraceEmbedArtifacts ? 1231 : 1237);
 		result = prime * result + ((buildTraceOutput == null) ? 0 : buildTraceOutput.hashCode());
 		result = prime * result + ((connections == null) ? 0 : connections.hashCode());
-		result = prime * result + (buildTraceEmbedArtifacts ? 1231 : 1237);
 		result = prime * result
 				+ ((executionDaemonConnectionName == null) ? 0 : executionDaemonConnectionName.hashCode());
 		result = prime * result + ((mirrorDirectory == null) ? 0 : mirrorDirectory.hashCode());
@@ -190,6 +190,8 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 				return false;
 		} else if (!buildDirectory.equals(other.buildDirectory))
 			return false;
+		if (buildTraceEmbedArtifacts != other.buildTraceEmbedArtifacts)
+			return false;
 		if (buildTraceOutput == null) {
 			if (other.buildTraceOutput != null)
 				return false;
@@ -199,8 +201,6 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 			if (other.connections != null)
 				return false;
 		} else if (!connections.equals(other.connections))
-			return false;
-		if (buildTraceEmbedArtifacts != other.buildTraceEmbedArtifacts)
 			return false;
 		if (executionDaemonConnectionName == null) {
 			if (other.executionDaemonConnectionName != null)
