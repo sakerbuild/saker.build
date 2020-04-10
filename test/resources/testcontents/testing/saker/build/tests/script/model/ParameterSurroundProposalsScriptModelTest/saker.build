@@ -1,0 +1,11 @@
+example.task(
+	FirstParam1: 
+	
+	Param1: ,
+	
+	NCParam1: x
+	
+	NoCommaEmptyParam1:
+	
+	ClosingParam: 
+)

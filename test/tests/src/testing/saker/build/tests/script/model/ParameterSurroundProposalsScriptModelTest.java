@@ -19,7 +19,7 @@ import saker.build.scripting.model.ScriptSyntaxModel;
 import testing.saker.SakerTest;
 
 @SakerTest
-public class IncludeParameterProposalsScriptModelTest extends ScriptModelTestCase {
+public class ParameterSurroundProposalsScriptModelTest extends ScriptModelTestCase {
 
 	@Override
 	protected void runTest() throws Throwable {
@@ -29,16 +29,16 @@ public class IncludeParameterProposalsScriptModelTest extends ScriptModelTestCas
 
 		exhaustiveTokenInformationRetrieve(model);
 		exhaustiveProposalRetrieve(model, filedata);
-
-		assertProposals(model, endIndexOf(filedata, "include(first,")).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, fin")).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, fin") - 2).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1")).assertPresent("finparam1")
-				.assertNotPresent("finparam2");
-
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1: 1)") - 4).assertPresent("finparam1")
-				.assertNotPresent("finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1: 1)") - 5).assertPresent("finparam2");
+		
+		assertProposals(model, startIndexOf(filedata, "\r\n\tParam1: ")).assertPresentOrder("PathParam1");
+		assertProposals(model, endIndexOf(filedata, "Param1: ,")).assertPresentOrder("PathParam1");
+		
+		assertProposals(model, startIndexOf(filedata, "\r\n\tNCParam1: ")).assertPresentOrder("PathParam1");
+		assertProposals(model, endIndexOf(filedata, "NCParam1: x\r\n")).assertPresentOrder("PathParam1");
+		
+		assertProposals(model, endIndexOf(filedata, "NoCommaEmptyParam1:\r\n")).assertPresentOrder("PathParam1");
+		
+		assertProposals(model, startIndexOf(filedata, "\tParam1: ")).assertEmpty();
 	}
 
 }

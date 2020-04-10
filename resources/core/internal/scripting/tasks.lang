@@ -97,19 +97,24 @@ language tasks_lang {
 			include WHITESPACE *;
 			include marker as param_eq(":") 1;
 			value param_content ? {
-				include expression_placeholder 1;
+				include nb_expression_placeholder as expression_placeholder 1;
 			}
 		}
 	}
 	
 	value first_parameter {
-		inorder ?{
-			include param_name 1;
-			include WHITESPACE *;
-			include marker as param_eq(":") 1;
-		}
-		value param_content 1 {
-			include expression_placeholder 1;
+		firstorder 1 {
+			inorder 1{
+				include param_name 1;
+				include WHITESPACE *;
+				include marker as param_eq(":") 1;
+				value param_content 1 {
+					include nb_expression_placeholder as expression_placeholder 1;
+				}
+			}
+			value param_content 1 {
+				include expression_placeholder 1;
+			}
 		}
 	}
 	

@@ -3621,6 +3621,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		if (taskidstm == null) {
 			return;
 		}
+		Set<String> presentparamnames = getParameterNamesInParamList(taskparent.firstScope("paramlist"));
 		TaskName tn = TaskName.valueOf(taskidstm.getValue(), getTaskIdentifierQualifierLiterals(taskidstm));
 		if (TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE.equals(tn.getName())) {
 			//getting parameter proposals for the include task
@@ -3650,6 +3651,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 							Statement inparam = inparamloc.getStatement();
 							String paramname = SakerScriptTargetConfigurationReader
 									.getTargetParameterStatementVariableName(inparam);
+							if (presentparamnames.contains(paramname)) {
+								continue;
+							}
 							if (base == null || isPhraseStartsWithProposal(paramname, base)) {
 								ParameterProposalKey proposalkey = new ParameterProposalKey(paramname, tn, null);
 
@@ -3681,7 +3685,11 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 					continue;
 				}
 				for (TaskParameterInformation pinfo : params) {
-					String startswithcompatiblename = base == null ? pinfo.getParameterName()
+					String pname = pinfo.getParameterName();
+					if (presentparamnames.contains(pname)) {
+						continue;
+					}
+					String startswithcompatiblename = base == null ? pname
 							: ScriptInfoUtils.isStartsWithCompatibleParameterName(base, pinfo);
 					if (startswithcompatiblename == null) {
 						continue;
@@ -3703,8 +3711,11 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			}
 			//XXX maybe check the qualifiers as well? definitely for ordering.
 			Statement taskstm = entry.getKey();
-			Set<String> presentpnames = getParameterNamesInParamList(taskstm.firstScope("paramlist"));
-			for (String pname : presentpnames) {
+			Set<String> taskparamnames = getParameterNamesInParamList(taskstm.firstScope("paramlist"));
+			for (String pname : taskparamnames) {
+				if (presentparamnames.contains(pname)) {
+					continue;
+				}
 				ParameterProposalKey proposalkey = new ParameterProposalKey(pname, tn, null);
 				if (base == null || isPhraseStartsWithProposal(pname, base)) {
 					SimpleLiteralCompletionProposal simpleproposal = proposalfactory.create(TYPE_PARAMETER, pname);
@@ -4016,6 +4027,8 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 						proposalFactoryForPosition(offset, offset), collector, analyzer);
 			} else {
 				Collection<ProposalLeaf> leafs = collectProposalLeafs(rootstm, offset);
+
+				leafs.forEach(System.out::println);
 
 				for (ProposalLeaf l : leafs) {
 					addLeafProposals(l, derived, result, offset, collector, analyzer);
@@ -4376,8 +4389,14 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				break;
 			}
 			case "param_name": {
-				if (stm.isScopesEmpty("param_name_content")) {
+				Statement paramnamecontentscope = stm.firstScope("param_name_content");
+
+				if (paramnamecontentscope == null
+						|| isParameterProposalInvokedOnLineBefore(offset, stm, paramnamecontentscope)) {
 					//no parameter name content specified
+					// OR
+					//there's already a parameter name. 
+					//however, if the proposal is invoked in a previous line, perform the proposals
 					Statement taskparent = findFirstParentToken(statementstack, "task");
 					if (taskparent != null) {
 						Statement firstparamstm = findFirstParentTokenContextUntil(statementstack, "first_parameter",
@@ -4433,6 +4452,27 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				break;
 			}
 		}
+	}
+
+	private static boolean isParameterProposalInvokedOnLineBefore(int offset, Statement paramnamestm,
+			Statement paramnamecontentscope) {
+		int paramnamestmoffset = paramnamestm.getOffset();
+		if (offset < paramnamestmoffset) {
+			return false;
+		}
+		int end = paramnamecontentscope.getOffset();
+		//XXX use raw sequence
+		String rawval = paramnamestm.getRawValue();
+		int len = end - offset;
+		int shift = offset - paramnamestmoffset;
+		for (int i = 0; i < len; i++) {
+			char c = rawval.charAt(shift + i);
+			if (c == '\n' || c == '\r') {
+				//found a 
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private void addProposalsForStringLiteral(DerivedData derived, int offset, Statement stm,
