@@ -635,7 +635,6 @@ public class ScriptEditorModel implements Closeable {
 		protected String fullInput;
 		protected List<TextRegionChange> regionChanges = null;
 
-		protected Object updateVersion = new Object();
 		protected boolean invalidated = false;
 
 		protected volatile long postedUpdateCounter;
@@ -714,7 +713,6 @@ public class ScriptEditorModel implements Closeable {
 							synchronized (editor.inputAccessLock) {
 								synchronized (ModelReference.this) {
 									ModelReference.this.processedUpdateCounter = postedupdctr;
-									updateVersion = nupdateversion;
 									if (regionchanges != null) {
 										mrregionchanges.subList(0, regionchanges.size()).clear();
 									}
@@ -790,12 +788,6 @@ public class ScriptEditorModel implements Closeable {
 				editor.project.displayException(e);
 				throw new RuntimeException(e);
 			}
-		}
-
-		public synchronized TokenStateReference getTokenState() {
-			ScriptSyntaxModel model = this.model;
-			Object version = updateVersion;
-			return editor.getTokenStateFromModel(model, version);
 		}
 
 		public synchronized ScriptSyntaxModel getUpToDateModel() {

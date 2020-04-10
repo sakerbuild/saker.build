@@ -15,6 +15,7 @@
  */
 package saker.build.internal.scripting.language.model;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -23,11 +24,11 @@ import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.NavigableSet;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.Map.Entry;
 
 import saker.build.internal.scripting.language.SakerScriptTargetConfigurationReader;
 import saker.build.internal.scripting.language.model.SakerParsedModel.SyntaxScriptToken;
@@ -327,7 +328,7 @@ public class DerivedData {
 		Statement stm = this.getStatement();
 		SyntaxScriptToken basetoken = new SyntaxScriptToken(stm.getOffset(), stm.getLength(),
 				SakerParsedModel.TOKEN_TYPE_UNSTYLIZED, null);
-		model.addTokenScopes(this, tokens, basetoken, stm, new LinkedList<>(), new LinkedList<>(),
+		model.addTokenScopes(this, tokens, basetoken, stm, new ArrayDeque<>(), new ArrayDeque<>(),
 				new ScriptModelInformationAnalyzer(model.getModellingEnvironment()));
 		if (basetoken.getLength() > 0) {
 			tokens.add(basetoken);

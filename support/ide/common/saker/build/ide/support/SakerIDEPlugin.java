@@ -65,9 +65,17 @@ import saker.osnative.NativeLibs;
 
 public final class SakerIDEPlugin implements Closeable {
 	public interface PluginResourceListener {
+		/**
+		 * @param environment
+		 *            The environment that is being closed.
+		 */
 		public default void environmentClosing(SakerEnvironmentImpl environment) {
 		}
 
+		/**
+		 * @param environment
+		 *            The environment that has been created.
+		 */
 		public default void environmentCreated(SakerEnvironmentImpl environment) {
 		}
 	}

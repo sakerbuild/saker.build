@@ -628,7 +628,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				}
 				case "subscript": {
 					result.add(new FlattenedToken(scope.value, PRECEDENCE_LEVEL_1_SUBSCRIPT, scope.value));
-					Statement exprplaceholder = scope.value.firstScope(STM_EXPRESSION_PLACEHOLDER);
+					Statement exprplaceholder = scope.value.firstScope("subscript_index_expression");
 					Statement expression = exprplaceholder.firstScope("expression");
 					if (expression == null) {
 						break;
@@ -2117,7 +2117,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 
 			@Override
 			public SakerTaskFactory visitSubscript(Statement stm, List<? extends FlattenedToken> subject) {
-				Statement expplaceholder = stm.firstScope(STM_EXPRESSION_PLACEHOLDER);
+				Statement expplaceholder = stm.firstScope("subscript_index_expression");
 				Statement expression = expplaceholder.firstScope("expression");
 				SakerTaskFactory index = parseTaskExpressionConstantize(expression, expressionParsingState,
 						expplaceholder);
@@ -2795,7 +2795,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		public Void visitSubscript(Statement stm, List<? extends FlattenedToken> subject) {
 			OutlineFlattenedStatementVisitor subconsumer = new OutlineFlattenedStatementVisitor(parentConsumer);
 			visitFlattenedStatements(subject, subconsumer);
-			Statement indexexpression = stm.firstScope(STM_EXPRESSION_PLACEHOLDER).firstScope("expression");
+			Statement indexexpression = stm.firstScope("subscript_index_expression").firstScope("expression");
 			if (indexexpression != null) {
 				SakerScriptTargetConfigurationReader.visitFlattenExpressionStatements(indexexpression, subconsumer);
 			}

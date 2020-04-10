@@ -213,7 +213,7 @@ public class ScriptModelInformationAnalyzer {
 					break;
 				}
 				case "subscript": {
-					return parentstm.firstScope("expression_placeholder").firstScope("expression");
+					return parentstm.firstScope("subscript_index_expression").firstScope("expression");
 				}
 				case "inline_expression": {
 					return parentstm.firstScope("expression_placeholder").firstScope("expression");
@@ -298,7 +298,7 @@ public class ScriptModelInformationAnalyzer {
 				}
 				case "subscript": {
 					return new ExpressionReceiverBase(
-							parentstm.firstScope("expression_placeholder").firstScope("expression"),
+							parentstm.firstScope("subscript_index_expression").firstScope("expression"),
 							SakerParsedModel.STRING_TYPE_SET);
 				}
 				case "inline_expression": {

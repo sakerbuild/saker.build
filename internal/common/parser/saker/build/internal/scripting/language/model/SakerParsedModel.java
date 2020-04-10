@@ -17,6 +17,7 @@ package saker.build.internal.scripting.language.model;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -182,6 +183,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	private static final String TOKEN_TYPE_DEREFERENCED_LITERAL = "dereferencedliteral";
 	private static final String TOKEN_TYPE_MAP_KEY_LITERAL = "mapkeyliteral";
 	private static final String TOKEN_TYPE_SUBSCRIPT_LITERAL = "subscriptliteral";
+	private static final String TOKEN_TYPE_FOREACH_RESULT_MARKER = "foreachresultmarker";
 
 	private static final String TYPE_VARIABLE = "Variable";
 	private static final String TYPE_FOREACH_VARIABLE = "Foreach variable";
@@ -283,7 +285,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 		TokenStyle literalstyle = new SimpleTokenStyle(0xFF0000FF, TokenStyle.COLOR_UNSPECIFIED,
 				TokenStyle.STYLE_DEFAULT | TokenStyle.THEME_LIGHT);
-		TokenStyle boldliteralstyle = new SimpleTokenStyle(0xFF0000FF, TokenStyle.COLOR_UNSPECIFIED,
+		TokenStyle stringliteralbracesstyle = new SimpleTokenStyle(0xFF8080FF, TokenStyle.COLOR_UNSPECIFIED,
 				TokenStyle.STYLE_BOLD | TokenStyle.THEME_LIGHT);
 		TokenStyle pathstyle = new SimpleTokenStyle(0xFF000080, TokenStyle.COLOR_UNSPECIFIED,
 				TokenStyle.STYLE_DEFAULT | TokenStyle.THEME_LIGHT);
@@ -315,18 +317,18 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		TokenStyle multilinecommentstyle = new SimpleTokenStyle(0xFF3F5FBF, TokenStyle.COLOR_UNSPECIFIED,
 				TokenStyle.STYLE_DEFAULT | TokenStyle.THEME_LIGHT);
 
-		TokenStyle darkliteralstyle = SimpleTokenStyle.makeDarkStyleWithForeground(literalstyle, rgb(0, 255, 224));
-		TokenStyle darkboldliteralstyle = SimpleTokenStyle.makeDarkStyleWithForeground(boldliteralstyle,
-				rgb(0, 255, 224));
+		TokenStyle darkliteralstyle = SimpleTokenStyle.makeDarkStyleWithForeground(literalstyle, rgb(0, 236, 206));
+		TokenStyle darkstringliteralbracesstyle = SimpleTokenStyle.makeDarkStyleWithForeground(stringliteralbracesstyle,
+				rgb(0, 180, 156));
 		TokenStyle darkpathstyle = SimpleTokenStyle.makeDarkStyleWithForeground(pathstyle, rgb(0, 180, 180));
 		TokenStyle darktargetnamestyle = SimpleTokenStyle.makeDarkStyleWithForeground(targetnamestyle,
 				rgb(32, 180, 32));
-		TokenStyle darkparamstyle = SimpleTokenStyle.makeDarkStyleWithForeground(paramstyle, rgb(194, 100, 16));
+		TokenStyle darkparamstyle = SimpleTokenStyle.makeDarkStyleWithForeground(paramstyle, rgb(171, 111, 20));
 		TokenStyle darktaskstepstyle = SimpleTokenStyle.makeDarkStyleWithForeground(taskstepstyle, rgb(60, 215, 98));
 		TokenStyle darkoperationstep = SimpleTokenStyle.makeDarkStyleWithForeground(operationstep, rgb(60, 210, 100));
-		TokenStyle darkkeywordstyle = SimpleTokenStyle.makeDarkStyleWithForeground(keywordstyle, rgb(178, 89, 178));
+		TokenStyle darkkeywordstyle = SimpleTokenStyle.makeDarkStyleWithForeground(keywordstyle, rgb(157, 72, 157));
 		TokenStyle darkerrorstyle = SimpleTokenStyle.makeDarkStyleWithForeground(errorstyle, rgb(255, 90, 90));
-		TokenStyle darkvarstyle = SimpleTokenStyle.makeDarkStyleWithForeground(varstyle, rgb(204, 163, 64));
+		TokenStyle darkvarstyle = SimpleTokenStyle.makeDarkStyleWithForeground(varstyle, rgb(194, 166, 50));
 		int darkmapkeycolor = rgb(161, 126, 43);
 		TokenStyle darkmapkeystyle = SimpleTokenStyle.makeDarkStyleWithForeground(mapkeystyle, darkmapkeycolor);
 		TokenStyle darkcollectionboundarystyle = SimpleTokenStyle.makeDarkStyle(collectionboundarystyle);
@@ -363,8 +365,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				.makeImmutableHashSet(new TokenStyle[] { collectionboundarystyle, darkcollectionboundarystyle });
 		Set<TokenStyle> mapkeyset = ImmutableUtils
 				.makeImmutableHashSet(new TokenStyle[] { mapkeystyle, darkmapkeystyle });
-		Set<TokenStyle> boldliteralset = ImmutableUtils
-				.makeImmutableHashSet(new TokenStyle[] { boldliteralstyle, darkboldliteralstyle });
+		Set<TokenStyle> stringliteralbracesset = keywordset;
+//		ImmutableUtils
+//				.makeImmutableHashSet(new TokenStyle[] { stringliteralbracesstyle, darkstringliteralbracesstyle });
 		Set<TokenStyle> targetnameset = ImmutableUtils
 				.makeImmutableHashSet(new TokenStyle[] { targetnamestyle, darktargetnamestyle });
 		Set<TokenStyle> subscriptset = ImmutableUtils
@@ -378,14 +381,16 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		map.put("path", pathset);
 		map.put("stringliteral", literalset);
 		map.put("stringliteral_content", literalset);
+		//make the { } parts of the inline expression bold
+		map.put("inline_expression", stringliteralbracesset);
 //		map.put("map_element", mapelementset);
 
 //		map.put("target_name", targetnamese);
 		map.put("target_name_content", targetnameset);
 		map.put("target_params_start", targetnameset);
 		map.put("target_params_end", targetnameset);
-		map.put("target_block_start", targetblockboundaryset);
-		map.put("target_block_end", targetblockboundaryset);
+		map.put("target_block_start", targetnameset);
+		map.put("target_block_end", targetnameset);
 
 		map.put("parameter_directive", keywordset);
 		map.put("paramlist", defaultset);
@@ -396,7 +401,6 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		map.put("first_parameter", defaultset);
 		map.put("param_name_content", paramstyleset);
 		map.put("param_content", paramstyleset);
-		map.put("redirect_type", paramstyleset);
 
 		map.put("task_identifier", taskexpset);
 
@@ -405,15 +409,11 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 		map.put("foreach", keywordset);
 		map.put("condition_step", keywordset);
-		map.put("run_target_step", targetnameset);
-		map.put("run_target_type", keywordset);
-		map.put("empty_step", keywordset);
 		map.put("target", keywordset);
-		map.put("while_step", keywordset);
-		map.put("collection_step_bound_start", keywordset);
-		map.put("collection_step_bound_end", keywordset);
-		map.put("text_step", errorset);
-		map.put("text_step_overcontent", errorset);
+		map.put("foreach_block_start", keywordset);
+		map.put("foreach_block_end", keywordset);
+		map.put("foreach_result_start", keywordset);
+		map.put(TOKEN_TYPE_FOREACH_RESULT_MARKER, keywordset);
 
 		map.put(TOKEN_TYPE_KEYWORD_LITERAL, keywordset);
 
@@ -444,12 +444,15 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		contextset.add("dereference");
 		contextset.add("dereference_subject");
 		contextset.add("list");
+		contextset.add("list_boundary");
 		contextset.add("map");
 		contextset.add("map_key");
 		contextset.add("map_val");
 		contextset.add("map_element");
+		contextset.add("map_boundary");
 		contextset.add("subscript");
 		contextset.add("stringliteral");
+		contextset.add("stringliteral_content");
 		contextset.add("param_name_content");
 		contextset.add("target_name_content");
 		contextset.add("task");
@@ -479,6 +482,10 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		contextset.add("loopvar");
 		contextset.add("localvar");
 		contextset.add("local_initializer");
+		contextset.add("value_expression");
+		contextset.add("iterable");
+
+		contextset.add("expression_placeholder");
 
 		contextset.add("params_start");
 		contextset.add("params_end");
@@ -516,6 +523,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		leafsset.add("iterable");
 		leafsset.add("value_expression");
 		leafsset.add("condition_expression");
+		leafsset.add("subscript_index_expression");
 
 		leafsset.add("dereference");
 		leafsset.add("unary");
@@ -802,7 +810,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	}
 
 	protected void addTokenScopes(DerivedData derived, List<SyntaxScriptToken> tokens, SyntaxScriptToken parent,
-			Statement stm, Deque<Statement> parenttokencontexts, Deque<Statement> parentstatements,
+			Statement stm, ArrayDeque<Statement> parenttokencontexts, ArrayDeque<Statement> parentstatements,
 			ScriptModelInformationAnalyzer analyzer) {
 		boolean iscontexttype = TOKEN_CONTEXTS.contains(stm.getName());
 		parentstatements.push(stm);
@@ -1673,12 +1681,12 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	}
 
 	public static String getSubscriptStatementIndexValue(Statement stm) {
-		Statement indexstm = stm.firstScope("expression_placeholder").firstScope("expression");
+		Statement indexstm = stm.firstScope("subscript_index_expression").firstScope("expression");
 		return getExpressionValue(indexstm);
 	}
 
 	public static String getSubscriptStatementIndexLiteralValue(Statement stm) {
-		Statement indexstm = stm.firstScope("expression_placeholder").firstScope("expression");
+		Statement indexstm = stm.firstScope("subscript_index_expression").firstScope("expression");
 		return getExpressionLiteralValue(indexstm);
 	}
 
@@ -2044,7 +2052,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	}
 
 	private SyntaxScriptToken makeToken(DerivedData derived, String type, Statement stm,
-			Deque<? extends Statement> parenttokencontexts, Deque<Statement> parentstatements,
+			ArrayDeque<? extends Statement> parenttokencontexts, ArrayDeque<Statement> parentstatements,
 			ScriptModelInformationAnalyzer analyzer) {
 		if (!TOKEN_CONTEXTS.contains(type)) {
 			return null;
@@ -2211,41 +2219,79 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				}
 				break;
 			}
-			case "stringliteral": {
-				String litval = getStringLiteralValue(stm);
-				if (litval == null) {
+			case "map_boundary":
+			case "list_boundary": {
+				Iterator<? extends Statement> it = parenttokencontexts.iterator();
+				//map or list parents
+				it.next();
+				Statement enclosingparent = it.next();
+				switch (enclosingparent.getName()) {
+					case "value_expression": {
+						type = TOKEN_TYPE_FOREACH_RESULT_MARKER;
+						break;
+					}
+					default: {
+						//don't need boundary token if not foreach result expression
+						return null;
+					}
+				}
+				break;
+			}
+			case "stringliteral_content": {
+				//don't create tokens, don't split up parent stringliteral UNLESS
+				//  unles we're in a foreach result expression
+				Iterator<? extends Statement> it = parenttokencontexts.iterator();
+				//the stringliteral parent
+				it.next();
+				Statement enclosingparent = it.next();
+				if ("value_expression".equals(enclosingparent.getName())) {
 					break;
 				}
+				return null;
+			}
+			case "stringliteral": {
+				String litval = getStringLiteralValue(stm);
 				Statement firstparent = parenttokencontexts.peekFirst();
 				switch (firstparent.getName()) {
 					case "map_key": {
-						type = TOKEN_TYPE_MAP_KEY_LITERAL;
-						infosupplier = () -> {
-							return getMapKeyLiteralTokenInformationPartitions(derived, copyparentstatements, litval);
-						};
+						if (litval != null) {
+							type = TOKEN_TYPE_MAP_KEY_LITERAL;
+							infosupplier = () -> {
+								return getMapKeyLiteralTokenInformationPartitions(derived, copyparentstatements,
+										litval);
+							};
+						}
 						break;
 					}
 					case "dereference": {
-						type = TOKEN_TYPE_DEREFERENCED_LITERAL;
-						infosupplier = () -> {
-							LinkedList<Statement> firstparentstatements = createParentContextsStartingFrom(firstparent,
-									copyparentstatements);
-							return getDereferenceLiteralTokenInformationPartitions(derived, firstparentstatements,
-									litval, firstparent);
-						};
+						if (litval != null) {
+							type = TOKEN_TYPE_DEREFERENCED_LITERAL;
+							infosupplier = () -> {
+								LinkedList<Statement> firstparentstatements = createParentContextsStartingFrom(
+										firstparent, copyparentstatements);
+								return getDereferenceLiteralTokenInformationPartitions(derived, firstparentstatements,
+										litval, firstparent);
+							};
+						}
 						break;
 					}
 					case "subscript": {
-						type = TOKEN_TYPE_SUBSCRIPT_LITERAL;
-						infosupplier = () -> {
-							return getSubscriptLiteralTokenInformationPartitions(derived,
-									createParentContextsStartingFrom(firstparent, copyparentstatements), litval,
-									firstparent);
-						};
+						if (litval != null) {
+							type = TOKEN_TYPE_SUBSCRIPT_LITERAL;
+							infosupplier = () -> {
+								return getSubscriptLiteralTokenInformationPartitions(derived,
+										createParentContextsStartingFrom(firstparent, copyparentstatements), litval,
+										firstparent);
+							};
+						}
 						break;
 					}
 					case "task_identifier": {
 						type = "task_identifier";
+						break;
+					}
+					case "value_expression": {
+						type = TOKEN_TYPE_FOREACH_RESULT_MARKER;
 						break;
 					}
 					default: {
@@ -2257,10 +2303,12 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 										copyparentstatements, vartask, stm);
 							};
 						} else {
-							infosupplier = () -> {
-								return getGeneralLiteralTokenInformationPartitions(derived, stm, copyparentstatements,
-										litval);
-							};
+							if (litval != null) {
+								infosupplier = () -> {
+									return getGeneralLiteralTokenInformationPartitions(derived, stm,
+											copyparentstatements, litval);
+								};
+							}
 						}
 
 						break;
@@ -4057,6 +4105,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			case "condition_expression":
 			case "exp_true":
 			case "exp_false":
+			case "subscript_index_expression":
 			case "expression_placeholder": {
 				if (stm.firstScope("expression") != null) {
 					//there is already an expression in this placeholder
@@ -4064,7 +4113,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 					break;
 				}
 				ProposalFactory proposalfactory = proposalFactoryForPosition(offset, offset);
-				if (stmname.equals("expression_placeholder") && isInScope(statementstack, "subscript")) {
+				if (stmname.equals("subscript_index_expression") && isInScope(statementstack, "subscript")) {
 					Statement subscriptparent = findFirstParentToken(statementstack, "subscript");
 					LinkedList<Statement> subscriptparentcontexts = createParentContextsStartingFrom(subscriptparent,
 							statementstack);
@@ -4217,7 +4266,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 						literalparent, createParentContextsStartingFrom(literalparent, statementstack));
 				addEnumProposals(collector, receivertypes, base, proposalfactory);
 				if (isInScope(statementstack, ImmutableUtils.asUnmodifiableArrayList("literal", "expression",
-						"expression_placeholder", "subscript"))) {
+						"subscript_index_expression", "subscript"))) {
 					Statement subscriptparent = findFirstParentToken(statementstack, "subscript");
 					LinkedList<Statement> subscriptparentcontexts = createParentContextsStartingFrom(subscriptparent,
 							statementstack);
