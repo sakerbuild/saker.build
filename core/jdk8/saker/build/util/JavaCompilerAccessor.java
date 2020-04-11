@@ -17,6 +17,7 @@ package saker.build.util;
 
 import java.io.IOException;
 import java.lang.ref.Reference;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -66,17 +67,16 @@ public class JavaCompilerAccessor {
 	}
 
 	public synchronized static ClassLoader getJDKToolsClassLoader() throws IOException {
-		String jarname = TOOLS_JAR_NAME;
-		ClassLoader cl = ObjectUtils.getReference(jdkJars.get(jarname));
+		ClassLoader cl = ObjectUtils.getReference(jdkJars.get(TOOLS_JAR_NAME));
 		if (cl == null) {
-			JarClassLoaderDataFinder datafinder = jdkJarDataFinders.get(jarname);
+			JarClassLoaderDataFinder datafinder = jdkJarDataFinders.get(TOOLS_JAR_NAME);
 			if (datafinder == null) {
-				Path jdkjarpath = getJDKJarPath(jarname);
+				Path jdkjarpath = getJDKJarPath(TOOLS_JAR_NAME);
 				datafinder = new JarClassLoaderDataFinder(jdkjarpath);
-				jdkJarDataFinders.put(jarname, datafinder);
+				jdkJarDataFinders.put(TOOLS_JAR_NAME, datafinder);
 			}
 			cl = new MultiDataClassLoader((ClassLoader) null, datafinder);
-			jdkJars.put(jarname, ReferencePolicy.createReference(cl));
+			jdkJars.put(TOOLS_JAR_NAME, ReferencePolicy.createReference(cl));
 		}
 		return cl;
 	}
@@ -99,11 +99,22 @@ public class JavaCompilerAccessor {
 
 	private static Path getJDKJarPath(String jarname) {
 		Path path = JavaTools.getJavaInstallationDirectory();
-		if (path.getFileName().toString().equalsIgnoreCase("jre")) {
-			path = path.getParent();
+		Path firstguesspath = path.resolve("lib").resolve(jarname);
+		if (Files.isRegularFile(firstguesspath)) {
+			//in some cases, the jar may be in the jre/lib directory.
+			//e.g. for Intellij JRE installations where the JDK is installed to somewhere:
+			//   .....\com.jetbrains\jbre\jbrex8u152b1343.15_windows_x64\jre\lib\tools.jar
+			//so we try if the jar exists directly under the JRE.
+			return firstguesspath;
 		}
-		path = path.resolve("lib").resolve(jarname);
-		return path;
+		if (path.getFileName().toString().equalsIgnoreCase("jre")) {
+			//if we're in a jre directory, try resolving it through the parent
+			//any failures will be detected by the caller as this is the last resort
+			return path.getParent().resolve("lib").resolve(jarname);
+		}
+		//if we're not in the jre directory, and haven't found it under the lib/.jar path, just return it
+		//failures are detected by the caller
+		return firstguesspath;
 	}
 
 	private static enum JDKToolsClassLoaderResolver implements ClassLoaderResolver {

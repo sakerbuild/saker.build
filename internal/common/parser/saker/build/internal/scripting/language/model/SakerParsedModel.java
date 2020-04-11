@@ -4052,8 +4052,6 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			} else {
 				Collection<ProposalLeaf> leafs = collectProposalLeafs(rootstm, offset);
 
-				leafs.forEach(System.out::println);
-
 				for (ProposalLeaf l : leafs) {
 					addLeafProposals(l, derived, result, offset, collector, analyzer);
 				}
@@ -4515,6 +4513,8 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				result.add(proposal);
 			}
 		}
+		
+		//XXX don't recommend names which are already declared parameters with the same name
 		//XXX also propose the usages from related include() tasks
 	}
 
