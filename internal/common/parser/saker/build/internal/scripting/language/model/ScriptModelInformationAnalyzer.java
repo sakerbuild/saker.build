@@ -147,8 +147,12 @@ public class ScriptModelInformationAnalyzer {
 		FormattedTextContent paramdoc = SakerParsedModel.getTargetParameterScriptDoc(parentcontexts, paramstm);
 		Set<String> targetnames = SakerParsedModel.getEnclosingTargetNames(derived, paramstm);
 		SakerPath scriptpath = derived.getScriptParsingOptions().getScriptPath();
-		TargetParameterInformation paraminfo = new TargetParameterInformation(paramdoc,
-				SakerScriptTargetConfigurationReader.getTargetParameterStatementVariableName(paramstm),
+		String paramname = SakerScriptTargetConfigurationReader.getTargetParameterStatementVariableName(paramstm);
+		if (paramname == null) {
+			//TODO handle missing parameter name
+			paramname = "";
+		}
+		TargetParameterInformation paraminfo = new TargetParameterInformation(paramdoc, paramname,
 				getTargetParameterTypeForTargetParameterStatementName(paramstm.getName()), targetnames, scriptpath);
 		return paraminfo;
 	}
@@ -160,7 +164,7 @@ public class ScriptModelInformationAnalyzer {
 		if ("out_parameter".equals(expname)) {
 			return TargetParameterInformation.TYPE_OUTPUT;
 		}
-		throw new AssertionError();
+		throw new AssertionError(expname);
 	}
 
 	public Set<StatementLocation> getVariableUsages(DerivedData derived, VariableTaskUsage varusage,
@@ -376,6 +380,10 @@ public class ScriptModelInformationAnalyzer {
 	private static ExpressionReceiverBase getInputTargetParameterBaseReceiverExpression(DerivedData derived,
 			Statement paramstm, Iterable<? extends Statement> parentcontexts) {
 		String varname = SakerScriptTargetConfigurationReader.getTargetParameterStatementVariableName(paramstm);
+		if (varname == null) {
+			//TODO handle missing parameter name
+			varname = "";
+		}
 		Set<StatementLocation> varusages = SakerParsedModel.getVariableUsages(derived, varname, paramstm);
 		Set<TypeAssociation> associatedreceivertypes = new LinkedHashSet<>();
 		for (StatementLocation varusage : varusages) {
@@ -394,6 +402,10 @@ public class ScriptModelInformationAnalyzer {
 	private static ExpressionReceiverBase getOutputTargetParameterBaseReceiverExpression(DerivedData derived,
 			Statement paramstm, Iterable<? extends Statement> parentcontexts) {
 		String varname = SakerScriptTargetConfigurationReader.getTargetParameterStatementVariableName(paramstm);
+		if (varname == null) {
+			//TODO handle missing parameter name
+			varname = "";
+		}
 		Set<StatementLocation> varusages = SakerParsedModel.getVariableUsages(derived, varname, paramstm);
 		Set<TypeAssociation> associatedreceivertypes = new LinkedHashSet<>();
 		for (StatementLocation varusage : varusages) {
@@ -564,8 +576,9 @@ public class ScriptModelInformationAnalyzer {
 						}
 						for (StatementLocation inputparamloc : includedderived
 								.getTargetInputParameters(tasktargetstm)) {
-							if (!paramname.equals(SakerScriptTargetConfigurationReader
-									.getTargetParameterStatementVariableName(inputparamloc.statement))) {
+							String inputparamname = SakerScriptTargetConfigurationReader
+									.getTargetParameterStatementVariableName(inputparamloc.statement);
+							if (!paramname.equals(inputparamname)) {
 								continue;
 							}
 							associatedreceivertypes.add(new TypeAssociation(inputparamloc));

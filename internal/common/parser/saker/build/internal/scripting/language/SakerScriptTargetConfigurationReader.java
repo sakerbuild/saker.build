@@ -262,6 +262,11 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 
 	private static void addTargetStatementParameterOutlines(Statement target, SimpleStructureOutlineEntry outlineitem) {
 		for (Statement inparam : target.scopeTo("in_parameter")) {
+			String paramname = SakerScriptTargetConfigurationReader.getTargetParameterStatementVariableName(inparam);
+			if (paramname == null) {
+				continue;
+			}
+
 			SimpleStructureOutlineEntry paramoutline = new SimpleStructureOutlineEntry();
 			paramoutline.setSchemaIdentifier(SakerParsedModel.OUTLINE_SCHEMA + ".target.parameter.in");
 			paramoutline.setType("Input");
@@ -272,7 +277,6 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 					: inparam.firstScope("init_value").getOffset() - inparam.getOffset());
 
 			Statement paramexp = getTargetParameterExpressionStatement(inparam);
-			String paramname = SakerScriptTargetConfigurationReader.getTargetParameterStatementVariableName(inparam);
 			if (isExpressionOutlineLabelCompatible(paramexp)) {
 				paramoutline.setLabel(paramname + " = " + paramexp.getRawValue());
 				applyCoalescedType(paramoutline, paramexp);
@@ -283,6 +287,11 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			addSpecializeOutline(paramexp, paramoutline);
 		}
 		for (Statement outparam : target.scopeTo("out_parameter")) {
+			String paramname = SakerScriptTargetConfigurationReader.getTargetParameterStatementVariableName(outparam);
+			if (paramname == null) {
+				continue;
+			}
+
 			SimpleStructureOutlineEntry paramoutline = new SimpleStructureOutlineEntry();
 			paramoutline.setType("Output");
 			paramoutline.setSchemaIdentifier(SakerParsedModel.OUTLINE_SCHEMA + ".target.parameter.out");
@@ -293,7 +302,6 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 					: outparam.firstScope("init_value").getOffset() - outparam.getOffset());
 
 			Statement paramexp = getTargetParameterExpressionStatement(outparam);
-			String paramname = SakerScriptTargetConfigurationReader.getTargetParameterStatementVariableName(outparam);
 			if (isExpressionOutlineLabelCompatible(paramexp)) {
 				paramoutline.setLabel(paramname + " = " + paramexp.getRawValue());
 				applyCoalescedType(paramoutline, paramexp);
@@ -329,7 +337,12 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		if (paramstm == null) {
 			return null;
 		}
-		return paramstm.firstValue("target_parameter_name");
+		Statement paramnamestm = paramstm.firstScope("target_parameter_name");
+		if (paramnamestm == null) {
+			return null;
+		}
+		//may be null
+		return paramnamestm.firstValue("target_parameter_name_content");
 	}
 
 	public static Set<String> getTargetNames(Statement statement) {
@@ -1651,6 +1664,12 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 								for (Statement param : intargetparams) {
 									String pname = SakerScriptTargetConfigurationReader
 											.getTargetParameterStatementVariableName(param);
+									if (pname == null) {
+										//TODO handle
+										throw new ScriptParsingFailedException(
+												"No name specified for build target input parameter.",
+												Collections.emptySet());
+									}
 									final SakerTaskFactory defval;
 									Statement defvalstm = param.firstScope("init_value");
 									if (defvalstm != null) {
@@ -1679,6 +1698,12 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 								for (Statement outparamstm : outtargetparams) {
 									String pname = SakerScriptTargetConfigurationReader
 											.getTargetParameterStatementVariableName(outparamstm);
+									if (pname == null) {
+										//TODO handle
+										throw new ScriptParsingFailedException(
+												"No name specified for build target input parameter.",
+												Collections.emptySet());
+									}
 									ScriptPosition outparamstmpos = createScriptPosition(outparamstm);
 									SakerTaskFactory outderef = DereferenceTaskFactory
 											.create(new SakerLiteralTaskFactory(pname), outparamstmpos);

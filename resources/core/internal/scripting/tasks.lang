@@ -401,7 +401,10 @@ language tasks_lang {
 	}
 	
 	value target_parameter_name {
-		matches TARGET_OUTPUT_NAME 1;
+		include NB_WHITESPACE +;
+		value target_parameter_name_content ? {
+			matches TARGET_OUTPUT_NAME 1;
+		}
 	}
 	
 	inorder task_target_parameter {
@@ -409,26 +412,26 @@ language tasks_lang {
 		firstorder 1 {
 			value out_parameter 1{
 				include marker as parameter_directive("out") 1;
-				include WHITESPACE +;
-				skip "\$" ?;
-				include target_parameter_name 1;
-				value init_value ? {
-					include WHITESPACE *;
-					include marker as target_param_eq("=") 1;
-					include WHITESPACE *;
-					include expression_placeholder 1;
+				inorder ? {
+					include target_parameter_name 1;
+					value init_value ? {
+						include WHITESPACE *;
+						include marker as target_param_eq("=") 1;
+						include WHITESPACE *;
+						include expression_placeholder 1;
+					}
 				}
 			}
 			value in_parameter 1{
 				include marker as parameter_directive("in") 1;
-				include WHITESPACE +;
-				skip "\$" ?;
-				include target_parameter_name 1;
-				value init_value ?{
-					include WHITESPACE *;
-					include marker as target_param_eq("=") 1;
-					include WHITESPACE *;
-					include expression_placeholder 1;
+				inorder ? {
+					include target_parameter_name 1;
+					value init_value ?{
+						include WHITESPACE *;
+						include marker as target_param_eq("=") 1;
+						include WHITESPACE *;
+						include expression_placeholder 1;
+					}
 				}
 			}
 		}

@@ -28,7 +28,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
@@ -109,6 +108,9 @@ import sipka.syntax.parser.util.Pair;
 import testing.saker.build.flag.TestFlag;
 
 public class SakerParsedModel implements ScriptSyntaxModel {
+	private static final NavigableSet<String> STATEMENT_NAMES_IN_OUT_PARAMETERS = ImmutableUtils
+			.makeImmutableNavigableSet(new String[] { "out_parameter", "in_parameter" });
+
 	private static final SingleFormattedTextContent BOOLEAN_FALSE_INFORMATION_CONTENT = new SingleFormattedTextContent(
 			FormattedTextContent.FORMAT_PLAINTEXT, "Represents the boolean value false.");
 
@@ -418,6 +420,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		map.put(TOKEN_TYPE_KEYWORD_LITERAL, keywordset);
 
 		map.put("target_parameter_name", varset);
+		map.put("target_parameter_name_content", varset);
 
 		map.put("subscript", subscriptset);
 		map.put("dereference", varset);
@@ -495,7 +498,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		contextset.add("target_block_start");
 		contextset.add("target_block_end");
 
-		contextset.add("target_parameter_name");
+		contextset.add("target_parameter_name_content");
 		contextset.add("init_value");
 		contextset.add("init_value");
 
@@ -539,6 +542,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		leafsset.add("linecomment");
 		leafsset.add("multilinecomment");
 		leafsset.add("target_block_end");
+
+		leafsset.add("target_parameter_name");
+		leafsset.add("target_parameter_name_content");
 
 		PROPOSAL_LEAF_NAMES = ImmutableUtils.unmodifiableNavigableSet(leafsset);
 	}
@@ -883,6 +889,18 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		return null;
 	}
 
+	private static Statement findFirstParentToken(Iterable<? extends Statement> parents,
+			Predicate<? super String> namepredicate) {
+		Iterator<? extends Statement> it = parents.iterator();
+		while (it.hasNext()) {
+			Statement stm = it.next();
+			if (namepredicate.test(stm.getName())) {
+				return stm;
+			}
+		}
+		return null;
+	}
+
 	private static Statement findFirstParentTokenContextUntil(Iterable<? extends Statement> parentcontexts, String name,
 			Statement end) {
 		Iterator<? extends Statement> it = parentcontexts.iterator();
@@ -1005,9 +1023,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		return null;
 	}
 
-	public static LinkedList<Statement> createParentContextsStartingFrom(Statement stm,
+	public static ArrayDeque<Statement> createParentContextsStartingFrom(Statement stm,
 			Iterable<? extends Statement> parentcontexts) {
-		LinkedList<Statement> result = new LinkedList<>();
+		ArrayDeque<Statement> result = new ArrayDeque<>();
 		for (Iterator<? extends Statement> it = parentcontexts.iterator(); it.hasNext();) {
 			Statement pstm = it.next();
 			if (pstm == stm) {
@@ -1179,7 +1197,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 	private static void collectFileLevelVariableUsagesWithTaskName(DerivedData derived, String varname, String taskname,
 			Set<StatementLocation> result) {
-		visitAllStatements(derived.getStatement().getScopes(), new LinkedList<>(), (stm, stmparents) -> {
+		visitAllStatements(derived.getStatement().getScopes(), new ArrayDeque<>(), (stm, stmparents) -> {
 			switch (stm.getName()) {
 				case "task": {
 					VariableTaskUsage vartask = getVariableTaskUsageFromTaskStatement(stm);
@@ -1240,9 +1258,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		return null;
 	}
 
-	public static LinkedList<Statement> createParentContext(DerivedData derived, Statement stm) {
+	public static ArrayDeque<Statement> createParentContext(DerivedData derived, Statement stm) {
 		Statement rootstm = derived.getStatement();
-		LinkedList<Statement> result = new LinkedList<>();
+		ArrayDeque<Statement> result = new ArrayDeque<>();
 		DocumentRegion stmpos = stm.getPosition();
 		outer:
 		while (rootstm != null) {
@@ -1265,7 +1283,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 	public static StatementLocation getDeclaringForeachForVariable(DerivedData derived, String varname,
 			Statement varstatement) {
-		LinkedList<Statement> parents = createParentContext(derived, varstatement);
+		ArrayDeque<Statement> parents = createParentContext(derived, varstatement);
 		for (Statement parentstm : parents) {
 			if (!"foreach".equals(parentstm.getName())) {
 				continue;
@@ -1409,7 +1427,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	public static Set<StatementLocation> getForeachVariableUsages(DerivedData derived, String varname,
 			Statement foreachstm) {
 		Set<StatementLocation> result = new LinkedHashSet<>();
-		LinkedList<Statement> foreachparents = createParentContext(derived, foreachstm);
+		ArrayDeque<Statement> foreachparents = createParentContext(derived, foreachstm);
 		foreachparents.addFirst(foreachstm);
 		visitTargetStatements(foreachstm.getScopes(), foreachparents, (s, parents) -> {
 			if ("dereference".equals(s.getName())) {
@@ -1506,8 +1524,8 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		}
 	}
 
-	public static void visitTargetStatements(List<Pair<String, Statement>> scopes, LinkedList<Statement> currentparents,
-			BiConsumer<Statement, ? super LinkedList<Statement>> consumer) {
+	public static void visitTargetStatements(List<Pair<String, Statement>> scopes, ArrayDeque<Statement> currentparents,
+			BiConsumer<Statement, ? super ArrayDeque<Statement>> consumer) {
 		if (scopes.isEmpty()) {
 			return;
 		}
@@ -1524,8 +1542,8 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		}
 	}
 
-	public static void visitAllStatements(List<Pair<String, Statement>> scopes, LinkedList<Statement> currentparents,
-			BiConsumer<Statement, LinkedList<Statement>> consumer) {
+	public static void visitAllStatements(List<Pair<String, Statement>> scopes, ArrayDeque<Statement> currentparents,
+			BiConsumer<Statement, ArrayDeque<Statement>> consumer) {
 		if (scopes.isEmpty()) {
 			return;
 		}
@@ -2154,10 +2172,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 												}
 												for (StatementLocation inparamloc : includedderived
 														.getTargetInputParameters(tasktargetstm)) {
-													if (!SakerScriptTargetConfigurationReader
+													if (!paramname.equals(SakerScriptTargetConfigurationReader
 															.getTargetParameterStatementVariableName(
-																	inparamloc.statement)
-															.equals(paramname)) {
+																	inparamloc.statement))) {
 														continue;
 													}
 													//found an input parameter that has the same name as the token
@@ -2267,7 +2284,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 						if (litval != null) {
 							type = TOKEN_TYPE_DEREFERENCED_LITERAL;
 							infosupplier = () -> {
-								LinkedList<Statement> firstparentstatements = createParentContextsStartingFrom(
+								ArrayDeque<Statement> firstparentstatements = createParentContextsStartingFrom(
 										firstparent, copyparentstatements);
 								return getDereferenceLiteralTokenInformationPartitions(derived, firstparentstatements,
 										litval, firstparent);
@@ -2331,7 +2348,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 					case "dereference": {
 						type = TOKEN_TYPE_DEREFERENCED_LITERAL;
 						infosupplier = () -> {
-							LinkedList<Statement> firstparentstatements = createParentContextsStartingFrom(firstparent,
+							ArrayDeque<Statement> firstparentstatements = createParentContextsStartingFrom(firstparent,
 									copyparentstatements);
 							return getDereferenceLiteralTokenInformationPartitions(derived, firstparentstatements,
 									litval, firstparent);
@@ -2379,23 +2396,16 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				}
 				break;
 			}
-			case "target_parameter_name": {
-				Statement paramstm = parentstatements.getFirst();
-				LinkedList<Statement> paramstmparents = createParentContextsStartingFrom(paramstm,
+			case "target_parameter_name_content": {
+				Iterator<? extends Statement> it = copyparentstatements.iterator();
+				//target_parameter_name
+				it.next();
+				Statement paramstm = it.next();
+				ArrayDeque<Statement> paramstmparents = createParentContextsStartingFrom(paramstm,
 						copyparentstatements);
 				switch (paramstm.getName()) {
+					case "in_parameter":
 					case "out_parameter": {
-						infosupplier = () -> {
-							String paramname = stm.getValue();
-							Set<TextPartition> partitions = new LinkedHashSet<>();
-
-							addTargetParameterPartitions(derived, paramstmparents, paramstm, paramname,
-									nonNullAdder(partitions));
-							return ImmutableUtils.makeImmutableList(partitions);
-						};
-						break;
-					}
-					case "in_parameter": {
 						infosupplier = () -> {
 							String paramname = stm.getValue();
 							Set<TextPartition> partitions = new LinkedHashSet<>();
@@ -2526,6 +2536,20 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		return createTargetParameterTextPartition(derived, paraminfo);
 	}
 
+	private static TextPartition createBuildTargetOutputParameterTextPartition(DerivedData derived,
+			StatementLocation inparamloc) {
+		TargetParameterInformation paraminfo = ScriptModelInformationAnalyzer.createTargetParameterInformation(derived,
+				inparamloc.getStatement(), inparamloc.getParentContexts());
+		return createTargetParameterTextPartition(derived, paraminfo);
+	}
+
+	private static SimpleTextPartition createTargetOutputParameterTextPartition(String paramname,
+			DerivedData includedderived, Statement tasktargetstm, FormattedTextContent paramdoc) {
+		SimpleTextPartition partition = new SimpleTextPartition(createOutputTargetParameterTitle(paramname),
+				createBuildTargetTitle(includedderived, tasktargetstm), paramdoc);
+		return partition;
+	}
+
 	private static SimpleTextPartition createBuildTargetTextPartition(DerivedData derived, Statement tasktargetstm) {
 		FormattedTextContent targetdoc = getTargetStatementScriptDoc(derived, tasktargetstm);
 		String targettitle = createBuildTargetTitle(derived, tasktargetstm);
@@ -2568,7 +2592,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		return partition;
 	}
 
-	private void addTargetParameterPartitions(DerivedData derived, List<? extends Statement> copyparentstatements,
+	private void addTargetParameterPartitions(DerivedData derived, ArrayDeque<? extends Statement> copyparentstatements,
 			Statement paramstm, String paramname, Consumer<? super TextPartition> partitions) {
 		ScriptModelInformationAnalyzer analyzer = new ScriptModelInformationAnalyzer(modellingEnvironment);
 		Collection<? extends TypedModelInformation> restypes = analyzer.getExpressionResultType(derived, paramstm,
@@ -3033,7 +3057,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 		ScriptModelInformationAnalyzer analyzer = new ScriptModelInformationAnalyzer(modellingEnvironment);
 		Statement taskparent = findFirstParentToken(copyparentstatements, "task");
-		List<Statement> taskparentcontexts = createParentContextsStartingFrom(taskparent, copyparentstatements);
+		ArrayDeque<Statement> taskparentcontexts = createParentContextsStartingFrom(taskparent, copyparentstatements);
 		Collection<? extends TypedModelInformation> expres = analyzer.getExpressionResultType(derived, taskparent,
 				taskparentcontexts);
 
@@ -3051,7 +3075,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	}
 
 	private List<TextPartition> getSubscriptLiteralTokenInformationPartitions(DerivedData derived,
-			List<? extends Statement> subscriptparentstatements, String litval, Statement subscriptstm) {
+			ArrayDeque<? extends Statement> subscriptparentstatements, String litval, Statement subscriptstm) {
 		ScriptModelInformationAnalyzer analyzer = new ScriptModelInformationAnalyzer(modellingEnvironment);
 		Collection<? extends TypedModelInformation> exprestypes = analyzer.getExpressionResultType(derived,
 				subscriptstm, subscriptparentstatements);
@@ -3068,7 +3092,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	}
 
 	private List<TextPartition> getDereferenceLiteralTokenInformationPartitions(DerivedData derived,
-			List<? extends Statement> derefparentstatements, String litval, Statement derefstm) {
+			ArrayDeque<? extends Statement> derefparentstatements, String litval, Statement derefstm) {
 		ScriptModelInformationAnalyzer analyzer = new ScriptModelInformationAnalyzer(modellingEnvironment);
 		Set<TextPartition> partitionsset = new LinkedHashSet<>();
 		Consumer<? super TextPartition> partitions = nonNullAdder(partitionsset);
@@ -3100,7 +3124,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 		Statement mapparent = findFirstParentToken(copyparentstatements, "map");
 
-		List<Statement> mapparentstatements = createParentContextsStartingFrom(mapparent, copyparentstatements);
+		ArrayDeque<Statement> mapparentstatements = createParentContextsStartingFrom(mapparent, copyparentstatements);
 		ScriptModelInformationAnalyzer analyzer = new ScriptModelInformationAnalyzer(modellingEnvironment);
 		Collection<? extends TypedModelInformation> mapexprresulttype = analyzer.getExpressionResultType(derived,
 				mapparent, mapparentstatements);
@@ -3427,11 +3451,11 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 	private static class ProposalLeaf {
 		protected Statement leafStatement;
-		protected LinkedList<Statement> statementStack;
+		protected ArrayDeque<Statement> statementStack;
 
 		public ProposalLeaf(Statement leafStatement, Deque<Statement> statementStack) {
 			this.leafStatement = leafStatement;
-			this.statementStack = new LinkedList<>(statementStack);
+			this.statementStack = new ArrayDeque<>(statementStack);
 		}
 
 		@Override
@@ -3442,7 +3466,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 	private static Collection<ProposalLeaf> collectProposalLeafs(Statement stm, int offset) {
 		Collection<ProposalLeaf> result = new ArrayList<>();
-		collectProposalLeafsImpl(result, stm, offset, new LinkedList<>());
+		collectProposalLeafsImpl(result, stm, offset, new ArrayDeque<>());
 		return result;
 	}
 
@@ -3651,7 +3675,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 							Statement inparam = inparamloc.getStatement();
 							String paramname = SakerScriptTargetConfigurationReader
 									.getTargetParameterStatementVariableName(inparam);
-							if (presentparamnames.contains(paramname)) {
+							if (paramname == null || presentparamnames.contains(paramname)) {
 								continue;
 							}
 							if (base == null || isPhraseStartsWithProposal(paramname, base)) {
@@ -4023,7 +4047,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			Statement rootstm = derived.getStatement();
 			if (rootstm.isScopesEmpty()) {
 				//empty file, handle
-				addGenericExpressionProposals(derived, result, new LinkedList<>(), Collections.emptySet(),
+				addGenericExpressionProposals(derived, result, new ArrayDeque<>(), Collections.emptySet(),
 						proposalFactoryForPosition(offset, offset), collector, analyzer);
 			} else {
 				Collection<ProposalLeaf> leafs = collectProposalLeafs(rootstm, offset);
@@ -4052,7 +4076,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		int startpos = stm.getOffset();
 		int endpos = stm.getEndOffset();
 		String stmname = stm.getName();
-		LinkedList<? extends Statement> statementstack = leaf.statementStack;
+		ArrayDeque<? extends Statement> statementstack = leaf.statementStack;
 		switch (stmname) {
 			case "dereference": {
 				//at a $ sign
@@ -4101,7 +4125,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				ProposalFactory proposalfactory = proposalFactoryForPosition(offset, offset);
 
 				Statement mapparent = findFirstParentToken(statementstack, "map");
-				LinkedList<Statement> mapparentcontexts = createParentContextsStartingFrom(mapparent, statementstack);
+				ArrayDeque<Statement> mapparentcontexts = createParentContextsStartingFrom(mapparent, statementstack);
 				Collection<? extends TypedModelInformation> rectypes = analyzer.getExpressionReceiverType(derived,
 						mapparent, mapparentcontexts);
 
@@ -4128,7 +4152,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				ProposalFactory proposalfactory = proposalFactoryForPosition(offset, offset);
 				if (stmname.equals("subscript_index_expression") && isInScope(statementstack, "subscript")) {
 					Statement subscriptparent = findFirstParentToken(statementstack, "subscript");
-					LinkedList<Statement> subscriptparentcontexts = createParentContextsStartingFrom(subscriptparent,
+					ArrayDeque<Statement> subscriptparentcontexts = createParentContextsStartingFrom(subscriptparent,
 							statementstack);
 					Collection<? extends TypedModelInformation> subscriptresulttypes = analyzer
 							.getSubscriptSubjectResultType(derived, subscriptparent, subscriptparentcontexts);
@@ -4261,7 +4285,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			}
 			case "stringliteral_content": {
 				Statement stringliteralparent = statementstack.getFirst();
-				LinkedList<Statement> stringliteralstatementstack = createParentContextsStartingFrom(
+				ArrayDeque<Statement> stringliteralstatementstack = createParentContextsStartingFrom(
 						stringliteralparent, statementstack);
 				addProposalsForStringLiteral(derived, offset, stringliteralparent, stringliteralstatementstack, result,
 						collector);
@@ -4281,7 +4305,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				if (isInScope(statementstack, ImmutableUtils.asUnmodifiableArrayList("literal", "expression",
 						"subscript_index_expression", "subscript"))) {
 					Statement subscriptparent = findFirstParentToken(statementstack, "subscript");
-					LinkedList<Statement> subscriptparentcontexts = createParentContextsStartingFrom(subscriptparent,
+					ArrayDeque<Statement> subscriptparentcontexts = createParentContextsStartingFrom(subscriptparent,
 							statementstack);
 					Collection<? extends TypedModelInformation> subscriptresulttypes = analyzer
 							.getSubscriptSubjectResultType(derived, subscriptparent, subscriptparentcontexts);
@@ -4440,6 +4464,27 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				}
 				break;
 			}
+			case "target_parameter_name_content": {
+				//TODO
+				String base = stm.getRawValue().substring(0, offset - startpos);
+
+				ProposalFactory proposalfactory = proposalFactoryForPosition(stm.getOffset(), offset);
+
+				addBuildTargetParameterProposals(derived, result, stm, statementstack, proposalfactory, base);
+
+				break;
+			}
+			case "target_parameter_name": {
+				//suggest parameter names based on the variables in the build target
+
+				Statement namecontentscope = stm.firstScope("target_parameter_name_content");
+				if (namecontentscope == null) {
+					ProposalFactory proposalfactory = proposalFactoryForPosition(offset, offset);
+
+					addBuildTargetParameterProposals(derived, result, stm, statementstack, proposalfactory, "");
+				}
+				break;
+			}
 			case "multilinecomment":
 			case "linecomment": {
 				//ignore for proposals
@@ -4452,6 +4497,25 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				break;
 			}
 		}
+	}
+
+	private static void addBuildTargetParameterProposals(DerivedData derived,
+			Collection<? super ScriptCompletionProposal> result, Statement stm,
+			ArrayDeque<? extends Statement> statementstack, ProposalFactory proposalfactory, String base) {
+		Statement paramstm = findFirstParentToken(statementstack, STATEMENT_NAMES_IN_OUT_PARAMETERS::contains);
+
+		for (String varname : getUsedTargetVariableNames(derived, stm)) {
+			if (base == null || isPhraseStartsWithProposal(varname, base)) {
+				SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_VARIABLE, varname);
+				TargetParameterInformation paraminfo = ScriptModelInformationAnalyzer.createTargetParameterInformation(
+						derived, paramstm, createParentContextsStartingFrom(paramstm, statementstack));
+				proposal.setInformation(partitioned(createTargetParameterTextPartition(derived, paraminfo)));
+				proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_VARIABLE);
+
+				result.add(proposal);
+			}
+		}
+		//XXX also propose the usages from related include() tasks
 	}
 
 	private static boolean isParameterProposalInvokedOnLineBefore(int offset, Statement paramnamestm,
@@ -4476,7 +4540,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	}
 
 	private void addProposalsForStringLiteral(DerivedData derived, int offset, Statement stm,
-			LinkedList<? extends Statement> statementstack, Collection<? super ScriptCompletionProposal> result,
+			ArrayDeque<? extends Statement> statementstack, Collection<? super ScriptCompletionProposal> result,
 			ProposalCollector collector) {
 		String literalval = getStringLiteralValue(stm, offset);
 		if (literalval == null) {

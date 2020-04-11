@@ -1,0 +1,23 @@
+build(
+	in var
+	out var
+	
+	in varf
+	
+	in  
+	out  
+	
+	in  someth
+)
+{
+	$varfirst
+	$varsecond
+	
+	$varthird = 123
+	$varfourth = 456
+	
+	foreach $item in [1, 2]
+		with $local = $item + 1 {
+	
+	}
+}

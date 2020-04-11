@@ -21,7 +21,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -172,7 +171,7 @@ public class DerivedData {
 			Map<Statement, NavigableSet<String>> targetvarnames = new LinkedHashMap<>();
 
 			Statement rootstm = getStatement();
-			SakerParsedModel.visitAllStatements(rootstm.getScopes(), new LinkedList<>(), (stm, stmparents) -> {
+			SakerParsedModel.visitAllStatements(rootstm.getScopes(), new ArrayDeque<>(), (stm, stmparents) -> {
 				switch (stm.getName()) {
 					case "dereference": {
 						String derefvarname = SakerParsedModel.getDereferenceStatementLiteralVariableName(stm);
@@ -250,17 +249,19 @@ public class DerivedData {
 
 	private void ensureTargetParameterScriptIdentifiers(
 			Map<VariableTaskUsage, Map<Statement, Set<StatementLocation>>> varusages,
-			Map<Statement, Set<StatementLocation>> targetparamsmap, Statement stm, LinkedList<Statement> stmparents,
+			Map<Statement, Set<StatementLocation>> targetparamsmap, Statement stm, ArrayDeque<Statement> stmparents,
 			Map<Statement, NavigableSet<String>> targetvarnames) {
 		StatementLocation stmloc = new StatementLocation(this, stm, ImmutableUtils.makeImmutableList(stmparents));
 		targetparamsmap.computeIfAbsent(getTargetScopeStatement(stmparents), Functionals.linkedHashSetComputer())
 				.add(stmloc);
-		String targetvarname = stm.firstValue("target_parameter_name");
-		addCachedVarUsage(varusages, stmparents, stmloc, VariableTaskUsage.var(targetvarname), targetvarnames);
+		String targetvarname = SakerScriptTargetConfigurationReader.getTargetParameterStatementVariableName(stm);
+		if (targetvarname != null) {
+			addCachedVarUsage(varusages, stmparents, stmloc, VariableTaskUsage.var(targetvarname), targetvarnames);
+		}
 	}
 
 	private void addCachedVarUsage(Map<VariableTaskUsage, Map<Statement, Set<StatementLocation>>> varusages,
-			LinkedList<Statement> stmparents, StatementLocation stmloc, VariableTaskUsage varusage,
+			ArrayDeque<Statement> stmparents, StatementLocation stmloc, VariableTaskUsage varusage,
 			Map<Statement, NavigableSet<String>> targetvarnames) {
 		Map<Statement, Set<StatementLocation>> varmap = varusages.computeIfAbsent(varusage,
 				Functionals.linkedHashMapComputer());
@@ -284,7 +285,7 @@ public class DerivedData {
 		return result;
 	}
 
-	private Statement getTargetScopeStatement(LinkedList<Statement> stmparents) {
+	private Statement getTargetScopeStatement(ArrayDeque<Statement> stmparents) {
 		Statement last = stmparents.getLast();
 		if (last.getName().equals("task_target")) {
 			return last;

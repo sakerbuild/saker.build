@@ -76,6 +76,10 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 			}
 		}
 		String targetparamname = SakerScriptTargetConfigurationReader.getTargetParameterStatementVariableName(stm);
+		if (targetparamname == null) {
+			//TODO handle missing parameter name
+			targetparamname = "";
+		}
 		visitVarTaskUsage(stm, stipart, VariableTaskUsage.var(targetparamname));
 		stipart.types.add(new TypedModelInformation(ScriptModelInformationAnalyzer.createTargetParameterInformation(
 				derivedData, stm, SakerParsedModel.createParentContext(derivedData, stm))));
@@ -353,13 +357,16 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 							Map<String, FieldInformation> outputparamsholderfields = new LinkedHashMap<>();
 
 							for (StatementLocation outloc : includedderived.getTargetOutputParameters(tasktargetstm)) {
+								String outputparamname = SakerScriptTargetConfigurationReader
+										.getTargetParameterStatementVariableName(outloc.statement);
+								if (outputparamname == null) {
+									continue;
+								}
 
 								TargetParameterInformation outparaminfo = ScriptModelInformationAnalyzer
 										.createTargetParameterInformation(includedderived, outloc.statement,
 												outloc.parentContexts);
 
-								String outputparamname = SakerScriptTargetConfigurationReader
-										.getTargetParameterStatementVariableName(outloc.statement);
 								Set<StatementLocation> outputvarusages = includedderived
 										.getTargetVariableUsages(VariableTaskUsage.var(outputparamname), tasktargetstm);
 								if (!ObjectUtils.isNullOrEmpty(outputvarusages)) {
