@@ -1,4 +1,5 @@
 example.task(
+	
 	FirstParam1: 
 	
 	Param1: ,
@@ -9,3 +10,6 @@ example.task(
 	
 	ClosingParam: 
 )
+
+
+$var

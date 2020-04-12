@@ -389,6 +389,11 @@ public abstract class ScriptModelTestCase extends SakerTestCase {
 			return this;
 		}
 
+		public ProposalAssertion assertNotEmpty() {
+			ScriptModelTestCase.assertNotEmpty(proposals);
+			return this;
+		}
+
 	}
 
 	protected static ProposalAssertion assertProposals(ScriptSyntaxModel model, int offset) {

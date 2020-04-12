@@ -94,7 +94,7 @@ language tasks_lang {
 	value parameter {
 		include param_name 1;
 		inorder ? {
-			include WHITESPACE *;
+			include NB_WHITESPACE *;
 			include marker as param_eq(":") 1;
 			value param_content ? {
 				include nb_expression_placeholder as expression_placeholder 1;
@@ -106,7 +106,7 @@ language tasks_lang {
 		firstorder 1 {
 			inorder 1{
 				include param_name 1;
-				include WHITESPACE *;
+				include NB_WHITESPACE *;
 				include marker as param_eq(":") 1;
 				value param_content 1 {
 					include nb_expression_placeholder as expression_placeholder 1;

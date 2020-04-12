@@ -4421,19 +4421,20 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 					//however, if the proposal is invoked in a previous line, perform the proposals
 					Statement taskparent = findFirstParentToken(statementstack, "task");
 					if (taskparent != null) {
+						ProposalFactory proposalfactory = proposalFactoryForPosition(offset, offset);
+
+						addTaskParameterProposals(derived, taskparent, "", proposalfactory, collector, analyzer);
+
 						Statement firstparamstm = findFirstParentTokenContextUntil(statementstack, "first_parameter",
 								taskparent);
-						ProposalFactory proposalfactory = proposalFactoryForPosition(offset, offset);
 						if (firstparamstm != null) {
-							//we are in a first parameter context
-							if (firstparamstm.isScopesEmpty("param_content")) {
-								//no parameter content specified yet
-								addTaskParameterProposals(derived, taskparent, "", proposalfactory, collector,
-										analyzer);
-							} //else there is already content specified for the first parameter
-						} else {
-							//we're not in first parameter
-							addTaskParameterProposals(derived, taskparent, "", proposalfactory, collector, analyzer);
+							//if we're in the first parameter, then we can also add proposals for the expressions
+							//in cases when we're in a line before another parameter
+							Collection<? extends TypedModelInformation> rectypes = analyzer
+									.getFirstParameterExpressionReceiverType(derived, taskparent);
+							addBuildTargetProposalsIfAppropriate(derived, null, rectypes, result, proposalfactory);
+							addGenericExpressionProposals(derived, result, statementstack, rectypes, proposalfactory,
+									collector, analyzer);
 						}
 					}
 				}
@@ -4513,7 +4514,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				result.add(proposal);
 			}
 		}
-		
+
 		//XXX don't recommend names which are already declared parameters with the same name
 		//XXX also propose the usages from related include() tasks
 	}

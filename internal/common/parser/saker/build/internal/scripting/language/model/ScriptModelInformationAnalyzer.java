@@ -76,6 +76,11 @@ public class ScriptModelInformationAnalyzer {
 				expressionstatement.parentContexts);
 	}
 
+	public Collection<? extends TypedModelInformation> getFirstParameterExpressionReceiverType(DerivedData derived,
+			Statement taskstm) {
+		return getParameterContentBaseReceiverExpression(derived, taskstm, "").receiverTypes;
+	}
+
 	public Collection<? extends TypedModelInformation> getExpressionReceiverType(DerivedData derived, Statement expstm,
 			Iterable<? extends Statement> parentcontexts) {
 		switch (expstm.getName()) {
@@ -93,6 +98,11 @@ public class ScriptModelInformationAnalyzer {
 		if (baserectypes.expressionStatement == null) {
 			return baserectypes.receiverTypes;
 		}
+		return getExpressionReceiverTypeWithReceiverBase(derived, expstm, baserectypes);
+	}
+
+	private Collection<? extends TypedModelInformation> getExpressionReceiverTypeWithReceiverBase(DerivedData derived,
+			Statement expstm, ExpressionReceiverBase baserectypes) {
 		StatementTypeInformation result = getExpressionReceiverTypeImpl(derived, expstm, baserectypes);
 		if (result == null) {
 			throw new UnsupportedOperationException(expstm.getName() + " - " + expstm.getRawValue() + " - "
@@ -274,17 +284,10 @@ public class ScriptModelInformationAnalyzer {
 				}
 				case "param_content": {
 					Statement taskstm = SakerParsedModel.iterateUntilStatement(it, "task");
-					Statement paramliststm = taskstm.firstScope("paramlist");
-					Statement taskidentifierstm = taskstm.firstScope("task_identifier");
-					String paramname = SakerParsedModel.getParameterNameInParamList(parentstm, paramliststm);
-					Collection<TypedModelInformation> receivertypes = SakerParsedModel.deCollectionizeTypeInformations(
-							getExternalTaskParameterInfos(taskidentifierstm, paramname));
-					Statement paramexpstm = parentstm.firstScope("expression_placeholder").firstScope("expression");
+					String paramname = SakerParsedModel.getParameterNameInParamList(parentstm,
+							taskstm.firstScope("paramlist"));
 
-					Set<TypeAssociation> associatedreceivertypes = new LinkedHashSet<>();
-					addIncludeTaskBaseReceiverExpressionAssociations(derived, taskstm, taskidentifierstm, paramname,
-							associatedreceivertypes, receivertypes);
-					return new ExpressionReceiverBase(paramexpstm, receivertypes, associatedreceivertypes);
+					return getParameterContentBaseReceiverExpression(derived, taskstm, paramname, parentstm);
 				}
 				case "expression_step": {
 					return new ExpressionReceiverBase(
@@ -375,6 +378,29 @@ public class ScriptModelInformationAnalyzer {
 		}
 		throw new AssertionError(basestm.getName() + ", " + StringUtils.toStringJoin(", ",
 				StreamSupport.stream(parentcontexts.spliterator(), false).map(Statement::getName).iterator()));
+	}
+
+	private ExpressionReceiverBase getParameterContentBaseReceiverExpression(DerivedData derived, Statement taskstm,
+			String paramname) {
+		return getParameterContentBaseReceiverExpression(derived, taskstm, paramname, null);
+	}
+
+	/**
+	 * @param paramcontentstm
+	 *            <code>null</code>able
+	 */
+	private ExpressionReceiverBase getParameterContentBaseReceiverExpression(DerivedData derived, Statement taskstm,
+			String paramname, Statement paramcontentstm) {
+		Statement taskidentifierstm = taskstm.firstScope("task_identifier");
+		Collection<TypedModelInformation> receivertypes = SakerParsedModel
+				.deCollectionizeTypeInformations(getExternalTaskParameterInfos(taskidentifierstm, paramname));
+		Statement paramexpstm = paramcontentstm == null ? null
+				: paramcontentstm.firstScope("expression_placeholder").firstScope("expression");
+
+		Set<TypeAssociation> associatedreceivertypes = new LinkedHashSet<>();
+		addIncludeTaskBaseReceiverExpressionAssociations(derived, taskstm, taskidentifierstm, paramname,
+				associatedreceivertypes, receivertypes);
+		return new ExpressionReceiverBase(paramexpstm, receivertypes, associatedreceivertypes);
 	}
 
 	private static ExpressionReceiverBase getInputTargetParameterBaseReceiverExpression(DerivedData derived,
