@@ -105,6 +105,8 @@ public final class SakerIDEPlugin implements Closeable {
 
 	private ThreadWorkPool workPool;
 
+	private boolean closed = false;
+
 	public SakerIDEPlugin() {
 	}
 
@@ -166,15 +168,18 @@ public final class SakerIDEPlugin implements Closeable {
 
 	public void start(DaemonLaunchParameters daemonparams) throws IOException {
 		synchronized (configurationChangeLock) {
-			//TODO make sure plugin is not closed
+			if (closed) {
+				return;
+			}
 			if (this.pluginDaemonEnvironment != null) {
 				throw new IllegalStateException("Already started.");
 			}
-			LocalDaemonEnvironment localdaemonenvtoclose = new LocalDaemonEnvironment(sakerJarPath, daemonparams, null);
+			LocalDaemonEnvironment ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, daemonparams, null);
+			LocalDaemonEnvironment localdaemonenvtoclose = ndaemonenv;
 			try {
-				localdaemonenvtoclose.setServerSocketFactory(ServerSocketFactory.getDefault());
-				localdaemonenvtoclose.start();
-				this.pluginDaemonEnvironment = localdaemonenvtoclose;
+				ndaemonenv.setServerSocketFactory(ServerSocketFactory.getDefault());
+				ndaemonenv.start();
+				this.pluginDaemonEnvironment = ndaemonenv;
 				localdaemonenvtoclose = null;
 			} catch (IOException e) {
 				displayException(e);
@@ -183,7 +188,8 @@ public final class SakerIDEPlugin implements Closeable {
 				IOUtils.close(localdaemonenvtoclose);
 			}
 			SakerEnvironmentImpl openedenv = this.pluginDaemonEnvironment.getSakerEnvironment();
-			pluginResourceListeners.forEach(l -> l.environmentCreated(openedenv));
+			callListeners(ImmutableUtils.makeImmutableList(pluginResourceListeners),
+					l -> l.environmentCreated(openedenv));
 		}
 	}
 
@@ -290,6 +296,7 @@ public final class SakerIDEPlugin implements Closeable {
 	public void close() throws IOException {
 		IOException exc = null;
 		synchronized (configurationChangeLock) {
+			closed = true;
 			try {
 				closeProjects();
 			} catch (IOException e) {
@@ -310,9 +317,8 @@ public final class SakerIDEPlugin implements Closeable {
 	}
 
 	public void displayException(Throwable e) {
-		ExceptionDisplayForEachConsumer consumer = new ExceptionDisplayForEachConsumer(e);
-		exceptionDisplayers.forEach(consumer);
-		if (!consumer.isCalled()) {
+		int callcount = callListeners(ImmutableUtils.makeImmutableList(exceptionDisplayers), d->d.displayException(e));
+		if (callcount == 0) {
 			e.printStackTrace();
 		}
 	}
@@ -338,7 +344,8 @@ public final class SakerIDEPlugin implements Closeable {
 				: SimpleIDEPluginProperties.builder(properties).build();
 		synchronized (configurationChangeLock) {
 			DaemonLaunchParameters newlaunchparams = createDaemonLaunchParameters(properties);
-			if (!newlaunchparams.equals(this.pluginDaemonEnvironment.getLaunchParameters())) {
+			LocalDaemonEnvironment plugindaemonenv = this.pluginDaemonEnvironment;
+			if (plugindaemonenv == null || !newlaunchparams.equals(plugindaemonenv.getLaunchParameters())) {
 				reloadPluginDaemonLocked(newlaunchparams);
 			}
 		}
@@ -350,17 +357,38 @@ public final class SakerIDEPlugin implements Closeable {
 		}
 	}
 
-	private void reloadPluginDaemonLocked(DaemonLaunchParameters newlaunchparams) {
-		SakerEnvironmentImpl closingenv = this.pluginDaemonEnvironment.getSakerEnvironment();
-		List<PluginResourceListener> pluginlisteners = ImmutableUtils.makeImmutableList(pluginResourceListeners);
-		pluginlisteners.forEach(l -> l.environmentClosing(closingenv));
-		this.pluginDaemonEnvironment.close();
-		this.pluginDaemonEnvironment = null;
+	private <L> int callListeners(Iterable<L> listeners, Consumer<? super L> caller) {
+		int c = 0;
+		for (L l : listeners) {
+			++c;
+			try {
+				caller.accept(l);
+			} catch (Exception e) {
+				displayException(e);
+			}
+		}
+		return c;
+	}
 
-		LocalDaemonEnvironment localdaemonenvtoclose = new LocalDaemonEnvironment(sakerJarPath, newlaunchparams, null);
+	private void reloadPluginDaemonLocked(DaemonLaunchParameters newlaunchparams) {
+		List<PluginResourceListener> pluginlisteners = ImmutableUtils.makeImmutableList(pluginResourceListeners);
+
+		LocalDaemonEnvironment currentdaemonenv = this.pluginDaemonEnvironment;
+		if (currentdaemonenv != null) {
+			SakerEnvironmentImpl closingenv = currentdaemonenv.getSakerEnvironment();
+			try {
+				callListeners(pluginlisteners, l -> l.environmentClosing(closingenv));
+				currentdaemonenv.close();
+			} finally {
+				this.pluginDaemonEnvironment = null;
+			}
+		}
+
+		LocalDaemonEnvironment ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, newlaunchparams, null);
+		LocalDaemonEnvironment localdaemonenvtoclose = ndaemonenv;
 		try {
-			localdaemonenvtoclose.start();
-			this.pluginDaemonEnvironment = localdaemonenvtoclose;
+			ndaemonenv.start();
+			this.pluginDaemonEnvironment = ndaemonenv;
 			localdaemonenvtoclose = null;
 		} catch (IOException e) {
 			displayException(e);
@@ -371,8 +399,8 @@ public final class SakerIDEPlugin implements Closeable {
 				displayException(e);
 			}
 		}
-		SakerEnvironmentImpl openedenv = this.pluginDaemonEnvironment.getSakerEnvironment();
-		pluginlisteners.forEach(l -> l.environmentCreated(openedenv));
+		SakerEnvironmentImpl openedenv = ndaemonenv.getSakerEnvironment();
+		callListeners(pluginlisteners, l -> l.environmentCreated(openedenv));
 	}
 
 	public static Map<String, String> entrySetToMap(Set<? extends Entry<String, String>> entries) {

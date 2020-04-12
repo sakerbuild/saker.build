@@ -42,6 +42,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.function.Consumer;
 
 import saker.build.daemon.BuildExecutionInvoker;
 import saker.build.daemon.DaemonEnvironment;
@@ -59,7 +60,6 @@ import saker.build.file.provider.SakerFileProvider;
 import saker.build.file.provider.SakerPathFiles;
 import saker.build.ide.configuration.IDEConfiguration;
 import saker.build.ide.configuration.SimpleIDEConfiguration;
-import saker.build.ide.support.SakerIDEPlugin.ExceptionDisplayForEachConsumer;
 import saker.build.ide.support.SakerIDEPlugin.PluginResourceListener;
 import saker.build.ide.support.configuration.ProjectIDEConfigurationCollection;
 import saker.build.ide.support.persist.StructuredArrayObjectInput;
@@ -139,9 +139,17 @@ public final class SakerIDEProject {
 			SCRIPTING_PSEUDO_ROOTS);
 
 	public interface ProjectResourceListener {
+		/**
+		 * @param env
+		 *            The script model environment that is being closed.
+		 */
 		public default void scriptModellingEnvironmentClosing(ScriptModellingEnvironment env) {
 		}
 
+		/**
+		 * @param env
+		 *            The created script model environment..
+		 */
 		public default void scriptModellingEnvironmentCreated(ScriptModellingEnvironment env) {
 		}
 	}
@@ -262,12 +270,20 @@ public final class SakerIDEProject {
 	}
 
 	private LazySupplier<SakerExecutionCache> createScriptingEnvironmentExecutionCacheSupplier() {
-		return LazySupplier
-				.of(() -> new RepositoryLoadExceptionHandlingSakerExecutionCache(plugin.getPluginEnvironment()));
+		return LazySupplier.of(() -> {
+			SakerEnvironmentImpl pluginenv = plugin.getPluginEnvironment();
+			if (pluginenv == null) {
+				return null;
+			}
+			return new RepositoryLoadExceptionHandlingSakerExecutionCache(pluginenv);
+		});
 	}
 
 	private LazySupplier<SakerExecutionCache> createScriptingEnvironmentExecutionCacheSupplier(
 			SakerEnvironmentImpl environment) {
+		if (environment == null) {
+			return LazySupplier.of(Functionals.nullSupplier());
+		}
 		return LazySupplier.of(() -> new RepositoryLoadExceptionHandlingSakerExecutionCache(environment));
 	}
 
@@ -961,8 +977,8 @@ public final class SakerIDEProject {
 			if (scriptingEnvironment == null) {
 				return;
 			}
-			ImmutableUtils.makeImmutableList(projectResourceListeners)
-					.forEach(l -> l.scriptModellingEnvironmentClosing(scriptingEnvironment));
+			callListeners(ImmutableUtils.makeImmutableList(projectResourceListeners),
+					l -> l.scriptModellingEnvironmentClosing(scriptingEnvironment));
 			this.scriptingEnvironmentExecutionCache = LazySupplier.of(Functionals.nullSupplier());
 			try {
 				scriptingBuildRepositoryLoader.close();
@@ -987,8 +1003,8 @@ public final class SakerIDEProject {
 			BasicScriptModellingEnvironment nenv = createScriptingEnvironmentLocked(environment);
 			scriptingEnvironment = nenv;
 			if (nenv != null) {
-				ImmutableUtils.makeImmutableList(projectResourceListeners)
-						.forEach(l -> l.scriptModellingEnvironmentCreated(nenv));
+				callListeners(ImmutableUtils.makeImmutableList(projectResourceListeners),
+						l -> l.scriptModellingEnvironmentCreated(nenv));
 			}
 		}
 	}
@@ -1060,11 +1076,24 @@ public final class SakerIDEProject {
 	}
 
 	public void displayException(Throwable e) {
-		ExceptionDisplayForEachConsumer consumer = new ExceptionDisplayForEachConsumer(e);
-		exceptionDisplayers.forEach(consumer);
-		if (!consumer.isCalled()) {
+		int callcount = callListeners(ImmutableUtils.makeImmutableList(exceptionDisplayers),
+				d -> d.displayException(e));
+		if (callcount == 0) {
 			e.printStackTrace();
 		}
+	}
+
+	private <L> int callListeners(Iterable<L> listeners, Consumer<? super L> caller) {
+		int c = 0;
+		for (L l : listeners) {
+			++c;
+			try {
+				caller.accept(l);
+			} catch (Exception e) {
+				displayException(e);
+			}
+		}
+		return c;
 	}
 
 	public final BuildTaskExecutionResult build(SakerPath scriptfile, String targetname, DaemonEnvironment daemonenv,

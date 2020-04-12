@@ -4464,7 +4464,6 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				break;
 			}
 			case "target_parameter_name_content": {
-				//TODO
 				String base = stm.getRawValue().substring(0, offset - startpos);
 
 				ProposalFactory proposalfactory = proposalFactoryForPosition(stm.getOffset(), offset);

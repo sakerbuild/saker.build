@@ -27,18 +27,18 @@ public class ParameterSurroundProposalsScriptModelTest extends ScriptModelTestCa
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-//		exhaustiveTokenInformationRetrieve(model);
-//		exhaustiveProposalRetrieve(model, filedata);
-//
-//		assertProposals(model, startIndexOf(filedata, "\r\n\tParam1: ")).assertPresentOrder("PathParam1");
-//		assertProposals(model, endIndexOf(filedata, "Param1: ,")).assertPresentOrder("PathParam1");
-//
-//		assertProposals(model, startIndexOf(filedata, "\r\n\tNCParam1: ")).assertPresentOrder("PathParam1");
-//		assertProposals(model, endIndexOf(filedata, "NCParam1: x\r\n")).assertPresentOrder("PathParam1");
-//
-//		assertProposals(model, endIndexOf(filedata, "NoCommaEmptyParam1:\r\n")).assertPresentOrder("PathParam1");
-//
-//		assertProposals(model, startIndexOf(filedata, "\tParam1: ")).assertEmpty();
+		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveProposalRetrieve(model, filedata);
+
+		assertProposals(model, startIndexOf(filedata, "\r\n\tParam1: ")).assertPresentOrder("PathParam1");
+		assertProposals(model, endIndexOf(filedata, "Param1: ,")).assertPresentOrder("PathParam1");
+
+		assertProposals(model, startIndexOf(filedata, "\r\n\tNCParam1: ")).assertPresentOrder("PathParam1");
+		assertProposals(model, endIndexOf(filedata, "NCParam1: x\r\n")).assertPresentOrder("PathParam1");
+
+		assertProposals(model, endIndexOf(filedata, "NoCommaEmptyParam1:\r\n")).assertPresentOrder("PathParam1");
+
+		assertProposals(model, startIndexOf(filedata, "\tParam1: ")).assertEmpty();
 
 		assertProposals(model, startIndexOf(filedata, "\r\n\tFirstParam1: ")).assertNotEmpty()
 				.assertPresent("PathParam1", "$var");

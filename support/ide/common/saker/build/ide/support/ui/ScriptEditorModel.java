@@ -251,6 +251,12 @@ public class ScriptEditorModel implements Closeable {
 		}
 	}
 
+	private void reinitModel() {
+		synchronized (inputAccessLock) {
+			reinitModelLocked();
+		}
+	}
+
 	private void reinitModelLocked() {
 		invalidateClearModelLocked();
 		if (scriptExecutionPath == null) {
@@ -569,7 +575,7 @@ public class ScriptEditorModel implements Closeable {
 
 		@Override
 		public void environmentCreated(SakerEnvironmentImpl environment) {
-			reinitModelLocked();
+			reinitModel();
 		}
 
 		@Override
@@ -579,7 +585,7 @@ public class ScriptEditorModel implements Closeable {
 
 		@Override
 		public void scriptModellingEnvironmentCreated(ScriptModellingEnvironment env) {
-			reinitModelLocked();
+			reinitModel();
 		}
 	}
 
