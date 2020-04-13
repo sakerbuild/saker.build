@@ -47,6 +47,8 @@ public class TargetParametersProposalScriptModelTest extends ScriptModelTestCase
 				.assertPresentOrder("varfirst", "varfourth", "varsecond", "varthird").assertNotPresent("item", "local");
 
 		assertProposals(model, startIndexOf(filedata, "in  someth") + 3).assertEmpty();
+
+		assertProposals(model, endIndexOf(filedata, "in inputparam = ")).assertNotEmpty();
 	}
 
 }

@@ -415,10 +415,9 @@ language tasks_lang {
 				inorder ? {
 					include target_parameter_name 1;
 					value init_value ? {
-						include WHITESPACE *;
+						include NB_WHITESPACE *;
 						include marker as target_param_eq("=") 1;
-						include WHITESPACE *;
-						include expression_placeholder 1;
+						include nb_expression_placeholder as expression_placeholder 1;
 					}
 				}
 			}
@@ -427,10 +426,9 @@ language tasks_lang {
 				inorder ? {
 					include target_parameter_name 1;
 					value init_value ?{
-						include WHITESPACE *;
+						include NB_WHITESPACE *;
 						include marker as target_param_eq("=") 1;
-						include WHITESPACE *;
-						include expression_placeholder 1;
+						include nb_expression_placeholder as expression_placeholder 1;
 					}
 				}
 			}

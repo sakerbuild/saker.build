@@ -430,21 +430,22 @@ public final class SakerIDEProject {
 			Set<? extends DaemonConnectionIDEProperty> connections = properties.getConnections();
 			Set<String> roots = new TreeSet<>();
 			for (ProviderMountIDEProperty mountprop : mounts) {
-				String root = SakerIDESupportUtils.tryNormalizePathRoot(mountprop.getRoot());
+				String rootstr = mountprop.getRoot();
 				String clientname = mountprop.getMountClientName();
 				String mountpathstr = mountprop.getMountPath();
 
-				if (ObjectUtils.isNullOrEmpty(root)) {
+				if (ObjectUtils.isNullOrEmpty(rootstr)) {
 					errors.add(new PropertiesValidationErrorResult(NS_PROVIDER_MOUNT + C_ROOT + E_MISSING, mountprop));
 				} else {
-					try {
-						if (!roots.add(root)) {
+					String normalizedroot = SakerIDESupportUtils.tryNormalizePathRoot(rootstr);
+					if (ObjectUtils.isNullOrEmpty(normalizedroot)) {
+						errors.add(
+								new PropertiesValidationErrorResult(NS_PROVIDER_MOUNT + C_ROOT + E_FORMAT, mountprop));
+					} else {
+						if (!roots.add(normalizedroot)) {
 							errors.add(new PropertiesValidationErrorResult(NS_PROVIDER_MOUNT + C_ROOT + E_DUPLICATE,
 									mountprop));
 						}
-					} catch (RuntimeException e) {
-						errors.add(
-								new PropertiesValidationErrorResult(NS_PROVIDER_MOUNT + C_ROOT + E_FORMAT, mountprop));
 					}
 				}
 				validateMountPath(errors, connections, mountprop, clientname, mountpathstr, NS_PROVIDER_MOUNT);
@@ -855,10 +856,12 @@ public final class SakerIDEProject {
 		Set<? extends ProviderMountIDEProperty> mounts = properties.getMounts();
 		if (mounts != null) {
 			String root = SakerIDESupportUtils.tryNormalizePathRoot(path.getRoot());
-			for (ProviderMountIDEProperty mount : mounts) {
-				if (root.equals(SakerIDESupportUtils.tryNormalizePathRoot(mount.getRoot()))) {
-					//found root
-					return true;
+			if (root != null) {
+				for (ProviderMountIDEProperty mount : mounts) {
+					if (root.equals(SakerIDESupportUtils.normalizePathRoot(mount.getRoot()))) {
+						//found root
+						return true;
+					}
 				}
 			}
 		}

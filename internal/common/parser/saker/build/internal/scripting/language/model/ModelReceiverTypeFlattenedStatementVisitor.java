@@ -60,13 +60,15 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 		}
 		Statement initval = stm.firstScope("init_value");
 		if (initval != null) {
-			Statement expressionstm = initval.firstScope("expression_placeholder").firstScope("expression");
+			Statement expplaceholder = initval.firstScope("expression_placeholder");
+			Statement expressionstm = expplaceholder.firstScope("expression");
 			if (expressionstm != null) {
 				if (analyzer.setReceiverTypes(expressionstm, receiverTypes, associatedReceiverTypes)) {
 					SakerScriptTargetConfigurationReader.visitFlattenExpressionStatements(expressionstm,
 							subVisitor(receiverTypes, associatedReceiverTypes));
 				}
 			}
+			analyzer.setReceiverTypes(expplaceholder, receiverTypes, associatedReceiverTypes);
 		}
 	}
 

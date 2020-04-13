@@ -75,7 +75,7 @@ public class SakerIDESupportUtils {
 			return null;
 		}
 		for (ProviderMountIDEProperty prop : mounts) {
-			if (pathroot.equals(tryNormalizePathRoot(prop.getRoot()))) {
+			if (pathroot.equals(normalizePathRoot(prop.getRoot()))) {
 				return prop;
 			}
 		}
@@ -248,7 +248,7 @@ public class SakerIDESupportUtils {
 		}
 	}
 
-	public static String tryNormalizePathRoot(String root) {
+	public static String normalizePathRoot(String root) {
 		if (root == null) {
 			return null;
 		}
@@ -256,6 +256,17 @@ public class SakerIDESupportUtils {
 			return SakerPath.normalizeRoot(root);
 		} catch (IllegalArgumentException e) {
 			return root;
+		}
+	}
+
+	public static String tryNormalizePathRoot(String root) {
+		if (root == null) {
+			return null;
+		}
+		try {
+			return SakerPath.normalizeRoot(root);
+		} catch (IllegalArgumentException e) {
+			return null;
 		}
 	}
 
@@ -582,11 +593,11 @@ public class SakerIDESupportUtils {
 			}
 			case SakerIDEProject.NS_PROVIDER_MOUNT + SakerIDEProject.C_ROOT + SakerIDEProject.E_DUPLICATE: {
 				ProviderMountIDEProperty property = (ProviderMountIDEProperty) err.relatedSubject;
-				return "Duplicate mounted root: " + tryNormalizePathRoot(property.getRoot());
+				return "Duplicate mounted root: " + normalizePathRoot(property.getRoot());
 			}
 			case SakerIDEProject.NS_PROVIDER_MOUNT + SakerIDEProject.C_ROOT + SakerIDEProject.E_FORMAT: {
 				ProviderMountIDEProperty property = (ProviderMountIDEProperty) err.relatedSubject;
-				return "Invalid mount root format: " + tryNormalizePathRoot(property.getRoot());
+				return "Invalid mount root format: " + normalizePathRoot(property.getRoot());
 			}
 			case SakerIDEProject.NS_PROVIDER_MOUNT + SakerIDEProject.C_CLIENT + SakerIDEProject.E_MISSING: {
 				return "Missing mount file system endpoint.";
