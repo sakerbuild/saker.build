@@ -3212,7 +3212,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 				SimpleTextPartition partition = new SimpleTextPartition(
 						createLocalFileInformationTitle(literalpath, attrs), null, fileinfo);
-				setFileInformationSchema(partition, attrs);
+				setFileInformationSchema(partition, attrs, null);
 				return partition;
 			}
 		} catch (IOException | RMIRuntimeException e) {
@@ -3230,12 +3230,13 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				ProviderHolderPathKey pathkey = modellingEnvironment.getConfiguration().getPathConfiguration()
 						.getPathKey(actualpath);
 				FileEntry attrs = pathkey.getFileProvider().getFileAttributes(pathkey.getPath());
-				FormattedTextContent fileinfo = FilePathLiteralCompletionProposal
-						.createFileInformationTextContent(attrs, actualpath, pathkey, modellingEnvironment);
+				String[] outinfometadata = { null };
+				FormattedTextContent fileinfo = FilePathLiteralCompletionProposal.createFileInformationTextContent(
+						attrs, actualpath, pathkey, modellingEnvironment, outinfometadata);
 
 				SimpleTextPartition partition = new SimpleTextPartition(createFileInformationTitle(literalpath, attrs),
 						null, fileinfo);
-				setFileInformationSchema(partition, attrs);
+				setFileInformationSchema(partition, attrs, outinfometadata[0]);
 				return partition;
 			}
 		} catch (IOException | RMIRuntimeException e) {
@@ -3258,17 +3259,17 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		return "File: " + filepath;
 	}
 
-	public static void setFileInformationSchema(SimpleTextPartition partition, FileEntry attributes) {
+	public static void setFileInformationSchema(SimpleTextPartition partition, FileEntry attributes, String filetype) {
 		partition.setSchemaIdentifier(SakerParsedModel.INFORMATION_SCHEMA_FILE);
-		if (attributes.isDirectory()) {
-			partition.setSchemaMetaData(
-					ImmutableUtils.singletonNavigableMap(SakerParsedModel.INFORMATION_META_DATA_FILE_TYPE,
-							SakerParsedModel.INFORMATION_META_DATA_FILE_TYPE_DIRECTORY));
-		} else {
-			partition.setSchemaMetaData(
-					ImmutableUtils.singletonNavigableMap(SakerParsedModel.INFORMATION_META_DATA_FILE_TYPE,
-							SakerParsedModel.INFORMATION_META_DATA_FILE_TYPE_FILE));
+		if (filetype == null) {
+			if (attributes.isDirectory()) {
+				filetype = SakerParsedModel.INFORMATION_META_DATA_FILE_TYPE_DIRECTORY;
+			} else {
+				filetype = SakerParsedModel.INFORMATION_META_DATA_FILE_TYPE_FILE;
+			}
 		}
+		partition.setSchemaMetaData(
+				ImmutableUtils.singletonNavigableMap(SakerParsedModel.INFORMATION_META_DATA_FILE_TYPE, filetype));
 	}
 
 	private static FormattedTextContent getInformation(InformationHolder ih) {
