@@ -92,8 +92,7 @@ public abstract class ScriptModelTestCase extends SakerTestCase {
 				TestUtils.<String, String>treeMapBuilder().put("test.param1", "p1").put("test.param2", "p2")
 						.put("test.paramnull", null).put("test.emptyparam", "").put("test.emptyparam2", "").build());
 
-		modellingenvconfig.setExternalScriptInformationProviders(
-				ImmutableUtils.singletonSet(new TestExternalScriptInformationProvider()));
+		modellingenvconfig.setExternalScriptInformationProviders(getExternalScriptInformationProviders());
 		NavigableSet<SakerPath> scriptfiles = new TreeSet<>();
 		for (WildcardPath wpath : scriptConfiguration.getConfigurations().keySet()) {
 			NavigableMap<SakerPath, ? extends BasicFileAttributes> sfiles = wpath.getFiles(files,
@@ -118,6 +117,10 @@ public abstract class ScriptModelTestCase extends SakerTestCase {
 				cachekey.close(cachedata, cacheres);
 			}
 		}
+	}
+
+	protected Set<TestExternalScriptInformationProvider> getExternalScriptInformationProviders() {
+		return ImmutableUtils.singletonSet(new TestExternalScriptInformationProvider());
 	}
 
 	protected void initFileProvider() throws Exception {

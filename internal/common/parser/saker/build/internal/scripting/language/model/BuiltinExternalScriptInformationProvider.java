@@ -35,6 +35,7 @@ import saker.build.task.BuildTargetTaskResult;
 import saker.build.task.TaskName;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.StringUtils;
 
 final class BuiltinExternalScriptInformationProvider implements ExternalScriptInformationProvider {
 	public static final String INCLUDE_PARAMETER_WORKING_DIRECTORY = "WorkingDirectory";
@@ -276,7 +277,7 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 		NavigableMap<TaskName, TaskInformation> result = new TreeMap<>();
 		for (Entry<TaskName, TaskInformation> entry : BUILTIN_TASK_INFORMATIONS.entrySet()) {
 			TaskName tn = entry.getKey();
-			if (tn.getName().startsWith(tasknamekeyword)) {
+			if (StringUtils.startsWithIgnoreCase(tn.getName(), tasknamekeyword)) {
 				result.put(tn, entry.getValue());
 			}
 		}

@@ -15,16 +15,23 @@
  */
 package testing.saker.build.tests;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Supplier;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
+import saker.build.file.path.SakerPath;
+import saker.build.file.provider.SakerFileProvider;
 import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderDataFinder;
 import saker.build.thirdparty.saker.util.classloader.MultiDataClassLoader;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSource;
+import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayInputStream;
 
 public class TestUtils {
@@ -83,6 +90,21 @@ public class TestUtils {
 
 		public MemoryClassLoaderDataFinder(Map<String, ByteArrayRegion> resourceBytes) {
 			this.resourceBytes = resourceBytes;
+		}
+
+		public static MemoryClassLoaderDataFinder forZipInput(ZipInputStream zis) throws IOException {
+			Map<String, ByteArrayRegion> resourceBytes = new TreeMap<>();
+			for (ZipEntry entry; (entry = zis.getNextEntry()) != null;) {
+				resourceBytes.put(entry.getName(), StreamUtils.readStreamFully(zis));
+			}
+			return new MemoryClassLoaderDataFinder(resourceBytes);
+		}
+
+		public static MemoryClassLoaderDataFinder forZipInput(SakerFileProvider fp, SakerPath path) throws IOException {
+			try (InputStream is = ByteSource.toInputStream(fp.openInput(path));
+					ZipInputStream zis = new ZipInputStream(is)) {
+				return forZipInput(zis);
+			}
 		}
 
 		@Override

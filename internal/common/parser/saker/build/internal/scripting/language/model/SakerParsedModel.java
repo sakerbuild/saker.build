@@ -4599,22 +4599,21 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			Map<TaskName, ? extends TaskInformation> taskinfos = infoprovider.getTasks(basestr);
 			for (Entry<TaskName, ? extends TaskInformation> entry : taskinfos.entrySet()) {
 				TaskName tname = entry.getKey();
-				if (basestr == null || StringUtils.startsWithIgnoreCase(tname.getName(), basestr)
-						|| (basetn != null && isTaskNameProposalCompatible(basetn, tname))) {
-					TaskProposalKey proposalkey = new TaskProposalKey(tname);
-					SimpleLiteralCompletionProposal simpleproposal = proposalfactory.create(TYPE_TASK, tname + "()");
-					simpleproposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_TASK);
-					simpleproposal
-							.setSelectionOffset(simpleproposal.getOffset() + simpleproposal.getLiteral().length() - 1);
-					collector.add(proposalkey, simpleproposal, createTaskTextPartition(entry.getValue()));
-				}
-
-				//TODO add end of line at the end if the line has content after endpos
+				//don't filter, as it is done by the information provider
+//				if (basestr == null || isPhraseStartsWithProposal(tname.getName(), basestr)
+//						|| (basetn != null && isTaskNameProposalCompatible(basetn, tname))) {
+				TaskProposalKey proposalkey = new TaskProposalKey(tname);
+				SimpleLiteralCompletionProposal simpleproposal = proposalfactory.create(TYPE_TASK, tname + "()");
+				simpleproposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_TASK);
+				simpleproposal
+						.setSelectionOffset(simpleproposal.getOffset() + simpleproposal.getLiteral().length() - 1);
+				collector.add(proposalkey, simpleproposal, createTaskTextPartition(entry.getValue()));
+//				}
 			}
 		}
 
 		for (TaskName tname : derived.getPresentTaskNameContents().values()) {
-			if (basestr == null || StringUtils.startsWithIgnoreCase(tname.getName(), basestr)
+			if (basestr == null || isPhraseStartsWithProposal(tname.getName(), basestr)
 					|| (basetn != null && isTaskNameProposalCompatible(basetn, tname))) {
 				TaskProposalKey proposalkey = new TaskProposalKey(tname);
 				SimpleLiteralCompletionProposal simpleproposal = proposalfactory.create(TYPE_TASK, tname + "()");
@@ -4625,6 +4624,16 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				//TODO set an information provider that provides information about the task name
 			}
 		}
+	}
+
+	private static boolean isLiteralProposalCompatible(String base, String literal) {
+		if (base == null) {
+			return true;
+		}
+		if (isPhraseStartsWithProposal(literal, base)) {
+			return true;
+		}
+		return false;
 	}
 
 	private static boolean isTaskNameProposalCompatible(TaskName base, TaskName tname) {
@@ -4707,23 +4716,24 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			if (tinfo == null) {
 				continue;
 			}
-			for (LiteralInformation lit : queryExternalLiterals(null, tinfo, analyzer)) {
+			for (LiteralInformation lit : queryExternalLiterals(base, tinfo, analyzer)) {
 				String litname = lit.getLiteral();
 				if (ObjectUtils.isNullOrEmpty(litname)) {
 					continue;
 				}
-				if (base == null || isPhraseStartsWithProposal(litname, base)) {
-					SimpleLiteralCompletionProposal simpleproposal = proposalfactory.create(TYPE_LITERAL, litname);
-					simpleproposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_EXTERNAL_LITERAL);
-					String relation = lit.getRelation();
-					if (relation != null) {
-						simpleproposal.setDisplayRelation(relation);
-					} else {
-						simpleproposal.setDisplayRelation(getSimpleName(tinfo));
-					}
-					simpleproposal.setInformation(partitioned(createExternalLiteralTextPartition(lit)));
-					result.add(simpleproposal);
+				//don't filter, as it is done by the information provider
+//				if (base == null || isLiteralProposalCompatible(base, litname)) {
+				SimpleLiteralCompletionProposal simpleproposal = proposalfactory.create(TYPE_LITERAL, litname);
+				simpleproposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_EXTERNAL_LITERAL);
+				String relation = lit.getRelation();
+				if (relation != null) {
+					simpleproposal.setDisplayRelation(relation);
+				} else {
+					simpleproposal.setDisplayRelation(getSimpleName(tinfo));
 				}
+				simpleproposal.setInformation(partitioned(createExternalLiteralTextPartition(lit)));
+				result.add(simpleproposal);
+//				}
 			}
 		}
 	}

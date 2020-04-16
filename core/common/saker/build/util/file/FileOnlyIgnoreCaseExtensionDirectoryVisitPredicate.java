@@ -23,7 +23,7 @@ import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWriter;
 import saker.build.thirdparty.saker.rmi.io.writer.SerializeRMIObjectWriteHandler;
 
 /**
- * Same as {@link IgnoreCaseExtensionDirectoryVisitPredicate}, but doesn't accepts directories as the result.
+ * Same as {@link IgnoreCaseExtensionDirectoryVisitPredicate}, but doesn't accept directories as the result.
  */
 @RMIWriter(SerializeRMIObjectWriteHandler.class)
 @PublicApi
@@ -41,9 +41,11 @@ public class FileOnlyIgnoreCaseExtensionDirectoryVisitPredicate extends IgnoreCa
 	 * 
 	 * @param dotext
 	 *            The extension.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
 	 * @see IgnoreCaseExtensionDirectoryVisitPredicate#IgnoreCaseExtensionDirectoryVisitPredicate(String)
 	 */
-	public FileOnlyIgnoreCaseExtensionDirectoryVisitPredicate(String dotext) {
+	public FileOnlyIgnoreCaseExtensionDirectoryVisitPredicate(String dotext) throws NullPointerException {
 		super(dotext);
 	}
 

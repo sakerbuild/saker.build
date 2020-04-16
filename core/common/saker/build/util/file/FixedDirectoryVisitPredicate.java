@@ -57,8 +57,10 @@ public class FixedDirectoryVisitPredicate implements DirectoryVisitPredicate, Ex
 	 * 
 	 * @param relativeFiles
 	 *            The relative path of files to accept.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
 	 */
-	public FixedDirectoryVisitPredicate(NavigableSet<SakerPath> relativeFiles) {
+	public FixedDirectoryVisitPredicate(NavigableSet<SakerPath> relativeFiles) throws NullPointerException {
 		if (SakerPathFiles.hasAbsolutePath(relativeFiles)) {
 			throw new IllegalArgumentException("Files must contain only relative paths.");
 		}

@@ -19,6 +19,7 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.util.Objects;
 
 import saker.apiextract.api.PublicApi;
 import saker.build.file.DirectoryVisitPredicate;
@@ -58,8 +59,11 @@ public class IgnoreCaseExtensionDirectoryVisitPredicate implements DirectoryVisi
 	 * 
 	 * @param extension
 	 *            The extension.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
 	 */
-	public IgnoreCaseExtensionDirectoryVisitPredicate(String extension) {
+	public IgnoreCaseExtensionDirectoryVisitPredicate(String extension) throws NullPointerException {
+		Objects.requireNonNull(extension, "extension");
 		this.extension = extension;
 	}
 

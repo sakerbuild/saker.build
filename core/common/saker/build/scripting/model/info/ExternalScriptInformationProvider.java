@@ -18,6 +18,7 @@ package saker.build.scripting.model.info;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
@@ -67,6 +68,9 @@ public interface ExternalScriptInformationProvider {
 	 * it has information about. (I.e. there is no need to build a full index of all the tasks in a given
 	 * implementation, as that could result in too big work. E.g. no need to retrieve all tasks from a repository, only
 	 * return the ones it currently knows about.)
+	 * <p>
+	 * If the hint keyword is not <code>null</code>, then implementations should <b>not</b> return tasks which are not
+	 * related to it. That is, it should properly filter the task informations based on the hint keyword.
 	 * <p>
 	 * The value informations in the returned map are allowed to be lazily populated. The values in the map can be
 	 * <code>null</code> to signal that they are not available or are still pending due to background retrieval.
@@ -169,7 +173,11 @@ public interface ExternalScriptInformationProvider {
 	 * The literal and type context hints may be <code>null</code>, but at least one of them will be
 	 * non-<code>null</code>.
 	 * <p>
-	 * The resulting collection should be ordered based on relevance to the hint parameters.
+	 * The literal keyword hint should be interpreted the same way as in {@link #getTaskInformation(TaskName)}.
+	 * Implementations should only return literals that are related to the specified keyword.
+	 * <p>
+	 * The resulting collection should be ordered based on relevance to the hint parameters. We recommend using
+	 * {@link LinkedHashSet} to keep the insertion order for the returned literals.
 	 * <p>
 	 * This method is usually useful when creating completion proposals for a script model.
 	 * 
