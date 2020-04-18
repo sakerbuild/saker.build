@@ -27,28 +27,28 @@ public class BuildTargetNotFoundException extends IllegalArgumentException {
 	private static final long serialVersionUID = 1L;
 
 	/**
-	 * @see BuildTargetNotFoundException#BuildTargetNotFoundException()
+	 * @see IllegalArgumentException#IllegalArgumentException()
 	 */
 	public BuildTargetNotFoundException() {
 		super();
 	}
 
 	/**
-	 * @see BuildTargetNotFoundException#BuildTargetNotFoundException(String, Throwable)
+	 * @see IllegalArgumentException#IllegalArgumentException(String, Throwable)
 	 */
 	public BuildTargetNotFoundException(String message, Throwable cause) {
 		super(message, cause);
 	}
 
 	/**
-	 * @see BuildTargetNotFoundException#BuildTargetNotFoundException(String)
+	 * @see IllegalArgumentException#IllegalArgumentException(String)
 	 */
 	public BuildTargetNotFoundException(String message) {
 		super(message);
 	}
 
 	/**
-	 * @see BuildTargetNotFoundException#BuildTargetNotFoundException(Throwable)
+	 * @see IllegalArgumentException#IllegalArgumentException(Throwable)
 	 */
 	public BuildTargetNotFoundException(Throwable cause) {
 		super(cause);
