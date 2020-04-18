@@ -94,8 +94,6 @@ public class TaskExecutionException extends TaskException {
 	 *            The exception message.
 	 * @param cause
 	 *            The exception that caused this one.
-	 * @param enableSuppression
-	 *            Whether or not suppression is enabled or disabled.
 	 * @param writableStackTrace
 	 *            Whether or not the stack trace should be writable.
 	 * @param taskIdentifier
