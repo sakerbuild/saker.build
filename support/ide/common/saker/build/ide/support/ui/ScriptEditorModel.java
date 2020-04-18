@@ -692,6 +692,8 @@ public class ScriptEditorModel implements Closeable {
 						regionchanges = ImmutableUtils.makeImmutableList(mrregionchanges);
 						fullinput = ModelReference.this.fullInput;
 						if (mrregionchanges == null) {
+							//start tracking region changes
+							//this needs to be set before the parsing begins
 							mrregionchanges = new ArrayList<>();
 							ModelReference.this.regionChanges = mrregionchanges;
 						}
@@ -738,7 +740,6 @@ public class ScriptEditorModel implements Closeable {
 								//consider the model up-to-date even in case of failure
 								ModelReference.this.processedUpdateCounter = postedupdctr;
 								if (regionchanges == null) {
-									mrregionchanges = null;
 									ModelReference.this.regionChanges = null;
 								}
 								if (postedupdctr != ModelReference.this.postedUpdateCounter) {
@@ -752,16 +753,31 @@ public class ScriptEditorModel implements Closeable {
 							}
 						}
 					} catch (Throwable e) {
-						synchronized (ModelReference.this) {
-							if (postedupdctr != ModelReference.this.postedUpdateCounter) {
-								//run the loop again as there were additional changes
-								continue;
+						//there were some exception that is not due to read or parsing errors
+						//maybe script modifications are out of range or inconsistent? or model implementation error
+						//anyhow, if we performed an update now, do a create next time, and continue
+						try {
+							synchronized (ModelReference.this) {
+								if (regionchanges != null) {
+									//we were updating.
+									//null out the region changes, and retry with full create
+									ModelReference.this.regionChanges = null;
+									continue;
+								}
+								if (postedupdctr != ModelReference.this.postedUpdateCounter) {
+									//run the loop again as there were additional changes
+									continue;
+								}
+								if (ARFU_updaterThread.compareAndSet(ModelReference.this, this, null)) {
+									ModelReference.this.notifyAll();
+								}
 							}
-							if (ARFU_updaterThread.compareAndSet(ModelReference.this, this, null)) {
-								ModelReference.this.notifyAll();
-							}
+						} finally {
+							//always display exception, even if we've continued
+							//but do this after the locking, as we don't want to delay that
+							editor.project.displayException(e);
 						}
-						editor.project.displayException(e);
+						break;
 					}
 				}
 			}
