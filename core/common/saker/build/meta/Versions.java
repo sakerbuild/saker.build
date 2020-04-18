@@ -56,7 +56,7 @@ public class Versions {
 	 * @see <a href="https://semver.org/">https://semver.org/</a>
 	 */
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
-	public static final int VERSION_PATCH = 10;
+	public static final int VERSION_PATCH = 11;
 
 	/**
 	 * The full version string in the format of
