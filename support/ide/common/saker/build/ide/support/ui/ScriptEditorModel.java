@@ -57,7 +57,6 @@ public class ScriptEditorModel implements Closeable {
 
 	private TokenStateReference currentTokenState = new TokenStateReference();
 
-	private ScriptModellingEnvironment scriptingEnvironment;
 	private SakerPath scriptExecutionPath;
 
 	private StringBuilder text;
@@ -94,7 +93,6 @@ public class ScriptEditorModel implements Closeable {
 			if (this.project != null) {
 				this.project.removeProjectResourceListener(listener);
 				this.project.getPlugin().removePluginResourceListener(listener);
-				this.scriptingEnvironment = null;
 			}
 			invalidateClearModelLocked();
 			this.project = project;
@@ -262,14 +260,12 @@ public class ScriptEditorModel implements Closeable {
 		if (scriptExecutionPath == null) {
 			return;
 		}
+		if (project == null) {
+			return;
+		}
+		ScriptModellingEnvironment scriptingEnvironment = project.getScriptingEnvironment();
 		if (scriptingEnvironment == null) {
-			if (project == null) {
-				return;
-			}
-			this.scriptingEnvironment = project.getScriptingEnvironment();
-			if (scriptingEnvironment == null) {
-				return;
-			}
+			return;
 		}
 
 		ScriptSyntaxModel nmodel = scriptingEnvironment.getModel(this.scriptExecutionPath);
@@ -535,7 +531,6 @@ public class ScriptEditorModel implements Closeable {
 			}
 			invalidateClearModelLocked();
 			this.scriptExecutionPath = null;
-			this.scriptingEnvironment = null;
 		}
 		synchronized (modelUpdateListeners) {
 			modelUpdateListeners.clear();
