@@ -17,11 +17,9 @@ package saker.build.internal.scripting.language;
 
 import java.io.Externalizable;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.math.BigInteger;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -31,7 +29,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Objects;
@@ -108,7 +105,6 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 
 	public static final String DEFAULT_BUILD_TARGET_NAME = "build";
 
-	private static final Charset CHARSET_UTF8 = StandardCharsets.UTF_8;
 	private static final SakerLiteralTaskFactory NULL_LITERAL_TASK_FACTORY_INSTANCE = new SakerLiteralTaskFactory(null);
 	private static final SakerLiteralTaskFactory TRUE_LITERAL_TASK_FACTORY_INSTANCE = new SakerLiteralTaskFactory(true);
 	private static final SakerLiteralTaskFactory FALSE_LITERAL_TASK_FACTORY_INSTANCE = new SakerLiteralTaskFactory(
@@ -120,16 +116,6 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			"~");
 	private static final SakerLiteralTaskFactory BOOL_NEGATE_STR_LITERAL_TASK_FACTORY_INSTANCE = new SakerLiteralTaskFactory(
 			"!");
-
-	public static final String STATEMENT_WHILE_STEP = "while_step";
-	public static final String STATEMENT_FOREACH_STEP = "foreach_step";
-	public static final String STATEMENT_CONDITION_STEP = "condition_step";
-	public static final String STATEMENT_RUN_TARGET_STEP = "run_target_step";
-	public static final String STATEMENT_SEQUENCE_STEP = "sequence_step";
-	public static final String STATEMENT_FORK_JOIN_STEP = "fork_join_step";
-	public static final String STATEMENT_OPERATION_STEP = "operation_step";
-	public static final String STATEMENT_MODULE_STEP = "module_step";
-	public static final String STATEMENT_TEXT_STEP = "text_step";
 
 	public static final String STATEMENT_WHITESPACE = "WHITESPACE";
 
@@ -295,7 +281,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		Objects.requireNonNull(options, "options");
 		Objects.requireNonNull(input, "input");
 		try {
-			String data = StreamUtils.readSourceStringFully(input, CHARSET_UTF8);
+			String data = StreamUtils.readSourceStringFully(input, StandardCharsets.UTF_8);
 			ParsingResult parseresult = getTasksLanguage().parseData(data, null);
 			Statement parsed = parseresult.getStatement();
 			SakerScriptInformationProvider positionlocator = new SakerScriptInformationProvider();
@@ -1439,160 +1425,6 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		private ScriptPosition createScriptPosition(DocumentRegion region) {
 			return createScriptPosition(region, lineIndices);
 		}
-
-//	private static void createParametersOutline(Statement stm, SyntaxStructureOutlineTree parent) {
-//		if (stm == null) {
-//			return;
-//		}
-//		for (Statement parameter : stm.scopeTo("parameter_expression")) {
-//			Statement namecontentstm = nameContentStatementOfParameter(parameter);
-//			if (namecontentstm == null) {
-//				continue;
-//			}
-//			String paramname = namecontentstm.getValue();
-//
-//			SyntaxStructureOutlineTree childoutline = new SyntaxStructureOutlineTree();
-//			parent.addChild(childoutline);
-//
-//			Statement contentstm = parameter.firstScope("param_content");
-//			if (contentstm != null) {
-//				childoutline.setType(TYPE_PARAMETER);
-//			} else {
-//				childoutline.setType(TYPE_BOOL_PARAMETER);
-//			}
-//
-//			childoutline.setSelection(namecontentstm.getOffset(), parameter.getEndOffset() - namecontentstm.getOffset());
-//			childoutline.setRange(parameter);
-//			childoutline.setLabel(paramname);
-//		}
-//		for (Statement redirect : stm.scopeTo("parameter_redirect")) {
-//			Statement namecontentstm = nameContentStatementOfParameter(redirect);
-//			if (namecontentstm == null) {
-//				continue;
-//			}
-//			String paramname = namecontentstm.getValue();
-//
-//			SyntaxStructureOutlineTree childoutline = new SyntaxStructureOutlineTree();
-//			parent.addChild(childoutline);
-//
-//			childoutline.setSelection(namecontentstm.getOffset(), redirect.getEndOffset() - namecontentstm.getOffset());
-//			childoutline.setRange(redirect);
-//			childoutline.setLabel(paramname);
-//			childoutline.setType(TYPE_REDIRECTION);
-//		}
-//	}
-
-//	private static void createOutline(Statement stm, SyntaxStructureOutlineTree parent) {
-//		String type = stm.getName();
-//		SyntaxStructureOutlineTree outline = null;
-//		switch (type) {
-////			case STATEMENT_MODULE_STEP: {
-////				outline = new SyntaxStructureOutlineTree();
-////
-////				ModuleIdentifier identifier = getModuleIdentifierFromModule(stm);
-////
-////				outline.setType(TYPE_MODULE_STEP);
-////				outline.setLabel(identifier.toString());
-////
-////				Statement paramsstm = stm.firstScope("paramlist");
-////				createParametersOutline(paramsstm, outline);
-////				break;
-////			}
-////			case STATEMENT_OPERATION_STEP: {
-////				outline = new SyntaxStructureOutlineTree();
-////
-////				String operationname = getOperationNameFromOperation(stm);
-////
-////				outline.setType(TYPE_OPERATION_STEP);
-////				outline.setLabel(operationname.toString());
-////
-////				Statement paramsstm = stm.firstScope("paramlist");
-////				createParametersOutline(paramsstm, outline);
-////				break;
-////			}
-//			case STATEMENT_FORK_JOIN_STEP: {
-//				outline = new SyntaxStructureOutlineTree();
-//
-//				outline.setType(TYPE_PARALLEL_BLOCK);
-//				break;
-//			}
-//			case STATEMENT_SEQUENCE_STEP: {
-//				outline = new SyntaxStructureOutlineTree();
-//
-//				outline.setType(TYPE_SEQUENCE_BLOCK);
-//				break;
-//			}
-//			case STATEMENT_RUN_TARGET_STEP: {
-//				outline = new SyntaxStructureOutlineTree();
-//				String target = stm.firstScope("target_name").firstValue("target_name_content");
-//				String path = unescapeRunTargetPath(stm.firstValue("path"));
-//				String calltype = stm.firstValue("run_target_type");
-//				switch (calltype) {
-//					case "run": {
-//						outline.setType(TYPE_RUN_TARGET_STEP);
-//						break;
-//					}
-//					case "include": {
-//						outline.setType(TYPE_INCLUDE_TARGET_STEP);
-//						break;
-//					}
-//					case "embed": {
-//						outline.setType(TYPE_EMBED_TARGET_STEP);
-//						break;
-//					}
-//					default: {
-//						throw new IllegalArgumentException("Unknown type: " + calltype);
-//					}
-//				}
-//
-//				outline.setLabel(path == null ? target : target + "@" + path);
-//
-//				Statement paramsstm = stm.firstScope("paramlist");
-//				createParametersOutline(paramsstm, outline);
-//				break;
-//			}
-//			case STATEMENT_CONDITION_STEP: {
-//				outline = new SyntaxStructureOutlineTree();
-//
-//				Statement elsebranch = stm.firstScope("elsebranchstep");
-//
-//				if (elsebranch != null) {
-//					outline.setType(TYPE_IF_ELSE_CONDITION);
-//				} else {
-//					outline.setType(TYPE_IF_CONDITION);
-//				}
-//
-//				break;
-//			}
-//			case STATEMENT_FOREACH_STEP: {
-//				outline = new SyntaxStructureOutlineTree();
-//
-//				outline.setType(TYPE_FOREACH_LOOP);
-//				break;
-//			}
-//			case STATEMENT_WHILE_STEP: {
-//				outline = new SyntaxStructureOutlineTree();
-//
-//				outline.setType(TYPE_WHILE_LOOP);
-//				break;
-//			}
-//			default: {
-//				break;
-//			}
-//		}
-//
-//		SyntaxStructureOutlineTree nparent;
-//		if (outline != null) {
-//			parent.addChild(outline);
-//			nparent = outline;
-//			outline.setSelectionPosition(stm, stm);
-//		} else {
-//			nparent = parent;
-//		}
-//		for (Pair<String, Statement> s : stm.getScopes()) {
-//			createOutline(s.value, nparent);
-//		}
-//	}
 
 		private static Statement nameContentStatementOfParameter(Statement stm) {
 			Statement namescope = stm.firstScope("param_name");

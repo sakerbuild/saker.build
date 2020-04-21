@@ -344,11 +344,9 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
 			return null;
 		}
-		// XXX maybe reify?
-		Set<TypedModelInformation> addopmodels = ImmutableUtils.makeImmutableLinkedHashSet(new TypedModelInformation[] {
-				new TypedModelInformation(new SimpleTypeInformation(TypeInformationKind.OBJECT_LITERAL)),
-				new TypedModelInformation(new SimpleTypeInformation(TypeInformationKind.NUMBER)) });
-		return visitBinaryOperatorWithVisitor(left, right, subVisitor(addopmodels));
+		//forward the receiver types to the operands 
+		//  as the result of the add operation will be the same type as the operands, we can do this
+		return visitBinaryOperatorWithVisitor(left, right, subVisitor(receiverTypes, associatedReceiverTypes));
 	}
 
 	@Override

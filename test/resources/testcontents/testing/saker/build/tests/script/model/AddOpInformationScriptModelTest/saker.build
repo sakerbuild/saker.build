@@ -1,0 +1,8 @@
+$var
+example.task(
+	MapParam1: { Field1: abc } + $var
+	ListEnumParam1: [FIRST] + $var
+	
+	MapParam1: $var + { Field1: abc }
+	ListEnumParam1: $var + [FIRST]
+)
