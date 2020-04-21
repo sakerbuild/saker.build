@@ -1,8 +1,8 @@
-language tasks_lang {
+language TasksLanguage {
 	regex TARGET_NAME_REGEX "[a-zA-Z_][a-zA-Z0-9_]*";
 	regex VARIABLE_NAME_REGEX "[a-zA-Z_][a-zA-Z0-9_]*";
-	regex TASK_NAME_REGEX "[a-zA-Z_]+[.a-zA-Z0-9_]*";
-	regex REPOSITORY_NAME_REGEX "[a-zA-Z_][a-zA-Z_0-9]*";
+	regex TASK_NAME_REGEX "[a-zA-Z_][.a-zA-Z0-9_]*";
+	regex REPOSITORY_NAME_REGEX "[a-zA-Z_][a-zA-Z0-9_]*";
 	regex PARAMETER_NAME "[a-zA-Z_][a-zA-Z0-9_]*";
 	regex TARGET_OUTPUT_NAME "[a-zA-Z_][a-zA-Z0-9_]*";
 	

@@ -25,10 +25,14 @@ compileparser(
 		SourceDirectories: [
 			common/parser,
 			"{$JDK}/parser",
+			sipka.syntax.parser.transpile(
+				Input: tasks.lang, 
+				ClassName: saker.build.internal.scripting.language.LangDef
+			)[SourceDirectory]
 		],
 		ClassPath: [ 
 			$CorePass,
-			saker.java.classpath.bundle(nest.dependency.resolve("sipka.syntax.parser-v{ global(VERSION_sipka.syntax.parser) }")),
+			saker.java.classpath.bundle(nest.dependency.resolve("sipka.syntax.parser-lib-v{ global(VERSION_sipka.syntax.parser) }")),
 		],
 		Identifier: "internal-parser-{$JDK}{ $buildconfig[testingid] }{ $buildconfig[apiid][$JDK] }",
 		CompilerOptions: $JavaCompileOptions,

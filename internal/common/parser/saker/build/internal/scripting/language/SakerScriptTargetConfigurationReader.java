@@ -145,31 +145,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 	public static final Pattern PATTERN_HEXA = Pattern.compile("0x([0-9a-fA-F]+)");
 	public static final Pattern PATTERN_INTEGRAL = Pattern.compile("[+-]?[1-9][0-9]*");
 
-	private static final Language tasksLanguage;
-	static {
-		tasksLanguage = parseLanguageFile("tasks.lang").get("tasks_lang");
-		if (tasksLanguage == null) {
-			throw new AssertionError("Saker scripting language definition not found.");
-		}
-	}
-
-	private static InputStream getLanguageFileInputStream(String filepath) {
-		InputStream input = SakerScriptTargetConfigurationReader.class.getResourceAsStream("/" + filepath);
-		if (input == null) {
-			throw new AssertionError(filepath + " file not found.");
-		}
-		return input;
-	}
-
-	private static Map<String, Language> parseLanguageFile(String filepath) {
-		try (InputStream input = getLanguageFileInputStream(filepath)) {
-			return Language.fromInputStream(input);
-		} catch (IOException e) {
-			throw new AssertionError("Failed to read language file: " + filepath, e);
-		} catch (ParseFailedException e) {
-			throw new AssertionError("Failed to parse language file: " + filepath, e);
-		}
-	}
+	private static final Language tasksLanguage = LangDef.getTasksLanguage();
 
 	public static Language getTasksLanguage() {
 		return tasksLanguage;

@@ -23,6 +23,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import saker.build.thirdparty.saker.util.ImmutableUtils;
+import saker.build.thirdparty.saker.util.StringUtils;
 
 /**
  * Exception reporting that a build script evaluation failed due to some syntactic or semantic error.
@@ -138,7 +139,7 @@ public class ScriptParsingFailedException extends Exception {
 	 *            The reasons for parsing failure.
 	 */
 	public ScriptParsingFailedException(Set<Reason> reasons) {
-		this.reasons = ImmutableUtils.makeImmutableHashSet(reasons);
+		this.reasons = ImmutableUtils.makeImmutableNavigableSet(reasons, ScriptParsingFailedException::compareReasons);
 	}
 
 	/**
@@ -154,7 +155,7 @@ public class ScriptParsingFailedException extends Exception {
 	 */
 	public ScriptParsingFailedException(String message, Throwable cause, Set<Reason> reasons) {
 		super(message, cause);
-		this.reasons = ImmutableUtils.makeImmutableHashSet(reasons);
+		this.reasons = ImmutableUtils.makeImmutableNavigableSet(reasons, ScriptParsingFailedException::compareReasons);
 	}
 
 	/**
@@ -168,7 +169,7 @@ public class ScriptParsingFailedException extends Exception {
 	 */
 	public ScriptParsingFailedException(Throwable cause, Set<Reason> reasons) {
 		super(cause);
-		this.reasons = ImmutableUtils.makeImmutableHashSet(reasons);
+		this.reasons = ImmutableUtils.makeImmutableNavigableSet(reasons, ScriptParsingFailedException::compareReasons);
 	}
 
 	/**
@@ -182,7 +183,7 @@ public class ScriptParsingFailedException extends Exception {
 	 */
 	public ScriptParsingFailedException(String message, Set<Reason> reasons) {
 		super(message);
-		this.reasons = ImmutableUtils.makeImmutableHashSet(reasons);
+		this.reasons = ImmutableUtils.makeImmutableNavigableSet(reasons, ScriptParsingFailedException::compareReasons);
 	}
 
 	/**
@@ -192,5 +193,32 @@ public class ScriptParsingFailedException extends Exception {
 	 */
 	public Set<Reason> getReasons() {
 		return reasons;
+	}
+
+	private static int compareReasons(Reason l, Reason r) {
+		ScriptPosition lpos = l.getPosition();
+		ScriptPosition rpos = r.getPosition();
+		int cmp;
+		cmp = Integer.compare(lpos.getFileOffset(), rpos.getFileOffset());
+		if (cmp != 0) {
+			return cmp;
+		}
+		cmp = Integer.compare(lpos.getLength(), rpos.getLength());
+		if (cmp != 0) {
+			return cmp;
+		}
+		cmp = Integer.compare(lpos.getLine(), rpos.getLine());
+		if (cmp != 0) {
+			return cmp;
+		}
+		cmp = Integer.compare(lpos.getLinePosition(), rpos.getLinePosition());
+		if (cmp != 0) {
+			return cmp;
+		}
+		cmp = StringUtils.compareStringsNullFirst(l.getExplanation(), r.getExplanation());
+		if (cmp != 0) {
+			return cmp;
+		}
+		return 0;
 	}
 }

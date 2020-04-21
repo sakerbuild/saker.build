@@ -2,7 +2,7 @@
 global(saker.build.VERSION) = "0.8.11"
 
 global(VERSION_saker.apiextract) = "0.8.0"
-global(VERSION_sipka.syntax.parser) = "0.8.1"
+global(VERSION_sipka.syntax.parser) = "0.8.2"
 global(VERSION_sipka.cmdline) = "0.8.0"
 static(TargetJDKVersions) = [
 	{
@@ -141,7 +141,7 @@ export(
 				TargetDirectory: internal/launching,
 			},
 			{
-				Archive: nest.bundle.download("sipka.syntax.parser-v{ global(VERSION_sipka.syntax.parser) }")[BundlePaths][0],
+				Archive: nest.bundle.download("sipka.syntax.parser-lib-v{ global(VERSION_sipka.syntax.parser) }")[BundlePaths][0],
 				Resources: **/*.class,
 				TargetDirectory: internal/scripting,
 			},
