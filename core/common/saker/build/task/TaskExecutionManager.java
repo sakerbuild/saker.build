@@ -5375,7 +5375,7 @@ public class TaskExecutionManager {
 			Object taskoutput = taskresult.getOutput();
 			if (dependencyselfchangedetector != null && !dependencyselfchangedetector.isChanged(taskoutput)) {
 				//the change detector from the dependent task reported that the output has not changed
-				//    it it semantically the same as the last output
+				//    it is semantically the same as the last output
 				return false;
 			}
 			if (reportedchangedetector != null && !reportedchangedetector.isChanged(taskoutput)) {

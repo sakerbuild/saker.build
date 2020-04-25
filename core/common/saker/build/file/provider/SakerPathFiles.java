@@ -440,14 +440,14 @@ public class SakerPathFiles {
 			if (SakerPath.isSlashCharacter(c) || c == ':') {
 				throw new InvalidPathFormatException("Invalid file name: " + name);
 			}
-			i = 2;
 			if (c == '.') {
 				throw new InvalidPathFormatException("Invalid file name: ..");
 			}
+			i = 2;
 		}
 		for (; i < len; i++) {
 			c = name.charAt(i);
-			if (SakerPath.isSlashCharacter(c) || c == ':') {
+			if (c == ':' || SakerPath.isSlashCharacter(c)) {
 				throw new InvalidPathFormatException("Invalid file name: " + name);
 			}
 		}

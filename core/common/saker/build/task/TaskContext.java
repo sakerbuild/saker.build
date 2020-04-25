@@ -60,6 +60,7 @@ import saker.build.task.exception.TaskStandardIOLockIllegalStateException;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.StructuredTaskResult;
 import saker.build.task.utils.TaskUtils;
+import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
 import saker.build.thirdparty.saker.rmi.annot.invoke.RMIForbidden;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
@@ -691,8 +692,12 @@ public interface TaskContext extends TaskResultResolver, TaskDirectoryContext, T
 	 * Sets the task output change detector for this task.
 	 * <p>
 	 * Setting an output change detector for the self task can result in skipping rerunning the tasks which depend on
-	 * this task. The set detector should report the output unchanged if any outputs of this task (in regard of files,
-	 * task result, etc...) can be considered as unchanged from an external perspective.
+	 * this task. The set detector should report the output unchanged if the object returned from
+	 * {@link Task#run(TaskContext)} can be considered as unchanged from an external perspective.
+	 * <p>
+	 * The task can report themselves as unchanged, if output files of the task changed, but the information held in the
+	 * output object remained the same. Usually {@link EqualityTaskOutputChangeDetector} is used with this method
+	 * instantiated with the returned output object.
 	 * <p>
 	 * A very simple example for this: <br>
 	 * A task calculates the sum of two input integers. In the first run it calculates 1 + 3. The input integers change
