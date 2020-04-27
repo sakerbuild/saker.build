@@ -135,6 +135,12 @@ public final class TypeInformationKind {
 	 * @see SakerEnvironment#getUserParameters()
 	 */
 	public static final String ENVIRONMENT_USER_PARAMETER = "ENVIRONMENT_USER_PARAMETER";
+	/**
+	 * Type representing a name of a build task.
+	 * 
+	 * @since saker.build 0.8.12
+	 */
+	public static final String BUILD_TASK_NAME = "BUILD_TASK_NAME";
 
 	private TypeInformationKind() {
 		throw new UnsupportedOperationException();
@@ -157,6 +163,7 @@ public final class TypeInformationKind {
 		LITERAL_TYPES.add(BUILD_TARGET);
 		LITERAL_TYPES.add(EXECUTION_USER_PARAMETER);
 		LITERAL_TYPES.add(ENVIRONMENT_USER_PARAMETER);
+		LITERAL_TYPES.add(BUILD_TASK_NAME);
 	}
 
 	/**

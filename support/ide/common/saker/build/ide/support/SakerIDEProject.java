@@ -895,16 +895,25 @@ public final class SakerIDEProject {
 		}
 	}
 
-	private void readIDEProjectPropertiesFile() {
+	public static IDEProjectProperties readIDEProjectPropertiesFile(Path projectPath) throws IOException {
 		try (InputStream is = Files.newInputStream(projectPath.resolve(PROPERTIES_FILE_NAME))) {
 			XMLStructuredReader reader = new XMLStructuredReader(is);
 			try (StructuredObjectInput objreader = reader.readObject(CONFIG_FILE_ROOT_OBJECT_NAME)) {
 				try (StructuredObjectInput propertiesreader = objreader.readObject("project-properties")) {
 					if (propertiesreader != null) {
-						this.ideProjectProperties = createValidatedProjectProperties(
-								IDEPersistenceUtils.readIDEProjectProperties(propertiesreader));
+						return IDEPersistenceUtils.readIDEProjectProperties(propertiesreader);
 					}
 				}
+			}
+		}
+		return null;
+	}
+
+	private void readIDEProjectPropertiesFile() {
+		try {
+			IDEProjectProperties properties = readIDEProjectPropertiesFile(this.projectPath);
+			if (properties != null) {
+				this.ideProjectProperties = createValidatedProjectProperties(properties);
 			}
 		} catch (IOException e) {
 		}
