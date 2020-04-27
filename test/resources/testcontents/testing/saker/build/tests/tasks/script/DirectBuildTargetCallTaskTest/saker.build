@@ -1,0 +1,11 @@
+build(
+	out val = my_target(input: 1)[output]
+) {
+}
+
+my_target(
+	in input
+	out output = $input + 3
+) {
+
+}

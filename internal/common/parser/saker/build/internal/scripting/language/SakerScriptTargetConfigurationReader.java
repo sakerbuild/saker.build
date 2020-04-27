@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Objects;
@@ -1136,6 +1137,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 
 		private int[] lineIndices;
 
+		private Set<String> declaredBuildTargetNames = new TreeSet<>();
+
 		public ParserState(ScriptParsingOptions parsingoptions, SakerScriptInformationProvider positionlocator) {
 			this.parsingOptions = parsingoptions;
 			this.positionLocator = positionlocator;
@@ -1440,6 +1443,13 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 
 				List<Statement> parsedtasktargets = statement.scopeTo("task_target");
 				List<Statement> globalstatements = statement.scopeTo("global_expression_step");
+
+				if (!parsedtasktargets.isEmpty()) {
+					for (Statement stm : parsedtasktargets) {
+						List<String> names = getTargetNamesFromTargetStatement(stm);
+						declaredBuildTargetNames.addAll(names);
+					}
+				}
 				Set<SakerTaskFactory> globalexpressions = null;
 				if (!globalstatements.isEmpty()) {
 					globalexpressions = new HashSet<>();
@@ -1861,7 +1871,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				//convert to lower case, as task names are interpreted in lower case format
 				String tasknamestr = taskidstm.getValue().toLowerCase(Locale.ENGLISH);
 				SakerTaskFactory taskinvoker = TaskInvocationSakerTaskFactory.create(tasknamestr, qualifierfactories,
-						repository, parameterfactories, parsingOptions.getScriptPath(), createScriptPosition(stm));
+						repository, parameterfactories, parsingOptions.getScriptPath(), createScriptPosition(stm),
+						declaredBuildTargetNames);
 
 				return taskinvoker;
 			}
