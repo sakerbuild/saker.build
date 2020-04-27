@@ -27,7 +27,7 @@ public class TaskTokenInformationsScriptModelTest extends ScriptModelTestCase {
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertHasInformation(model, indexOf(filedata, "example.task"), "doc_example.task");
 		assertHasInformation(model, indexOf(filedata, "example.task-q1"), "doc_example.task-q1");

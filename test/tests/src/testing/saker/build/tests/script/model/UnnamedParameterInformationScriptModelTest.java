@@ -27,8 +27,7 @@ public class UnnamedParameterInformationScriptModelTest extends ScriptModelTestC
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertEquals(getInformationsAtOffset(model, indexOf(filedata, "(firstparam)") + 1),
 				setOf("doc_unnamed.paramed_"));

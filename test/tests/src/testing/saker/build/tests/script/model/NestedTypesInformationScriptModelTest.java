@@ -27,7 +27,7 @@ public class NestedTypesInformationScriptModelTest extends ScriptModelTestCase {
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertFieldInfos(filedata, model, "Nest1", "n1", "doc_example.task_MapParam1_MapField3_");
 		assertFieldInfos(filedata, model, "Nest2", "n2", "doc_example.task_MapParam1_ListField4_");

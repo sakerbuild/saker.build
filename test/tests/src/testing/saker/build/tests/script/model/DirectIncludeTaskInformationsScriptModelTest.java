@@ -27,8 +27,7 @@ public class DirectIncludeTaskInformationsScriptModelTest extends ScriptModelTes
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertAnyInformationContains(model, endIndexOf(filedata, "first();") - 3, "THE_FIRST");
 		assertAnyInformationContains(model, endIndexOf(filedata, "second()") - 3, "THE_SECOND");

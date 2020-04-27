@@ -27,7 +27,7 @@ public class ForeachResultInformationScriptModelTest extends ScriptModelTestCase
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "$res1 = foreach $item in [FIRST")),
 				setOf("doc_example.task_EnumParam1_enumtype_FIRST", "doc_example.task_EnumParam1_enumtype"));

@@ -167,18 +167,18 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		booltype.setTypeSimpleName(Boolean.class.getSimpleName());
 	}
 
-	private static final Map<String, PartitionedTextContent> KEYWORD_LITERALS;
+	private static final Map<String, SimpleTextPartition> KEYWORD_LITERALS;
 	static {
 		KEYWORD_LITERALS = new TreeMap<>();
 		KEYWORD_LITERALS.put("null",
-				new SimplePartitionedTextContent(new SimpleTextPartition(createLiteralTitle("null"), null,
+				new SimpleTextPartition(createLiteralTitle("null"), null,
 						new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-								"The null literal representing the absence of a value."))));
+								"The null literal representing the absence of a value.")));
 
-		KEYWORD_LITERALS.put("true", new SimplePartitionedTextContent(
-				new SimpleTextPartition(createLiteralTitle("true"), null, BOOLEAN_TRUE_INFORMATION_CONTENT)));
-		KEYWORD_LITERALS.put("false", new SimplePartitionedTextContent(
-				new SimpleTextPartition(createLiteralTitle("false"), null, BOOLEAN_FALSE_INFORMATION_CONTENT)));
+		KEYWORD_LITERALS.put("true",
+				new SimpleTextPartition(createLiteralTitle("true"), null, BOOLEAN_TRUE_INFORMATION_CONTENT));
+		KEYWORD_LITERALS.put("false",
+				new SimpleTextPartition(createLiteralTitle("false"), null, BOOLEAN_FALSE_INFORMATION_CONTENT));
 	}
 
 	static final String TOKEN_TYPE_UNSTYLIZED = "script";
@@ -211,7 +211,6 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	private static final String PROPOSAL_META_DATA_TYPE = "type";
 	private static final String PROPOSAL_META_DATA_TYPE_FILE = "file";
 	private static final String PROPOSAL_META_DATA_TYPE_ENUM = "enum";
-	private static final String PROPOSAL_META_DATA_TYPE_EXTERNAL_LITERAL = "external_literal";
 	private static final String PROPOSAL_META_DATA_TYPE_FIELD = "field";
 	private static final String PROPOSAL_META_DATA_TYPE_TASK_PARAMETER = "task_parameter";
 	private static final String PROPOSAL_META_DATA_TYPE_TASK = "task";
@@ -4036,6 +4035,39 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		}
 	}
 
+	private static class LiteralProposalKey {
+		final String name;
+
+		public LiteralProposalKey(String name) {
+			this.name = name;
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((name == null) ? 0 : name.hashCode());
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			LiteralProposalKey other = (LiteralProposalKey) obj;
+			if (name == null) {
+				if (other.name != null)
+					return false;
+			} else if (!name.equals(other.name))
+				return false;
+			return true;
+		}
+	}
+
 	private static class FieldProposalKey {
 		final String name;
 
@@ -4108,11 +4140,13 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		private Map<FieldProposalKey, Set<TextPartition>> fieldProposalsInfos = new HashMap<>();
 		private Map<TaskProposalKey, Set<TextPartition>> taskProposalsInfos = new HashMap<>();
 		private Map<FieldProposalKey, Set<TextPartition>> enumProposalsInfos = new HashMap<>();
+		private Map<LiteralProposalKey, Set<TextPartition>> literalProposalsInfos = new HashMap<>();
 
 		private Map<ParameterProposalKey, Set<SimpleLiteralCompletionProposal>> parameterProposalsInstances = new HashMap<>();
 		private Map<FieldProposalKey, Set<SimpleLiteralCompletionProposal>> fieldProposalsInstances = new HashMap<>();
 		private Map<TaskProposalKey, Set<SimpleLiteralCompletionProposal>> taskProposalsInstances = new HashMap<>();
 		private Map<FieldProposalKey, Set<SimpleLiteralCompletionProposal>> enumProposalsInstances = new HashMap<>();
+		private Map<LiteralProposalKey, Set<SimpleLiteralCompletionProposal>> literalProposalsInstances = new HashMap<>();
 
 		private final Set<ScriptCompletionProposal> result;
 
@@ -4132,6 +4166,10 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			addImpl(key, proposal, information, taskProposalsInfos, taskProposalsInstances);
 		}
 
+		public void add(LiteralProposalKey key, SimpleLiteralCompletionProposal proposal, TextPartition information) {
+			addImpl(key, proposal, information, literalProposalsInfos, literalProposalsInstances);
+		}
+
 		public void addEnum(String name, SimpleLiteralCompletionProposal proposal, TextPartition information) {
 			addImpl(new FieldProposalKey(name), proposal, information, enumProposalsInfos, enumProposalsInstances);
 		}
@@ -4148,6 +4186,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			completeImpl(fieldProposalsInstances, fieldProposalsInfos);
 			completeImpl(taskProposalsInstances, taskProposalsInfos);
 			completeImpl(enumProposalsInstances, enumProposalsInfos);
+			completeImpl(literalProposalsInstances, literalProposalsInfos);
 		}
 
 		private <K> void addImpl(K key, SimpleLiteralCompletionProposal proposal, TextPartition information,
@@ -4544,16 +4583,15 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 					if (isPhraseStartsWithProposal(lit, base)) {
 						SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_LITERAL, lit);
 						proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_LITERAL);
-						result.add(proposal);
+						collector.add(new LiteralProposalKey(lit), proposal, null);
 					}
 				}
-				for (Entry<String, PartitionedTextContent> entry : KEYWORD_LITERALS.entrySet()) {
+				for (Entry<String, SimpleTextPartition> entry : KEYWORD_LITERALS.entrySet()) {
 					String lit = entry.getKey();
 					if (lit.length() > base.length() && lit.startsWith(base)) {
 						SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_LITERAL, lit);
-						proposal.setInformation(entry.getValue());
 						proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_LITERAL);
-						result.add(proposal);
+						collector.add(new LiteralProposalKey(lit), proposal, entry.getValue());
 					}
 				}
 				break;
@@ -4879,7 +4917,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 	private static void addExternalLiteralProposals(Collection<? super ScriptCompletionProposal> result, String base,
 			Collection<? extends TypedModelInformation> receivertypes, ProposalFactory proposalfactory,
-			@SuppressWarnings("unused") ProposalCollector collector, ScriptModelInformationAnalyzer analyzer) {
+			ProposalCollector collector, ScriptModelInformationAnalyzer analyzer) {
 		for (TypedModelInformation rectype : receivertypes) {
 			TypeInformation tinfo = rectype.getTypeInformation();
 			if (tinfo == null) {
@@ -4893,7 +4931,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				//don't filter, as it is done by the information provider
 //				if (base == null || isLiteralProposalCompatible(base, litname)) {
 				SimpleLiteralCompletionProposal simpleproposal = proposalfactory.create(TYPE_LITERAL, litname);
-				simpleproposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_EXTERNAL_LITERAL);
+				simpleproposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_LITERAL);
 				String relation = lit.getRelation();
 				if (relation != null) {
 					simpleproposal.setDisplayRelation(relation);
@@ -4901,7 +4939,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 					simpleproposal.setDisplayRelation(getSimpleName(tinfo));
 				}
 				simpleproposal.setInformation(partitioned(createExternalLiteralTextPartition(lit)));
-				result.add(simpleproposal);
+				collector.add(new LiteralProposalKey(litname), simpleproposal, createExternalLiteralTextPartition(lit));
 //				}
 			}
 		}
@@ -5253,16 +5291,15 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			if (includeliteralpredicate.test(lit)) {
 				SimpleLiteralCompletionProposal prop = proposalfactory.create(TYPE_LITERAL, lit);
 				prop.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_LITERAL);
-				result.add(prop);
+				collector.add(new LiteralProposalKey(lit), prop, null);
 			}
 		}
-		for (Entry<String, PartitionedTextContent> entry : KEYWORD_LITERALS.entrySet()) {
+		for (Entry<String, SimpleTextPartition> entry : KEYWORD_LITERALS.entrySet()) {
 			String lit = entry.getKey();
 			if (includeliteralpredicate.test(lit)) {
 				SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_LITERAL, lit);
-				proposal.setInformation(entry.getValue());
 				proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_LITERAL);
-				result.add(proposal);
+				collector.add(new LiteralProposalKey(lit), proposal, entry.getValue());
 			}
 		}
 	}

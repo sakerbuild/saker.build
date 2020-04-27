@@ -26,8 +26,7 @@ public class GeneralProposalsScriptModelTest extends ScriptModelTestCase {
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertProposals(model, endIndexOf(filedata, "EnumParam1: ")).assertPresentOrder("FIRST", "FOURTH", "SECOND",
 				"THIRD");

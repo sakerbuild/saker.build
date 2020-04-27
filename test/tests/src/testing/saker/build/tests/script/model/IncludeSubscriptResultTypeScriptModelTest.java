@@ -27,7 +27,7 @@ public class IncludeSubscriptResultTypeScriptModelTest extends ScriptModelTestCa
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "out outinit")),
 				setOf("doc_example.task_return", "oi"));

@@ -27,7 +27,7 @@ public class ExternalLiteralScriptModelTest extends ScriptModelTestCase {
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertEquals(getInformationsAtOffset(model, indexOf(filedata, "EXT_SIMPLE_LITERAL")), setOf());
 		assertEquals(getInformationsAtOffset(model, indexOf(filedata, "EXT_OBJECT_LITERAL")), setOf());

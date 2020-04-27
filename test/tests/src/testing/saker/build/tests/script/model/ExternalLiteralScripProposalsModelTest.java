@@ -27,8 +27,7 @@ public class ExternalLiteralScripProposalsModelTest extends ScriptModelTestCase 
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertProposals(model, endIndexOf(filedata, "ExtLiteralParam1: ")).assertPresent("EXT_SIMPLE_LITERAL",
 				"EXT_OBJECT_LITERAL");

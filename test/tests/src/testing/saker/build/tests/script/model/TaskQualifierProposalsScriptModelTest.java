@@ -27,8 +27,7 @@ public class TaskQualifierProposalsScriptModelTest extends ScriptModelTestCase {
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertProposals(model, endIndexOf(filedata, "example.task-()") - 2).assertPresent("q1", "q2");
 		assertProposals(model, endIndexOf(filedata, "example.task-q1-()") - 2).assertPresent("q2")

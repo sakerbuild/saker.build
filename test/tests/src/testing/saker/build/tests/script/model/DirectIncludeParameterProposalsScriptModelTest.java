@@ -27,8 +27,7 @@ public class DirectIncludeParameterProposalsScriptModelTest extends ScriptModelT
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertProposals(model, endIndexOf(filedata, "first()") - 1).assertPresent("finparam1", "finparam2");
 		assertProposals(model, endIndexOf(filedata, "first(fin")).assertPresent("finparam1", "finparam2");

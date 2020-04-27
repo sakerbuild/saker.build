@@ -26,8 +26,7 @@ public class TaskIdentifierProposalsScriptModelTest extends ScriptModelTestCase 
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertProposals(model, 0).assertPresent("example.task()", "example.task-q1()", "example.task-q2()",
 				"example.task-q1-q2()", "other.task()", "other.task-q1()", "other.task-qx()", "include()", "abort()",

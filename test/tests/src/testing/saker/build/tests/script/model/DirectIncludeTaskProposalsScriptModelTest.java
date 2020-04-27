@@ -27,8 +27,7 @@ public class DirectIncludeTaskProposalsScriptModelTest extends ScriptModelTestCa
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertProposals(model, endIndexOf(filedata, "fir;") - 1).assertProposalDocContains("first()", "THE_FIRST");
 		assertProposals(model, endIndexOf(filedata, "first;") - 1).assertPresent("first()");

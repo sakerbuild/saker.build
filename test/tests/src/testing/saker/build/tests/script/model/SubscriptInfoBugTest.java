@@ -38,7 +38,7 @@ public class SubscriptInfoBugTest extends ScriptModelTestCase {
 		ScriptSyntaxModel model = environment.getModel(path);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "out opt")),
 				setOf("doc_example.task_MapParam1"));
@@ -54,7 +54,7 @@ public class SubscriptInfoBugTest extends ScriptModelTestCase {
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "ListMapParam1: $config[fie")),
 				setOf("doc_example.task_ListMapParam1", "doc_example.task_ListMapParam1_listmap",

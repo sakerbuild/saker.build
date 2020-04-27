@@ -27,8 +27,7 @@ public class ParameterSurroundProposalsScriptModelTest extends ScriptModelTestCa
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertProposals(model, startIndexOf(filedata, "\r\n\tParam1: ")).assertPresentOrder("PathParam1");
 		assertProposals(model, endIndexOf(filedata, "Param1: ,")).assertPresentOrder("PathParam1");

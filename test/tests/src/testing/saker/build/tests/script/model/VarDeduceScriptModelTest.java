@@ -27,7 +27,7 @@ public class VarDeduceScriptModelTest extends ScriptModelTestCase {
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertEquals(getInformationsAtOffset(model, indexOf(filedata, ": $enumvar") + 5),
 				setOf("doc_example.task_EnumParam1_enumtype", "doc_example.task_EnumParam1"));

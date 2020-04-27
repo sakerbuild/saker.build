@@ -27,7 +27,7 @@ public class DirectIncludeBasedReceiverTypeScriptModelTest extends ScriptModelTe
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertEquals(getInformationsAtOffset(model, indexOf(filedata, "Field1")),
 				setOf("doc_example.task_MapParam1_Field1"));

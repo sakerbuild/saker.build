@@ -436,6 +436,11 @@ public abstract class ScriptModelTestCase extends SakerTestCase {
 		return new ProposalAssertion(proposals);
 	}
 
+	protected static void exhaustiveScriptAnalysis(ScriptSyntaxModel model, String data) {
+		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveProposalRetrieve(model, data);
+	}
+
 	protected static void exhaustiveTokenInformationRetrieve(ScriptSyntaxModel model) {
 		for (ScriptToken t : model.getTokens(0, Integer.MAX_VALUE)) {
 			ScriptTokenInformation tokinfo = model.getTokenInformation(t);
@@ -445,6 +450,24 @@ public abstract class ScriptModelTestCase extends SakerTestCase {
 				} catch (Throwable e) {
 					e.addSuppressed(new RuntimeException("Failed to retrieve description for token: " + t));
 					throw e;
+				}
+			}
+		}
+	}
+
+	protected static void exhaustiveProposalRetrieve(ScriptSyntaxModel model, String data) {
+		int length = data.length();
+		for (int i = 0; i < length; i++) {
+			Map<ProposalKey, ScriptCompletionProposal> proposalkeys = new HashMap<>();
+			List<? extends ScriptCompletionProposal> proposals = model.getCompletionProposals(i);
+			for (ScriptCompletionProposal prop : proposals) {
+				applyProposal(data, prop);
+				ScriptCompletionProposal prevprop = proposalkeys.putIfAbsent(new ProposalKey(prop), prop);
+				if (prevprop != null) {
+					if (!Objects.equals(prop.getInformation(), prevprop.getInformation())) {
+						throw fail("Multiple similar proposals: " + prop + " and " + prevprop + " in " + proposals
+								+ " with " + prop.getInformation() + " and " + prevprop.getInformation());
+					}
 				}
 			}
 		}
@@ -496,24 +519,6 @@ public abstract class ScriptModelTestCase extends SakerTestCase {
 			} else if (!type.equals(other.type))
 				return false;
 			return true;
-		}
-	}
-
-	protected static void exhaustiveProposalRetrieve(ScriptSyntaxModel model, String data) {
-		int length = data.length();
-		for (int i = 0; i < length; i++) {
-			Map<ProposalKey, ScriptCompletionProposal> proposalkeys = new HashMap<>();
-			List<? extends ScriptCompletionProposal> proposals = model.getCompletionProposals(i);
-			for (ScriptCompletionProposal prop : proposals) {
-				applyProposal(data, prop);
-				ScriptCompletionProposal prevprop = proposalkeys.putIfAbsent(new ProposalKey(prop), prop);
-				if (prevprop != null) {
-					if (!Objects.equals(prop.getInformation(), prevprop.getInformation())) {
-						throw fail("Multiple similar proposals: " + prop + " and " + prevprop + " in " + proposals
-								+ " with " + prop.getInformation() + " and " + prevprop.getInformation());
-					}
-				}
-			}
 		}
 	}
 

@@ -27,7 +27,7 @@ public class ParameterInformationScriptModelTest extends ScriptModelTestCase {
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "$InParam1[Enum")),
 				setOf("doc_example.task_EnumParam1", "doc_example.task_EnumParam1_enumtype"));
