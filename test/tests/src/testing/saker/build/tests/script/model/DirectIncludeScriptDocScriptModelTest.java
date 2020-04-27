@@ -19,7 +19,7 @@ import saker.build.scripting.model.ScriptSyntaxModel;
 import testing.saker.SakerTest;
 
 @SakerTest
-public class IncludeParameterProposalsScriptModelTest extends ScriptModelTestCase {
+public class DirectIncludeScriptDocScriptModelTest extends ScriptModelTestCase {
 
 	@Override
 	protected void runTest() throws Throwable {
@@ -28,18 +28,19 @@ public class IncludeParameterProposalsScriptModelTest extends ScriptModelTestCas
 		model.createModel(null);
 
 		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
 
-		assertProposals(model, endIndexOf(filedata, "include(first,")).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, fin")).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, fin") - 2).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1")).assertNotPresent("finparam1")
-				.assertNotPresent("finparam2");
+		assertEquals(getInformationsAtOffset(model, indexOf(filedata, "build(")), setOf("doc_build"));
+		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "in inp")), setOf("doc_in"));
+		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "out outp")), setOf("doc_out"));
+		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "$input")), setOf("doc_in"));
+		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "output")), setOf("doc_out"));
 
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1: 1)") - 4).assertNotPresent("finparam1")
-				.assertNotPresent("finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1: 1)") - 5).assertNotPresent("finparam1")
-				.assertPresent("finparam2");
+		assertTrue(getInformationsAtOffset(model, endIndexOf(filedata, "build(inp")).contains("doc_in"));
+		assertTrue(getInformationsAtOffset(model, endIndexOf(filedata, "build(input: as")).contains("doc_in"));
+		assertTrue(getInformationsAtOffset(model, endIndexOf(filedata, "build(input: asd)[out"))
+				.contains("doc_out"));
+		assertTrue(getInformationsAtOffset(model, indexOf(filedata, "ut = build(input: asd)[output]"))
+				.contains("doc_out"));
 	}
 
 }

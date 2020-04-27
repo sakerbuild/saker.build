@@ -1,0 +1,15 @@
+first(
+	in finparam1,
+	in finparam2
+) {
+}
+second(
+	in sinparam1,
+	in sinparam2,
+) {
+	first()
+	first(fin)
+	first(finparam1)
+	
+	first(finparam1: 1)
+}

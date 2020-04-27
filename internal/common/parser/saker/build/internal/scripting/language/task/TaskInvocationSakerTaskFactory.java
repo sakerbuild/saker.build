@@ -303,7 +303,7 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 										"The task \"" + taskName + "\" cannot have qualifiers.", scriptposition);
 							}
 							return new IncludeTaskFactory(scriptpath, parameters, ImmutableUtils.singletonNavigableMap(
-									IncludeTaskFactory.PARAMETER_TARGET_NAME, new SakerLiteralTaskFactory(taskName)));
+									IncludeTaskFactory.PARAMETER_TARGET, new SakerLiteralTaskFactory(taskName)));
 						}
 						//only a single name part
 						//the single name part task names are reserved for the scripting language

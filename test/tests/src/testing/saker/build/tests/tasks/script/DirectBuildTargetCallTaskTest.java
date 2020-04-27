@@ -28,6 +28,9 @@ public class DirectBuildTargetCallTaskTest extends CollectingMetricEnvironmentTe
 
 		runScriptTask("build");
 		assertEquals(getMetric().getRunTaskIdFactories().keySet(), setOf());
+
+		res = runScriptTask("build", PATH_WORKING_DIRECTORY.resolve("builtinconflict.build"));
+		assertEquals(res.getTargetTaskResult("val"), 3L);
 	}
 
 }

@@ -1,0 +1,28 @@
+#a
+###
+doc_build
+###
+#b
+build(
+	#c
+	###
+	doc_in
+	###
+	#d
+	in input,
+	#e
+	###
+	doc_out
+	###
+	#f
+	out output,
+){
+	$input
+	$output
+}
+###
+doc_includer
+###
+includer(){
+	$out = build(input: asd)[output]
+}

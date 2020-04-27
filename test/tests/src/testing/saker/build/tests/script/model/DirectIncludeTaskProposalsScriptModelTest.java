@@ -19,7 +19,7 @@ import saker.build.scripting.model.ScriptSyntaxModel;
 import testing.saker.SakerTest;
 
 @SakerTest
-public class IncludeParameterProposalsScriptModelTest extends ScriptModelTestCase {
+public class DirectIncludeTaskProposalsScriptModelTest extends ScriptModelTestCase {
 
 	@Override
 	protected void runTest() throws Throwable {
@@ -30,16 +30,10 @@ public class IncludeParameterProposalsScriptModelTest extends ScriptModelTestCas
 		exhaustiveTokenInformationRetrieve(model);
 		exhaustiveProposalRetrieve(model, filedata);
 
-		assertProposals(model, endIndexOf(filedata, "include(first,")).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, fin")).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, fin") - 2).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1")).assertNotPresent("finparam1")
-				.assertNotPresent("finparam2");
-
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1: 1)") - 4).assertNotPresent("finparam1")
-				.assertNotPresent("finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1: 1)") - 5).assertNotPresent("finparam1")
-				.assertPresent("finparam2");
+		assertProposals(model, endIndexOf(filedata, "fir;") - 1).assertProposalDocContains("first()", "THE_FIRST");
+		assertProposals(model, endIndexOf(filedata, "first;") - 1).assertPresent("first()");
+		assertProposals(model, endIndexOf(filedata, " ;") - 1).assertProposalDocContains("first()", "THE_FIRST")
+				.assertProposalDocContains("second()", "THE_SECOND").assertProposalDocContains("build()", "THE_BUILD");
 	}
 
 }

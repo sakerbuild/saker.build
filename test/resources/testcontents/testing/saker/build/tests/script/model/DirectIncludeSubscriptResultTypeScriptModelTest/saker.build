@@ -1,0 +1,16 @@
+first(
+	###
+	oi
+	###
+	out outinit = example.task(),
+	###
+	ov
+	###
+	out outvar,
+){
+	$outvar = example.task()
+}
+use() {
+	$oinit = first()[outinit]
+	$ovar = first()[outvar]
+}

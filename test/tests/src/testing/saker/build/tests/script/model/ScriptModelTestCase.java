@@ -200,6 +200,16 @@ public abstract class ScriptModelTestCase extends SakerTestCase {
 		}
 	}
 
+	protected static void assertAnyInformationContains(ScriptSyntaxModel model, int offset, String phrase) {
+		Collection<String> found = getInformationsAtOffset(model, offset);
+		for (String f : found) {
+			if (f.contains(phrase)) {
+				return;
+			}
+		}
+		fail("No informations contain the phrase: " + phrase + " in " + found);
+	}
+
 	protected static Set<String> getInformationsAtOffset(ScriptSyntaxModel model, int offset) {
 		if (offset < 0) {
 			throw new IllegalArgumentException("Offset < 0 (" + offset + ")");
@@ -331,6 +341,24 @@ public abstract class ScriptModelTestCase extends SakerTestCase {
 					throw new AssertionError("Proposal with display string not found: " + dispstr + " in " + proposals);
 				}
 			}
+			return this;
+		}
+
+		public ProposalAssertion assertProposalDocContains(String proposaldisplay, String phrase) {
+			int idx = getDisplayStringIndex(proposaldisplay);
+			if (idx < 0) {
+				throw new AssertionError(
+						"Proposal with display string not found: " + proposaldisplay + " in " + proposals);
+			}
+			ScriptCompletionProposal proposal = proposals.get(idx);
+			PartitionedTextContent info = proposal.getInformation();
+			Set<String> infos = getPartitionInformations(info);
+			for (String i : infos) {
+				if (i.contains(phrase)) {
+					return this;
+				}
+			}
+			fail("Haven't found phrase in proposals: " + phrase + " in " + infos);
 			return this;
 		}
 

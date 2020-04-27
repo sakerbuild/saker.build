@@ -16,7 +16,6 @@
 package saker.build.internal.scripting.language.model;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -31,13 +30,13 @@ import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.stream.StreamSupport;
 
 import saker.build.file.path.SakerPath;
 import saker.build.internal.scripting.language.SakerScriptTargetConfigurationReader;
 import saker.build.internal.scripting.language.model.ModelReceiverTypeFlattenedStatementVisitor.MapFieldNameDeducerAssociationFunction;
 import saker.build.internal.scripting.language.task.TaskInvocationSakerTaskFactory;
+import saker.build.internal.scripting.language.task.builtin.IncludeTaskFactory;
 import saker.build.scripting.model.FormattedTextContent;
 import saker.build.scripting.model.ScriptModellingEnvironment;
 import saker.build.scripting.model.ScriptModellingEnvironmentConfiguration;
@@ -50,7 +49,6 @@ import saker.build.scripting.model.info.TaskParameterInformation;
 import saker.build.scripting.model.info.TypeInformation;
 import saker.build.scripting.model.info.TypeInformationKind;
 import saker.build.task.TaskName;
-import saker.build.thirdparty.saker.util.ConcatIterable;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.StringUtils;
@@ -539,45 +537,48 @@ public class ScriptModelInformationAnalyzer {
 		if (paramname == null) {
 			return;
 		}
-		if (!TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE.equals(taskidentifierstm.getValue())) {
-			return;
-		}
-		if ("".equals(paramname)
-				|| BuiltinExternalScriptInformationProvider.INCLUDE_PARAMETER_TARGET.equals(paramname)) {
-			//the receiver types is the build targets for the given path
-			ScriptModellingEnvironment modellingenv = derived.getEnclosingModel().getModellingEnvironment();
-			Set<SakerPath> includepaths = getIncludeTaskIncludePaths(derived, taskstm);
-			for (SakerPath includescriptpath : includepaths) {
-				ScriptSyntaxModel includedmodel = modellingenv.getModel(includescriptpath);
-				if (!(includedmodel instanceof SakerParsedModel)) {
-					continue;
-				}
-
-				SakerParsedModel includedsakermodel = (SakerParsedModel) includedmodel;
-				DerivedData includedderived = includedsakermodel.getDerived();
-				if (includedderived == null) {
-					includedsakermodel.startAsyncDerivedParse();
-					continue;
-				}
-				Map<String, FieldInformation> targetenums = new TreeMap<>();
-				for (Statement tasktargetstm : includedderived.getStatement().scopeTo("task_target")) {
-					Set<String> targetnames = SakerParsedModel.getTargetStatementTargetNames(tasktargetstm);
-					TargetInformation targetinfo = new TargetInformation(
-							SakerParsedModel.getTargetStatementScriptDoc(includedderived, tasktargetstm), targetnames,
-							includescriptpath);
-					for (String tn : targetnames) {
-						targetenums.put(tn, new TargetDeducingFieldInformation(tn, targetinfo));
+		if (TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE.equals(taskidentifierstm.getValue())) {
+			if ("".equals(paramname) || IncludeTaskFactory.PARAMETER_TARGET.equals(paramname)) {
+				//the receiver types is the build targets for the given path
+				ScriptModellingEnvironment modellingenv = derived.getEnclosingModel().getModellingEnvironment();
+				Set<SakerPath> includepaths = SakerParsedModel.getIncludeTaskIncludePaths(derived, taskstm);
+				for (SakerPath includescriptpath : includepaths) {
+					ScriptSyntaxModel includedmodel = modellingenv.getModel(includescriptpath);
+					if (!(includedmodel instanceof SakerParsedModel)) {
+						continue;
 					}
+
+					SakerParsedModel includedsakermodel = (SakerParsedModel) includedmodel;
+					DerivedData includedderived = includedsakermodel.getDerived();
+					if (includedderived == null) {
+						includedsakermodel.startAsyncDerivedParse();
+						continue;
+					}
+					Map<String, FieldInformation> targetenums = new TreeMap<>();
+					for (Statement tasktargetstm : includedderived.getStatement().scopeTo("task_target")) {
+						Set<String> targetnames = SakerParsedModel.getTargetStatementTargetNames(tasktargetstm);
+						TargetInformation targetinfo = new TargetInformation(
+								SakerParsedModel.getTargetStatementScriptDoc(includedderived, tasktargetstm),
+								targetnames, includescriptpath);
+						for (String tn : targetnames) {
+							targetenums.put(tn, new TargetDeducingFieldInformation(tn, targetinfo));
+						}
+					}
+					SimpleTypeInformation buildtargettype = new SimpleTypeInformation(TypeInformationKind.BUILD_TARGET);
+					buildtargettype.setEnumValues(targetenums);
+					receivertypes.add(new TypedModelInformation(buildtargettype));
 				}
-				SimpleTypeInformation buildtargettype = new SimpleTypeInformation(TypeInformationKind.BUILD_TARGET);
-				buildtargettype.setEnumValues(targetenums);
-				receivertypes.add(new TypedModelInformation(buildtargettype));
+				return;
 			}
+		} else if (derived.isIncludeTask(taskstm)) {
+			//continue the method
+		} else {
+			//not include task
 			return;
 		}
-		Set<String> includedtargetnames = getIncludeTaskTargetNames(taskstm);
+		Set<String> includedtargetnames = SakerParsedModel.getIncludeTaskTargetNames(taskstm);
 		if (!ObjectUtils.isNullOrEmpty(includedtargetnames)) {
-			Set<SakerPath> includepaths = getIncludeTaskIncludePaths(derived, taskstm);
+			Set<SakerPath> includepaths = SakerParsedModel.getIncludeTaskIncludePaths(derived, taskstm);
 			ScriptModellingEnvironment modellingenv = derived.getEnclosingModel().getModellingEnvironment();
 			for (SakerPath includescriptpath : includepaths) {
 				ScriptSyntaxModel includedmodel = modellingenv.getModel(includescriptpath);
@@ -616,51 +617,6 @@ public class ScriptModelInformationAnalyzer {
 				}
 			}
 		}
-	}
-
-	public static Set<String> getIncludeTaskTargetNames(Statement taskstm) {
-		ConcatIterable<Statement> includetargetnamestatements = new ConcatIterable<>(Arrays.asList(
-				SakerParsedModel.getTaskParameterValueExpressionStatement(taskstm,
-						BuiltinExternalScriptInformationProvider.INCLUDE_PARAMETER_TARGET),
-				SakerParsedModel.getTaskParameterValueExpressionStatement(taskstm, "")));
-		//XXX handle if there was no target specified
-		Set<String> includedtargetnames = new TreeSet<>();
-		for (Statement targetnamestm : includetargetnamestatements) {
-			String includedtargetname = SakerParsedModel.getExpressionValue(targetnamestm);
-			if (includedtargetname != null) {
-				includedtargetnames.add(includedtargetname);
-			}
-		}
-		return includedtargetnames;
-	}
-
-	public static Set<SakerPath> getIncludeTaskIncludePaths(DerivedData derived, Statement taskstm) {
-		Collection<Statement> includepathsstms = SakerParsedModel.getTaskParameterValueExpressionStatement(taskstm,
-				BuiltinExternalScriptInformationProvider.INCLUDE_PARAMETER_PATH);
-		Set<SakerPath> includepaths;
-		SakerPath derivedscriptpath = derived.getScriptParsingOptions().getScriptPath();
-		if (ObjectUtils.isNullOrEmpty(includepathsstms)) {
-			includepaths = Collections.singleton(derivedscriptpath);
-		} else {
-			includepaths = new TreeSet<>();
-			for (Statement incpathstm : includepathsstms) {
-				String incpathstr = SakerParsedModel.getExpressionValue(incpathstm);
-				if (incpathstr == null) {
-					continue;
-				}
-				SakerPath pathparam;
-				try {
-					pathparam = SakerPath.valueOf(incpathstr);
-					if (pathparam.isRelative()) {
-						pathparam = derivedscriptpath.getParent().resolve(pathparam);
-					}
-				} catch (IllegalArgumentException e) {
-					continue;
-				}
-				includepaths.add(pathparam);
-			}
-		}
-		return includepaths;
 	}
 
 	private ExpressionReceiverBase getBaseReceiverExpression(StatementLocation loc) {

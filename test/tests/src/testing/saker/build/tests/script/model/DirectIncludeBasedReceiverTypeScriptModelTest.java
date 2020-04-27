@@ -19,7 +19,7 @@ import saker.build.scripting.model.ScriptSyntaxModel;
 import testing.saker.SakerTest;
 
 @SakerTest
-public class IncludeParameterProposalsScriptModelTest extends ScriptModelTestCase {
+public class DirectIncludeBasedReceiverTypeScriptModelTest extends ScriptModelTestCase {
 
 	@Override
 	protected void runTest() throws Throwable {
@@ -28,18 +28,14 @@ public class IncludeParameterProposalsScriptModelTest extends ScriptModelTestCas
 		model.createModel(null);
 
 		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
 
-		assertProposals(model, endIndexOf(filedata, "include(first,")).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, fin")).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, fin") - 2).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1")).assertNotPresent("finparam1")
-				.assertNotPresent("finparam2");
-
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1: 1)") - 4).assertNotPresent("finparam1")
-				.assertNotPresent("finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1: 1)") - 5).assertNotPresent("finparam1")
-				.assertPresent("finparam2");
+		assertEquals(getInformationsAtOffset(model, indexOf(filedata, "Field1")),
+				setOf("doc_example.task_MapParam1_Field1"));
+		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "Field1: f")),
+				setOf("doc_example.task_MapParam1_Field1"));
+		
+		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "out out")),
+				setOf("doc_example.task_MapParam1"));
 	}
 
 }

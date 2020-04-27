@@ -45,7 +45,9 @@ import saker.build.trace.BuildTrace;
 public class IncludeTaskFactory extends SelfSakerTaskFactory {
 	private static final long serialVersionUID = 1L;
 
-	public static final String PARAMETER_TARGET_NAME = "Target";
+	public static final String PARAMETER_TARGET = "Target";
+	public static final String PARAMETER_WORKING_DIRECTORY = "WorkingDirectory";
+	public static final String PARAMETER_PATH = "Path";
 
 	private SakerPath taskScriptPath;
 	private NavigableMap<String, SakerTaskFactory> parameters;
@@ -61,14 +63,14 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 		this.taskScriptPath = taskScriptPath;
 		this.parameters = new TreeMap<>(parameters);
 		this.metaParameters = new TreeMap<>();
-		boolean targetpresent = putParamToMetaIfPresent(PARAMETER_TARGET_NAME, this.parameters, this.metaParameters);
+		boolean targetpresent = putParamToMetaIfPresent(PARAMETER_TARGET, this.parameters, this.metaParameters);
 		boolean unnamedpresent = putParamToMetaIfPresent("", this.parameters, this.metaParameters);
 		if (targetpresent && unnamedpresent) {
 			throw new IllegalArgumentException(
-					"Conflicting parameters for target name: unnamed and " + PARAMETER_TARGET_NAME);
+					"Conflicting parameters for target name: unnamed and " + PARAMETER_TARGET);
 		}
-		putParamToMetaIfPresent("Path", this.parameters, this.metaParameters);
-		putParamToMetaIfPresent("WorkingDirectory", this.parameters, this.metaParameters);
+		putParamToMetaIfPresent(PARAMETER_PATH, this.parameters, this.metaParameters);
+		putParamToMetaIfPresent(PARAMETER_WORKING_DIRECTORY, this.parameters, this.metaParameters);
 	}
 
 	public IncludeTaskFactory(SakerPath taskScriptPath, NavigableMap<String, SakerTaskFactory> parameters,
@@ -105,7 +107,7 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 		data.targetInvocationParameters = parametertaskids;
 
 		SakerPath buildfilepath = data.Path;
-		if (!metaparametertaskids.containsKey("Path")) {
+		if (!metaparametertaskids.containsKey(PARAMETER_PATH)) {
 			buildfilepath = taskScriptPath;
 		}
 
@@ -194,7 +196,7 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	private static class IncludeTaskData {
-		@SakerInput({ "", PARAMETER_TARGET_NAME })
+		@SakerInput({ "", PARAMETER_TARGET })
 		public String Target;
 
 		@SakerInput

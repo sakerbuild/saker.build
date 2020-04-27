@@ -1,0 +1,13 @@
+build(
+	out val = include(Target: third)[output]
+) {
+}
+include(
+	in Target,
+	out output = 99
+) {
+
+}
+third(
+	out output = 3
+){}

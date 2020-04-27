@@ -19,7 +19,7 @@ import saker.build.scripting.model.ScriptSyntaxModel;
 import testing.saker.SakerTest;
 
 @SakerTest
-public class IncludeParameterProposalsScriptModelTest extends ScriptModelTestCase {
+public class DirectIncludeSubscriptResultTypeScriptModelTest extends ScriptModelTestCase {
 
 	@Override
 	protected void runTest() throws Throwable {
@@ -28,18 +28,21 @@ public class IncludeParameterProposalsScriptModelTest extends ScriptModelTestCas
 		model.createModel(null);
 
 		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
 
-		assertProposals(model, endIndexOf(filedata, "include(first,")).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, fin")).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, fin") - 2).assertPresent("finparam1", "finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1")).assertNotPresent("finparam1")
-				.assertNotPresent("finparam2");
+		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "out outinit")),
+				setOf("doc_example.task_return", "oi"));
+		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "out outvar")),
+				setOf("doc_example.task_return", "ov"));
 
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1: 1)") - 4).assertNotPresent("finparam1")
-				.assertNotPresent("finparam2");
-		assertProposals(model, endIndexOf(filedata, "include(first, finparam1: 1)") - 5).assertNotPresent("finparam1")
-				.assertPresent("finparam2");
+		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "$oinit = first()[out")),
+				setOf("doc_example.task_return", "oi"));
+		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "$ovar = first()[out")),
+				setOf("doc_example.task_return", "ov"));
+
+		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "$oin")),
+				setOf("doc_example.task_return", "oi"));
+		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "$ova")),
+				setOf("doc_example.task_return", "ov"));
 	}
 
 }

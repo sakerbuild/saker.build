@@ -37,8 +37,6 @@ public class ScriptDocScriptModelTest extends ScriptModelTestCase {
 
 		assertTrue(getInformationsAtOffset(model, endIndexOf(filedata, "include(bui")).contains("doc_build"));
 		assertTrue(getInformationsAtOffset(model, endIndexOf(filedata, "include(build, inp")).contains("doc_in"));
-		System.out.println("ScriptDocScriptModelTest.runTest() "
-				+ getInformationsAtOffset(model, endIndexOf(filedata, "include(build, input: as")));
 		assertTrue(getInformationsAtOffset(model, endIndexOf(filedata, "include(build, input: as")).contains("doc_in"));
 		assertTrue(getInformationsAtOffset(model, endIndexOf(filedata, "include(build, input: asd)[out"))
 				.contains("doc_out"));
