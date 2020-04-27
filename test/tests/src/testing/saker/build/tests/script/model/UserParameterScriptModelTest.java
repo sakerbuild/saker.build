@@ -27,8 +27,7 @@ public class UserParameterScriptModelTest extends ScriptModelTestCase {
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "exec.user.param(test.par")),
 				setOf("doc_exec.user.param_", "Value: p1"));

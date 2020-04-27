@@ -28,15 +28,15 @@ public class VarProposalsScriptModelTest extends ScriptModelTestCase {
 		SakerPath globalbuildfilepath = EnvironmentTestCase.PATH_WORKING_DIRECTORY.resolve("global.build");
 
 		String filedata = files.getAllBytes(DEFAULT_BUILD_FILE).toString();
+		String globalfiledata = files.getAllBytes(globalbuildfilepath).toString();
 
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		ScriptSyntaxModel globalmodel = environment.getModel(globalbuildfilepath);
 		model.createModel(null);
 		globalmodel.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveTokenInformationRetrieve(globalmodel);
-		exhaustiveProposalRetrieve(model, filedata);
+		exhaustiveScriptAnalysis(globalmodel, globalfiledata);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertProposals(model, endIndexOf(filedata, "$;") - 1).assertPresent("$Unassigned", "$MapVar", "$ListVar",
 				"$LiteralVar", "$TaskVar");

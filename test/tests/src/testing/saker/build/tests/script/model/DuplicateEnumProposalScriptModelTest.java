@@ -27,8 +27,7 @@ public class DuplicateEnumProposalScriptModelTest extends ScriptModelTestCase {
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		System.out.println("DuplicateEnumProposalScriptModelTest.runTest() "
 				+ model.getCompletionProposals(endIndexOf(filedata, "dup.enum.paramed(")));

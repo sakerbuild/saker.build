@@ -35,8 +35,8 @@ public class VarTasksScriptModelTest extends ScriptModelTestCase {
 		model.createModel(null);
 		globalmodel.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveTokenInformationRetrieve(globalmodel);
+		exhaustiveScriptAnalysis(model, filedata);
+		exhaustiveScriptAnalysis(globalmodel, globalfiledata);
 
 		assertTrue(getInformationsAtOffset(model, indexOf(filedata, "var(enumvar)") + 5)
 				.containsAll(setOf("doc_example.task_EnumParam1_enumtype", "doc_example.task_EnumParam1")));

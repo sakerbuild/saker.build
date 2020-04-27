@@ -57,9 +57,11 @@ public class DerivedData {
 	private Map<VariableTaskUsage, Map<Statement, Set<StatementLocation>>> variableUsages;
 	private Map<Statement, Set<StatementLocation>> targetInputParameterNames;
 	private Map<Statement, Set<StatementLocation>> targetOutputParameterNames;
-	private Set<StatementLocation> includeTasks;
+	private Set<StatementLocation> includeTasksLocations;
+	private Set<Statement> includeTasksStatements;
 	private Map<Statement, StatementLocation> foreachVariableLocations;
 	private Map<Statement, NavigableSet<String>> targetVariableNames;
+	private NavigableSet<String> declaredBuildTargetNames;
 
 	public DerivedData(SakerParsedModel model, ParsingResult parseResult) {
 		this.model = model;
@@ -165,12 +167,17 @@ public class DerivedData {
 			Map<Statement, TaskName> tasknamecontents = new LinkedHashMap<>();
 			Map<VariableTaskUsage, Map<Statement, Set<StatementLocation>>> varusages = new TreeMap<>();
 			Set<StatementLocation> includetasks = new LinkedHashSet<>();
+			Set<Statement> includetasksstatements = new LinkedHashSet<>();
 			Map<Statement, Set<StatementLocation>> targetinputparams = new LinkedHashMap<>();
 			Map<Statement, Set<StatementLocation>> targetoutputparams = new LinkedHashMap<>();
 			Map<Statement, StatementLocation> foreachvarlocations = new LinkedHashMap<>();
 			Map<Statement, NavigableSet<String>> targetvarnames = new LinkedHashMap<>();
 
 			Statement rootstm = getStatement();
+
+			NavigableSet<String> declaredbuildtargetnames = SakerScriptTargetConfigurationReader
+					.getDeclaredBuildTargetNames(rootstm);
+
 			SakerParsedModel.visitAllStatements(rootstm.getScopes(), new ArrayDeque<>(), (stm, stmparents) -> {
 				switch (stm.getName()) {
 					case "dereference": {
@@ -208,12 +215,19 @@ public class DerivedData {
 
 						Statement taskidstm = stm.firstScope("task_identifier");
 						try {
-							TaskName tn = TaskName.valueOf(taskidstm.getValue(),
+							String taskidstmval = taskidstm.getValue();
+							TaskName tn = TaskName.valueOf(taskidstmval,
 									SakerParsedModel.getTaskIdentifierQualifierLiterals(taskidstm));
-							if (TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE.equals(tn.getName())) {
+							if (TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE.equals(tn.getName())
+									|| (!BuiltinExternalScriptInformationProvider.isBuiltinTaskName(taskidstmval)
+											&& declaredbuildtargetnames.contains(taskidstmval))) {
+								//  include task
+								//or
+								//  simplified target inclusion
 								StatementLocation stmloc = new StatementLocation(this, stm,
 										ImmutableUtils.makeImmutableList(stmparents));
 								includetasks.add(stmloc);
+								includetasksstatements.add(stm);
 							}
 							tasknamecontents.put(stm, tn);
 						} catch (IllegalArgumentException e) {
@@ -234,7 +248,8 @@ public class DerivedData {
 				}
 			});
 
-			includeTasks = includetasks;
+			includeTasksLocations = includetasks;
+			includeTasksStatements = includetasksstatements;
 			variableUsages = varusages;
 			simpleLiteralContents = litcontents;
 			presentTaskNamecontents = tasknamecontents;
@@ -242,6 +257,7 @@ public class DerivedData {
 			targetOutputParameterNames = targetoutputparams;
 			foreachVariableLocations = foreachvarlocations;
 			targetVariableNames = targetvarnames;
+			declaredBuildTargetNames = declaredbuildtargetnames;
 			System.out.println(
 					"DerivedData.ensureScriptIdentifiers() " + (System.nanoTime() - nanos) / 1_000_000 + " ms");
 		}
@@ -300,7 +316,7 @@ public class DerivedData {
 
 	public Set<StatementLocation> getIncludeTasks() {
 		ensureScriptIdentifiers();
-		return includeTasks;
+		return includeTasksLocations;
 	}
 
 	public boolean isForeachVariableDereference(Statement derefstm) {
@@ -322,6 +338,22 @@ public class DerivedData {
 
 	public List<SyntaxScriptToken> getTokens() {
 		return tokenComputer.get();
+	}
+
+	public NavigableSet<String> getDeclaredBuildTargetNames() {
+		ensureScriptIdentifiers();
+		return declaredBuildTargetNames;
+	}
+
+	/**
+	 * <code>include()</code> task or simplified target call.
+	 * 
+	 * @param taskstm
+	 * @return
+	 */
+	public boolean isIncludeTask(Statement taskstm) {
+		ensureScriptIdentifiers();
+		return includeTasksStatements.contains(taskstm);
 	}
 
 	private List<SyntaxScriptToken> computeTokens() {

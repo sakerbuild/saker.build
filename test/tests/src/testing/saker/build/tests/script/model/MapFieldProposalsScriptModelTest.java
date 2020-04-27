@@ -27,8 +27,7 @@ public class MapFieldProposalsScriptModelTest extends ScriptModelTestCase {
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertProposals(model, endIndexOf(filedata, "#nokey\r\n\t\t")).assertPresent("Field1", "Field2", "MapField3",
 				"ListField4", "EnumField5");

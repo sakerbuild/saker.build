@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
+import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
@@ -946,6 +947,23 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		appendEscapedStringLiteralWithLengthExc(sb, litstr, len);
 	}
 
+	public static NavigableSet<String> getDeclaredBuildTargetNames(Statement rootstm) {
+		List<Statement> parsedtasktargets = rootstm.scopeTo("task_target");
+
+		if (parsedtasktargets.isEmpty()) {
+			return Collections.emptyNavigableSet();
+		}
+		NavigableSet<String> result = new TreeSet<>();
+		fillDeclaredBuildTargetNames(parsedtasktargets, result);
+		return result;
+	}
+
+	private static void fillDeclaredBuildTargetNames(List<Statement> parsedtasktargets, NavigableSet<String> result) {
+		for (Statement stm : parsedtasktargets) {
+			result.addAll(getTargetNamesFromTargetStatement(stm));
+		}
+	}
+
 	public static void appendEscapedStringLiteralWithLengthExc(StringBuilder sb, String litstr, int len)
 			throws InvalidStringLiteralFormatException {
 		//XXX normalizing of line endings could be tuneable by script parsing options
@@ -1136,6 +1154,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 
 		private int[] lineIndices;
 
+		private NavigableSet<String> declaredBuildTargetNames = new TreeSet<>();
+
 		public ParserState(ScriptParsingOptions parsingoptions, SakerScriptInformationProvider positionlocator) {
 			this.parsingOptions = parsingoptions;
 			this.positionLocator = positionlocator;
@@ -1193,8 +1213,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			return result;
 		}
 
-		private SakerScriptBuildTargetTaskFactory parseTaskTarget(Statement stm, ExpressionParsingState parsingstate)
-				throws ScriptParsingFailedException {
+		private SakerScriptBuildTargetTaskFactory parseTaskTarget(Statement stm, ExpressionParsingState parsingstate) {
 			SakerScriptBuildTargetTaskFactory result = new SakerScriptBuildTargetTaskFactory(
 					parsingOptions.getScriptPath());
 			List<Statement> steps = scopeToTaskSteps(stm);
@@ -1440,6 +1459,9 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 
 				List<Statement> parsedtasktargets = statement.scopeTo("task_target");
 				List<Statement> globalstatements = statement.scopeTo("global_expression_step");
+
+				fillDeclaredBuildTargetNames(parsedtasktargets, declaredBuildTargetNames);
+
 				Set<SakerTaskFactory> globalexpressions = null;
 				if (!globalstatements.isEmpty()) {
 					globalexpressions = new HashSet<>();
@@ -1861,7 +1883,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				//convert to lower case, as task names are interpreted in lower case format
 				String tasknamestr = taskidstm.getValue().toLowerCase(Locale.ENGLISH);
 				SakerTaskFactory taskinvoker = TaskInvocationSakerTaskFactory.create(tasknamestr, qualifierfactories,
-						repository, parameterfactories, parsingOptions.getScriptPath(), createScriptPosition(stm));
+						repository, parameterfactories, parsingOptions.getScriptPath(), createScriptPosition(stm),
+						declaredBuildTargetNames);
 
 				return taskinvoker;
 			}

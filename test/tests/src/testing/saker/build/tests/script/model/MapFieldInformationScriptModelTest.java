@@ -27,7 +27,7 @@ public class MapFieldInformationScriptModelTest extends ScriptModelTestCase {
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertFieldInfos(filedata, model, "Field1", "f1");
 		assertFieldInfos(filedata, model, "Field2", "f2");

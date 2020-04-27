@@ -26,8 +26,7 @@ public class OnlyDeclaredParameterProposalsModelTest extends ScriptModelTestCase
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
-		exhaustiveProposalRetrieve(model, filedata);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertProposals(model, endIndexOf(filedata, "customtask()") - 1).assertPresent("CustomParam1", "CustomParam2",
 				"CusParam3");

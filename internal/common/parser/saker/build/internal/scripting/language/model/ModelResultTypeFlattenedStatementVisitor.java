@@ -323,11 +323,10 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 				SakerParsedModel.getTaskIdentifierQualifierLiterals(taskidentifierstm));
 		NavigableMap<TaskName, Collection<TaskInformation>> infos = analyzer.queryExternalTaskInformations(tn);
 		Set<TypedModelInformation> result = new LinkedHashSet<>();
-		if (TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE.equals(tn.getName())) {
-			Set<String> includedtargetnames = ScriptModelInformationAnalyzer.getIncludeTaskTargetNames(taskstm);
+		if (derived.isIncludeTask(taskstm)) {
+			Set<String> includedtargetnames = SakerParsedModel.getIncludeTaskTargetNames(taskstm);
 			if (!ObjectUtils.isNullOrEmpty(includedtargetnames)) {
-				Set<SakerPath> includepaths = ScriptModelInformationAnalyzer.getIncludeTaskIncludePaths(derived,
-						taskstm);
+				Set<SakerPath> includepaths = SakerParsedModel.getIncludeTaskIncludePaths(derived, taskstm);
 				ScriptModellingEnvironment modellingenv = derived.getEnclosingModel().getModellingEnvironment();
 				for (SakerPath includescriptpath : includepaths) {
 					ScriptSyntaxModel includedmodel = modellingenv.getModel(includescriptpath);

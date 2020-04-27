@@ -45,8 +45,13 @@ import saker.build.trace.BuildTrace;
 public class IncludeTaskFactory extends SelfSakerTaskFactory {
 	private static final long serialVersionUID = 1L;
 
+	public static final String PARAMETER_TARGET = "Target";
+	public static final String PARAMETER_WORKING_DIRECTORY = "WorkingDirectory";
+	public static final String PARAMETER_PATH = "Path";
+
 	private SakerPath taskScriptPath;
 	private NavigableMap<String, SakerTaskFactory> parameters;
+	private NavigableMap<String, SakerTaskFactory> metaParameters;
 
 	/**
 	 * For {@link Externalizable}.
@@ -56,7 +61,33 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 
 	public IncludeTaskFactory(SakerPath taskScriptPath, NavigableMap<String, SakerTaskFactory> parameters) {
 		this.taskScriptPath = taskScriptPath;
+		this.parameters = new TreeMap<>(parameters);
+		this.metaParameters = new TreeMap<>();
+		boolean targetpresent = putParamToMetaIfPresent(PARAMETER_TARGET, this.parameters, this.metaParameters);
+		boolean unnamedpresent = putParamToMetaIfPresent("", this.parameters, this.metaParameters);
+		if (targetpresent && unnamedpresent) {
+			throw new IllegalArgumentException(
+					"Conflicting parameters for target name: unnamed and " + PARAMETER_TARGET);
+		}
+		putParamToMetaIfPresent(PARAMETER_PATH, this.parameters, this.metaParameters);
+		putParamToMetaIfPresent(PARAMETER_WORKING_DIRECTORY, this.parameters, this.metaParameters);
+	}
+
+	public IncludeTaskFactory(SakerPath taskScriptPath, NavigableMap<String, SakerTaskFactory> parameters,
+			NavigableMap<String, SakerTaskFactory> metaParameters) {
+		this.taskScriptPath = taskScriptPath;
 		this.parameters = parameters;
+		this.metaParameters = metaParameters;
+	}
+
+	private static boolean putParamToMetaIfPresent(String paramname, NavigableMap<String, SakerTaskFactory> params,
+			NavigableMap<String, SakerTaskFactory> metaparams) {
+		SakerTaskFactory target = params.remove(paramname);
+		if (target != null) {
+			metaparams.put(paramname, target);
+			return true;
+		}
+		return false;
 	}
 
 	@Override
@@ -67,25 +98,16 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
 
 		NavigableMap<String, TaskIdentifier> parametertaskids = new TreeMap<>();
-		for (Entry<String, SakerTaskFactory> entry : parameters.entrySet()) {
-			SakerTaskFactory paramfactory = entry.getValue();
-			String paramname = entry.getKey();
-			TaskIdentifier paramtaskid = paramfactory.createSubTaskIdentifier(thistaskid);
-			taskcontext.getTaskUtilities().startTaskFuture(paramtaskid, paramfactory);
-
-			parametertaskids.put(paramname, paramtaskid);
-		}
+		NavigableMap<String, TaskIdentifier> metaparametertaskids = new TreeMap<>();
+		startParameterTasks(taskcontext, thistaskid, parametertaskids, this.parameters);
+		startParameterTasks(taskcontext, thistaskid, metaparametertaskids, this.metaParameters);
 
 		IncludeTaskData data = new IncludeTaskData();
-		TaskUtils.initParametersOfTask(taskcontext, data, parametertaskids);
-		data.targetInvocationParameters = new TreeMap<>(parametertaskids);
-		data.targetInvocationParameters.remove("Target");
-		data.targetInvocationParameters.remove("");
-		data.targetInvocationParameters.remove("Path");
-		data.targetInvocationParameters.remove("WorkingDirectory");
+		TaskUtils.initParametersOfTask(taskcontext, data, metaparametertaskids);
+		data.targetInvocationParameters = parametertaskids;
 
 		SakerPath buildfilepath = data.Path;
-		if (!parametertaskids.containsKey("Path")) {
+		if (!metaparametertaskids.containsKey(PARAMETER_PATH)) {
 			buildfilepath = taskScriptPath;
 		}
 
@@ -97,9 +119,22 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 		return result;
 	}
 
+	private static void startParameterTasks(TaskContext taskcontext, SakerScriptTaskIdentifier thistaskid,
+			NavigableMap<String, TaskIdentifier> parametertaskids, NavigableMap<String, SakerTaskFactory> params) {
+		for (Entry<String, SakerTaskFactory> entry : params.entrySet()) {
+			SakerTaskFactory paramfactory = entry.getValue();
+			String paramname = entry.getKey();
+			TaskIdentifier paramtaskid = paramfactory.createSubTaskIdentifier(thistaskid);
+			taskcontext.getTaskUtilities().startTask(paramtaskid, paramfactory);
+
+			parametertaskids.put(paramname, paramtaskid);
+		}
+	}
+
 	@Override
 	public SakerTaskFactory clone(Map<SakerTaskFactory, SakerTaskFactory> taskfactoryreplacements) {
-		return new IncludeTaskFactory(taskScriptPath, cloneHelper(taskfactoryreplacements, parameters));
+		return new IncludeTaskFactory(taskScriptPath, cloneHelper(taskfactoryreplacements, parameters),
+				cloneHelper(taskfactoryreplacements, metaParameters));
 	}
 
 	@Override
@@ -112,6 +147,7 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 		super.writeExternal(out);
 		out.writeObject(taskScriptPath);
 		SerialUtils.writeExternalMap(out, parameters);
+		SerialUtils.writeExternalMap(out, metaParameters);
 	}
 
 	@Override
@@ -119,12 +155,14 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 		super.readExternal(in);
 		taskScriptPath = (SakerPath) in.readObject();
 		parameters = SerialUtils.readExternalSortedImmutableNavigableMap(in);
+		metaParameters = SerialUtils.readExternalSortedImmutableNavigableMap(in);
 	}
 
 	@Override
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
+		result = prime * result + ((metaParameters == null) ? 0 : metaParameters.hashCode());
 		result = prime * result + ((parameters == null) ? 0 : parameters.hashCode());
 		result = prime * result + ((taskScriptPath == null) ? 0 : taskScriptPath.hashCode());
 		return result;
@@ -139,6 +177,11 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 		if (getClass() != obj.getClass())
 			return false;
 		IncludeTaskFactory other = (IncludeTaskFactory) obj;
+		if (metaParameters == null) {
+			if (other.metaParameters != null)
+				return false;
+		} else if (!metaParameters.equals(other.metaParameters))
+			return false;
 		if (parameters == null) {
 			if (other.parameters != null)
 				return false;
@@ -153,7 +196,7 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	private static class IncludeTaskData {
-		@SakerInput({ "", "Target" })
+		@SakerInput({ "", PARAMETER_TARGET })
 		public String Target;
 
 		@SakerInput

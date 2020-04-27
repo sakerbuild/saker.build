@@ -1,0 +1,19 @@
+###
+THE_FIRST
+###
+first() {
+}
+###
+THE_SECOND
+###
+second() {
+}
+###
+THE_BUILD
+###
+build() {
+	first();
+	second()
+	build()
+}
+

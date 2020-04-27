@@ -28,6 +28,6 @@ public class RecursiveVarDeduceScriptModelTest extends ScriptModelTestCase {
 		model.createModel(null);
 
 		//test that we don't run into stack overflows
-		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveScriptAnalysis(model, filedata);
 	}
 }

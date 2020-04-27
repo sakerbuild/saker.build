@@ -23,6 +23,7 @@ import java.util.TreeMap;
 
 import saker.build.file.path.SakerPath;
 import saker.build.internal.scripting.language.task.TaskInvocationSakerTaskFactory;
+import saker.build.internal.scripting.language.task.builtin.IncludeTaskFactory;
 import saker.build.scripting.model.FormattedTextContent;
 import saker.build.scripting.model.SingleFormattedTextContent;
 import saker.build.scripting.model.info.ExternalScriptInformationProvider;
@@ -38,16 +39,13 @@ import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.StringUtils;
 
 final class BuiltinExternalScriptInformationProvider implements ExternalScriptInformationProvider {
-	public static final String INCLUDE_PARAMETER_WORKING_DIRECTORY = "WorkingDirectory";
-	public static final String INCLUDE_PARAMETER_TARGET = "Target";
-	public static final String INCLUDE_PARAMETER_PATH = "Path";
-
 	public static final String DEREFERENCE_VAR_PARAM_INFO = "The name of the dereferenced variable.";
 
 	public static final ExternalScriptInformationProvider INSTANCE = new BuiltinExternalScriptInformationProvider();
 
-	private static final Set<String> INCLUDE_TASK_PARAMETER_NAMES = ImmutableUtils.makeImmutableNavigableSet(
-			new String[] { INCLUDE_PARAMETER_PATH, INCLUDE_PARAMETER_TARGET, INCLUDE_PARAMETER_WORKING_DIRECTORY });
+	private static final Set<String> INCLUDE_TASK_PARAMETER_NAMES = ImmutableUtils
+			.makeImmutableNavigableSet(new String[] { IncludeTaskFactory.PARAMETER_PATH,
+					IncludeTaskFactory.PARAMETER_TARGET, IncludeTaskFactory.PARAMETER_WORKING_DIRECTORY });
 
 	public static boolean isIncludeTaskParameterName(String name) {
 		return name != null && INCLUDE_TASK_PARAMETER_NAMES.contains(name);
@@ -113,11 +111,12 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 			SimpleTaskInformation taskinfo = new SimpleTaskInformation(taskname);
 			taskinfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
 					"Includes the specified build target in the current build execution.\n"
-							+ "All parameters apart from Target, Path and " + INCLUDE_PARAMETER_WORKING_DIRECTORY
+							+ "All parameters apart from Target, Path and "
+							+ IncludeTaskFactory.PARAMETER_WORKING_DIRECTORY
 							+ " will be passed as input to the specied build target."));
 
 			SimpleTaskParameterInformation targetparam = new SimpleTaskParameterInformation(taskinfo,
-					INCLUDE_PARAMETER_TARGET);
+					IncludeTaskFactory.PARAMETER_TARGET);
 			targetparam.setAliases(ImmutableUtils.singletonSet(""));
 			targetparam.setRequired(true);
 			targetparam.setTypeInformation(new SimpleTypeInformation(TypeInformationKind.BUILD_TARGET));
@@ -125,16 +124,16 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 					"The name of the build target to invoke."));
 
 			SimpleTaskParameterInformation pathparam = new SimpleTaskParameterInformation(taskinfo,
-					INCLUDE_PARAMETER_PATH);
+					IncludeTaskFactory.PARAMETER_PATH);
 			pathparam.setAliases(Collections.emptySet());
 			pathparam.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
 					"The path to the build file containing the target.\n"
 							+ "If not specified, the Target parameter is interpreted to be in the same build script as this task invocation.\n"
 							+ "If a relative path is specified, it is resolved against the enclosing directory of this build script, not "
-							+ "against the " + INCLUDE_PARAMETER_WORKING_DIRECTORY + " argument."));
+							+ "against the " + IncludeTaskFactory.PARAMETER_WORKING_DIRECTORY + " argument."));
 
 			SimpleTaskParameterInformation workingdirparam = new SimpleTaskParameterInformation(taskinfo,
-					INCLUDE_PARAMETER_WORKING_DIRECTORY);
+					IncludeTaskFactory.PARAMETER_WORKING_DIRECTORY);
 			workingdirparam.setAliases(Collections.emptySet());
 			workingdirparam.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
 					"The working directory to use when invoking the target.\n"
@@ -267,6 +266,19 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 			taskinfo.setReturnType(returninfo);
 		}
 		BUILTIN_TASK_INFORMATIONS = ImmutableUtils.unmodifiableNavigableMap(map);
+	}
+
+	public static boolean isBuiltinTaskName(String taskname) {
+		try {
+			return isBuiltinTaskName(TaskName.valueOf(taskname));
+		} catch (IllegalArgumentException e) {
+			//the task name cannot be parsed
+			return false;
+		}
+	}
+
+	public static boolean isBuiltinTaskName(TaskName taskname) {
+		return BUILTIN_TASK_INFORMATIONS.get(taskname) != null;
 	}
 
 	@Override

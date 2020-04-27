@@ -27,7 +27,7 @@ public class ForeachInformationScriptModelTest extends ScriptModelTestCase {
 		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
 		model.createModel(null);
 
-		exhaustiveTokenInformationRetrieve(model);
+		exhaustiveScriptAnalysis(model, filedata);
 
 		assertEquals(getInformationsAtOffset(model, endIndexOf(filedata, "$item[RetField1")),
 				setOf("doc_example.task_return_RetField1", "doc_example.task_return_RetField1_type"));

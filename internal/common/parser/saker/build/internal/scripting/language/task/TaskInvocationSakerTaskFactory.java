@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 
 import saker.build.exception.InvalidPathFormatException;
@@ -48,6 +49,7 @@ import saker.build.task.TaskName;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.TaskInvocationBootstrapperTaskFactory;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
+import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 
@@ -84,7 +86,8 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	public static SakerTaskFactory create(String taskName, List<SakerTaskFactory> qualifierFactories, String repository,
-			NavigableMap<String, SakerTaskFactory> parameters, SakerPath scriptpath, ScriptPosition scriptposition) {
+			NavigableMap<String, SakerTaskFactory> parameters, SakerPath scriptpath, ScriptPosition scriptposition,
+			Set<String> declaredBuildTargetNames) {
 		if (repository == null) {
 			switch (taskName) {
 				case TASKNAME_GLOBAL: {
@@ -164,6 +167,12 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 									"Path and Target parameters are missing for \"" + TASKNAME_INCLUDE + "\"",
 									scriptposition);
 						}
+					}
+					if (parameters.containsKey("Target") && parameters.containsKey("")) {
+						return new InvalidScriptDeclarationTaskFactory(
+								"Target parameter defined multiple times as Target and unnamed for \""
+										+ TASKNAME_INCLUDE + "\"",
+								scriptposition);
 					}
 					return new IncludeTaskFactory(scriptpath, parameters);
 				}
@@ -287,6 +296,15 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 				}
 				default: {
 					if (taskName.indexOf('.') < 0) {
+						if (declaredBuildTargetNames.contains(taskName)) {
+							//direct invocation of a build target in the same file
+							if (!ObjectUtils.isNullOrEmpty(qualifierFactories)) {
+								return new InvalidScriptDeclarationTaskFactory(
+										"The task \"" + taskName + "\" cannot have qualifiers.", scriptposition);
+							}
+							return new IncludeTaskFactory(scriptpath, parameters, ImmutableUtils.singletonNavigableMap(
+									IncludeTaskFactory.PARAMETER_TARGET, new SakerLiteralTaskFactory(taskName)));
+						}
 						//only a single name part
 						//the single name part task names are reserved for the scripting language
 						return new InvalidScriptDeclarationTaskFactory(
