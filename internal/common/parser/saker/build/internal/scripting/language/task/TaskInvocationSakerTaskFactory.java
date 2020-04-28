@@ -102,7 +102,11 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 		SakerScriptTaskDefaults defaults = (SakerScriptTaskDefaults) taskcontext
 				.getTaskResult(new ScriptPathTaskDefaultsLiteralTaskIdentifier(scriptPath));
 		if (defaults != null) {
-			return defaults.getDefaults(taskname);
+			NavigableMap<String, TaskIdentifier> result = defaults.getDefaults(taskname);
+			if (result != null) {
+				return result;
+			}
+			//continue and return empty map
 		}
 		return Collections.emptyNavigableMap();
 	}
@@ -347,7 +351,7 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 										scriptposition);
 							}
 							try {
-								deftasknames.add(TaskName.valueOf((String) constval));
+								deftasknames.add(TaskName.valueOf((String) l));
 							} catch (IllegalArgumentException e) {
 								return new InvalidScriptDeclarationTaskFactory(
 										"Failed to interpret task name to define defaults for: " + constval,

@@ -14,6 +14,8 @@ import saker.build.internal.scripting.language.exc.InvalidScriptDeclarationExcep
 import saker.build.internal.scripting.language.task.DefaultsDeclarationSakerTaskFactory;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
 import saker.build.internal.scripting.language.task.SakerTaskFactory;
+import saker.build.task.TaskContext;
+import saker.build.task.TaskExecutionParameters;
 import saker.build.task.TaskName;
 import saker.build.task.identifier.BuildFileTargetTaskIdentifier;
 import saker.build.task.identifier.TaskIdentifier;
@@ -25,13 +27,14 @@ public class SakerScriptTaskDefaults implements Externalizable {
 
 	public static final SakerScriptTaskDefaults EMPTY_INSTANCE = new SakerScriptTaskDefaults();
 
-	private NavigableMap<TaskName, NavigableMap<String, TaskIdentifier>> defaults;
+	private NavigableMap<TaskName, NavigableMap<String, TaskIdentifier>> defaults = new TreeMap<>();
 
 	public SakerScriptTaskDefaults() {
 	}
 
-	public SakerScriptTaskDefaults(SakerScriptTargetConfiguration sakertargetconfig,
-			BuildFileTargetTaskIdentifier rootbuildid) {
+	public static SakerScriptTaskDefaults createAndStartParameterTasks(TaskContext taskcontext,
+			SakerScriptTargetConfiguration sakertargetconfig, BuildFileTargetTaskIdentifier rootbuildid) {
+		SakerScriptTaskDefaults result = new SakerScriptTaskDefaults();
 		Set<? extends DefaultsDeclarationSakerTaskFactory> defaults = sakertargetconfig.getDefaultDeclarations();
 		for (DefaultsDeclarationSakerTaskFactory def : defaults) {
 			NavigableMap<String, SakerTaskFactory> paramdefs = def.getParameterDefaults();
@@ -39,20 +42,25 @@ public class SakerScriptTaskDefaults implements Externalizable {
 				continue;
 			}
 			for (TaskName tn : def.getDefaultTaskNames()) {
-				NavigableMap<String, TaskIdentifier> paramids = this.defaults.computeIfAbsent(tn,
+				NavigableMap<String, TaskIdentifier> paramids = result.defaults.computeIfAbsent(tn,
 						Functionals.treeMapComputer());
 				for (Entry<String, SakerTaskFactory> defentry : paramdefs.entrySet()) {
 					String paramname = defentry.getKey();
-					SakerScriptTaskIdentifier deftaskid = new SakerScriptTaskIdentifier(rootbuildid,
-							defentry.getValue());
+					SakerTaskFactory paramtaskfactory = defentry.getValue();
+
+					SakerScriptTaskIdentifier deftaskid = new SakerScriptTaskIdentifier(rootbuildid, paramtaskfactory);
 					TaskIdentifier prev = paramids.putIfAbsent(paramname, deftaskid);
 					if (prev != null && !prev.equals(deftaskid)) {
 						throw new InvalidScriptDeclarationException("Multiple default parameter declarations for task: "
 								+ tn + " with parameter: " + paramname);
 					}
+					TaskExecutionParameters execparams = new TaskExecutionParameters();
+					execparams.setWorkingDirectory(rootbuildid.getWorkingDirectory());
+					taskcontext.startTask(deftaskid, paramtaskfactory, execparams);
 				}
 			}
 		}
+		return result;
 	}
 
 	public void add(SakerScriptTaskDefaults defs) {
@@ -83,7 +91,7 @@ public class SakerScriptTaskDefaults implements Externalizable {
 
 	@Override
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-		this.defaults = SerialUtils.readExternalMap(new TreeMap<>(), in, SerialUtils::readExternalObject,
+		SerialUtils.readExternalMap(this.defaults, in, SerialUtils::readExternalObject,
 				SerialUtils::readExternalSortedImmutableNavigableMap);
 	}
 

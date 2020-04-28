@@ -70,7 +70,8 @@ public class DefaultsLoaderTaskFactory
 				execparams.getWorkingDirectory(), null);
 		taskcontext.startTask(rootbuildid, expressions, execparams);
 
-		SakerScriptTaskDefaults result = new SakerScriptTaskDefaults(sakertargetconfig, rootbuildid);
+		SakerScriptTaskDefaults result = SakerScriptTaskDefaults.createAndStartParameterTasks(taskcontext,
+				sakertargetconfig, rootbuildid);
 		taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
 		return result;
 	}
