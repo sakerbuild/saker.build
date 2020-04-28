@@ -265,6 +265,9 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 							+ "Each entry in the list is the result of the expression at the corresponding index of the input list."));
 			taskinfo.setReturnType(returninfo);
 		}
+		{
+			//TODO add defaults
+		}
 		BUILTIN_TASK_INFORMATIONS = ImmutableUtils.unmodifiableNavigableMap(map);
 	}
 

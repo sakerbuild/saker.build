@@ -25,9 +25,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
+import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 import saker.build.exception.InvalidPathFormatException;
 import saker.build.file.path.SakerPath;
@@ -40,8 +42,10 @@ import saker.build.internal.scripting.language.task.builtin.PrintTaskFactory;
 import saker.build.internal.scripting.language.task.builtin.SequenceTaskFactory;
 import saker.build.internal.scripting.language.task.builtin.StaticVariableTaskFactory;
 import saker.build.internal.scripting.language.task.operators.DereferenceTaskFactory;
+import saker.build.internal.scripting.language.task.result.SakerScriptTaskDefaults;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.internal.scripting.language.task.result.TaskInvocationOutputSakerTaskResult;
+import saker.build.scripting.ScriptParsingOptions;
 import saker.build.scripting.ScriptPosition;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskFuture;
@@ -62,9 +66,11 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 	public static final String TASKNAME_SEQUENCE = "sequence";
 	public static final String TASKNAME_STATIC = "static";
 	public static final String TASKNAME_VAR = "var";
+	public static final String TASKNAME_DEFAULTS = "defaults";
 
 	private static final long serialVersionUID = 1L;
 
+	protected SakerPath scriptPath;
 	protected String taskName;
 	protected List<SakerTaskFactory> qualifierFactories;
 	protected String repository;
@@ -77,17 +83,34 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 	public TaskInvocationSakerTaskFactory() {
 	}
 
-	private TaskInvocationSakerTaskFactory(String taskName, List<SakerTaskFactory> qualifierFactories,
-			String repository, NavigableMap<String, SakerTaskFactory> parameters) {
+	private TaskInvocationSakerTaskFactory(SakerPath scriptPath, String taskName,
+			List<SakerTaskFactory> qualifierFactories, String repository,
+			NavigableMap<String, SakerTaskFactory> parameters) {
+		this.scriptPath = scriptPath;
 		this.taskName = taskName;
 		this.qualifierFactories = qualifierFactories;
 		this.repository = repository;
 		this.parameters = parameters;
 	}
 
+	public NavigableMap<String, SakerTaskFactory> getParameters() {
+		return parameters;
+	}
+
+	private NavigableMap<String, TaskIdentifier> getDefaultParametersForTask(TaskContext taskcontext,
+			TaskName taskname) {
+		SakerScriptTaskDefaults defaults = (SakerScriptTaskDefaults) taskcontext
+				.getTaskResult(new ScriptPathTaskDefaultsLiteralTaskIdentifier(scriptPath));
+		if (defaults != null) {
+			return defaults.getDefaults(taskname);
+		}
+		return Collections.emptyNavigableMap();
+	}
+
 	public static SakerTaskFactory create(String taskName, List<SakerTaskFactory> qualifierFactories, String repository,
-			NavigableMap<String, SakerTaskFactory> parameters, SakerPath scriptpath, ScriptPosition scriptposition,
-			Set<String> declaredBuildTargetNames) {
+			NavigableMap<String, SakerTaskFactory> parameters, ScriptParsingOptions parsingoptions,
+			ScriptPosition scriptposition, Set<String> declaredBuildTargetNames) {
+
 		if (repository == null) {
 			switch (taskName) {
 				case TASKNAME_GLOBAL: {
@@ -132,7 +155,7 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 								"The task \"" + TASKNAME_STATIC + "\" cannot have multiple parameters.",
 								scriptposition);
 					}
-					return new StaticVariableTaskFactory(scriptpath, varname);
+					return new StaticVariableTaskFactory(parsingoptions.getScriptPath(), varname);
 				}
 				case TASKNAME_VAR: {
 					if (!ObjectUtils.isNullOrEmpty(qualifierFactories)) {
@@ -174,7 +197,7 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 										+ TASKNAME_INCLUDE + "\"",
 								scriptposition);
 					}
-					return new IncludeTaskFactory(scriptpath, parameters);
+					return new IncludeTaskFactory(parsingoptions.getScriptPath(), parameters);
 				}
 				case TASKNAME_ABORT: {
 					if (!ObjectUtils.isNullOrEmpty(qualifierFactories)) {
@@ -294,6 +317,56 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 					}
 					return new SequenceTaskFactory(elements);
 				}
+				case TASKNAME_DEFAULTS: {
+					if (!ObjectUtils.isNullOrEmpty(qualifierFactories)) {
+						return new InvalidScriptDeclarationTaskFactory(
+								"The task \"" + TASKNAME_DEFAULTS + "\" cannot have qualifiers.", scriptposition);
+					}
+					SakerTaskFactory tasksparam = parameters.get("");
+					if (tasksparam == null) {
+						return new InvalidScriptDeclarationTaskFactory(
+								"Missing unnamed parameter for declaring defaults for build tasks.", scriptposition);
+					}
+					SakerLiteralTaskFactory constantized = tasksparam.tryConstantize();
+					if (constantized == null) {
+						return new InvalidScriptDeclarationTaskFactory(
+								"Unnamed parameter for defaults declaration must be a literal task name or list of task names.",
+								scriptposition);
+					}
+					Object constval = constantized.getValue();
+					if (constval instanceof String) {
+						constval = ImmutableUtils.singletonList(constval);
+					}
+					NavigableSet<TaskName> deftasknames = new TreeSet<>();
+					if (constval instanceof List) {
+						List<?> constlist = (List<?>) constval;
+						for (Object l : constlist) {
+							if (!(l instanceof String)) {
+								return new InvalidScriptDeclarationTaskFactory(
+										"Unnamed parameter for defaults declaration must be a literal task name or list of task names.",
+										scriptposition);
+							}
+							try {
+								deftasknames.add(TaskName.valueOf((String) constval));
+							} catch (IllegalArgumentException e) {
+								return new InvalidScriptDeclarationTaskFactory(
+										"Failed to interpret task name to define defaults for: " + constval,
+										scriptposition);
+							}
+						}
+					} else {
+						return new InvalidScriptDeclarationTaskFactory(
+								"Unnamed parameter for defaults declaration must be a literal task name or list of task names.",
+								scriptposition);
+					}
+					TreeMap<String, SakerTaskFactory> paramdefaults = new TreeMap<>(parameters);
+					paramdefaults.remove("");
+					if (paramdefaults.isEmpty()) {
+						//no declared defaults
+						deftasknames = Collections.emptyNavigableSet();
+					}
+					return new DefaultsDeclarationSakerTaskFactory(deftasknames, paramdefaults);
+				}
 				default: {
 					if (taskName.indexOf('.') < 0) {
 						if (declaredBuildTargetNames.contains(taskName)) {
@@ -302,8 +375,9 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 								return new InvalidScriptDeclarationTaskFactory(
 										"The task \"" + taskName + "\" cannot have qualifiers.", scriptposition);
 							}
-							return new IncludeTaskFactory(scriptpath, parameters, ImmutableUtils.singletonNavigableMap(
-									IncludeTaskFactory.PARAMETER_TARGET, new SakerLiteralTaskFactory(taskName)));
+							return new IncludeTaskFactory(parsingoptions.getScriptPath(), parameters,
+									ImmutableUtils.singletonNavigableMap(IncludeTaskFactory.PARAMETER_TARGET,
+											new SakerLiteralTaskFactory(taskName)));
 						}
 						//only a single name part
 						//the single name part task names are reserved for the scripting language
@@ -316,7 +390,8 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 				}
 			}
 		}
-		return new TaskInvocationSakerTaskFactory(taskName, qualifierFactories, repository, parameters);
+		return new TaskInvocationSakerTaskFactory(parsingoptions.getScriptPath(), taskName, qualifierFactories,
+				repository, parameters);
 	}
 
 	@Override
@@ -341,7 +416,8 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 			targettaskname = TaskName.valueOf(taskName, qualifiers);
 		}
 
-		NavigableMap<String, TaskIdentifier> parametertaskids = new TreeMap<>();
+		NavigableMap<String, TaskIdentifier> parametertaskids = new TreeMap<>(
+				getDefaultParametersForTask(taskcontext, targettaskname));
 		for (Entry<String, SakerTaskFactory> entry : parameters.entrySet()) {
 			SakerTaskFactory paramfactory = entry.getValue();
 			String paramname = entry.getKey();
@@ -360,7 +436,7 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 
 	@Override
 	public SakerTaskFactory clone(Map<SakerTaskFactory, SakerTaskFactory> taskfactoryreplacements) {
-		TaskInvocationSakerTaskFactory result = new TaskInvocationSakerTaskFactory(this.taskName,
+		TaskInvocationSakerTaskFactory result = new TaskInvocationSakerTaskFactory(this.scriptPath, this.taskName,
 				cloneHelper(taskfactoryreplacements, this.qualifierFactories), this.repository,
 				cloneHelper(taskfactoryreplacements, this.parameters));
 		return result;
@@ -369,6 +445,75 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 	@Override
 	public SakerLiteralTaskFactory tryConstantize() {
 		return null;
+	}
+
+	@Override
+	public void writeExternal(ObjectOutput out) throws IOException {
+		super.writeExternal(out);
+		out.writeObject(scriptPath);
+		out.writeUTF(taskName);
+		out.writeObject(repository);
+		SerialUtils.writeExternalMap(out, parameters);
+		SerialUtils.writeExternalCollection(out, qualifierFactories);
+	}
+
+	@Override
+	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+		super.readExternal(in);
+		scriptPath = SerialUtils.readExternalObject(in);
+		taskName = in.readUTF();
+		repository = (String) in.readObject();
+		parameters = SerialUtils.readExternalSortedImmutableNavigableMap(in);
+		qualifierFactories = SerialUtils.readExternalImmutableList(in);
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((parameters == null) ? 0 : parameters.hashCode());
+		result = prime * result + ((qualifierFactories == null) ? 0 : qualifierFactories.hashCode());
+		result = prime * result + ((repository == null) ? 0 : repository.hashCode());
+		result = prime * result + ((scriptPath == null) ? 0 : scriptPath.hashCode());
+		result = prime * result + ((taskName == null) ? 0 : taskName.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		TaskInvocationSakerTaskFactory other = (TaskInvocationSakerTaskFactory) obj;
+		if (parameters == null) {
+			if (other.parameters != null)
+				return false;
+		} else if (!parameters.equals(other.parameters))
+			return false;
+		if (qualifierFactories == null) {
+			if (other.qualifierFactories != null)
+				return false;
+		} else if (!qualifierFactories.equals(other.qualifierFactories))
+			return false;
+		if (repository == null) {
+			if (other.repository != null)
+				return false;
+		} else if (!repository.equals(other.repository))
+			return false;
+		if (scriptPath == null) {
+			if (other.scriptPath != null)
+				return false;
+		} else if (!scriptPath.equals(other.scriptPath))
+			return false;
+		if (taskName == null) {
+			if (other.taskName != null)
+				return false;
+		} else if (!taskName.equals(other.taskName))
+			return false;
+		return true;
 	}
 
 	@Override
@@ -400,66 +545,5 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 			}
 		}
 		return sb.toString();
-	}
-
-	@Override
-	public int hashCode() {
-		final int prime = 31;
-		int result = 1;
-		result = prime * result + ((parameters == null) ? 0 : parameters.hashCode());
-		result = prime * result + ((qualifierFactories == null) ? 0 : qualifierFactories.hashCode());
-		result = prime * result + ((repository == null) ? 0 : repository.hashCode());
-		result = prime * result + ((taskName == null) ? 0 : taskName.hashCode());
-		return result;
-	}
-
-	@Override
-	public boolean equals(Object obj) {
-		if (this == obj)
-			return true;
-		if (obj == null)
-			return false;
-		if (getClass() != obj.getClass())
-			return false;
-		TaskInvocationSakerTaskFactory other = (TaskInvocationSakerTaskFactory) obj;
-		if (parameters == null) {
-			if (other.parameters != null)
-				return false;
-		} else if (!parameters.equals(other.parameters))
-			return false;
-		if (qualifierFactories == null) {
-			if (other.qualifierFactories != null)
-				return false;
-		} else if (!qualifierFactories.equals(other.qualifierFactories))
-			return false;
-		if (repository == null) {
-			if (other.repository != null)
-				return false;
-		} else if (!repository.equals(other.repository))
-			return false;
-		if (taskName == null) {
-			if (other.taskName != null)
-				return false;
-		} else if (!taskName.equals(other.taskName))
-			return false;
-		return true;
-	}
-
-	@Override
-	public void writeExternal(ObjectOutput out) throws IOException {
-		super.writeExternal(out);
-		out.writeUTF(taskName);
-		out.writeObject(repository);
-		SerialUtils.writeExternalMap(out, parameters);
-		SerialUtils.writeExternalCollection(out, qualifierFactories);
-	}
-
-	@Override
-	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-		super.readExternal(in);
-		taskName = in.readUTF();
-		repository = (String) in.readObject();
-		parameters = SerialUtils.readExternalSortedImmutableNavigableMap(in);
-		qualifierFactories = SerialUtils.readExternalImmutableList(in);
 	}
 }

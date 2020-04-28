@@ -15,18 +15,31 @@
  */
 package saker.build.scripting;
 
+import java.io.Externalizable;
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
 import java.util.Objects;
 
 import saker.apiextract.api.PublicApi;
 import saker.build.runtime.execution.TargetConfiguration;
+import saker.build.thirdparty.saker.util.io.SerialUtils;
 
 /**
  * Simple data class implementation of the {@link TargetConfigurationReadingResult} interface.
  */
 @PublicApi
-public class SimpleTargetConfigurationReadingResult implements TargetConfigurationReadingResult {
+public class SimpleTargetConfigurationReadingResult implements TargetConfigurationReadingResult, Externalizable {
+	private static final long serialVersionUID = 1L;
+
 	private TargetConfiguration targetConfiguration;
 	private ScriptInformationProvider informationProvider;
+
+	/**
+	 * For {@link Externalizable}.
+	 */
+	public SimpleTargetConfigurationReadingResult() {
+	}
 
 	/**
 	 * Creates a new instance with the given arguments.
@@ -54,6 +67,18 @@ public class SimpleTargetConfigurationReadingResult implements TargetConfigurati
 	@Override
 	public ScriptInformationProvider getInformationProvider() {
 		return informationProvider;
+	}
+
+	@Override
+	public void writeExternal(ObjectOutput out) throws IOException {
+		out.writeObject(targetConfiguration);
+		out.writeObject(informationProvider);
+	}
+
+	@Override
+	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+		targetConfiguration = SerialUtils.readExternalObject(in);
+		informationProvider = SerialUtils.readExternalObject(in);
 	}
 
 	@Override

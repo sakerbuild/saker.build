@@ -21,6 +21,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
@@ -28,18 +29,24 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
+import saker.build.file.SakerFile;
 import saker.build.file.path.SakerPath;
+import saker.build.internal.scripting.language.SakerScriptTargetConfigurationReader;
 import saker.build.internal.scripting.language.task.operators.AssignmentTaskFactory;
 import saker.build.runtime.execution.ExecutionContext;
+import saker.build.runtime.params.ExecutionPathConfiguration;
+import saker.build.scripting.ScriptParsingOptions;
 import saker.build.task.BuildTargetTask;
 import saker.build.task.BuildTargetTaskFactory;
 import saker.build.task.BuildTargetTaskResult;
+import saker.build.task.CommonTaskContentDescriptors;
 import saker.build.task.SimpleBuildTargetTaskResult;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskExecutionUtilities;
 import saker.build.task.exception.TaskParameterException;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
+import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 
@@ -49,7 +56,7 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 	protected Set<SakerTaskFactory> factories = new HashSet<>();
 	protected NavigableSet<String> outputNames = new TreeSet<>();
 	protected NavigableMap<String, SakerTaskFactory> targetParameters = new TreeMap<>();
-	protected SakerPath scriptPath;
+	protected ScriptParsingOptions parsingOptions;
 	protected Set<SakerTaskFactory> globalExpressions;
 
 	/**
@@ -58,8 +65,8 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 	public SakerScriptBuildTargetTaskFactory() {
 	}
 
-	public SakerScriptBuildTargetTaskFactory(SakerPath scriptPath) {
-		this.scriptPath = scriptPath;
+	public SakerScriptBuildTargetTaskFactory(ScriptParsingOptions parsingOptions) {
+		this.parsingOptions = parsingOptions;
 	}
 
 	public void addResultTask(String resultname, SakerTaskFactory taskfactory) {
@@ -106,10 +113,57 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 			@Override
 			public BuildTargetTaskResult run(TaskContext taskcontext) {
 				TaskIdentifier thistaskid = taskcontext.getTaskId();
+				
+				ExecutionPathConfiguration pathconfig = taskcontext.getExecutionContext().getPathConfiguration();
+				Set<SakerPath> defaultsfiles = SakerScriptTargetConfigurationReader.getDefaultsFiles(parsingOptions,
+						pathconfig);
+				if (defaultsfiles == null) {
+					//the defaults file is automatic and optional
+					SakerPath defaultdefaultspath = pathconfig.getWorkingDirectory()
+							.tryResolve(SakerScriptTargetConfigurationReader.DEFAULT_DEFAULTS_BUILD_FILE_RELATIVE_PATH);
+					SakerFile presentdefaultsfile = taskcontext.getTaskUtilities()
+							.resolveFileAtPath(defaultdefaultspath);
+					if (presentdefaultsfile == null) {
+						taskcontext.reportInputFileDependency(null, defaultdefaultspath,
+								CommonTaskContentDescriptors.IS_NOT_FILE);
+					} else {
+						taskcontext.reportInputFileDependency(null, defaultdefaultspath,
+								CommonTaskContentDescriptors.IS_FILE);
+						defaultsfiles = ImmutableUtils.singletonNavigableSet(defaultdefaultspath);
+					}
+				}
+				if (!ObjectUtils.isNullOrEmpty(defaultsfiles)) {
+					Iterator<SakerPath> it = defaultsfiles.iterator();
+					SakerPath deffilepath = it.next();
+					Set<DefaultsLoaderTaskFactory> deftasks;
+					if (!it.hasNext()) {
+						//only a single defaults file
+						DefaultsLoaderTaskFactory defaultstask = new DefaultsLoaderTaskFactory(deffilepath);
+
+						taskcontext.startTask(defaultstask, defaultstask, null);
+						deftasks = ImmutableUtils.singletonSet(defaultstask);
+					} else {
+						deftasks = new HashSet<>();
+						do {
+							DefaultsLoaderTaskFactory defaultstask = new DefaultsLoaderTaskFactory(deffilepath);
+							taskcontext.startTask(defaultstask, defaultstask, null);
+							deftasks.add(defaultstask);
+						} while (it.hasNext());
+					}
+					taskcontext.startTask(
+							new ScriptPathTaskDefaultsLiteralTaskIdentifier(parsingOptions.getScriptPath()),
+							new DefaultsAggregatorTaskFactory(deftasks), null);
+				} else {
+					//need to start the defaults task anyway so users don't wait forever
+					taskcontext.startTask(
+							new ScriptPathTaskDefaultsLiteralTaskIdentifier(parsingOptions.getScriptPath()),
+							LiteralTaskFactory.INSTANCE_NULL, null);
+				}
 
 				TaskExecutionUtilities taskutils = taskcontext.getTaskUtilities();
 				if (!ObjectUtils.isNullOrEmpty(globalExpressions)) {
-					TaskIdentifier buildfiletaskid = new GlobalExpressionScopeRootTaskIdentifier(scriptPath);
+					TaskIdentifier buildfiletaskid = new GlobalExpressionScopeRootTaskIdentifier(
+							parsingOptions.getScriptPath());
 					for (SakerTaskFactory factory : globalExpressions) {
 						taskutils.startTaskFuture(new SakerScriptTaskIdentifier(buildfiletaskid, factory), factory);
 					}
@@ -126,7 +180,8 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 							SakerTaskFactory fac = entry.getValue();
 							if (fac == null) {
 								//XXX throw a more specific exception
-								throw new TaskParameterException("Build target input parameter: " + pname + " is missing.", thistaskid);
+								throw new TaskParameterException(
+										"Build target input parameter: " + pname + " is missing.", thistaskid);
 							}
 							right = fac;
 						}
@@ -172,13 +227,31 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 	}
 
 	@Override
+	public void writeExternal(ObjectOutput out) throws IOException {
+		SerialUtils.writeExternalMap(out, targetParameters);
+		SerialUtils.writeExternalCollection(out, factories);
+		SerialUtils.writeExternalCollection(out, outputNames);
+		SerialUtils.writeExternalCollection(out, globalExpressions);
+		out.writeObject(parsingOptions);
+	}
+
+	@Override
+	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+		targetParameters = SerialUtils.readExternalSortedImmutableNavigableMap(in);
+		factories = SerialUtils.readExternalImmutableHashSet(in);
+		outputNames = SerialUtils.readExternalSortedImmutableNavigableSet(in);
+		globalExpressions = SerialUtils.readExternalImmutableHashSet(in);
+		parsingOptions = SerialUtils.readExternalObject(in);
+	}
+
+	@Override
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
 		result = prime * result + ((factories == null) ? 0 : factories.hashCode());
 		result = prime * result + ((globalExpressions == null) ? 0 : globalExpressions.hashCode());
 		result = prime * result + ((outputNames == null) ? 0 : outputNames.hashCode());
-		result = prime * result + ((scriptPath == null) ? 0 : scriptPath.hashCode());
+		result = prime * result + ((parsingOptions == null) ? 0 : parsingOptions.hashCode());
 		result = prime * result + ((targetParameters == null) ? 0 : targetParameters.hashCode());
 		return result;
 	}
@@ -207,10 +280,10 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 				return false;
 		} else if (!outputNames.equals(other.outputNames))
 			return false;
-		if (scriptPath == null) {
-			if (other.scriptPath != null)
+		if (parsingOptions == null) {
+			if (other.parsingOptions != null)
 				return false;
-		} else if (!scriptPath.equals(other.scriptPath))
+		} else if (!parsingOptions.equals(other.parsingOptions))
 			return false;
 		if (targetParameters == null) {
 			if (other.targetParameters != null)
@@ -222,29 +295,9 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 
 	@Override
 	public String toString() {
-		return "SakerScriptBuildTargetTaskFactory[" + (factories != null ? "factories=" + factories + ", " : "")
-				+ (outputNames != null ? "outputNames=" + outputNames + ", " : "")
-				+ (targetParameters != null ? "targetParameters=" + targetParameters + ", " : "")
-				+ (scriptPath != null ? "scriptPath=" + scriptPath + ", " : "")
-				+ (globalExpressions != null ? "globalExpressions=" + globalExpressions : "") + "]";
-	}
-
-	@Override
-	public void writeExternal(ObjectOutput out) throws IOException {
-		SerialUtils.writeExternalMap(out, targetParameters);
-		SerialUtils.writeExternalCollection(out, factories);
-		SerialUtils.writeExternalCollection(out, outputNames);
-		SerialUtils.writeExternalCollection(out, globalExpressions);
-		out.writeObject(scriptPath);
-	}
-
-	@Override
-	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-		targetParameters = SerialUtils.readExternalSortedImmutableNavigableMap(in);
-		factories = SerialUtils.readExternalImmutableHashSet(in);
-		outputNames = SerialUtils.readExternalSortedImmutableNavigableSet(in);
-		globalExpressions = SerialUtils.readExternalImmutableHashSet(in);
-		scriptPath = (SakerPath) in.readObject();
+		return "SakerScriptBuildTargetTaskFactory[factories=" + factories + ", outputNames=" + outputNames
+				+ ", targetParameters=" + targetParameters + ", parsingOptions=" + parsingOptions
+				+ ", globalExpressions=" + globalExpressions + "]";
 	}
 
 }

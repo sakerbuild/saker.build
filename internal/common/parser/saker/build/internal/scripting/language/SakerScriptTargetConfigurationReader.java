@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -41,11 +42,13 @@ import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import saker.build.file.path.SakerPath;
 import saker.build.internal.scripting.language.exc.InvalidBuildTargetDeclarationTaskFactory;
 import saker.build.internal.scripting.language.exc.InvalidScriptDeclarationTaskFactory;
 import saker.build.internal.scripting.language.model.SakerParsedModel;
 import saker.build.internal.scripting.language.task.CompoundStringLiteralTaskFactory;
 import saker.build.internal.scripting.language.task.ConditionTaskFactory;
+import saker.build.internal.scripting.language.task.DefaultsDeclarationSakerTaskFactory;
 import saker.build.internal.scripting.language.task.ForeachTaskFactory;
 import saker.build.internal.scripting.language.task.ListTaskFactory;
 import saker.build.internal.scripting.language.task.MapTaskFactory;
@@ -79,6 +82,7 @@ import saker.build.internal.scripting.language.task.operators.SubscriptTaskFacto
 import saker.build.internal.scripting.language.task.operators.SubtractTaskFactory;
 import saker.build.internal.scripting.language.task.operators.TernaryTaskFactory;
 import saker.build.internal.scripting.language.task.operators.UnaryMinusTaskFactory;
+import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.scripting.ScriptParsingFailedException;
 import saker.build.scripting.ScriptParsingOptions;
 import saker.build.scripting.ScriptPosition;
@@ -102,6 +106,9 @@ import sipka.syntax.parser.model.statement.Statement;
 import sipka.syntax.parser.util.Pair;
 
 public class SakerScriptTargetConfigurationReader implements TargetConfigurationReader {
+	public static final String SCRIPT_OPTION_DEFAULTS_FILE = "defaults.file";
+	public static final SakerPath DEFAULT_DEFAULTS_BUILD_FILE_RELATIVE_PATH = SakerPath.valueOf("defaults.build");
+
 	private static final String STM_EXPRESSION_PLACEHOLDER = "expression_placeholder";
 
 	public static final String DEFAULT_BUILD_TARGET_NAME = "build";
@@ -139,6 +146,29 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 	}
 
 	public SakerScriptTargetConfigurationReader() {
+	}
+
+	public static Set<SakerPath> getDefaultsFiles(ScriptParsingOptions parsingoptions,
+			ExecutionPathConfiguration pathconfig) {
+		String opt = parsingoptions.getOptions().get(SCRIPT_OPTION_DEFAULTS_FILE);
+		SakerPath pathconfigworkingdir = pathconfig.getWorkingDirectory();
+		if (opt == null) {
+			return null;
+//			SakerPath defaultsbuildpath = pathconfigworkingdir.resolve(DEFAULT_DEFAULTS_BUILD_FILE_RELATIVE_PATH);
+//			return ImmutableUtils.singletonNavigableSet(defaultsbuildpath);
+		}
+		Iterator<? extends CharSequence> splitit = StringUtils.splitCharSequenceIterator(opt, ';');
+		Set<SakerPath> result = new TreeSet<>();
+		while (splitit.hasNext()) {
+			CharSequence part = splitit.next();
+			if (part.length() == 0) {
+				//ignore empties
+				continue;
+			}
+			SakerPath partpath = pathconfigworkingdir.tryResolve(SakerPath.valueOf(part.toString()));
+			result.add(partpath);
+		}
+		return result;
 	}
 
 	private static void setOutlineSelection(SimpleStructureOutlineEntry outlineitem, Statement selection) {
@@ -1155,6 +1185,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		private int[] lineIndices;
 
 		private NavigableSet<String> declaredBuildTargetNames = new TreeSet<>();
+		private Set<DefaultsDeclarationSakerTaskFactory> defaultDeclarations = new HashSet<>();
 
 		public ParserState(ScriptParsingOptions parsingoptions, SakerScriptInformationProvider positionlocator) {
 			this.parsingOptions = parsingoptions;
@@ -1214,8 +1245,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		private SakerScriptBuildTargetTaskFactory parseTaskTarget(Statement stm, ExpressionParsingState parsingstate) {
-			SakerScriptBuildTargetTaskFactory result = new SakerScriptBuildTargetTaskFactory(
-					parsingOptions.getScriptPath());
+			SakerScriptBuildTargetTaskFactory result = new SakerScriptBuildTargetTaskFactory(parsingOptions);
 			List<Statement> steps = scopeToTaskSteps(stm);
 			for (Statement stepstm : steps) {
 				Pair<String, Statement> steppair = stepstm.getScopes().get(0);
@@ -1454,6 +1484,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		private SakerScriptTargetConfiguration parseStatements(Statement statement)
 				throws ScriptParsingFailedException {
 			LinkedHashMap<String, BuildTargetTaskFactory> targettasks = new LinkedHashMap<>();
+			SakerScriptBuildTargetTaskFactory implicitbuildtarget = null;
 			try {
 				this.lineIndices = StringUtils.getLineIndexMap(statement.getRawValue());
 
@@ -1579,20 +1610,11 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 							}
 						}
 					}
-				} else {
-					//no explicit task targets defined.
-					if (globalexpressions != null) {
-						//if there are global statements, define a pseudo target
-						SakerScriptBuildTargetTaskFactory factory = new SakerScriptBuildTargetTaskFactory(
-								parsingOptions.getScriptPath());
-						factory.setGlobalExpressions(globalexpressions);
-						targettasks.put(DEFAULT_BUILD_TARGET_NAME, factory);
-					}
 				}
 				if (targettasks.isEmpty()) {
-					//put in the default build target if there are not expressions at all. it just does nothing
-					targettasks.put(DEFAULT_BUILD_TARGET_NAME,
-							new SakerScriptBuildTargetTaskFactory(parsingOptions.getScriptPath()));
+					SakerScriptBuildTargetTaskFactory factory = new SakerScriptBuildTargetTaskFactory(parsingOptions);
+					factory.setGlobalExpressions(globalexpressions);
+					implicitbuildtarget = factory;
 				}
 			} catch (ScriptParsingFailedException e) {
 				throw e;
@@ -1600,8 +1622,15 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				//TODO set fail reasons
 				throw new ScriptParsingFailedException(e, Collections.emptySet());
 			}
+			if (!defaultDeclarations.isEmpty()) {
+				for (Entry<String, BuildTargetTaskFactory> entry : targettasks.entrySet()) {
+					entry.setValue(new InvalidBuildTargetDeclarationTaskFactory("Cannot declare build targets and "
+							+ TaskInvocationSakerTaskFactory.TASKNAME_DEFAULTS + "() tasks in the same file."));
+				}
+			}
 
-			return new SakerScriptTargetConfiguration(parsingOptions, targettasks);
+			return new SakerScriptTargetConfiguration(parsingOptions, targettasks, implicitbuildtarget,
+					defaultDeclarations);
 		}
 
 		private final class FlattenedStatementFactoryVisitor implements FlattenedStatementVisitor<SakerTaskFactory> {
@@ -1883,8 +1912,12 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				//convert to lower case, as task names are interpreted in lower case format
 				String tasknamestr = taskidstm.getValue().toLowerCase(Locale.ENGLISH);
 				SakerTaskFactory taskinvoker = TaskInvocationSakerTaskFactory.create(tasknamestr, qualifierfactories,
-						repository, parameterfactories, parsingOptions.getScriptPath(), createScriptPosition(stm),
+						repository, parameterfactories, parsingOptions, createScriptPosition(stm),
 						declaredBuildTargetNames);
+				if (taskinvoker instanceof DefaultsDeclarationSakerTaskFactory) {
+					//TODO ensure that these are top level declarations
+					defaultDeclarations.add((DefaultsDeclarationSakerTaskFactory) taskinvoker);
+				}
 
 				return taskinvoker;
 			}

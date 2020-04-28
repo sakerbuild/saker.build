@@ -1,0 +1,4 @@
+build(
+	out value = global(FROM_DEFAULTS)
+) {
+}
