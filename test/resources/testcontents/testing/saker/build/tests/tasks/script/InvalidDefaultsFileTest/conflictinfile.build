@@ -1,0 +1,8 @@
+defaults(
+	example.echo
+	Input: abc
+)
+defaults(
+	example.echo
+	Input: def
+)

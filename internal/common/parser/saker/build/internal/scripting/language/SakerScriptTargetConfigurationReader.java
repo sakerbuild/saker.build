@@ -133,6 +133,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 	private static final String TYPE_PARAMETER = "Parameter";
 	private static final String TYPE_BOOL_PARAMETER = "Flag";
 
+	private static final int FLAG_ALLOW_DEFAULTS_TASK = 1 << 0;
+
 	public static final Pattern REGEX_PARAMETER_NAME = Pattern.compile("[a-zA-Z_][a-zA-Z0-9_]*");
 	public static final Pattern REGEX_EXPRESSION_CLOSING = Pattern.compile("(([\\s]+)|(//[^\\n]*))*(;|\\n)");
 
@@ -1203,7 +1205,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 						return null;
 					}
 					posstm = expstm == null ? expplaceholder : expstm;
-					result = parseTaskExpressionConstantize(expstm, parsingstate);
+					result = parseTaskExpressionConstantize(expstm, parsingstate, FLAG_ALLOW_DEFAULTS_TASK);
 					break;
 				}
 				case "condition_step": {
@@ -1366,8 +1368,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		private SakerTaskFactory evaluateFlattenedStatements(List<? extends FlattenedToken> statements,
-				ExpressionParsingState parsingstate) {
-			SakerTaskFactory result = evaluateFlattenedStatementsImpl(statements, parsingstate);
+				ExpressionParsingState parsingstate, int flags) {
+			SakerTaskFactory result = evaluateFlattenedStatementsImpl(statements, parsingstate, flags);
 			positionLocator.addPositionIfAbsent(result, createScriptPosition(statements.get(0).expressionPlaceholderStm,
 					statements.get(statements.size() - 1).expressionPlaceholderStm));
 			return result;
@@ -1382,8 +1384,13 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		private SakerTaskFactory evaluateFlattenedStatementsImpl(List<? extends FlattenedToken> statements,
-				ExpressionParsingState parsingstate) {
-			return visitFlattenedStatements(statements, new FlattenedStatementFactoryVisitor(parsingstate));
+				ExpressionParsingState parsingstate, int flags) {
+			FlattenedStatementFactoryVisitor visitor = new FlattenedStatementFactoryVisitor(parsingstate);
+			if (((flags & FLAG_ALLOW_DEFAULTS_TASK) == FLAG_ALLOW_DEFAULTS_TASK) && statements.size() == 1) {
+				//only allow defaults() tasks as top level declarations
+				visitor.defaultsTaskAllowed = true;
+			}
+			return visitFlattenedStatements(statements, visitor);
 		}
 
 		private static List<Statement> scopeToForeachSteps(Statement stm) {
@@ -1407,13 +1414,18 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		private SakerTaskFactory parseTaskExpressionConstantize(Statement stm, ExpressionParsingState parsingstate,
-				Statement positionstatement) {
+				int flags) {
+			return parseTaskExpressionConstantize(stm, parsingstate, stm, flags);
+		}
+
+		private SakerTaskFactory parseTaskExpressionConstantize(Statement stm, ExpressionParsingState parsingstate,
+				Statement positionstatement, int flags) {
 			final SakerTaskFactory result;
 			ScriptPosition scriptpos = createScriptPosition(positionstatement);
 			if (stm == null) {
 				result = new InvalidScriptDeclarationTaskFactory("Missing expression.", scriptpos);
 			} else {
-				SakerTaskFactory parsed = parseTaskExpression(stm, parsingstate);
+				SakerTaskFactory parsed = parseTaskExpression(stm, parsingstate, flags);
 				SakerLiteralTaskFactory constantized = parsed.tryConstantize();
 				if (constantized != null) {
 					result = constantized;
@@ -1425,11 +1437,16 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			return result;
 		}
 
-		private SakerTaskFactory parseTaskExpression(Statement stm, ExpressionParsingState parsingstate) {
+		private SakerTaskFactory parseTaskExpressionConstantize(Statement stm, ExpressionParsingState parsingstate,
+				Statement positionstatement) {
+			return parseTaskExpressionConstantize(stm, parsingstate, positionstatement, 0);
+		}
+
+		private SakerTaskFactory parseTaskExpression(Statement stm, ExpressionParsingState parsingstate, int flags) {
 			List<FlattenedToken> flattenedstatements = new ArrayList<>();
 			List<Pair<String, Statement>> scopes = stm.getScopes();
 			flattenExpressionsImpl(scopes, flattenedstatements);
-			return evaluateFlattenedStatements(flattenedstatements, parsingstate);
+			return evaluateFlattenedStatements(flattenedstatements, parsingstate, flags);
 		}
 
 //	private void putScriptPosition(SyntaxTargetConfiguration targetconfig, Object element, Statement stm) {
@@ -1481,7 +1498,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			return content;
 		}
 
-		private SakerScriptTargetConfiguration parseStatements(Statement statement)
+		protected SakerScriptTargetConfiguration parseStatements(Statement statement)
 				throws ScriptParsingFailedException {
 			LinkedHashMap<String, BuildTargetTaskFactory> targettasks = new LinkedHashMap<>();
 			SakerScriptBuildTargetTaskFactory implicitbuildtarget = null;
@@ -1635,6 +1652,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 
 		private final class FlattenedStatementFactoryVisitor implements FlattenedStatementVisitor<SakerTaskFactory> {
 			private final ExpressionParsingState expressionParsingState;
+			protected boolean defaultsTaskAllowed;
 
 			public FlattenedStatementFactoryVisitor(ExpressionParsingState expressionParsingState) {
 				this.expressionParsingState = expressionParsingState;
@@ -1915,6 +1933,12 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 						repository, parameterfactories, parsingOptions, createScriptPosition(stm),
 						declaredBuildTargetNames);
 				if (taskinvoker instanceof DefaultsDeclarationSakerTaskFactory) {
+					if (!defaultsTaskAllowed) {
+						return new InvalidScriptDeclarationTaskFactory(
+								TaskInvocationSakerTaskFactory.TASKNAME_DEFAULTS
+										+ "() task can only be declared as a top level statement.",
+								createScriptPosition(stm));
+					}
 					//TODO ensure that these are top level declarations
 					defaultDeclarations.add((DefaultsDeclarationSakerTaskFactory) taskinvoker);
 				}
@@ -1924,6 +1948,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 
 			@Override
 			public SakerTaskFactory visitDereference(Statement stm, List<? extends FlattenedToken> subject) {
+
 				if (subject.size() == 1) {
 					FlattenedToken ftoken = subject.get(0);
 					//the statement can be null if there is a syntax error

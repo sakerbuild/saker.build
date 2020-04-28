@@ -19,6 +19,7 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -82,6 +83,10 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 		factories.add(taskfactory);
 	}
 
+	public void addTasks(Collection<? extends SakerTaskFactory> factories) {
+		this.factories.addAll(factories);
+	}
+
 	public void setGlobalExpressions(Set<SakerTaskFactory> globalexpressions) {
 		this.globalExpressions = globalexpressions;
 	}
@@ -113,26 +118,29 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 			@Override
 			public BuildTargetTaskResult run(TaskContext taskcontext) {
 				TaskIdentifier thistaskid = taskcontext.getTaskId();
-				
+
 				ExecutionPathConfiguration pathconfig = taskcontext.getExecutionContext().getPathConfiguration();
 				Set<SakerPath> defaultsfiles = SakerScriptTargetConfigurationReader.getDefaultsFiles(parsingOptions,
 						pathconfig);
+				SakerPath scriptpath = parsingOptions.getScriptPath();
 				if (defaultsfiles == null) {
 					//the defaults file is automatic and optional
 					SakerPath defaultdefaultspath = pathconfig.getWorkingDirectory()
 							.tryResolve(SakerScriptTargetConfigurationReader.DEFAULT_DEFAULTS_BUILD_FILE_RELATIVE_PATH);
-					SakerFile presentdefaultsfile = taskcontext.getTaskUtilities()
-							.resolveFileAtPath(defaultdefaultspath);
-					if (presentdefaultsfile == null) {
-						taskcontext.reportInputFileDependency(null, defaultdefaultspath,
-								CommonTaskContentDescriptors.IS_NOT_FILE);
-					} else {
-						taskcontext.reportInputFileDependency(null, defaultdefaultspath,
-								CommonTaskContentDescriptors.IS_FILE);
-						defaultsfiles = ImmutableUtils.singletonNavigableSet(defaultdefaultspath);
+					if (!scriptpath.equals(defaultdefaultspath)) {
+						SakerFile presentdefaultsfile = taskcontext.getTaskUtilities()
+								.resolveFileAtPath(defaultdefaultspath);
+						if (presentdefaultsfile == null) {
+							taskcontext.reportInputFileDependency(null, defaultdefaultspath,
+									CommonTaskContentDescriptors.IS_NOT_FILE);
+						} else {
+							taskcontext.reportInputFileDependency(null, defaultdefaultspath,
+									CommonTaskContentDescriptors.IS_FILE);
+							defaultsfiles = ImmutableUtils.singletonNavigableSet(defaultdefaultspath);
+						}
 					}
 				}
-				if (!ObjectUtils.isNullOrEmpty(defaultsfiles)) {
+				if (!ObjectUtils.isNullOrEmpty(defaultsfiles) && !defaultsfiles.contains(scriptpath)) {
 					Iterator<SakerPath> it = defaultsfiles.iterator();
 					SakerPath deffilepath = it.next();
 					Set<DefaultsLoaderTaskFactory> deftasks;
@@ -144,26 +152,31 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 						deftasks = ImmutableUtils.singletonSet(defaultstask);
 					} else {
 						deftasks = new HashSet<>();
-						do {
+						while (true) {
 							DefaultsLoaderTaskFactory defaultstask = new DefaultsLoaderTaskFactory(deffilepath);
 							taskcontext.startTask(defaultstask, defaultstask, null);
 							deftasks.add(defaultstask);
-						} while (it.hasNext());
+							if (!it.hasNext()) {
+								break;
+							}
+							deffilepath = it.next();
+						}
 					}
-					taskcontext.startTask(
-							new ScriptPathTaskDefaultsLiteralTaskIdentifier(parsingOptions.getScriptPath()),
+					taskcontext.startTask(new ScriptPathTaskDefaultsLiteralTaskIdentifier(scriptpath),
 							new DefaultsAggregatorTaskFactory(deftasks), null);
 				} else {
+					//no defaults files
+					//OR
+					//THIS is a defaults file. don't parse the defaults files.
+
 					//need to start the defaults task anyway so users don't wait forever
-					taskcontext.startTask(
-							new ScriptPathTaskDefaultsLiteralTaskIdentifier(parsingOptions.getScriptPath()),
+					taskcontext.startTask(new ScriptPathTaskDefaultsLiteralTaskIdentifier(scriptpath),
 							LiteralTaskFactory.INSTANCE_NULL, null);
 				}
 
 				TaskExecutionUtilities taskutils = taskcontext.getTaskUtilities();
 				if (!ObjectUtils.isNullOrEmpty(globalExpressions)) {
-					TaskIdentifier buildfiletaskid = new GlobalExpressionScopeRootTaskIdentifier(
-							parsingOptions.getScriptPath());
+					TaskIdentifier buildfiletaskid = new GlobalExpressionScopeRootTaskIdentifier(scriptpath);
 					for (SakerTaskFactory factory : globalExpressions) {
 						taskutils.startTaskFuture(new SakerScriptTaskIdentifier(buildfiletaskid, factory), factory);
 					}

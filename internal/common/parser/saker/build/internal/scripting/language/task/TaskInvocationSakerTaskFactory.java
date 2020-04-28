@@ -351,7 +351,14 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 										scriptposition);
 							}
 							try {
-								deftasknames.add(TaskName.valueOf((String) l));
+								TaskName tn = TaskName.valueOf((String) l);
+								if (tn.getName().indexOf('.') < 0) {
+									return new InvalidScriptDeclarationTaskFactory(
+											"Cannot define defaults for builtin tasks: " + tn
+													+ " (Single named tasks are reserved for the scripting language.)",
+											scriptposition);
+								}
+								deftasknames.add(tn);
 							} catch (IllegalArgumentException e) {
 								return new InvalidScriptDeclarationTaskFactory(
 										"Failed to interpret task name to define defaults for: " + constval,

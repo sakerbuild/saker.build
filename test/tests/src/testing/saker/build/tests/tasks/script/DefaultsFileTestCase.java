@@ -1,9 +1,14 @@
 package testing.saker.build.tests.tasks.script;
 
+import java.util.Collections;
 import java.util.TreeMap;
 
 import saker.build.file.path.SakerPath;
+import saker.build.file.path.WildcardPath;
 import saker.build.runtime.execution.ExecutionContext;
+import saker.build.runtime.execution.ExecutionParametersImpl;
+import saker.build.runtime.params.ExecutionScriptConfiguration;
+import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptOptionsConfig;
 import saker.build.task.ParameterizableTask;
 import saker.build.task.Task;
 import saker.build.task.TaskContext;
@@ -23,9 +28,19 @@ public abstract class DefaultsFileTestCase extends VariablesMetricEnvironmentTes
 		CollectingTestMetric result = super.createMetricImpl();
 		TreeMap<TaskName, TaskFactory<?>> injectedfactories = ObjectUtils.newTreeMap(result.getInjectedTaskFactories());
 		injectedfactories.put(TaskName.valueOf("example.echo"), new EchoTaskFactory());
+		injectedfactories.put(TaskName.valueOf("example.concat"), new ConcatTaskFactory());
 
 		result.setInjectedTaskFactories(injectedfactories);
 		return result;
+	}
+
+	protected static void setDefaultsFileScriptOption(ExecutionParametersImpl params, String val) {
+		ExecutionScriptConfiguration.Builder scbuilder = ExecutionScriptConfiguration.builder();
+		scbuilder.addConfig(WildcardPath.valueOf("**/*.build"),
+				new ScriptOptionsConfig(
+						val == null ? Collections.emptyMap() : Collections.singletonMap("defaults.file", val),
+						ExecutionScriptConfiguration.ScriptProviderLocation.getBuiltin()));
+		params.setScriptConfiguration(scbuilder.build());
 	}
 
 	public static class EchoTaskFactory extends StatelessTaskFactory<String> {
@@ -44,7 +59,26 @@ public abstract class DefaultsFileTestCase extends VariablesMetricEnvironmentTes
 
 			};
 		}
+	}
 
+	public static class ConcatTaskFactory extends StatelessTaskFactory<String> {
+		private static final long serialVersionUID = 1L;
+
+		@Override
+		public Task<? extends String> createTask(ExecutionContext executioncontext) {
+			return new ParameterizableTask<String>() {
+				@SakerInput
+				public String Left;
+				@SakerInput
+				public String Right;
+
+				@Override
+				public String run(TaskContext taskcontext) throws Exception {
+					return Left + Right;
+				}
+
+			};
+		}
 	}
 
 }

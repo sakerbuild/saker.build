@@ -1,0 +1,4 @@
+defaults(
+	example.concat
+	Left: abc
+)

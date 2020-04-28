@@ -52,11 +52,14 @@ public class DefaultsAggregatorTaskFactory
 		}
 
 		SakerScriptTaskDefaults result = new SakerScriptTaskDefaults();
-		do {
+		while (true) {
 			SakerScriptTaskDefaults defs = (SakerScriptTaskDefaults) taskcontext.getTaskResult(t);
 			result.add(defs);
+			if (!it.hasNext()) {
+				break;
+			}
 			t = it.next();
-		} while (it.hasNext());
+		}
 		return result;
 	}
 

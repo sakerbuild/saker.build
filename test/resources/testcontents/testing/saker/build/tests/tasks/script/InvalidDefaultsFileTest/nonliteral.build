@@ -1,0 +1,4 @@
+defaults(
+	$var
+	Input: abc
+)

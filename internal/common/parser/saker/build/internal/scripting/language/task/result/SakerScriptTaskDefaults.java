@@ -9,6 +9,7 @@ import java.util.NavigableMap;
 import java.util.Set;
 import java.util.TreeMap;
 
+import saker.build.file.path.SakerPath;
 import saker.build.internal.scripting.language.SakerScriptTargetConfiguration;
 import saker.build.internal.scripting.language.exc.InvalidScriptDeclarationException;
 import saker.build.internal.scripting.language.task.DefaultsDeclarationSakerTaskFactory;
@@ -33,7 +34,7 @@ public class SakerScriptTaskDefaults implements Externalizable {
 	}
 
 	public static SakerScriptTaskDefaults createAndStartParameterTasks(TaskContext taskcontext,
-			SakerScriptTargetConfiguration sakertargetconfig, BuildFileTargetTaskIdentifier rootbuildid) {
+			SakerScriptTargetConfiguration sakertargetconfig, TaskIdentifier rootbuildid, SakerPath workingdirectory) {
 		SakerScriptTaskDefaults result = new SakerScriptTaskDefaults();
 		Set<? extends DefaultsDeclarationSakerTaskFactory> defaults = sakertargetconfig.getDefaultDeclarations();
 		for (DefaultsDeclarationSakerTaskFactory def : defaults) {
@@ -55,7 +56,7 @@ public class SakerScriptTaskDefaults implements Externalizable {
 								+ tn + " with parameter: " + paramname);
 					}
 					TaskExecutionParameters execparams = new TaskExecutionParameters();
-					execparams.setWorkingDirectory(rootbuildid.getWorkingDirectory());
+					execparams.setWorkingDirectory(workingdirectory);
 					taskcontext.startTask(deftaskid, paramtaskfactory, execparams);
 				}
 			}

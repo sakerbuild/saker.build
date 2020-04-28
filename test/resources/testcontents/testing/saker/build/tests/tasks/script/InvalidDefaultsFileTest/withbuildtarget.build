@@ -1,0 +1,7 @@
+defaults(
+	example.echo
+	Input: abc
+)
+
+build() {
+}
