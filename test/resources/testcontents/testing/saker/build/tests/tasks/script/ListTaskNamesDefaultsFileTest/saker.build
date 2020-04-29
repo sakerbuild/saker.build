@@ -1,0 +1,5 @@
+build(
+	out echo = example.echo()
+	out concat = example.concat()
+) {
+}

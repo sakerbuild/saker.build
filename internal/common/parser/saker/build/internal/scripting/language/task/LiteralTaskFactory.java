@@ -30,6 +30,8 @@ import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 public class LiteralTaskFactory implements TaskFactory<Object>, Task<Object>, Externalizable {
 	private static final long serialVersionUID = 1L;
 
+	public static final LiteralTaskFactory INSTANCE_NULL = new LiteralTaskFactory(null);
+
 	protected Object literal;
 
 	/**

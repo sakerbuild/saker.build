@@ -196,6 +196,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	//TODO add ": " after parameter proposals if there's no expression yet
 	private static final String TYPE_PARAMETER = "Parameter";
 	private static final String TYPE_LITERAL = "Literal";
+	private static final String TYPE_TASK_LITERAL = "Task Literal";
 	private static final String TYPE_FIELD = "Field";
 	private static final String TYPE_ENUM = "Enum";
 	private static final String TYPE_DIRECTORY = "Directory";
@@ -252,6 +253,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	public static final String INFORMATION_META_DATA_FILE_TYPE_FILE = "file";
 	public static final String INFORMATION_META_DATA_FILE_TYPE_BUILD_SCRIPT = "build_script";
 	public static final String INFORMATION_META_DATA_FILE_TYPE_DIRECTORY = "dir";
+
+	public static final TaskName TASK_NAME_DEFAULTS = TaskName
+			.valueOf(TaskInvocationSakerTaskFactory.TASKNAME_DEFAULTS);
 
 	private static final Set<String> VARIABLE_TASK_NAMES = ImmutableUtils
 			.makeImmutableNavigableSet(new String[] { TaskInvocationSakerTaskFactory.TASKNAME_GLOBAL,
@@ -1365,9 +1369,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		//XXX handle if there was no target specified
 		Set<String> includedtargetnames = new TreeSet<>();
 		for (Statement targetnamestm : includetargetnamestatements) {
-			String includedtargetname = SakerParsedModel.getExpressionValue(targetnamestm);
-			if (includedtargetname != null) {
-				includedtargetnames.add(includedtargetname);
+			Object includedtargetname = SakerParsedModel.getExpressionValue(targetnamestm);
+			if (includedtargetname instanceof String) {
+				includedtargetnames.add((String) includedtargetname);
 			}
 		}
 		return includedtargetnames;
@@ -1386,10 +1390,11 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		} else {
 			includepaths = new TreeSet<>();
 			for (Statement incpathstm : includepathsstms) {
-				String incpathstr = SakerParsedModel.getExpressionValue(incpathstm);
-				if (incpathstr == null) {
+				Object incpath = SakerParsedModel.getExpressionValue(incpathstm);
+				if (!(incpath instanceof String)) {
 					continue;
 				}
+				String incpathstr = (String) incpath;
 				SakerPath pathparam;
 				try {
 					pathparam = SakerPath.valueOf(incpathstr);
@@ -1418,10 +1423,13 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			return path.equals(derived.getScriptParsingOptions().getScriptPath());
 		}
 		for (Statement pathexp : pathparamexpressions) {
-			String expval = getExpressionValue(pathexp);
+			Object expval = getExpressionValue(pathexp);
+			if (!(expval instanceof String)) {
+				continue;
+			}
 			SakerPath pathparampath;
 			try {
-				pathparampath = SakerPath.valueOf(expval);
+				pathparampath = SakerPath.valueOf((String) expval);
 				if (pathparampath.isRelative()) {
 					pathparampath = derived.getScriptParsingOptions().getScriptPath().getParent()
 							.resolve(pathparampath);
@@ -1560,10 +1568,10 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		if (fpparamname != null) {
 			return null;
 		}
-		String varname = getExpressionValue(
+		Object varname = getExpressionValue(
 				fparamstm.firstScope("param_content").firstScope("expression_placeholder").firstScope("expression"));
-		if (varname != null) {
-			return new VariableTaskUsage(taskname, varname);
+		if (varname instanceof String) {
+			return new VariableTaskUsage(taskname, (String) varname);
 		}
 		return null;
 	}
@@ -1678,7 +1686,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		return getExpressionLiteralValue(indexstm);
 	}
 
-	public static String getExpressionValue(Statement expression) {
+	public static Object getExpressionValue(Statement expression) {
 		if (expression == null) {
 			return null;
 		}
@@ -1758,7 +1766,11 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 	public static String getSubscriptStatementIndexValue(Statement stm) {
 		Statement indexstm = stm.firstScope("subscript_index_expression").firstScope("expression");
-		return getExpressionValue(indexstm);
+		Object val = getExpressionValue(indexstm);
+		if (val instanceof String) {
+			return (String) val;
+		}
+		return null;
 	}
 
 	public static String getSubscriptStatementIndexLiteralValue(Statement stm) {
@@ -2144,12 +2156,17 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				Statement taskparent = findFirstParentToken(parenttokencontexts, "task");
 				infosupplier = () -> {
 					String taskname = stm.getValue();
+					TaskName tn = TaskName.valueOf(taskname, getTaskIdentifierQualifierLiterals(stm));
+					taskname = tn.getName();
 					if (derived.isIncludeTask(taskparent)
 							&& !TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE.equals(taskname)) {
 						return ImmutableUtils.singletonList(createSimplifiedIncludeTextPartition(derived, taskname,
 								getBuildTargetPreCommentsForTargetName(derived, taskname)));
 					}
-					TaskName tn = TaskName.valueOf(taskname, getTaskIdentifierQualifierLiterals(stm));
+					if (TaskInvocationSakerTaskFactory.TASKNAME_DEFAULTS.equals(taskname)) {
+						return ImmutableUtils.singletonList(createTaskTextPartition(
+								BuiltinExternalScriptInformationProvider.DEFAULTS_TASK_INFORMATION));
+					}
 					NavigableMap<TaskName, Collection<TaskInformation>> infos = queryExternalTaskInformations(tn,
 							analyzer);
 					Set<TextPartition> partitions = new LinkedHashSet<>();
@@ -2157,7 +2174,6 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 						//only literal qualifiers, so we can use an exact task name match
 						Collection<TaskInformation> matched = infos.get(tn);
 						if (matched != null) {
-
 							for (TaskInformation info : matched) {
 								TextPartition partition = createTaskTextPartition(info);
 								partitions.add(partition);
@@ -2200,11 +2216,47 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 					Statement taskidstm = taskparent.firstScope("task_identifier");
 					if (taskidstm != null) {
 						String paramname = stm.getValue();
-						TaskName tn = TaskName.valueOf(taskidstm.getValue(),
-								getTaskIdentifierQualifierLiterals(taskidstm));
-						if (derived.isIncludeTask(taskparent) && !(TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE
-								.equals(tn.getName())
-								&& BuiltinExternalScriptInformationProvider.isIncludeTaskParameterName(paramname))) {
+						String taskname = taskidstm.getValue();
+						TaskName tn = TaskName.valueOf(taskname, getTaskIdentifierQualifierLiterals(taskidstm));
+						taskname = tn.getName();
+						if (TaskInvocationSakerTaskFactory.TASKNAME_DEFAULTS.equals(taskname)) {
+							infosupplier = () -> {
+								Set<TextPartition> partitions = new LinkedHashSet<>();
+								Statement firstparamexp = taskparent.firstScope("paramlist")
+										.firstScope("first_parameter").firstScope("param_content")
+										.firstScope("expression_placeholder").firstScope("expression");
+								Object expval = SakerParsedModel.getExpressionValue(firstparamexp);
+								if (expval instanceof String) {
+									expval = ImmutableUtils.singletonList(expval);
+								}
+								if (expval instanceof List) {
+									List<?> tasknames = (List<?>) expval;
+									for (Object tnobj : tasknames) {
+										if (!(tnobj instanceof String)) {
+											continue;
+										}
+										TaskName defaultedtn;
+										try {
+											defaultedtn = TaskName.valueOf((String) tnobj);
+										} catch (IllegalArgumentException e) {
+											continue;
+										}
+										NavigableMap<TaskName, Collection<TaskParameterInformation>> infos = queryExternalTaskParameterInformations(
+												defaultedtn, paramname, analyzer);
+										Collection<TaskParameterInformation> matched = infos.get(defaultedtn);
+										if (matched != null) {
+											for (TaskParameterInformation info : matched) {
+												partitions.add(createTaskParameterTextPartition(info));
+											}
+										}
+									}
+								}
+								return ImmutableUtils.makeImmutableList(partitions);
+							};
+						} else if (derived.isIncludeTask(taskparent)
+								&& !(TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE.equals(taskname)
+										&& BuiltinExternalScriptInformationProvider
+												.isIncludeTaskParameterName(paramname))) {
 							//representing a parameter to the included target
 							infosupplier = () -> {
 								Set<TextPartition> partitions = new LinkedHashSet<>();
@@ -2570,13 +2622,16 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	}
 
 	private static SimpleTextPartition createTaskTextPartition(TaskName tn) {
+		return createTaskTextPartition(tn, null);
+	}
+
+	private static SimpleTextPartition createTaskTextPartition(TaskName tn, FormattedTextContent info) {
 		if (tn == null) {
 			return null;
 		}
-		SimpleTextPartition partition = new SimpleTextPartition(createTaskTitle(tn), null, null);
+		SimpleTextPartition partition = new SimpleTextPartition(createTaskTitle(tn), null, info);
 		partition.setSchemaIdentifier(INFORMATION_SCHEMA_TASK);
 		return partition;
-
 	}
 
 	private static TextPartition createTaskTextPartition(TaskInformation info) {
@@ -3085,6 +3140,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	private static void addGeneralLiteralTokenInformationPartitionsForType(DerivedData derived,
 			ScriptModelInformationAnalyzer analyzer, String litval, TypeInformation tinfo,
 			Consumer<? super TextPartition> partitions) {
+		addTaskNameInformationPartitionIfApplicable(derived, litval, tinfo, partitions, analyzer);
 		addUserParameterInformationPartitionIfApplicable(derived, litval, tinfo, partitions);
 		TypeInformation litqueryinfo = getExternalLiteralQueryTypeInfo(tinfo);
 		if (litqueryinfo != null) {
@@ -3323,6 +3379,31 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		}
 		SimpleTextPartition partition = createUserExecutionParameterTextPartition(derived, parametername);
 		partitions.accept(partition);
+	}
+
+	private static void addTaskNameInformationPartitionIfApplicable(DerivedData derived, String literalvalue,
+			TypeInformation tinfo, Consumer<? super TextPartition> partitions,
+			ScriptModelInformationAnalyzer analyzer) {
+		if (tinfo == null || ObjectUtils.isNullOrEmpty(literalvalue)) {
+			return;
+		}
+		if (!TypeInformationKind.BUILD_TASK_NAME.equalsIgnoreCase(tinfo.getKind())) {
+			return;
+		}
+		TaskName tn;
+		try {
+			tn = TaskName.valueOf(literalvalue);
+		} catch (IllegalArgumentException e) {
+			return;
+		}
+		NavigableMap<TaskName, Collection<TaskInformation>> infos = queryExternalTaskInformations(tn, analyzer);
+		Collection<TaskInformation> matched = infos.get(tn);
+		if (matched != null) {
+			for (TaskInformation info : matched) {
+				TextPartition partition = createTaskTextPartition(info);
+				partitions.accept(partition);
+			}
+		}
 	}
 
 	private static SimpleTextPartition createUserExecutionParameterTextPartition(DerivedData derived,
@@ -3794,6 +3875,31 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		}
 		Set<String> presentparamnames = getParameterNamesInParamList(taskparent.firstScope("paramlist"));
 		TaskName tn = TaskName.valueOf(taskidstm.getValue(), getTaskIdentifierQualifierLiterals(taskidstm));
+		if (TaskInvocationSakerTaskFactory.TASKNAME_DEFAULTS.equals(tn.getName())) {
+			Statement firstparamexp = taskparent.firstScope("paramlist").firstScope("first_parameter")
+					.firstScope("param_content").firstScope("expression_placeholder").firstScope("expression");
+			Object expval = SakerParsedModel.getExpressionValue(firstparamexp);
+			if (expval instanceof String) {
+				expval = ImmutableUtils.singletonList(expval);
+			}
+			if (expval instanceof List) {
+				List<?> tasknames = (List<?>) expval;
+				for (Object tnobj : tasknames) {
+					if (!(tnobj instanceof String)) {
+						continue;
+					}
+					TaskName defaultedtn;
+					try {
+						defaultedtn = TaskName.valueOf((String) tnobj);
+					} catch (IllegalArgumentException e) {
+						continue;
+					}
+					addExternalTaskParameterProposals(base, proposalfactory, collector, analyzer, presentparamnames,
+							defaultedtn);
+				}
+			}
+			return;
+		}
 		if (derived.isIncludeTask(taskparent)) {
 			//getting parameter proposals for the include task
 			//get the included target information
@@ -3840,6 +3946,34 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				}
 			}
 		}
+		addExternalTaskParameterProposals(base, proposalfactory, collector, analyzer, presentparamnames, tn);
+		for (Entry<Statement, TaskName> entry : derived.getPresentTaskNameContents().entrySet()) {
+			TaskName presenttn = entry.getValue();
+			if (!presenttn.getName().equals(tn.getName())) {
+				continue;
+			}
+			//XXX maybe check the qualifiers as well? definitely for ordering.
+			Statement taskstm = entry.getKey();
+			Set<String> taskparamnames = getParameterNamesInParamList(taskstm.firstScope("paramlist"));
+			for (String pname : taskparamnames) {
+				if (presentparamnames.contains(pname)) {
+					continue;
+				}
+				ParameterProposalKey proposalkey = new ParameterProposalKey(pname, tn, null);
+				if (base == null || isPhraseStartsWithProposal(pname, base)) {
+					SimpleLiteralCompletionProposal simpleproposal = proposalfactory.create(TYPE_PARAMETER, pname);
+					simpleproposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_TASK_PARAMETER);
+					simpleproposal.setDisplayRelation(Objects.toString(presenttn, null));
+					collector.add(proposalkey, simpleproposal,
+							createTaskParameterTextPartition(presenttn.toString(), pname, null));
+				}
+			}
+		}
+	}
+
+	private static void addExternalTaskParameterProposals(String base, ProposalFactory proposalfactory,
+			ProposalCollector collector, ScriptModelInformationAnalyzer analyzer, Set<String> presentparamnames,
+			TaskName tn) {
 		for (ExternalScriptInformationProvider extprovider : analyzer.getExternalScriptInformationProviders()) {
 			Map<TaskName, ? extends TaskInformation> taskinfos = extprovider.getTaskInformation(tn);
 			if (ObjectUtils.isNullOrEmpty(taskinfos)) {
@@ -3872,28 +4006,6 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 					simpleproposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_TASK_PARAMETER);
 					simpleproposal.setDisplayRelation(Objects.toString(tinfo.getTaskName(), null));
 					collector.add(proposalkey, simpleproposal, createTaskParameterTextPartition(pinfo));
-				}
-			}
-		}
-		for (Entry<Statement, TaskName> entry : derived.getPresentTaskNameContents().entrySet()) {
-			TaskName presenttn = entry.getValue();
-			if (!presenttn.getName().equals(tn.getName())) {
-				continue;
-			}
-			//XXX maybe check the qualifiers as well? definitely for ordering.
-			Statement taskstm = entry.getKey();
-			Set<String> taskparamnames = getParameterNamesInParamList(taskstm.firstScope("paramlist"));
-			for (String pname : taskparamnames) {
-				if (presentparamnames.contains(pname)) {
-					continue;
-				}
-				ParameterProposalKey proposalkey = new ParameterProposalKey(pname, tn, null);
-				if (base == null || isPhraseStartsWithProposal(pname, base)) {
-					SimpleLiteralCompletionProposal simpleproposal = proposalfactory.create(TYPE_PARAMETER, pname);
-					simpleproposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_TASK_PARAMETER);
-					simpleproposal.setDisplayRelation(Objects.toString(presenttn, null));
-					collector.add(proposalkey, simpleproposal,
-							createTaskParameterTextPartition(presenttn.toString(), pname, null));
 				}
 			}
 		}
@@ -4362,7 +4474,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				}
 				Collection<? extends TypedModelInformation> rectypes = analyzer.getExpressionReceiverType(derived, stm,
 						statementstack);
-				addBuildTargetProposalsIfAppropriate(derived, null, rectypes, result, proposalfactory);
+
 				addGenericExpressionProposals(derived, result, statementstack, rectypes, proposalfactory, collector,
 						analyzer);
 				break;
@@ -4486,6 +4598,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 				Collection<? extends TypedModelInformation> receivertypes = analyzer.getExpressionReceiverType(derived,
 						literalparent, createParentContextsStartingFrom(literalparent, statementstack));
+				addTaskNameLiteralProposalsIfAppropriate(collector, analyzer, receivertypes, base, proposalfactory);
 				addEnumProposals(collector, receivertypes, base, proposalfactory);
 				if (isInScope(statementstack, ImmutableUtils.asUnmodifiableArrayList("literal", "expression",
 						"subscript_index_expression", "subscript"))) {
@@ -4562,7 +4675,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 					addMapKeyFieldProposals(result, base, mapreceivertypes, presentmapkeys, proposalfactory, collector);
 				}
 
-				addBuildTargetProposalsIfAppropriate(derived, base, receivertypes, result, proposalfactory);
+				addBuildTargetProposalsIfAppropriate(derived, base, receivertypes, result, proposalfactory, collector);
 				addTaskProposals(derived, base, proposalfactory, collector, analyzer);
 
 				addUserParameterProposals(result, base, receivertypes, proposalfactory, collector);
@@ -4618,7 +4731,6 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 							//in cases when we're in a line before another parameter
 							Collection<? extends TypedModelInformation> rectypes = analyzer
 									.getFirstParameterExpressionReceiverType(derived, taskparent);
-							addBuildTargetProposalsIfAppropriate(derived, null, rectypes, result, proposalfactory);
 							addGenericExpressionProposals(derived, result, statementstack, rectypes, proposalfactory,
 									collector, analyzer);
 						}
@@ -4683,6 +4795,35 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		}
 	}
 
+	private static void addTaskNameLiteralProposalsIfAppropriate(ProposalCollector collector,
+			ScriptModelInformationAnalyzer analyzer, Collection<? extends TypedModelInformation> receivertypes,
+			String base, ProposalFactory proposalfactory) {
+		for (TypedModelInformation modelinfo : receivertypes) {
+			TypeInformation typeinfo = modelinfo.getTypeInformation();
+			if (typeinfo == null) {
+				continue;
+			}
+			if (!TypeInformationKind.BUILD_TASK_NAME.equalsIgnoreCase(typeinfo.getKind())) {
+				continue;
+			}
+
+			for (ExternalScriptInformationProvider infoprovider : analyzer.getExternalScriptInformationProviders()) {
+				Map<TaskName, ? extends TaskInformation> taskinfos = infoprovider.getTasks(base);
+				for (Entry<TaskName, ? extends TaskInformation> entry : taskinfos.entrySet()) {
+					TaskName tname = entry.getKey();
+					String tnamestr = tname.toString();
+
+					SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_TASK_LITERAL, tnamestr);
+					proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_LITERAL);
+					collector.add(new LiteralProposalKey(tnamestr), proposal,
+							createTaskTextPartition(entry.getValue()));
+				}
+			}
+
+			return;
+		}
+	}
+
 	private static void addBuildTargetParameterProposals(DerivedData derived,
 			Collection<? super ScriptCompletionProposal> result, Statement stm,
 			ArrayDeque<? extends Statement> statementstack, ProposalFactory proposalfactory, String base) {
@@ -4733,18 +4874,21 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			return;
 		}
 		ScriptModelInformationAnalyzer analyzer = new ScriptModelInformationAnalyzer(modellingEnvironment);
-		Collection<? extends TypedModelInformation> rectypes = analyzer.getExpressionReceiverType(derived, stm,
+		Collection<? extends TypedModelInformation> receivertypes = analyzer.getExpressionReceiverType(derived, stm,
 				statementstack);
 
 		ProposalFactory proposalfactory = proposalFactoryForStringLiteralStatement(stm, offset);
-		collectPathProposals(result, literalval, getPathProposalSorterForReceiverTypes(rectypes), proposalfactory);
-		addEnumProposals(collector, rectypes, literalval, proposalfactory);
-		addUserParameterProposals(result, literalval, rectypes, proposalfactory, collector);
+
+		addTaskNameLiteralProposalsIfAppropriate(collector, analyzer, receivertypes, literalval, proposalfactory);
+		addBuildTargetProposalsIfAppropriate(derived, literalval, receivertypes, result, proposalfactory, collector);
+		collectPathProposals(result, literalval, getPathProposalSorterForReceiverTypes(receivertypes), proposalfactory);
+		addEnumProposals(collector, receivertypes, literalval, proposalfactory);
+		addUserParameterProposals(result, literalval, receivertypes, proposalfactory, collector);
 	}
 
 	private static void addBuildTargetProposalsIfAppropriate(DerivedData derived, String base,
 			Collection<? extends TypedModelInformation> rectypes, Collection<? super ScriptCompletionProposal> result,
-			ProposalFactory proposalfactory) {
+			ProposalFactory proposalfactory, ProposalCollector collector) {
 		for (TypedModelInformation modelinfo : rectypes) {
 			TypeInformation typeinfo = modelinfo.getTypeInformation();
 			if (typeinfo == null) {
@@ -4761,11 +4905,12 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 						SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_BUILD_TARGET,
 								targetname);
 						proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_BUILD_TARGET);
-						proposal.setInformation(partitioned(createBuildTargetTextPartition(derived, entry.getValue())));
-						result.add(proposal);
+						collector.add(new LiteralProposalKey(targetname), proposal,
+								createBuildTargetTextPartition(derived, entry.getValue()));
 					}
 				}
 			}
+			return;
 		}
 	}
 
@@ -4799,6 +4944,19 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 						getBuildTargetPreCommentsForTargetName(derived, targetname));
 
 				collector.add(proposalkey, simpleproposal, partition);
+			}
+		}
+		if (derived.isDefaultsFile()) {
+			if (basestr == null
+					|| isPhraseStartsWithOrEqualsProposal(TaskInvocationSakerTaskFactory.TASKNAME_DEFAULTS, basestr)) {
+				TaskName tname = TASK_NAME_DEFAULTS;
+				TaskProposalKey proposalkey = new TaskProposalKey(tname);
+				SimpleLiteralCompletionProposal simpleproposal = proposalfactory.create(TYPE_TASK, tname + "()");
+				simpleproposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_TASK);
+				simpleproposal
+						.setSelectionOffset(simpleproposal.getOffset() + simpleproposal.getLiteral().length() - 1);
+				collector.add(proposalkey, simpleproposal,
+						createTaskTextPartition(BuiltinExternalScriptInformationProvider.DEFAULTS_TASK_INFORMATION));
 			}
 		}
 
@@ -5262,6 +5420,10 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			Deque<? extends Statement> statementstack, Collection<? extends TypedModelInformation> receivertypes,
 			Predicate<String> includeliteralpredicate, ProposalFactory proposalfactory, ProposalCollector collector,
 			ScriptModelInformationAnalyzer analyzer) {
+
+		addTaskNameLiteralProposalsIfAppropriate(collector, analyzer, receivertypes, null, proposalfactory);
+		addBuildTargetProposalsIfAppropriate(derived, null, receivertypes, result, proposalfactory, collector);
+
 		if (isInScope(statementstack, ImmutableUtils.asUnmodifiableArrayList("param_content", "first_parameter"))) {
 			Statement firstparamparent = findFirstParentToken(statementstack, "first_parameter");
 			if (firstparamparent.firstScope("param_name") == null && firstparamparent.firstScope("param_eq") == null) {

@@ -18,8 +18,10 @@ package saker.build.internal.scripting.language.model;
 import java.util.Collections;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
+import java.util.NavigableSet;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 import saker.build.file.path.SakerPath;
 import saker.build.internal.scripting.language.task.TaskInvocationSakerTaskFactory;
@@ -31,6 +33,7 @@ import saker.build.scripting.model.info.SimpleTaskInformation;
 import saker.build.scripting.model.info.SimpleTaskParameterInformation;
 import saker.build.scripting.model.info.SimpleTypeInformation;
 import saker.build.scripting.model.info.TaskInformation;
+import saker.build.scripting.model.info.TaskParameterInformation;
 import saker.build.scripting.model.info.TypeInformationKind;
 import saker.build.task.BuildTargetTaskResult;
 import saker.build.task.TaskName;
@@ -50,6 +53,11 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 	public static boolean isIncludeTaskParameterName(String name) {
 		return name != null && INCLUDE_TASK_PARAMETER_NAMES.contains(name);
 	}
+
+	public static final TaskInformation DEFAULTS_TASK_INFORMATION;
+	public static final TaskParameterInformation DEFAULTS_TASK_UNNAMED_PARAMETER_INFORMATION;
+
+	private static final NavigableSet<TaskName> BUILTIN_TASK_NAMES;
 
 	private static final NavigableMap<TaskName, TaskInformation> BUILTIN_TASK_INFORMATIONS;
 	static {
@@ -266,6 +274,32 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 			taskinfo.setReturnType(returninfo);
 		}
 		BUILTIN_TASK_INFORMATIONS = ImmutableUtils.unmodifiableNavigableMap(map);
+		BUILTIN_TASK_NAMES = new TreeSet<>(BUILTIN_TASK_INFORMATIONS.navigableKeySet());
+		BUILTIN_TASK_NAMES.add(TaskName.valueOf(TaskInvocationSakerTaskFactory.TASKNAME_DEFAULTS));
+	}
+	static {
+		SimpleTaskInformation taskinfo = new SimpleTaskInformation(SakerParsedModel.TASK_NAME_DEFAULTS);
+		taskinfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
+				"Declares default parameters for the associated task invocations.\n" + "The "
+						+ TaskInvocationSakerTaskFactory.TASKNAME_DEFAULTS
+						+ "() task can be used in the defaults file to set the default inputs "
+						+ "for the specified parameters.\n"
+						+ "The default parameters are added to all task invocations in the same "
+						+ "script language configurations during the build execution.\n" + "The "
+						+ TaskInvocationSakerTaskFactory.TASKNAME_DEFAULTS
+						+ "() task can only be used as a top level declaration in the defaults file."));
+		SimpleTaskParameterInformation paraminfo = new SimpleTaskParameterInformation(taskinfo, "");
+		paraminfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
+				"One or more task names for which the default parameters are defined for."));
+		SimpleTypeInformation paramtype = new SimpleTypeInformation(TypeInformationKind.COLLECTION);
+		paramtype.setElementTypes(
+				ImmutableUtils.singletonList(new SimpleTypeInformation(TypeInformationKind.BUILD_TASK_NAME)));
+		paraminfo.setTypeInformation(paramtype);
+
+		taskinfo.setParameters(ImmutableUtils.singletonList(paraminfo));
+
+		DEFAULTS_TASK_INFORMATION = taskinfo;
+		DEFAULTS_TASK_UNNAMED_PARAMETER_INFORMATION = paraminfo;
 	}
 
 	public static boolean isBuiltinTaskName(String taskname) {
@@ -278,7 +312,7 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 	}
 
 	public static boolean isBuiltinTaskName(TaskName taskname) {
-		return BUILTIN_TASK_INFORMATIONS.get(taskname) != null;
+		return BUILTIN_TASK_NAMES.contains(taskname);
 	}
 
 	@Override

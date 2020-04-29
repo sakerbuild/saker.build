@@ -1,0 +1,10 @@
+defaults(
+	example.echo
+	Input: abc
+)
+
+build(
+	out val = 123
+) {
+
+}

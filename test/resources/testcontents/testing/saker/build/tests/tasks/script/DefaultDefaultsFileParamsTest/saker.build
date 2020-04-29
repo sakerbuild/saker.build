@@ -1,0 +1,5 @@
+build(
+	out value = example.echo()
+	out overridden = example.echo(Input: over)
+) {
+}

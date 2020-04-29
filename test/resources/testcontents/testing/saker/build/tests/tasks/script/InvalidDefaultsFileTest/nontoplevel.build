@@ -1,0 +1,4 @@
+static(var) = defaults(
+		example.echo
+		Input: abc
+	)

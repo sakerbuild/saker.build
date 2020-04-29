@@ -64,6 +64,13 @@ public class CommonTaskOutputChangeDetector {
 	 * If the task output is <code>null</code>, a change is <b>not</b> detected.
 	 */
 	public static final TaskOutputChangeDetector IS_NOT_ARRAY = new ArrayTypeTaskOutputChangeDetector(false);
+	
+	/**
+	 * Expects the task output to be <code>null</code>.
+	 * 
+	 * @since saker.build 0.8.12
+	 */
+	public static final TaskOutputChangeDetector IS_NULL = new EqualityTaskOutputChangeDetector(null);
 
 	/**
 	 * Gets a task output change detector that expects the task output to be an instance of the given type.

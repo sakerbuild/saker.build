@@ -1,0 +1,9 @@
+defaults(
+	[
+		example.echo
+		example.concat
+	]
+	Input: 123
+	Left: abc
+	Right: def
+)
