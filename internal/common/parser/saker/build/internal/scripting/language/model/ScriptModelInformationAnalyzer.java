@@ -391,7 +391,7 @@ public class ScriptModelInformationAnalyzer {
 			String paramname, Statement paramcontentstm) {
 		Statement taskidentifierstm = taskstm.firstScope("task_identifier");
 		Collection<TypedModelInformation> receivertypes = SakerParsedModel
-				.deCollectionizeTypeInformations(getExternalTaskParameterInfos(taskidentifierstm, paramname));
+				.deCollectionizeTypeInformations(getExternalTaskParameterInfos(taskstm, taskidentifierstm, paramname));
 		Statement paramexpstm = paramcontentstm == null ? null
 				: paramcontentstm.firstScope("expression_placeholder").firstScope("expression");
 
@@ -1125,12 +1125,48 @@ public class ScriptModelInformationAnalyzer {
 		}
 	}
 
-	private Collection<TypedModelInformation> getExternalTaskParameterInfos(Statement taskidentifierstm,
-			String paramname) {
+	private Collection<TypedModelInformation> getExternalTaskParameterInfos(Statement taskstm,
+			Statement taskidentifierstm, String paramname) {
 		Collection<TypedModelInformation> result = new LinkedHashSet<>();
 		String taskname = taskidentifierstm.getValue();
 		TaskName tn = TaskName.valueOf(taskname,
 				SakerParsedModel.getTaskIdentifierQualifierLiterals(taskidentifierstm));
+		if (SakerParsedModel.TASK_NAME_DEFAULTS.equals(tn)) {
+			if ("".equals(paramname)) {
+				result.add(new TypedModelInformation(
+						BuiltinExternalScriptInformationProvider.DEFAULTS_TASK_UNNAMED_PARAMETER_INFORMATION));
+				return result;
+			}
+			Statement firstparamexp = taskstm.firstScope("paramlist").firstScope("first_parameter")
+					.firstScope("param_content").firstScope("expression_placeholder").firstScope("expression");
+			Object expval = SakerParsedModel.getExpressionValue(firstparamexp);
+			if (expval instanceof String) {
+				expval = ImmutableUtils.singletonList(expval);
+			}
+			if (expval instanceof List) {
+				List<?> tasknames = (List<?>) expval;
+				for (Object tnobj : tasknames) {
+					if (!(tnobj instanceof String)) {
+						continue;
+					}
+					TaskName defaultedtn;
+					try {
+						defaultedtn = TaskName.valueOf((String) tnobj);
+					} catch (IllegalArgumentException e) {
+						continue;
+					}
+					NavigableMap<TaskName, Collection<TaskParameterInformation>> infos = queryExternalTaskParameterInformations(
+							defaultedtn, paramname);
+					Collection<TaskParameterInformation> matched = infos.get(defaultedtn);
+					if (matched != null) {
+						for (TaskParameterInformation paraminfo : matched) {
+							result.add(new TypedModelInformation(paraminfo));
+						}
+					}
+				}
+			}
+			return result;
+		}
 		NavigableMap<TaskName, Collection<TaskParameterInformation>> infos = queryExternalTaskParameterInformations(tn,
 				paramname);
 		if (!SakerParsedModel.hasTaskIdentifierNonLiteralQualifier(taskidentifierstm)) {
@@ -1141,23 +1177,29 @@ public class ScriptModelInformationAnalyzer {
 				}
 			}
 		} else {
-			for (Entry<TaskName, Collection<TaskParameterInformation>> entry : infos.entrySet()) {
-				TaskName entrytn = entry.getKey();
-				if (entrytn.getTaskQualifiers().containsAll(tn.getTaskQualifiers())) {
-					for (TaskParameterInformation paraminfo : entry.getValue()) {
-						result.add(new TypedModelInformation(paraminfo));
-					}
-				}
-			}
-			if (result.isEmpty()) {
-				for (Entry<TaskName, Collection<TaskParameterInformation>> entry : infos.entrySet()) {
-					for (TaskParameterInformation paraminfo : entry.getValue()) {
-						result.add(new TypedModelInformation(paraminfo));
-					}
+			addExternalParameterInfos(tn, infos, result);
+		}
+		return result;
+	}
+
+	private static void addExternalParameterInfos(TaskName tn,
+			NavigableMap<TaskName, Collection<TaskParameterInformation>> infos,
+			Collection<TypedModelInformation> result) {
+		for (Entry<TaskName, Collection<TaskParameterInformation>> entry : infos.entrySet()) {
+			TaskName entrytn = entry.getKey();
+			if (entrytn.getTaskQualifiers().containsAll(tn.getTaskQualifiers())) {
+				for (TaskParameterInformation paraminfo : entry.getValue()) {
+					result.add(new TypedModelInformation(paraminfo));
 				}
 			}
 		}
-		return result;
+		if (result.isEmpty()) {
+			for (Entry<TaskName, Collection<TaskParameterInformation>> entry : infos.entrySet()) {
+				for (TaskParameterInformation paraminfo : entry.getValue()) {
+					result.add(new TypedModelInformation(paraminfo));
+				}
+			}
+		}
 	}
 
 	public NavigableMap<TaskName, Collection<TaskParameterInformation>> queryExternalTaskParameterInformations(

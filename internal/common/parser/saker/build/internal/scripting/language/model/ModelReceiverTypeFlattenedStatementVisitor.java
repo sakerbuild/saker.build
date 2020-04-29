@@ -150,7 +150,11 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 			for (Statement elem : elements) {
 				Statement keyscope = elem.firstScope("map_key");
 				Statement keyexpression = keyscope.firstScope("expression");
-				String fieldname = SakerParsedModel.getExpressionValue(keyexpression);
+				Object fieldnameval = SakerParsedModel.getExpressionValue(keyexpression);
+				String fieldname = null;
+				if (fieldnameval instanceof String) {
+					fieldname = (String) fieldnameval;
+				}
 
 				AssociationFunction keyelemtypeassociator = ElementTypeMapValueDeducerAssociationFunction.INDEX_MAP_KEY;
 

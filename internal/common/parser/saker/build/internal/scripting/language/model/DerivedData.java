@@ -29,10 +29,14 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
+import saker.build.file.path.SakerPath;
 import saker.build.internal.scripting.language.SakerScriptTargetConfigurationReader;
 import saker.build.internal.scripting.language.model.SakerParsedModel.SyntaxScriptToken;
 import saker.build.internal.scripting.language.task.TaskInvocationSakerTaskFactory;
+import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.scripting.ScriptParsingOptions;
+import saker.build.scripting.model.ScriptModellingEnvironment;
+import saker.build.scripting.model.ScriptModellingEnvironmentConfiguration;
 import saker.build.scripting.model.StructureOutlineEntry;
 import saker.build.task.TaskName;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
@@ -66,6 +70,27 @@ public class DerivedData {
 	public DerivedData(SakerParsedModel model, ParsingResult parseResult) {
 		this.model = model;
 		this.parseResult = parseResult;
+	}
+
+	public boolean isDefaultsFile() {
+		SakerPath path = model.getParsingOptions().getScriptPath();
+		if (path == null) {
+			return false;
+		}
+		ScriptModellingEnvironment env = model.getModellingEnvironment();
+		ScriptModellingEnvironmentConfiguration modellingconfig = env == null ? null : env.getConfiguration();
+		ExecutionPathConfiguration pathconfig = modellingconfig == null ? null : modellingconfig.getPathConfiguration();
+		Set<SakerPath> defaultsfiles = SakerScriptTargetConfigurationReader.getDefaultsFiles(getScriptParsingOptions(),
+				pathconfig);
+		if (defaultsfiles != null) {
+			return defaultsfiles.contains(path);
+		}
+		if (pathconfig != null) {
+			return pathconfig.getWorkingDirectory()
+					.resolve(SakerScriptTargetConfigurationReader.DEFAULT_DEFAULTS_BUILD_FILE_RELATIVE_PATH)
+					.equals(path);
+		}
+		return false;
 	}
 
 	public SakerParsedModel getEnclosingModel() {

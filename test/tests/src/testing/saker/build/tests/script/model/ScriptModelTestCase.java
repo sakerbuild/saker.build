@@ -344,6 +344,21 @@ public abstract class ScriptModelTestCase extends SakerTestCase {
 			return this;
 		}
 
+		public ProposalAssertion assertPresentWithInformation(String displaystring, String info) {
+			int idx = getDisplayStringIndex(displaystring);
+			if (idx < 0) {
+				throw new AssertionError(
+						"Proposal with display string not found: " + displaystring + " in " + proposals);
+			}
+			Set<String> infos = getPartitionInformations(proposals.get(idx).getInformation());
+			if (!infos.contains(info)) {
+				throw new AssertionError(
+						"Information not found for proposal: " + displaystring + " with info " + info + " in " + infos);
+			}
+
+			return this;
+		}
+
 		public ProposalAssertion assertProposalDocContains(String proposaldisplay, String phrase) {
 			int idx = getDisplayStringIndex(proposaldisplay);
 			if (idx < 0) {

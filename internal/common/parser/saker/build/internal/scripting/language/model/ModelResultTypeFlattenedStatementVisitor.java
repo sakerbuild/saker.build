@@ -206,8 +206,8 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 							this);
 				}
 
-				String fieldname = SakerParsedModel.getExpressionValue(keyexpression);
-				if (fieldname == null) {
+				Object fieldnameval = SakerParsedModel.getExpressionValue(keyexpression);
+				if (!(fieldnameval instanceof String)) {
 					if (valexpression == null) {
 						//can't determine any kind of type for it
 					} else {
@@ -217,6 +217,7 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 										CommonAssociationFunction.MAP_STRING_KEY_TYPE_VALUE));
 					}
 				} else {
+					String fieldname = (String) fieldnameval;
 					foundtype = true;
 					if (valexpression == null) {
 						SimpleTypeInformation maptype = new SimpleTypeInformation(TypeInformationKind.MAP);

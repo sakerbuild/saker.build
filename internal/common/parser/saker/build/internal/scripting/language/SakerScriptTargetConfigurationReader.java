@@ -153,7 +153,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 	public static Set<SakerPath> getDefaultsFiles(ScriptParsingOptions parsingoptions,
 			ExecutionPathConfiguration pathconfig) {
 		String opt = parsingoptions.getOptions().get(SCRIPT_OPTION_DEFAULTS_FILE);
-		SakerPath pathconfigworkingdir = pathconfig.getWorkingDirectory();
+		SakerPath pathconfigworkingdir = pathconfig == null ? null : pathconfig.getWorkingDirectory();
 		if (opt == null) {
 			return null;
 //			SakerPath defaultsbuildpath = pathconfigworkingdir.resolve(DEFAULT_DEFAULTS_BUILD_FILE_RELATIVE_PATH);
@@ -167,7 +167,14 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				//ignore empties
 				continue;
 			}
-			SakerPath partpath = pathconfigworkingdir.tryResolve(SakerPath.valueOf(part.toString()));
+			SakerPath partpath = SakerPath.valueOf(part.toString());
+			if (partpath.isRelative()) {
+				if (pathconfigworkingdir == null) {
+					//no path configuration
+					continue;
+				}
+				partpath = pathconfigworkingdir.resolve(partpath);
+			}
 			result.add(partpath);
 		}
 		return result;

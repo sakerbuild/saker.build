@@ -1,0 +1,14 @@
+
+defaults()
+defaults([])
+defaults(exam)
+defaults([exam])
+defaults("exam")
+defaults(["exam"])
+
+defaults(example.task, EnumParam1: )
+defaults([example.task], EnumParam1: )
+defaults([example.task, example.task-q1], EnumParam1: )
+
+defaults(example.task, )
+defaults([example.task, example.task-q1], )
