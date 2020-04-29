@@ -1,6 +1,7 @@
 package testing.saker.build.tests.tasks.script;
 
 import java.util.Collections;
+import java.util.Objects;
 import java.util.TreeMap;
 
 import saker.build.file.path.SakerPath;
@@ -22,6 +23,8 @@ import testing.saker.build.tests.tasks.StatelessTaskFactory;
 
 public abstract class DefaultsFileTestCase extends VariablesMetricEnvironmentTestCase {
 	public static final SakerPath DEFAULT_DEFAULTS_FILE_PATH = PATH_WORKING_DIRECTORY.resolve("defaults.build");
+
+	public static final String EXAMPLE_ECHO_RUN_PROPERTY_NAME = "47720874-5952-4e4d-b7d2-7cda3274ad45";
 
 	@Override
 	protected CollectingTestMetric createMetricImpl() {
@@ -54,6 +57,7 @@ public abstract class DefaultsFileTestCase extends VariablesMetricEnvironmentTes
 
 				@Override
 				public String run(TaskContext taskcontext) throws Exception {
+					System.setProperty(EXAMPLE_ECHO_RUN_PROPERTY_NAME, Objects.toString(Input, ""));
 					return Input;
 				}
 

@@ -48,8 +48,10 @@ import saker.build.internal.scripting.language.task.result.TaskInvocationOutputS
 import saker.build.scripting.ScriptParsingOptions;
 import saker.build.scripting.ScriptPosition;
 import saker.build.task.TaskContext;
+import saker.build.task.TaskDependencyFuture;
 import saker.build.task.TaskFuture;
 import saker.build.task.TaskName;
+import saker.build.task.dependencies.TaskOutputChangeDetector;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.TaskInvocationBootstrapperTaskFactory;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
@@ -97,18 +99,101 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 		return parameters;
 	}
 
+	private static class DefaultsTaskOutputChangeDetector implements TaskOutputChangeDetector, Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		private TaskName taskName;
+		private NavigableMap<String, TaskIdentifier> defaults;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public DefaultsTaskOutputChangeDetector() {
+		}
+
+		public DefaultsTaskOutputChangeDetector(TaskName taskName, NavigableMap<String, TaskIdentifier> defaults) {
+			Objects.requireNonNull(defaults, "defaults");
+			this.taskName = taskName;
+			this.defaults = defaults;
+		}
+
+		@Override
+		public boolean isChanged(Object taskoutput) {
+			if (taskoutput == null) {
+				return !ObjectUtils.isNullOrEmpty(defaults);
+			}
+			if (!(taskoutput instanceof SakerScriptTaskDefaults)) {
+				return true;
+			}
+			SakerScriptTaskDefaults defs = (SakerScriptTaskDefaults) taskoutput;
+			NavigableMap<String, TaskIdentifier> currentdefaults = defs.getDefaults(taskName);
+			if (currentdefaults == null) {
+				currentdefaults = Collections.emptyNavigableMap();
+			}
+			return !Objects.equals(currentdefaults, this.defaults);
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			out.writeObject(taskName);
+			SerialUtils.writeExternalMap(out, defaults);
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			taskName = SerialUtils.readExternalObject(in);
+			defaults = SerialUtils.readExternalSortedImmutableNavigableMap(in);
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((defaults == null) ? 0 : defaults.hashCode());
+			result = prime * result + ((taskName == null) ? 0 : taskName.hashCode());
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			DefaultsTaskOutputChangeDetector other = (DefaultsTaskOutputChangeDetector) obj;
+			if (defaults == null) {
+				if (other.defaults != null)
+					return false;
+			} else if (!defaults.equals(other.defaults))
+				return false;
+			if (taskName == null) {
+				if (other.taskName != null)
+					return false;
+			} else if (!taskName.equals(other.taskName))
+				return false;
+			return true;
+		}
+	}
+
 	private NavigableMap<String, TaskIdentifier> getDefaultParametersForTask(TaskContext taskcontext,
 			TaskName taskname) {
-		SakerScriptTaskDefaults defaults = (SakerScriptTaskDefaults) taskcontext
-				.getTaskResult(new ScriptPathTaskDefaultsLiteralTaskIdentifier(scriptPath));
+		TaskDependencyFuture<?> depfuture = taskcontext
+				.getTaskDependencyFuture(new ScriptPathTaskDefaultsLiteralTaskIdentifier(scriptPath));
+		SakerScriptTaskDefaults defaults = (SakerScriptTaskDefaults) depfuture.get();
+		NavigableMap<String, TaskIdentifier> result;
 		if (defaults != null) {
-			NavigableMap<String, TaskIdentifier> result = defaults.getDefaults(taskname);
-			if (result != null) {
-				return result;
+			result = defaults.getDefaults(taskname);
+			if (result == null) {
+				result = Collections.emptyNavigableMap();
 			}
 			//continue and return empty map
+		} else {
+			result = Collections.emptyNavigableMap();
 		}
-		return Collections.emptyNavigableMap();
+		depfuture.setTaskOutputChangeDetector(new DefaultsTaskOutputChangeDetector(taskname, result));
+		return result;
 	}
 
 	public static SakerTaskFactory create(String taskName, List<SakerTaskFactory> qualifierFactories, String repository,
