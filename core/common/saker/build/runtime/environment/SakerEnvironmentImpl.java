@@ -75,7 +75,6 @@ import saker.build.thirdparty.saker.util.io.DynamicFilterByteSource;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.trace.InternalBuildTrace;
-import saker.build.trace.InternalBuildTraceImpl;
 import saker.build.util.cache.CacheKey;
 import saker.build.util.cache.SakerDataCache;
 import saker.build.util.config.JVMSynchronizationObjects;

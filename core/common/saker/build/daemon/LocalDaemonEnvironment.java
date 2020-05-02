@@ -85,7 +85,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	private SocketFactory connectionSocketFactory;
 	private ServerSocketFactory serverSocketFactory;
 
-	private volatile int state = 0;
+	private volatile int state = STATE_UNSTARTED;
 
 	private DaemonLaunchParameters launchParameters;
 	protected final DaemonLaunchParameters constructLaunchParameters;
@@ -244,21 +244,33 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 						super.setupConnection(acceptedsocket, connection);
 					}
 				};
+				int port = server.getPort();
+				lockFile.writeInt(port);
+				builder.setPort(port);
+				builder.setStorageDirectory(SakerPath.valueOf(environment.getStorageDirectoryPath()));
+				builder.setThreadFactor(environment.getThreadFactor());
+				launchParameters = builder.build();
+
+				state = STATE_STARTED;
+
+				//start the server as the last step, so new connections can access the resources right away
 				server.start(serverThreadGroup);
-				builder.setPort(server.getPort());
+			} catch (Throwable e) {
+				//in case of initialization error, close the file lock to signal that we're not running.
+				IOUtils.addExc(e, IOUtils.closeExc(fileLock));
+				fileLock = null;
+				throw e;
 			}
-			int port = server.getPort();
-			lockFile.writeInt(port);
 		} else {
 			environment = createSakerEnvironment(params);
 			buildExecutionInvoker = new EnvironmentBuildExecutionInvoker(environment);
+
+			builder.setStorageDirectory(SakerPath.valueOf(environment.getStorageDirectoryPath()));
+			builder.setThreadFactor(environment.getThreadFactor());
+			launchParameters = builder.build();
+			state = STATE_STARTED;
 		}
-		builder.setStorageDirectory(SakerPath.valueOf(environment.getStorageDirectoryPath()));
-		builder.setThreadFactor(environment.getThreadFactor());
 
-		launchParameters = builder.build();
-
-		state = STATE_STARTED;
 	}
 
 	protected static String createClusterTaskInvokerRMIRegistryClassResolverId(ExecutionPathConfiguration pathconfig) {

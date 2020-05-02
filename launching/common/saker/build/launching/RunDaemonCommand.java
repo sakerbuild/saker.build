@@ -17,11 +17,13 @@ package saker.build.launching;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.PrintStream;
 
 import saker.build.daemon.DaemonLaunchParameters;
 import saker.build.daemon.DaemonOutputController.StreamToken;
 import saker.build.daemon.LocalDaemonEnvironment;
 import saker.build.daemon.WeakRefDaemonOutputController;
+import saker.build.thirdparty.saker.util.io.IOUtils;
 import sipka.cmdline.api.Flag;
 import sipka.cmdline.api.Parameter;
 import sipka.cmdline.api.ParameterContext;
@@ -65,29 +67,39 @@ public class RunDaemonCommand {
 	@ParameterContext
 	public SakerJarLocatorParamContext sakerJarParam = new SakerJarLocatorParamContext();
 
+	@SuppressWarnings("resource")
 	public void call() throws FileNotFoundException, IOException {
-		DaemonLaunchParameters launchparams = daemonParams.toLaunchParameters(envParams);
+		PrintStream err = System.err;
+		LocalDaemonEnvironment daemonenv = null;
+		try {
+			DaemonLaunchParameters launchparams = daemonParams.toLaunchParameters(envParams);
 
-		WeakRefDaemonOutputController outputcontroller = new WeakRefDaemonOutputController();
-		if (!noOutput) {
-			TokenRefs.token = outputcontroller.replaceStandardIOAndAttach();
-		} else {
-			outputcontroller.replaceStandardIO();
-		}
+			WeakRefDaemonOutputController outputcontroller = new WeakRefDaemonOutputController();
+			if (!noOutput) {
+				TokenRefs.token = outputcontroller.replaceStandardIOAndAttach();
+			} else {
+				outputcontroller.replaceStandardIO();
+			}
 
-		@SuppressWarnings("resource")
-		LocalDaemonEnvironment daemonenv = new LocalDaemonEnvironment(sakerJarParam.getSakerJarPath(), launchparams,
-				outputcontroller);
+			daemonenv = new LocalDaemonEnvironment(sakerJarParam.getSakerJarPath(), launchparams, outputcontroller);
 
-		System.out.println("Starting daemon...");
+			System.out.println("Starting daemon...");
 
-		daemonenv.start();
+			daemonenv.start();
 
-		System.out.println("Daemon listening at address: " + daemonenv.getServerSocketAddress());
+			System.out.println("Daemon listening at address: " + daemonenv.getServerSocketAddress());
 
-		if (!noOutput) {
-			System.out.println("Running daemon with configuration: ");
-			InfoDaemonCommand.printInformation(daemonenv.getRuntimeLaunchConfiguration(), System.out);
+			if (!noOutput) {
+				System.out.println("Running daemon with configuration: ");
+				InfoDaemonCommand.printInformation(daemonenv.getRuntimeLaunchConfiguration(), System.out);
+			}
+		} catch (Throwable e) {
+			//print the stacktrace to the original error stream
+			if (daemonenv != null) {
+				IOUtils.addExc(e, IOUtils.closeExc(daemonenv));
+			}
+			e.printStackTrace(err);
+			throw e;
 		}
 	}
 }
