@@ -134,7 +134,8 @@ import saker.build.thirdparty.saker.util.io.NetworkUtils;
 
 public final class SakerIDEProject {
 	private static final SakerPath SCRIPTING_PSEUDO_PATH = SakerPath.valueOf("scriptingpseudoroot:");
-	private static final Set<String> SCRIPTING_PSEUDO_ROOTS = Collections.singleton(SCRIPTING_PSEUDO_PATH.getRoot());
+	private static final NavigableSet<String> SCRIPTING_PSEUDO_ROOTS = ImmutableUtils
+			.singletonNavigableSet(SCRIPTING_PSEUDO_PATH.getRoot());
 	private static final EmptySakerFileProvider SCRIPTING_PSEUDO_EMPTY_FILE_PROVIDER = new EmptySakerFileProvider(
 			SCRIPTING_PSEUDO_ROOTS);
 

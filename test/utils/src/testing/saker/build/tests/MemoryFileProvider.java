@@ -262,7 +262,7 @@ public class MemoryFileProvider implements SakerFileProvider {
 	}
 
 	@Override
-	public Set<String> getRoots() {
+	public NavigableSet<String> getRoots() {
 		return roots;
 	}
 

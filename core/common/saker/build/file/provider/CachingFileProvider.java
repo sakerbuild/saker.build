@@ -22,6 +22,7 @@ import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.LinkOption;
 import java.nio.file.OpenOption;
 import java.util.NavigableMap;
+import java.util.NavigableSet;
 import java.util.Set;
 
 import saker.build.file.path.SakerPath;
@@ -49,7 +50,7 @@ public class CachingFileProvider implements SakerFileProvider {
 	}
 
 	@Override
-	public Set<String> getRoots() throws IOException {
+	public NavigableSet<String> getRoots() throws IOException {
 		return subject.getRoots();
 	}
 
@@ -126,8 +127,8 @@ public class CachingFileProvider implements SakerFileProvider {
 	}
 
 	@Override
-	public Set<String> deleteChildrenRecursivelyIfNotIn(SakerPath path, Set<String> childfilenames) throws IOException {
-		Set<String> result = subject.deleteChildrenRecursivelyIfNotIn(path, childfilenames);
+	public NavigableSet<String> deleteChildrenRecursivelyIfNotIn(SakerPath path, Set<String> childfilenames) throws IOException {
+		NavigableSet<String> result = subject.deleteChildrenRecursivelyIfNotIn(path, childfilenames);
 		cacheFile.invalidateFilesInDirectory(path, result);
 		return result;
 	}
@@ -142,12 +143,12 @@ public class CachingFileProvider implements SakerFileProvider {
 	}
 
 	@Override
-	public Set<String> getDirectoryEntryNames(SakerPath path) throws IOException {
+	public NavigableSet<String> getDirectoryEntryNames(SakerPath path) throws IOException {
 		return subject.getDirectoryEntryNames(path);
 	}
 
 	@Override
-	public Set<String> getSubDirectoryNames(SakerPath path) throws IOException {
+	public NavigableSet<String> getSubDirectoryNames(SakerPath path) throws IOException {
 		return subject.getSubDirectoryNames(path);
 	}
 

@@ -38,7 +38,8 @@ import saker.build.runtime.execution.InternalExecutionContext.FilePathContents;
 import saker.build.runtime.params.ExecutionPathConfiguration;
 
 public class FileMirrorHandler {
-	//Design note: some of the methods pass the mirror directory path as an argument. It is not necessary but is to make sure that the nullability of it is checked before the call.
+	//Design note: some of the methods pass the mirror directory path as an argument. 
+	//  It is not necessary but is to make sure that the nullability of it is checked before the call.
 
 	private static final Pattern PATTERN_ROOT_CHARS_REPLACER = Pattern.compile("[://\\\\]");
 

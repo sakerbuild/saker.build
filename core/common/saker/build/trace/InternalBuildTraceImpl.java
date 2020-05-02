@@ -2147,12 +2147,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		public void setCapabilityConfig(TaskInvocationConfiguration capabilityConfig) {
-			shortTask = capabilityConfig.isShortTask();
+			shortTask = capabilityConfig.isShort();
 			remoteDispatchable = capabilityConfig.isRemoteDispatchable();
 			cacheable = capabilityConfig.isCacheable();
 			innerTasksComputationals = capabilityConfig.isInnerTasksComputationals();
-			computationTokenCount = capabilityConfig.getComputationTokenCount();
-			environmentSelector = capabilityConfig.getEnvironmentSelector();
+			computationTokenCount = capabilityConfig.getRequestedComputationTokenCount();
+			environmentSelector = capabilityConfig.getExecutionEnvironmentSelector();
 		}
 
 		@Override

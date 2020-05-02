@@ -35,7 +35,6 @@ import saker.build.internal.scripting.language.model.ScriptModelInformationAnaly
 import saker.build.internal.scripting.language.model.ScriptModelInformationAnalyzer.CommonAssociationFunction;
 import saker.build.internal.scripting.language.model.ScriptModelInformationAnalyzer.ResultTypeStatementTypeInformationPart;
 import saker.build.internal.scripting.language.model.ScriptModelInformationAnalyzer.TypeAssociation;
-import saker.build.internal.scripting.language.task.TaskInvocationSakerTaskFactory;
 import saker.build.scripting.model.FormattedTextContent;
 import saker.build.scripting.model.ScriptModellingEnvironment;
 import saker.build.scripting.model.ScriptSyntaxModel;

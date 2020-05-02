@@ -21,11 +21,11 @@ import java.io.ObjectOutput;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.NavigableSet;
 
 import saker.build.internal.scripting.language.task.result.CompoundStringLiteralSakerTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.task.TaskContext;
+import saker.build.task.TaskInvocationConfiguration;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
@@ -51,8 +51,8 @@ public class CompoundStringLiteralTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
-	public NavigableSet<String> getCapabilities() {
-		return SakerScriptTaskUtils.CAPABILITIES_SHORT_TASK;
+	public TaskInvocationConfiguration getInvocationConfiguration() {
+		return TaskInvocationConfiguration.INSTANCE_SHORT_TASK;
 	}
 
 	@Override

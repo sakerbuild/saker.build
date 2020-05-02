@@ -86,7 +86,10 @@ public interface TaskFactory<R> {
 	 * optimization can reduce unnecessary load on the OS and the build system.
 	 * 
 	 * @see #getCapabilities()
+	 * @deprecated Use {@link #getInvocationConfiguration()} and {@link TaskInvocationConfiguration#isShort()
+	 *                 isShort()}.
 	 */
+	@Deprecated
 	public static final String CAPABILITY_SHORT_TASK = "saker.task.short";
 	/**
 	 * Capability string for specify a task that can be executed remotely on build clusters.
@@ -124,7 +127,10 @@ public interface TaskFactory<R> {
 	 * 
 	 * @see #getCapabilities()
 	 * @see #getExecutionEnvironmentSelector()
+	 * @deprecated Use {@link #getInvocationConfiguration()} and
+	 *                 {@link TaskInvocationConfiguration#isRemoteDispatchable() isRemoteDispatchable()}.
 	 */
+	@Deprecated
 	public static final String CAPABILITY_REMOTE_DISPATCHABLE = "saker.task.remote.dispatchable";
 	/**
 	 * Capability string for specify that the results of the task can be cached and retrieved.
@@ -171,7 +177,10 @@ public interface TaskFactory<R> {
 	 * @see #getCapabilities()
 	 * @see TaskFuture#getFinished()
 	 * @see TaskDependencyFuture#getFinished()
+	 * @deprecated Use {@link #getInvocationConfiguration()} and {@link TaskInvocationConfiguration#isCacheable()
+	 *                 isCacheable()}.
 	 */
+	@Deprecated
 	public static final String CAPABILITY_CACHEABLE = "saker.task.remote.cacheable";
 
 	/**
@@ -185,7 +194,10 @@ public interface TaskFactory<R> {
 	 * @see #getCapabilities()
 	 * @see #getRequestedComputationTokenCount()
 	 * @see TaskContext#startInnerTask(TaskFactory, InnerTaskExecutionParameters)
+	 * @deprecated Use {@link #getInvocationConfiguration()} and
+	 *                 {@link TaskInvocationConfiguration#isInnerTasksComputationals() isInnerTasksComputationals()}.
 	 */
+	@Deprecated
 	public static final String CAPABILITY_INNER_TASKS_COMPUTATIONAL = "saker.task.inner.tasks.computational";
 
 	/**
@@ -208,9 +220,11 @@ public interface TaskFactory<R> {
 	 * @return An unmodifiable set of capability strings.
 	 * @see #CAPABILITY_SHORT_TASK
 	 * @see #CAPABILITY_REMOTE_DISPATCHABLE
+	 * @deprecated Use {@link #getInvocationConfiguration()}.
 	 */
 	@RMICacheResult
 	@RMIWrap(RMITreeSetStringElementWrapper.class)
+	@Deprecated
 	public default Set<String> getCapabilities() {
 		return Collections.emptyNavigableSet();
 	}
@@ -218,12 +232,9 @@ public interface TaskFactory<R> {
 	/**
 	 * Gets an environment selector to determine if the task can execute in a given build environment.
 	 * <p>
-	 * Implementation should return a new instance for every invocation of this method, as
-	 * {@link TaskExecutionEnvironmentSelector} is a stateful class.
-	 * <p>
 	 * If two task factories equal, then their returned environment selectors should equal as well.
 	 * <p>
-	 * If an environment selector fails to find a suitable environment, then an instance of
+	 * If an environment selector fails to find a suitable environment, then an exception instance of
 	 * {@link TaskEnvironmentSelectionFailedException} will be thrown by the build system and the build execution will
 	 * abort.
 	 * <p>
@@ -231,7 +242,9 @@ public interface TaskFactory<R> {
 	 * 
 	 * @return The environment selector.
 	 * @see AnyTaskExecutionEnvironmentSelector
+	 * @deprecated Use {@link #getInvocationConfiguration()}.
 	 */
+	@Deprecated
 	public default TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
 		return AnyTaskExecutionEnvironmentSelector.INSTANCE;
 	}
@@ -240,9 +253,9 @@ public interface TaskFactory<R> {
 	 * Gets the computation token count consumed by this task during execution.
 	 * <p>
 	 * Computation tokens are used to prevent thrashing of the execution machine when too many concurrent operations are
-	 * running. A computation token represents one unit of computational operation that uses one CPU thread on 100%
-	 * usage. This method returns the average number of computation tokens the task uses during its execution. The task
-	 * will start to run when the requested number of tokens are available for it.
+	 * running. A computation token represents one unit of computational operation that uses one CPU thread on 100%.
+	 * This method returns the average number of computation tokens the task uses during its execution. The task will
+	 * start to run when the requested number of tokens are available for it.
 	 * <p>
 	 * If a task returns <code> &gt; 0</code> amount of computation tokens then a restriction is placed on them that
 	 * they can't wait for other tasks in the build system. This is in order to prevent involuntarily deadlocking the
@@ -263,9 +276,50 @@ public interface TaskFactory<R> {
 	 * @return 1 or more to specify how many computation tokens the execution of task requires.
 	 * @see TaskFuture#getFinished()
 	 * @see TaskDependencyFuture#getFinished()
+	 * @deprecated Use {@link #getInvocationConfiguration()}.
 	 */
+	@Deprecated
 	public default int getRequestedComputationTokenCount() {
 		return 0;
+	}
+
+	/**
+	 * Gets the invocation configuration for this build task.
+	 * <p>
+	 * The invocation configuration defines the nature of how the task executor should run the build task. See the
+	 * properties of {@link TaskInvocationConfiguration} get familiar with possible configurations.
+	 * <p>
+	 * Use {@link TaskInvocationConfiguration#builder()} to create a new instance.
+	 * <p>
+	 * The default implementation constructs a configuration based on the deprecated methods {@link #getCapabilities()},
+	 * {@link #getExecutionEnvironmentSelector()}, and {@link #getRequestedComputationTokenCount()}.
+	 * 
+	 * @return The task invocation configuration
+	 * @since saker.build 0.8.12
+	 */
+	public default TaskInvocationConfiguration getInvocationConfiguration() {
+		Set<String> capabilities = getCapabilities();
+		if (capabilities == null) {
+			capabilities = Collections.emptyNavigableSet();
+		}
+		int cptokencount = getRequestedComputationTokenCount();
+		if (capabilities.isEmpty() && cptokencount <= 0) {
+			return TaskInvocationConfiguration.builder()
+					.setExecutionEnvironmentSelector(getExecutionEnvironmentSelector()).build();
+		}
+		boolean shorttask = capabilities.contains(TaskFactory.CAPABILITY_SHORT_TASK);
+		boolean remotedispatch = capabilities.contains(TaskFactory.CAPABILITY_REMOTE_DISPATCHABLE);
+		boolean cacheable = capabilities.contains(TaskFactory.CAPABILITY_CACHEABLE);
+		boolean innertaskcomputational = capabilities.contains(TaskFactory.CAPABILITY_INNER_TASKS_COMPUTATIONAL);
+
+		TaskInvocationConfiguration.Builder builder = TaskInvocationConfiguration.builder();
+		builder.setExecutionEnvironmentSelector(getExecutionEnvironmentSelector());
+		builder.setShort(shorttask);
+		builder.setRemoteDispatchable(remotedispatch);
+		builder.setCacheable(cacheable);
+		builder.setInnerTasksComputationals(innertaskcomputational);
+		builder.setRequestedComputationTokenCount(cptokencount);
+		return builder.build();
 	}
 
 	@Override

@@ -30,6 +30,7 @@ import saker.build.file.SakerFile;
 import saker.build.file.content.ContentDescriptor;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
+import saker.build.file.provider.SakerFileProvider;
 import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.ExecutionProperty;
@@ -206,6 +207,11 @@ class ClusterExecutionContext implements ExecutionContext, InternalExecutionCont
 	@Override
 	public boolean isRecordsBuildTrace() {
 		return realExecutionContext.isRecordsBuildTrace();
+	}
+
+	@Override
+	public SakerFileProvider getLocalFileProvider() {
+		return realExecutionContext.getLocalFileProvider();
 	}
 
 	@Override

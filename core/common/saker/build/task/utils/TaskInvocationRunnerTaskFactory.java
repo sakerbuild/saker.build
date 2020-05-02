@@ -32,6 +32,7 @@ import saker.build.task.Task;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskExecutionEnvironmentSelector;
 import saker.build.task.TaskFactory;
+import saker.build.task.TaskInvocationConfiguration;
 import saker.build.task.TaskName;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
@@ -111,18 +112,26 @@ public final class TaskInvocationRunnerTaskFactory<T> implements TaskFactory<T>,
 	}
 
 	@Override
+	@SuppressWarnings("deprecation")
 	public Set<String> getCapabilities() {
 		return this.taskId.taskFactory.getCapabilities();
 	}
 
 	@Override
+	@SuppressWarnings("deprecation")
 	public TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
 		return this.taskId.taskFactory.getExecutionEnvironmentSelector();
 	}
 
 	@Override
+	@SuppressWarnings("deprecation")
 	public int getRequestedComputationTokenCount() {
 		return this.taskId.taskFactory.getRequestedComputationTokenCount();
+	}
+
+	@Override
+	public TaskInvocationConfiguration getInvocationConfiguration() {
+		return this.taskId.taskFactory.getInvocationConfiguration();
 	}
 
 	@Override

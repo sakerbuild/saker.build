@@ -20,11 +20,11 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Map;
-import java.util.NavigableSet;
 
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.internal.scripting.language.task.result.SimpleSakerTaskResult;
 import saker.build.task.TaskContext;
+import saker.build.task.TaskInvocationConfiguration;
 import saker.build.task.utils.StructuredTaskResult;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 
@@ -44,8 +44,8 @@ public class StructuredSakeringTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
-	public NavigableSet<String> getCapabilities() {
-		return SakerScriptTaskUtils.CAPABILITIES_SHORT_TASK;
+	public TaskInvocationConfiguration getInvocationConfiguration() {
+		return TaskInvocationConfiguration.INSTANCE_SHORT_TASK;
 	}
 
 	@Override

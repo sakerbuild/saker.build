@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
+import java.util.NavigableSet;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -46,6 +47,7 @@ import saker.build.thirdparty.saker.rmi.annot.invoke.RMIExceptionRethrow;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWriter;
+import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
@@ -155,14 +157,14 @@ public interface SakerFileProvider {
 	 * drive inserted/removed, etc...) The file provider implementations are not required to recognize these changes,
 	 * and restarting the build system process might be required to handle the file system changes.
 	 * 
-	 * @return An unmodifiable set of root names for this file provider.
+	 * @return An unmodifiable set of root names for this file provider. The returned set is ordered by natural order.
 	 * @throws IOException
 	 *             In case of I/O error.
 	 */
 	@RMICacheResult
 	@RMIWrap(RMITreeSetStringElementWrapper.class)
 	@RMIExceptionRethrow(RemoteIOException.class)
-	public Set<String> getRoots() throws IOException;
+	public NavigableSet<String> getRoots() throws IOException;
 
 	/**
 	 * Gets the file provider key for this file provider.
@@ -209,7 +211,7 @@ public interface SakerFileProvider {
 	 * 
 	 * @param path
 	 *            The path to the directory.
-	 * @return The directory entries.
+	 * @return The directory entries. The returned map is ordered by natural order.
 	 * @throws IOException
 	 *             In case of I/O error.
 	 */
@@ -230,7 +232,8 @@ public interface SakerFileProvider {
 	 * 
 	 * @param path
 	 *            The path to the directory.
-	 * @return The recursively collected file entries mapped to their paths relative to the argument.
+	 * @return The recursively collected file entries mapped to their paths relative to the argument. The returned map
+	 *             is ordered by natural order.
 	 * @throws IOException
 	 *             In case of I/O error.
 	 */
@@ -487,7 +490,7 @@ public interface SakerFileProvider {
 	 *            The path to the directory.
 	 * @param childfilenames
 	 *            A set of names in the specified directory to not delete.
-	 * @return The names of the actually deleted files.
+	 * @return The names of the actually deleted files. The returned set is ordered by natural order.
 	 * @throws IOException
 	 *             In case of I/O error.
 	 * @throws PartiallyDeletedChildrenException
@@ -495,10 +498,10 @@ public interface SakerFileProvider {
 	 */
 	@RMIWrap(RMITreeSetStringElementWrapper.class)
 	@RMIExceptionRethrow(RemoteIOException.class)
-	public default Set<String> deleteChildrenRecursivelyIfNotIn(SakerPath path,
+	public default NavigableSet<String> deleteChildrenRecursivelyIfNotIn(SakerPath path,
 			@RMIWrap(RMITreeSetStringElementWrapper.class) Set<String> childfilenames)
 			throws IOException, PartiallyDeletedChildrenException {
-		Set<String> result = new TreeSet<>();
+		NavigableSet<String> result = new TreeSet<>();
 		for (String entryname : getDirectoryEntryNames(path)) {
 			if (!childfilenames.contains(entryname)) {
 				SakerPath childpath = path.resolve(entryname);
@@ -554,16 +557,17 @@ public interface SakerFileProvider {
 	 * 
 	 * @param path
 	 *            The path to the directory.
-	 * @return A set of file names which are present in the given directory.
+	 * @return A set of file names which are present in the given directory. The returned set is ordered by natural
+	 *             order.
 	 * @throws IOException
 	 *             In case of I/O error.
 	 * @see #getDirectoryEntries(SakerPath)
 	 */
 	@RMIWrap(RMITreeSetStringElementWrapper.class)
 	@RMIExceptionRethrow(RemoteIOException.class)
-	public default Set<String> getDirectoryEntryNames(SakerPath path) throws IOException {
+	public default NavigableSet<String> getDirectoryEntryNames(SakerPath path) throws IOException {
 		//clone to avoid keeping references to the attributes
-		return new TreeSet<>(getDirectoryEntries(path).navigableKeySet());
+		return ImmutableUtils.makeImmutableNavigableSet(getDirectoryEntries(path).navigableKeySet());
 	}
 
 	/**
@@ -573,15 +577,16 @@ public interface SakerFileProvider {
 	 * 
 	 * @param path
 	 *            The path to the directory.
-	 * @return A set of directory names which are present in the given directory.
+	 * @return A set of directory names which are present in the given directory. The returned set is ordered by natural
+	 *             order.
 	 * @throws IOException
 	 *             In case of I/O error.
 	 * @see {@link #getDirectoryEntries(SakerPath)}
 	 */
 	@RMIWrap(RMITreeSetStringElementWrapper.class)
 	@RMIExceptionRethrow(RemoteIOException.class)
-	public default Set<String> getSubDirectoryNames(SakerPath path) throws IOException {
-		Set<String> result = new TreeSet<>();
+	public default NavigableSet<String> getSubDirectoryNames(SakerPath path) throws IOException {
+		NavigableSet<String> result = new TreeSet<>();
 		for (Entry<String, ? extends FileEntry> entry : getDirectoryEntries(path).entrySet()) {
 			if (entry.getValue().isDirectory()) {
 				result.add(entry.getKey());
@@ -774,8 +779,8 @@ public interface SakerFileProvider {
 	 * If this method returns <code>null</code>, then {@link #getProviderKey()} should return an instance of
 	 * {@link RootFileProviderKey}.
 	 * <p>
-	 * If this method returns non-<code>null</code>, then the file provider implementation must override
-	 * {@link #resolveWrappedPath(SakerPath)}.
+	 * If this method returns non-<code>null</code>, then the file provider implementation must override and provide an
+	 * implementation {@link #resolveWrappedPath(SakerPath)}.
 	 * 
 	 * @return The wrapped file provider or <code>null</code> if this file provider is a root provider.
 	 */

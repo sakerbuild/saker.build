@@ -30,6 +30,8 @@ import saker.build.file.SakerFile;
 import saker.build.file.content.ContentDescriptor;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
+import saker.build.file.provider.LocalFileProvider;
+import saker.build.file.provider.SakerFileProvider;
 import saker.build.ide.configuration.IDEConfiguration;
 import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.runtime.params.ExecutionPathConfiguration;
@@ -368,4 +370,20 @@ public interface ExecutionContext extends ExecutionDirectoryContext, ExecutionDi
 	 */
 	@RMICacheResult
 	public boolean isRecordsBuildTrace();
+
+	/**
+	 * Gets the local file provider of the build execution.
+	 * <p>
+	 * The method returns the file provider for the build execution machine. That is the one that coordinates the build
+	 * and runs it.
+	 * <p>
+	 * This method can be useful when remote dispatchable tasks want to reference files on the local build machine.
+	 * 
+	 * @return The local file provider.
+	 * @since saker.build 0.8.12
+	 */
+	@RMICacheResult
+	public default SakerFileProvider getLocalFileProvider() {
+		return LocalFileProvider.getInstance();
+	}
 }

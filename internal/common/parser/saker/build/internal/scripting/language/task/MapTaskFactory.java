@@ -25,7 +25,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Objects;
-import java.util.Set;
 import java.util.TreeMap;
 
 import saker.build.internal.scripting.language.exc.OperandExecutionException;
@@ -132,13 +131,6 @@ public class MapTaskFactory extends SelfSakerTaskFactory {
 			result.put(keystr, valliterals[i].getValue());
 		}
 		return new SakerLiteralTaskFactory(ImmutableUtils.unmodifiableNavigableMap(result));
-	}
-
-	@Override
-	public Set<String> getCapabilities() {
-		//XXX check the subtasks if they are short and return accordingly
-//		return SakerScriptTaskUtils.CAPABILITIES_SHORT_TASK;
-		return super.getCapabilities();
 	}
 
 	@Override

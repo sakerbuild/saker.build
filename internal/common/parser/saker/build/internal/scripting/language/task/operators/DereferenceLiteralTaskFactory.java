@@ -19,16 +19,15 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Map;
-import java.util.Set;
 
 import saker.build.internal.scripting.language.task.SakerLiteralTaskFactory;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
-import saker.build.internal.scripting.language.task.SakerScriptTaskUtils;
 import saker.build.internal.scripting.language.task.SakerTaskFactory;
 import saker.build.internal.scripting.language.task.SelfSakerTaskFactory;
 import saker.build.internal.scripting.language.task.result.DereferenceLiteralSakerTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.task.TaskContext;
+import saker.build.task.TaskInvocationConfiguration;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 
 public class DereferenceLiteralTaskFactory extends SelfSakerTaskFactory {
@@ -44,8 +43,8 @@ public class DereferenceLiteralTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
-	public Set<String> getCapabilities() {
-		return SakerScriptTaskUtils.CAPABILITIES_SHORT_TASK;
+	public TaskInvocationConfiguration getInvocationConfiguration() {
+		return TaskInvocationConfiguration.INSTANCE_SHORT_TASK;
 	}
 
 	@Override

@@ -18,7 +18,6 @@ import saker.build.internal.scripting.language.task.SakerTaskFactory;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskExecutionParameters;
 import saker.build.task.TaskName;
-import saker.build.task.identifier.BuildFileTargetTaskIdentifier;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.io.SerialUtils;

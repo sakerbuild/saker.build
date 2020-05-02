@@ -19,18 +19,17 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Map;
-import java.util.NavigableSet;
 
 import saker.build.internal.scripting.language.exc.InvalidScriptDeclarationTaskFactory;
 import saker.build.internal.scripting.language.task.SakerLiteralTaskFactory;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
-import saker.build.internal.scripting.language.task.SakerScriptTaskUtils;
 import saker.build.internal.scripting.language.task.SakerTaskFactory;
 import saker.build.internal.scripting.language.task.SelfSakerTaskFactory;
 import saker.build.internal.scripting.language.task.result.DereferenceSakerTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.scripting.ScriptPosition;
 import saker.build.task.TaskContext;
+import saker.build.task.TaskInvocationConfiguration;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 
@@ -69,8 +68,8 @@ public class DereferenceTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
-	public NavigableSet<String> getCapabilities() {
-		return SakerScriptTaskUtils.CAPABILITIES_SHORT_TASK;
+	public TaskInvocationConfiguration getInvocationConfiguration() {
+		return TaskInvocationConfiguration.INSTANCE_SHORT_TASK;
 	}
 
 	@Override

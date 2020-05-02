@@ -33,6 +33,8 @@ import saker.build.thirdparty.saker.rmi.annot.invoke.RMIForbidden;
  * The implementations are required to report the environment properties which resulted in successful selection of the
  * build environment.
  * <p>
+ * Implementations of {@link TaskExecutionEnvironmentSelector} should not be stateful objects.
+ * <p>
  * Implementations are required to be {@link Externalizable}, and/or in any other way RMI-transferrable, as methods of
  * this interface cannot be called through RMI.
  * <p>

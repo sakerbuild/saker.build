@@ -136,7 +136,7 @@ public class TaskInvocationManager implements Closeable {
 	public Supplier<? extends SelectionResult> selectInvoker(TaskIdentifier taskid,
 			TaskInvocationConfiguration configuration, Map<? extends EnvironmentProperty<?>, ?> dependentproperties,
 			Set<UUID> allowedenvironmentids) {
-		TaskExecutionEnvironmentSelector environmentselector = configuration.getEnvironmentSelector();
+		TaskExecutionEnvironmentSelector environmentselector = configuration.getExecutionEnvironmentSelector();
 		boolean remotedispatchable = configuration.isRemoteDispatchable();
 
 		return selectInvoker(taskid, dependentproperties, allowedenvironmentids, environmentselector,
@@ -244,7 +244,7 @@ public class TaskInvocationManager implements Closeable {
 			//or the local environment is not suitable
 			throw new ClusterTaskExecutionFailedException("Suitable execution environment is no longer accessible.");
 		}
-		int tokencount = capabilities.getComputationTokenCount();
+		int tokencount = capabilities.getRequestedComputationTokenCount();
 		try (ComputationToken ctoken = ComputationToken.request(taskcontext, tokencount)) {
 			Task<? extends R> task = factory.createTask(executionContext);
 			if (task == null) {
@@ -274,7 +274,7 @@ public class TaskInvocationManager implements Closeable {
 		ConcurrentLinkedQueue<ListenerInnerTaskInvocationHandler<R>> invocationhandles = new ConcurrentLinkedQueue<>();
 		final Object resultwaiterlock = new Object();
 		Exception invokerexceptions = null;
-		int computationtokencount = configuration.getComputationTokenCount();
+		int computationtokencount = configuration.getRequestedComputationTokenCount();
 
 		Predicate<UUID> posttoenvironmentpredicate = selectionresult.environmentId::equals;
 		if (duplicationfactor < 0 || duplicationfactor > 1) {
@@ -1381,7 +1381,7 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		public int getComputationTokenCount() {
-			return request.getCapabilities().getComputationTokenCount();
+			return request.getCapabilities().getRequestedComputationTokenCount();
 		}
 
 		@Override

@@ -1000,11 +1000,11 @@ public class TaskExecutionManager {
 		}
 
 		protected boolean hasShortTaskCapability() {
-			return getCapabilityConfiguration().isShortTask();
+			return getCapabilityConfiguration().isShort();
 		}
 
 		protected boolean isUsesComputationTokens() {
-			return getCapabilityConfiguration().getComputationTokenCount() > 0;
+			return getCapabilityConfiguration().getRequestedComputationTokenCount() > 0;
 		}
 
 		protected boolean isInnerTasksComputationals() {
@@ -2612,6 +2612,10 @@ public class TaskExecutionManager {
 				return null;
 			}
 
+			protected TaskInvocationConfiguration getInvocationConfiguration() {
+				return null;
+			}
+
 			protected TaskResultHolder<?> getTaskResult() {
 				return null;
 			}
@@ -2636,15 +2640,23 @@ public class TaskExecutionManager {
 
 		protected static class FactoryFutureState extends FutureState {
 			protected final TaskFactory<?> factory;
+			protected final TaskInvocationConfiguration invocationConfiguration;
 
-			public FactoryFutureState(int state, TaskFactory<?> factory) {
+			public FactoryFutureState(int state, TaskFactory<?> factory,
+					TaskInvocationConfiguration invocationConfiguration) {
 				super(state);
 				this.factory = factory;
+				this.invocationConfiguration = invocationConfiguration;
 			}
 
 			@Override
 			protected TaskFactory<?> getFactory() {
 				return factory;
+			}
+
+			@Override
+			protected TaskInvocationConfiguration getInvocationConfiguration() {
+				return invocationConfiguration;
 			}
 
 			@Override
@@ -2656,8 +2668,9 @@ public class TaskExecutionManager {
 		protected static class DeadlockedFutureState<R> extends FactoryFutureState implements TaskResultHolder<R> {
 			private TaskIdentifier taskId;
 
-			public DeadlockedFutureState(TaskFactory<?> factory, TaskIdentifier taskId) {
-				super(STATE_RESULT_DEADLOCKED, factory);
+			public DeadlockedFutureState(TaskFactory<?> factory, TaskInvocationConfiguration invocationConfiguration,
+					TaskIdentifier taskId) {
+				super(STATE_RESULT_DEADLOCKED, factory, invocationConfiguration);
 				this.taskId = taskId;
 			}
 
@@ -2696,8 +2709,9 @@ public class TaskExecutionManager {
 		protected static class UnchangedInitializingFutureState extends FactoryFutureState {
 			private final TaskDependencies dependencies;
 
-			public UnchangedInitializingFutureState(TaskFactory<?> factory, TaskDependencies dependencies) {
-				super(STATE_INITIALIZING, factory);
+			public UnchangedInitializingFutureState(TaskFactory<?> factory,
+					TaskInvocationConfiguration invocationConfiguration, TaskDependencies dependencies) {
+				super(STATE_INITIALIZING, factory, invocationConfiguration);
 				this.dependencies = dependencies;
 			}
 
@@ -2718,9 +2732,9 @@ public class TaskExecutionManager {
 			protected final TaskExecutorContext<?> taskContext;
 			protected final Object modificationStamp;
 
-			public ExecutingFutureState(TaskFactory<?> factory, TaskExecutorContext<?> taskContext,
-					Object modificationstamp) {
-				super(STATE_EXECUTING, factory);
+			public ExecutingFutureState(TaskFactory<?> factory, TaskInvocationConfiguration invocationConfiguration,
+					TaskExecutorContext<?> taskContext, Object modificationstamp) {
+				super(STATE_EXECUTING, factory, invocationConfiguration);
 				this.taskContext = taskContext;
 				this.modificationStamp = modificationstamp;
 			}
@@ -2749,9 +2763,9 @@ public class TaskExecutionManager {
 			protected final TaskResultHolder<?> resultHolder;
 			protected final Object modificationStamp;
 
-			public FailedFutureState(TaskFactory<?> factory, TaskResultHolder<?> resultHolder,
-					Object modificationStamp) {
-				super(STATE_RESULT_READY, factory);
+			public FailedFutureState(TaskFactory<?> factory, TaskInvocationConfiguration invocationConfiguration,
+					TaskResultHolder<?> resultHolder, Object modificationStamp) {
+				super(STATE_RESULT_READY, factory, invocationConfiguration);
 				this.resultHolder = resultHolder;
 				this.modificationStamp = modificationStamp;
 			}
@@ -2789,8 +2803,9 @@ public class TaskExecutionManager {
 			protected final TaskResultHolder<?> taskResult;
 			protected final Object modificationStamp;
 
-			public FinishedFutureState(TaskFactory<?> factory, TaskResultHolder<?> executionresult) {
-				super(STATE_RESULT_READY, factory);
+			public FinishedFutureState(TaskFactory<?> factory, TaskInvocationConfiguration invocationConfiguration,
+					TaskResultHolder<?> executionresult) {
+				super(STATE_RESULT_READY, factory, invocationConfiguration);
 				this.taskResult = executionresult;
 				this.modificationStamp = executionresult.getDependencies().getBuildModificationStamp();
 			}
@@ -2871,12 +2886,13 @@ public class TaskExecutionManager {
 			return (TaskResultHolder<R>) futureState.getTaskResult();
 		}
 
-		protected boolean initializeExecution(TaskFactory<R> factory, TaskExecutionManager execmanager) {
+		protected boolean initializeExecution(TaskFactory<R> factory,
+				TaskInvocationConfiguration invocationConfiguration, TaskExecutionManager execmanager) {
 			FutureState s = this.futureState;
 			if (s.state != STATE_UNSTARTED) {
 				return false;
 			}
-			FutureState nstate = new FactoryFutureState(STATE_INITIALIZING, factory);
+			FutureState nstate = new FactoryFutureState(STATE_INITIALIZING, factory, invocationConfiguration);
 			boolean set = ARFU_futureState.compareAndSet(this, s, nstate);
 			if (set) {
 				unparkWaitingThreads(execmanager, STATE_INITIALIZING);
@@ -2889,7 +2905,8 @@ public class TaskExecutionManager {
 			if (s.state != STATE_INITIALIZING) {
 				throw new AssertionError("Invalid state: " + s);
 			}
-			FutureState nstate = new UnchangedInitializingFutureState(s.getFactory(), dependencies);
+			FutureState nstate = new UnchangedInitializingFutureState(s.getFactory(), s.getInvocationConfiguration(),
+					dependencies);
 			if (!ARFU_futureState.compareAndSet(this, s, nstate)) {
 				throw new AssertionError("Failed to update future state: " + s + " - " + this.futureState);
 			}
@@ -2901,7 +2918,8 @@ public class TaskExecutionManager {
 			if (s.state != STATE_INITIALIZING) {
 				return false;
 			}
-			FutureState nstate = new ExecutingFutureState(s.getFactory(), taskcontext, execmanager.buildUUID);
+			FutureState nstate = new ExecutingFutureState(s.getFactory(), s.getInvocationConfiguration(), taskcontext,
+					execmanager.buildUUID);
 			boolean set = ARFU_futureState.compareAndSet(this, s, nstate);
 			if (set) {
 				unparkWaitingThreads(execmanager, STATE_EXECUTING);
@@ -2914,8 +2932,8 @@ public class TaskExecutionManager {
 			FutureState s = this.futureState;
 			SimpleTaskResultHolder<Object> taskresultholder = new SimpleTaskResultHolder<>(taskId, null, abortexception,
 					failexception, taskdependencies);
-			setResultState(execmanager, s, new FailedFutureState(s.getFactory(), taskresultholder,
-					taskdependencies.getBuildModificationStamp()));
+			setResultState(execmanager, s, new FailedFutureState(s.getFactory(), s.getInvocationConfiguration(),
+					taskresultholder, taskdependencies.getBuildModificationStamp()));
 		}
 
 		protected void finished(TaskExecutionManager execmanager, TaskExecutionResult<R> taskresult)
@@ -2929,7 +2947,8 @@ public class TaskExecutionManager {
 				}
 				this.createdByTaskIds = taskcreatedbys;
 			}
-			setResultState(execmanager, s, new FinishedFutureState(s.getFactory(), taskresult));
+			setResultState(execmanager, s,
+					new FinishedFutureState(s.getFactory(), s.getInvocationConfiguration(), taskresult));
 		}
 
 		private void setResultState(TaskExecutionManager execmanager, FutureState s, FutureState nstate) {
@@ -3182,12 +3201,11 @@ public class TaskExecutionManager {
 							context.getTaskId());
 				}
 				//XXX we shouldn't call getcapabilities here, but get an invocation configuration instance for the future
-				TaskFactory<?> sfactory = s.getFactory();
-				if (sfactory == null) {
+				TaskInvocationConfiguration invocationconfig = s.getInvocationConfiguration();
+				if (invocationconfig == null) {
 					throw new AssertionError("Internal build system consistency error.");
 				}
-				Set<String> capabilities = sfactory.getCapabilities();
-				if (!capabilities.contains(TaskFactory.CAPABILITY_SHORT_TASK)) {
+				if (!invocationconfig.isShort()) {
 					throw new IllegalTaskOperationException(
 							"A short capable task can only wait for other short capable tasks. (Waiting for: " + taskId
 									+ ")",
@@ -3691,7 +3709,8 @@ public class TaskExecutionManager {
 		protected void deadlocked() {
 			FutureState s = this.futureState;
 			while (s.state == STATE_UNSTARTED || s.state == STATE_EXECUTING || s.state == STATE_INITIALIZING) {
-				if (ARFU_futureState.compareAndSet(this, s, new DeadlockedFutureState<>(s.getFactory(), this.taskId))) {
+				if (ARFU_futureState.compareAndSet(this, s,
+						new DeadlockedFutureState<>(s.getFactory(), s.getInvocationConfiguration(), this.taskId))) {
 					for (WaiterThreadHandle t; (t = waitingThreads.poll()) != null;) {
 						LockSupport.unpark(t.get());
 					}
@@ -4151,7 +4170,8 @@ public class TaskExecutionManager {
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	private boolean initializeExecutionWithTaskFuture(TaskIdentifier taskid, TaskFactory<?> factory,
-			TaskIdentifier createdby, ManagerTaskFutureImpl<?>[] outfuture, ManagerTaskFutureImpl<?> ancestorfuture) {
+			TaskIdentifier createdby, ManagerTaskFutureImpl<?>[] outfuture, ManagerTaskFutureImpl<?> ancestorfuture,
+			TaskInvocationConfiguration invocationConfiguration) {
 		try {
 			//we could use get() and putIfAbsent() instead of computeIfAbsent, but that would require
 			// 2 calls into the concurrent hash map.
@@ -4159,7 +4179,7 @@ public class TaskExecutionManager {
 			// the code that used get and putIfAbsent is left below. It may be removed in the future
 			ManagerTaskFutureImpl<?> f = taskIdFutures.computeIfAbsent(taskid, ManagerTaskFutureImpl::new);
 			outfuture[0] = f;
-			if (!f.initializeExecution((TaskFactory) factory, this)) {
+			if (!f.initializeExecution((TaskFactory) factory, invocationConfiguration, this)) {
 				checkSameFactories(taskid, f.getFactory(), factory);
 				return false;
 			}
@@ -4253,10 +4273,10 @@ public class TaskExecutionManager {
 	private <R> ManagerTaskFutureImpl<R> executeImpl(TaskFactory<R> factory, TaskIdentifier taskid,
 			ExecutionContextImpl context, TaskExecutionResult<?> createdby, TaskExecutionParameters parameters,
 			TaskExecutorContext<?> currentexecutorcontext) {
-		TaskInvocationConfiguration capabilities = TaskInvocationConfiguration.create(factory);
+		TaskInvocationConfiguration capabilities = getTaskInvocationConfiguration(factory);
 		if (currentexecutorcontext != null && currentexecutorcontext.hasShortTaskCapability()) {
 			//a short task can only run short tasks
-			if (!capabilities.isShortTask()) {
+			if (!capabilities.isShort()) {
 				throw new IllegalTaskOperationException(
 						"A short capable task can only wait for other short capable tasks. (Waiting for: " + taskid
 								+ ")",
@@ -4272,6 +4292,35 @@ public class TaskExecutionManager {
 				taskdircontext, capabilities, ancestorfuture);
 	}
 
+	//TODO don't call this method too often but cache its return value
+	private static TaskInvocationConfiguration getTaskInvocationConfiguration(TaskFactory<?> factory) {
+		TaskInvocationConfiguration config = factory.getInvocationConfiguration();
+		if (config == null) {
+			throw new InvalidTaskInvocationConfigurationException(
+					"Task returned null invocation configuration: " + factory.getClass().getName());
+		}
+		//perform validations
+		if (config.isShort()) {
+			int cptokencount = config.getRequestedComputationTokenCount();
+			boolean remotedispatch = config.isRemoteDispatchable();
+			boolean innertaskcomputational = config.isInnerTasksComputationals();
+			if (remotedispatch) {
+				throw new InvalidTaskInvocationConfigurationException(
+						"Short tasks cannot be remote dispatchable for " + factory.getClass().getName());
+			}
+			if (cptokencount > 0) {
+				throw new InvalidTaskInvocationConfigurationException(
+						"Short tasks cannot use computation tokens for " + factory.getClass().getName());
+			}
+			if (innertaskcomputational) {
+				throw new InvalidTaskInvocationConfigurationException(
+						"Short tasks cannot have computational inner tasks for " + factory.getClass().getName());
+			}
+		}
+
+		return config;
+	}
+
 	//suppress unused TaskContextReference
 	@SuppressWarnings("try")
 	private <R> InnerTaskResults<R> startInnerImpl(TaskFactory<R> factory, InnerTaskExecutionParameters parameters,
@@ -4279,22 +4328,24 @@ public class TaskExecutionManager {
 		if (parameters == null) {
 			parameters = DEFAULT_INNER_TASK_EXECUTION_PARAMETERS;
 		}
-		TaskInvocationConfiguration configuration = TaskInvocationConfiguration.create(factory);
+		TaskInvocationConfiguration configuration = getTaskInvocationConfiguration(factory);
 		if (configuration.isCacheable()) {
 			throw new InvalidTaskInvocationConfigurationException("Inner tasks may not be cacheable.");
 		}
-		int computationtokencount = configuration.getComputationTokenCount();
+		int computationtokencount = configuration.getRequestedComputationTokenCount();
 		if (computationtokencount > 0) {
 			if (!taskcontext.isInnerTasksComputationals()) {
 				throw new InvalidTaskInvocationConfigurationException(
-						"Enclosing task hasn't declared computational inner task capability for inner task with computation tokens.");
+						"Enclosing task hasn't declared computational inner task capability for inner task ("
+								+ factory.getClass().getName() + ") with computation tokens.");
 			}
 		}
 		int dupfactor = parameters.getClusterDuplicateFactor();
 		if (dupfactor != 0) {
 			if (!configuration.isRemoteDispatchable()) {
 				throw new InvalidTaskInvocationConfigurationException(
-						"Cluster duplicatable inner task did not report remote dispatchable capability for non-zero duplication factor. ("
+						"Cluster duplicatable inner task (" + factory.getClass().getName()
+								+ ") did not report remote dispatchable capability for non-zero duplication factor. ("
 								+ dupfactor + ")");
 			}
 		}
@@ -4308,19 +4359,22 @@ public class TaskExecutionManager {
 		Set<UUID> allowedenvironmentids = parameters.getAllowedClusterEnvironmentIdentifiers();
 		if (allowedenvironmentids != null && allowedenvironmentids.isEmpty()) {
 			throw new InvalidTaskInvocationConfigurationException(
-					"Allowed cluster environment identifiers are non-null and empty.");
+					"Allowed cluster environment identifiers are non-null and empty for inner task "
+							+ factory.getClass().getName());
 		}
 		Supplier<? extends TaskInvocationManager.SelectionResult> invokerselectionresult = invocationManager
 				.selectInvoker(taskcontext.taskId, configuration, null, allowedenvironmentids);
 
-		if (configuration.isShortTask()) {
+		if (configuration.isShort()) {
 			if (dupfactor != 0) {
 				throw new InvalidTaskInvocationConfigurationException(
-						"Cluster duplication factor must be 0 for short inner tasks.");
+						"Cluster duplication factor must be 0 for short inner tasks. (" + factory.getClass().getName()
+								+ ")");
 			}
 			if (duplicationpredicate != null) {
 				throw new InvalidTaskInvocationConfigurationException(
-						"Cannot specify duplication predicate for short inner tasks.");
+						"Cannot specify duplication predicate for short inner tasks. (" + factory.getClass().getName()
+								+ ")");
 			}
 			try {
 				//the inner task is short. it cannot be remote dispatchable
@@ -4391,7 +4445,7 @@ public class TaskExecutionManager {
 	private <R> ManagerTaskFutureImpl<R> startImpl(TaskFactory<R> factory, TaskIdentifier taskid,
 			ExecutionContextImpl context, TaskExecutionResult<?> createdby, TaskExecutionParameters parameters,
 			TaskExecutorContext<?> currentexecutorcontext) {
-		TaskInvocationConfiguration capabilities = TaskInvocationConfiguration.create(factory);
+		TaskInvocationConfiguration capabilities = getTaskInvocationConfiguration(factory);
 		Consumer<Runnable> strategy = getExecutionStrategyForFactory(taskid, capabilities,
 				createTaskThreadName(factory));
 
@@ -4412,7 +4466,7 @@ public class TaskExecutionManager {
 
 	private Consumer<Runnable> getExecutionStrategyForFactory(TaskIdentifier taskid,
 			TaskInvocationConfiguration capabalities, String name) {
-		if (capabalities.isShortTask()) {
+		if (capabalities.isShort()) {
 			return executeStrategy();
 		}
 		return parallelRunnerStrategy(taskid, name);
@@ -4439,7 +4493,7 @@ public class TaskExecutionManager {
 		@SuppressWarnings("rawtypes")
 		ManagerTaskFutureImpl[] outfuture = { null };
 		boolean starting = initializeExecutionWithTaskFuture(taskid, factory,
-				createdby == null ? null : createdby.getTaskIdentifier(), outfuture, ancestorfuture);
+				createdby == null ? null : createdby.getTaskIdentifier(), outfuture, ancestorfuture, capabilities);
 		@SuppressWarnings("unchecked")
 		ManagerTaskFutureImpl<R> future = outfuture[0];
 
@@ -4599,7 +4653,7 @@ public class TaskExecutionManager {
 		SpawnedResultTask spawnedtask = runSpawnedTasks.get(taskid);
 		executeExecutionWithStrategy(factory, taskid, context,
 				parallelRunnerStrategy(taskid, createTaskThreadName(factory)), future, parameters,
-				currenttaskdirectorycontext, TaskInvocationConfiguration.create(factory), ancestorfuture, spawnedtask);
+				currenttaskdirectorycontext, getTaskInvocationConfiguration(factory), ancestorfuture, spawnedtask);
 	}
 
 	private <R> void startUnchangedTaskSubTasks(TaskExecutionResult<R> prevexecresult,
@@ -4639,7 +4693,8 @@ public class TaskExecutionManager {
 			TaskFactory subtaskfactory = taskdep.getFactory();
 			@SuppressWarnings("rawtypes")
 			ManagerTaskFutureImpl[] outfuture = { null };
-			boolean starting = initializeExecutionWithTaskFuture(deptaskid, subtaskfactory, taskid, outfuture, future);
+			boolean starting = initializeExecutionWithTaskFuture(deptaskid, subtaskfactory, taskid, outfuture, future,
+					getTaskInvocationConfiguration(subtaskfactory));
 			if (!starting) {
 				continue;
 			}
@@ -5067,7 +5122,7 @@ public class TaskExecutionManager {
 				//XXX we should store the selected invokers for later when the tasks with the id is actually invoked
 				TaskDependencies prevexecdependencies = prevexecresult.getDependencies();
 				try {
-					TaskInvocationConfiguration configuration = TaskInvocationConfiguration.create(factory);
+					TaskInvocationConfiguration configuration = getTaskInvocationConfiguration(factory);
 					Supplier<? extends TaskInvocationManager.SelectionResult> invokerselectionresult = invocationManager
 							.selectInvoker(taskid, configuration,
 									prevexecdependencies.getEnvironmentPropertyDependenciesWithQualifiers(), null);
@@ -5941,9 +5996,9 @@ public class TaskExecutionManager {
 //						for (Throwable abexc : abortexceptions) {
 //							exc.addSuppressed(abexc);
 //						}
-						//TODO ignore the exception
-						//do not throw this exception, as this is not really necessary, and just disrupts the builds without 
-						// having any advantage. warning is better
+					//TODO ignore the exception
+					//do not throw this exception, as this is not really necessary, and just disrupts the builds without 
+					// having any advantage. warning is better
 //						future.failed(this, taskrunningexception, abortexceptions, taskcontext.resultDependencies);
 //						return;
 //						throw exc;
@@ -6246,7 +6301,7 @@ public class TaskExecutionManager {
 					@SuppressWarnings("rawtypes")
 					ManagerTaskFutureImpl[] outfuture = { null };
 					boolean starting = initializeExecutionWithTaskFuture(deptaskid, subtaskfactory, taskid, outfuture,
-							future);
+							future, getTaskInvocationConfiguration(subtaskfactory));
 					if (!starting) {
 						continue;
 					}

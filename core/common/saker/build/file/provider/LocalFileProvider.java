@@ -1711,8 +1711,8 @@ public final class LocalFileProvider implements SakerFileProvider {
 	}
 
 	@Override
-	public Set<String> getRoots() {
-		return roots.keySet();
+	public NavigableSet<String> getRoots() {
+		return roots.navigableKeySet();
 	}
 
 	@Override
@@ -1758,7 +1758,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	}
 
 	@Override
-	public Set<String> getSubDirectoryNames(SakerPath path) throws IOException {
+	public NavigableSet<String> getSubDirectoryNames(SakerPath path) throws IOException {
 		Path ppath = toRealPath(path);
 		return getSubDirectoryNamesImpl(ppath);
 	}
@@ -1766,7 +1766,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 	/**
 	 * @see #getSubDirectoryNames(SakerPath)
 	 */
-	public Set<String> getSubDirectoryNames(Path path) throws IOException {
+	public NavigableSet<String> getSubDirectoryNames(Path path) throws IOException {
 		path = requireLocalAbsolutePath(path);
 
 		return getSubDirectoryNamesImpl(path);
@@ -2209,7 +2209,8 @@ public final class LocalFileProvider implements SakerFileProvider {
 	}
 
 	@Override
-	public Set<String> deleteChildrenRecursivelyIfNotIn(SakerPath path, Set<String> childfilenames) throws IOException {
+	public NavigableSet<String> deleteChildrenRecursivelyIfNotIn(SakerPath path, Set<String> childfilenames)
+			throws IOException {
 		Path ppath = toRealPath(path);
 		return deleteChildrenIfNotInImpl(ppath, childfilenames);
 	}
@@ -2217,7 +2218,8 @@ public final class LocalFileProvider implements SakerFileProvider {
 	/**
 	 * @see #deleteChildrenRecursivelyIfNotIn(SakerPath, Set)
 	 */
-	public Set<String> deleteChildrenRecursivelyIfNotIn(Path path, Set<String> childfilenames) throws IOException {
+	public NavigableSet<String> deleteChildrenRecursivelyIfNotIn(Path path, Set<String> childfilenames)
+			throws IOException {
 		path = requireLocalAbsolutePath(path);
 
 		return deleteChildrenIfNotInImpl(path, childfilenames);
@@ -2474,8 +2476,8 @@ public final class LocalFileProvider implements SakerFileProvider {
 		return FileEntry.TYPE_NULL;
 	}
 
-	private Set<String> deleteChildrenIfNotInImpl(Path path, Set<String> childfilenames) throws IOException {
-		Set<String> deleted = new TreeSet<>();
+	private NavigableSet<String> deleteChildrenIfNotInImpl(Path path, Set<String> childfilenames) throws IOException {
+		NavigableSet<String> deleted = new TreeSet<>();
 		//don't follow links
 		Files.walkFileTree(path, DONT_FOLLOW_LINKS_FILEVISITOPTIONS, 1,
 				new DeleteChildrenIfNotInFileVisitor(path, childfilenames, deleted));
@@ -2567,8 +2569,8 @@ public final class LocalFileProvider implements SakerFileProvider {
 		return result;
 	}
 
-	private static Set<String> getSubDirectoryNamesImpl(Path path) throws IOException {
-		Set<String> result = new TreeSet<>();
+	private static NavigableSet<String> getSubDirectoryNamesImpl(Path path) throws IOException {
+		NavigableSet<String> result = new TreeSet<>();
 		//don't follow links
 		Files.walkFileTree(path, DONT_FOLLOW_LINKS_FILEVISITOPTIONS, 1, new SubDirectoryNamesFileVisitor(result, path));
 		return result;

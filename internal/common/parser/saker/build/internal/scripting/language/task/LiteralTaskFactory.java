@@ -19,12 +19,12 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
-import java.util.NavigableSet;
 
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.task.Task;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskFactory;
+import saker.build.task.TaskInvocationConfiguration;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 
 public class LiteralTaskFactory implements TaskFactory<Object>, Task<Object>, Externalizable {
@@ -49,8 +49,8 @@ public class LiteralTaskFactory implements TaskFactory<Object>, Task<Object>, Ex
 	}
 
 	@Override
-	public NavigableSet<String> getCapabilities() {
-		return SakerScriptTaskUtils.CAPABILITIES_SHORT_TASK;
+	public TaskInvocationConfiguration getInvocationConfiguration() {
+		return TaskInvocationConfiguration.INSTANCE_SHORT_TASK;
 	}
 
 	@Override

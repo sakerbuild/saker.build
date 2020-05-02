@@ -37,7 +37,8 @@ public class TestEnvironmentSelectionTaskTest extends CollectingMetricEnvironmen
 			return new Task<Void>() {
 				@Override
 				public Void run(TaskContext taskcontext) throws Exception {
-					assertNonNull(executioncontext.testEnvironmentSelection(getExecutionEnvironmentSelector(), null));
+					assertNonNull(executioncontext
+							.testEnvironmentSelection(getInvocationConfiguration().getExecutionEnvironmentSelector(), null));
 					assertException(TaskEnvironmentSelectionFailedException.class,
 							() -> executioncontext.testEnvironmentSelection(new TaskExecutionEnvironmentSelector() {
 								@Override

@@ -16,19 +16,11 @@
 package saker.build.internal.scripting.language.task;
 
 import java.math.BigInteger;
-import java.util.NavigableSet;
-
-import saker.build.task.TaskFactory;
-import saker.build.thirdparty.saker.util.ImmutableUtils;
 
 public class SakerScriptTaskUtils {
 	private SakerScriptTaskUtils() {
 		throw new UnsupportedOperationException();
 	}
-
-	//unmodifiable just in case
-	public static final NavigableSet<String> CAPABILITIES_SHORT_TASK = ImmutableUtils
-			.makeImmutableNavigableSet(new String[] { TaskFactory.CAPABILITY_SHORT_TASK });
 
 	public static boolean getConditionValue(Object conditionval) {
 		if (conditionval == null) {

@@ -22,12 +22,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.NavigableSet;
 
 import saker.build.internal.scripting.language.task.result.SakerListTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskObjectSakerTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.task.TaskContext;
+import saker.build.task.TaskInvocationConfiguration;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.StructuredTaskResult;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
@@ -91,8 +91,8 @@ public class ListTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
-	public NavigableSet<String> getCapabilities() {
-		return SakerScriptTaskUtils.CAPABILITIES_SHORT_TASK;
+	public TaskInvocationConfiguration getInvocationConfiguration() {
+		return TaskInvocationConfiguration.INSTANCE_SHORT_TASK;
 	}
 
 	@Override

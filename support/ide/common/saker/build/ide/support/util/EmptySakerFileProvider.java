@@ -8,8 +8,8 @@ import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.OpenOption;
 import java.util.NavigableMap;
+import java.util.NavigableSet;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 
 import saker.build.file.path.SakerPath;
@@ -62,17 +62,17 @@ public class EmptySakerFileProvider implements SakerFileProvider {
 		}
 	}
 
-	private final Set<String> roots;
+	private final NavigableSet<String> roots;
 	private final EmptyProviderRootFileProviderKey fileProviderKey;
 
-	public EmptySakerFileProvider(Set<String> roots) {
+	public EmptySakerFileProvider(NavigableSet<String> roots) {
 		this.roots = roots;
 		this.fileProviderKey = new EmptyProviderRootFileProviderKey(
 				UUID.nameUUIDFromBytes(ImmutableUtils.makeImmutableNavigableSet(roots).toString().getBytes()));
 	}
 
 	@Override
-	public Set<String> getRoots() throws IOException {
+	public NavigableSet<String> getRoots() throws IOException {
 		return roots;
 	}
 

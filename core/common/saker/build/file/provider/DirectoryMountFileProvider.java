@@ -26,6 +26,7 @@ import java.nio.file.OpenOption;
 import java.security.NoSuchAlgorithmException;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
+import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Set;
 
@@ -57,7 +58,7 @@ public class DirectoryMountFileProvider implements SakerFileProvider {
 	private final String rootName;
 
 	private final transient DirectoryMountProviderKey providerKey;
-	private final transient Set<String> roots;
+	private final transient NavigableSet<String> roots;
 
 	private DirectoryMountFileProvider(SakerFileProvider subject, SakerPath directoryPath, String rootName) {
 		this.subject = subject;
@@ -65,7 +66,7 @@ public class DirectoryMountFileProvider implements SakerFileProvider {
 		this.rootName = rootName;
 		this.providerKey = new DirectoryMountProviderKey(subject.getProviderKey(), rootName, directoryPath);
 
-		this.roots = ImmutableUtils.singletonSet(rootName);
+		this.roots = ImmutableUtils.singletonNavigableSet(rootName);
 	}
 
 	public static SakerFileProvider create(ProviderHolderPathKey pathkey, String rootName) throws NullPointerException {
@@ -110,7 +111,7 @@ public class DirectoryMountFileProvider implements SakerFileProvider {
 	}
 
 	@Override
-	public Set<String> getRoots() throws IOException {
+	public NavigableSet<String> getRoots() throws IOException {
 		return roots;
 	}
 
@@ -126,7 +127,7 @@ public class DirectoryMountFileProvider implements SakerFileProvider {
 	}
 
 	@Override
-	public Set<String> getDirectoryEntryNames(SakerPath path) throws IOException {
+	public NavigableSet<String> getDirectoryEntryNames(SakerPath path) throws IOException {
 		return subject.getDirectoryEntryNames(toSubjectPath(path));
 	}
 
@@ -194,7 +195,7 @@ public class DirectoryMountFileProvider implements SakerFileProvider {
 	}
 
 	@Override
-	public Set<String> getSubDirectoryNames(SakerPath path) throws IOException {
+	public NavigableSet<String> getSubDirectoryNames(SakerPath path) throws IOException {
 		return subject.getSubDirectoryNames(toSubjectPath(path));
 	}
 
@@ -204,7 +205,7 @@ public class DirectoryMountFileProvider implements SakerFileProvider {
 	}
 
 	@Override
-	public Set<String> deleteChildrenRecursivelyIfNotIn(SakerPath path, Set<String> childfilenames) throws IOException {
+	public NavigableSet<String> deleteChildrenRecursivelyIfNotIn(SakerPath path, Set<String> childfilenames) throws IOException {
 		return subject.deleteChildrenRecursivelyIfNotIn(toSubjectPath(path), childfilenames);
 	}
 
