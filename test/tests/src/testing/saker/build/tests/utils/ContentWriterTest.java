@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.io.OutputStream;
+import java.net.URI;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -214,6 +215,9 @@ public class ContentWriterTest extends SakerTestCase {
 
 	@Override
 	public void runTest(Map<String, String> parameters) throws Throwable {
+		CollectingTestMetric metric = new CollectingTestMetric();
+		TestFlag.set(metric);
+
 		testWriteReadEquality(TestUtils.treeMapBuilder().put("a", "b").put("c", "d").build());
 		testWriteReadEquality(TestUtils.hashMapBuilder().put("a", "b").put("c", "d").build());
 		testWriteReadEquality(TestUtils.mapBuilder(new LinkedHashMap<>()).put("a", "b").put("c", "d").build());
@@ -235,8 +239,10 @@ public class ContentWriterTest extends SakerTestCase {
 		testWriteReadEquality(Collections.singleton(1));
 		testWriteReadEquality(Collections.singletonList(1));
 		testWriteReadEquality(Collections.singletonMap(1, 2));
-		
+
 		testWriteReadEquality("");
+
+		testWriteReadEquality(new URI("https://example.com"));
 
 		testFailRead();
 		testFailWrite();
@@ -257,6 +263,8 @@ public class ContentWriterTest extends SakerTestCase {
 
 		testReducedStringsIO();
 		testReducedIntegersIO();
+
+		assertEmpty(metric.getWarnedSerializations());
 	}
 
 	private void testReducedStringsIO() throws Exception {

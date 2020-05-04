@@ -26,6 +26,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -875,6 +876,21 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			} catch (Exception e) {
 				serialobj = new FailedSerializedObject<>(
 						() -> new SerializationProtocolException("Failed to read SakerPath.", e));
+			}
+			reader.addSerializedObject(serialobj);
+			return serialobj.get();
+		});
+
+		VALUE_CLASS_WRITERS.put(URI.class,
+				(IOBiConsumer<URI, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeUTF(v.toString()));
+		VALUE_CLASS_READERS.put(URI.class, reader -> {
+			SerializedObject<URI> serialobj;
+			try {
+				URI res = new URI(reader.state.in.readUTF());
+				serialobj = new PresentSerializedObject<>(res);
+			} catch (Exception e) {
+				serialobj = new FailedSerializedObject<>(
+						() -> new SerializationProtocolException("Failed to read URI.", e));
 			}
 			reader.addSerializedObject(serialobj);
 			return serialobj.get();
