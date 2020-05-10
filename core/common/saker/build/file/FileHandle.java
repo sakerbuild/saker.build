@@ -41,7 +41,8 @@ public interface FileHandle extends StreamWritable {
 	 * The name of the file should be considered final and not change during the lifetime of the object.
 	 * <p>
 	 * The name may not be <code>null</code>, empty, <code>"."</code> or <code>".."</code>, must not contain slash
-	 * characters (<code>'/'</code>, <code>'\\'</code>), and must not contain the colon character (<code>':'</code>).
+	 * characters (<code>'/'</code>, <code>'\\'</code>), and must not contain the colon (<code>':'</code>) and semicolon
+	 * (<code>';'</code>) characters.
 	 * <p>
 	 * Note that in some cases the above restriction may be violated, when root directories need to be represented. They
 	 * will have a name according to the root path name they represent. I.e. They can be <code>"/"</code>, or drive

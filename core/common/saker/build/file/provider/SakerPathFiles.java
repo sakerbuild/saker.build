@@ -405,7 +405,8 @@ public class SakerPathFiles {
 	 * Validation method for a file name according to the rules of {@link FileHandle#getName()}.
 	 * <p>
 	 * The name may not be <code>null</code>, empty, <code>"."</code> or <code>".."</code>, must not contain slash
-	 * characters (<code>'/'</code>, <code>'\\'</code>), and must not contain the colon character (<code>':'</code>).
+	 * characters (<code>'/'</code>, <code>'\\'</code>), and must not contain the colon (<code>':'</code>) and semicolon
+	 * (<code>';'</code>) characters.
 	 * 
 	 * @param name
 	 *            The file name.
@@ -426,7 +427,7 @@ public class SakerPathFiles {
 		//probably unnecessary optimization of unrolling the first 2 loops, but there it is anyway
 		int len = name.length();
 		char c = name.charAt(0);
-		if (SakerPath.isSlashCharacter(c) || c == ':') {
+		if (SakerPath.isSlashCharacter(c) || c == ':' || c == ';') {
 			throw new InvalidPathFormatException("Invalid file name: " + name);
 		}
 
@@ -437,7 +438,7 @@ public class SakerPathFiles {
 			}
 			//len is at least 2
 			c = name.charAt(1);
-			if (SakerPath.isSlashCharacter(c) || c == ':') {
+			if (SakerPath.isSlashCharacter(c) || c == ':' || c == ';') {
 				throw new InvalidPathFormatException("Invalid file name: " + name);
 			}
 			if (c == '.') {
@@ -447,7 +448,7 @@ public class SakerPathFiles {
 		}
 		for (; i < len; i++) {
 			c = name.charAt(i);
-			if (c == ':' || SakerPath.isSlashCharacter(c)) {
+			if (SakerPath.isSlashCharacter(c) || c == ':' || c == ';') {
 				throw new InvalidPathFormatException("Invalid file name: " + name);
 			}
 		}

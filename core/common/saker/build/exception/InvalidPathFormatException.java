@@ -16,7 +16,7 @@
 package saker.build.exception;
 
 /**
- * Thrown when an argument path for a method is not in the expected format.
+ * Thrown when a path or path name is not in the expected format.
  * <p>
  * It is usually thrown when a method requires a path to be absolute or relative, but the caller fails to satisfy this
  * requirement.
