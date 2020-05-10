@@ -1836,9 +1836,9 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 					}
 					continue;
 				}
-				if (c == ':') {
+				if (c == ':' || c == ';') {
 					throw new InvalidPathFormatException(
-							"':' character in path name at index: " + i + ". (" + path + ")");
+							"'" + c + "' character in path name at index: " + i + ". (" + path + ")");
 				}
 				sb.append(c);
 			}
@@ -1856,9 +1856,9 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 					}
 					continue;
 				}
-				if (c == ':') {
+				if (c == ':' || c == ';') {
 					throw new InvalidPathFormatException(
-							"':' character in path name at index: " + i + ". (" + path + ")");
+							"'" + c + "' character in path name at index: " + i + ". (" + path + ")");
 				}
 				sb.append(c);
 			}

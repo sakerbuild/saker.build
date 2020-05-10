@@ -171,6 +171,7 @@ import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import saker.build.thirdparty.saker.util.thread.ParallelExecutionException;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils.ParallelRunner;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
 import saker.build.trace.InternalBuildTrace;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
@@ -3898,6 +3899,8 @@ public class TaskExecutionManager {
 
 	private TaskInvocationManager invocationManager;
 
+	private final ParallelRunner fileDeltaParallelRunner = ThreadUtils.parallelRunner().setNamePrefix("File-delta-");
+
 	protected ExecutionContextImpl executionContext;
 
 	protected InternalBuildTrace buildTrace;
@@ -4989,10 +4992,11 @@ public class TaskExecutionManager {
 			return "DependencyDelta [" + nonFileDeltas + allFileDeltas.deltas + "]";
 		}
 
-		public void collectFileDependencyDeltasDuringDeltaDiscovery(ExecutionContextImpl context,
-				TaskDependencies dependencies, SimpleTaskDirectoryContext directorycontext, TaskIdentifier taskid) {
+		public void collectFileDependencyDeltasDuringDeltaDiscovery(TaskExecutionManager taskExecutionManager,
+				ExecutionContextImpl context, TaskDependencies dependencies,
+				SimpleTaskDirectoryContext directorycontext, TaskIdentifier taskid) {
 			fileDeltasCalculated = true;
-			TaskExecutionManager.collectFileDependencyDeltas(context, dependencies, this, directorycontext);
+			taskExecutionManager.collectFileDependencyDeltas(context, dependencies, this, directorycontext);
 		}
 
 		public void ensureFileDeltasCollected(TaskExecutionManager taskExecutionManager,
@@ -5009,7 +5013,7 @@ public class TaskExecutionManager {
 				SimpleTaskDirectoryContext simpledirectorycontext = new SimpleTaskDirectoryContext(
 						executorcontext.getTaskWorkingDirectory(), executorcontext.getTaskWorkingDirectoryPath(),
 						executorcontext.getTaskBuildDirectory(), executorcontext.getTaskBuildDirectoryPath());
-				TaskExecutionManager.collectFileDependencyDeltas(executorcontext.executionContext, dependencies, this,
+				taskExecutionManager.collectFileDependencyDeltas(executorcontext.executionContext, dependencies, this,
 						simpledirectorycontext);
 				fileDeltasCalculated = true;
 
@@ -5371,7 +5375,7 @@ public class TaskExecutionManager {
 				SimpleTaskDirectoryContext simpledirectorycontext = createTaskDirectoryContextForDeltaCollection(
 						executioncontext, taskdircontext);
 
-				result.collectFileDependencyDeltasDuringDeltaDiscovery(executioncontext, dependencies,
+				result.collectFileDependencyDeltasDuringDeltaDiscovery(this, executioncontext, dependencies,
 						simpledirectorycontext, taskid);
 			}
 		}
@@ -5756,8 +5760,8 @@ public class TaskExecutionManager {
 		}
 	}
 
-	private static void collectFileDependencyDeltas(ExecutionContextImpl executioncontext,
-			TaskDependencies dependencies, DependencyDelta result, SimpleTaskDirectoryContext directorycontext) {
+	private void collectFileDependencyDeltas(ExecutionContextImpl executioncontext, TaskDependencies dependencies,
+			DependencyDelta result, SimpleTaskDirectoryContext directorycontext) {
 		Map<Object, FileDependencies> taggedfiledeps = dependencies.getTaggedFileDependencies();
 		if (taggedfiledeps.isEmpty()) {
 			return;
@@ -5873,7 +5877,7 @@ public class TaskExecutionManager {
 				}
 			}
 		}
-		ThreadUtils.runParallelRunnables(deltarunnables.clearAndIterable());
+		fileDeltaParallelRunner.runRunnables(deltarunnables.clearAndIterable());
 		result.addFileDeltas(adddeltas);
 	}
 
