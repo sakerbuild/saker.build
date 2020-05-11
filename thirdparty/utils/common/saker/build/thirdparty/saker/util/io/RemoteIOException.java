@@ -45,7 +45,7 @@ public class RemoteIOException extends IOException {
 	}
 
 	/**
-	 * @see IOException#IOException( Throwable)
+	 * @see IOException#IOException(Throwable)
 	 */
 	public RemoteIOException(Throwable cause) {
 		super(cause);

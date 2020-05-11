@@ -45,7 +45,7 @@ public class InvalidFileTypeException extends IOException {
 	}
 
 	/**
-	 * @see IOException#IOException( Throwable)
+	 * @see IOException#IOException(Throwable)
 	 */
 	public InvalidFileTypeException(Throwable cause) {
 		super(cause);

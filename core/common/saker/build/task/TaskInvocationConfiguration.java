@@ -31,6 +31,7 @@ import saker.build.task.identifier.TaskIdentifier;
  * Some common configurations are available as singleton instances in this class. See the <code>INSTANCE_*</code> static
  * fields.
  * 
+ * @since saker.build 0.8.12
  * @see TaskFactory#getInvocationConfiguration()
  */
 @PublicApi

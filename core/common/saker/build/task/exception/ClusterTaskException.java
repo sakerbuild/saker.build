@@ -50,7 +50,7 @@ public class ClusterTaskException extends TaskException {
 	}
 
 	/**
-	 * @see TaskException#TaskException( Throwable)
+	 * @see TaskException#TaskException(Throwable)
 	 */
 	public ClusterTaskException(Throwable cause) {
 		super(cause);

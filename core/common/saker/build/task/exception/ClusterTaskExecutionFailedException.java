@@ -36,7 +36,7 @@ public class ClusterTaskExecutionFailedException extends ClusterTaskException {
 	}
 
 	/**
-	 * @see ClusterTaskException#ClusterTaskException( Throwable)
+	 * @see ClusterTaskException#ClusterTaskException(Throwable)
 	 */
 	public ClusterTaskExecutionFailedException(String message, Throwable cause) {
 		super(message, cause);
