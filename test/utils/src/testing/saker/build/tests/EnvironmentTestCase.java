@@ -345,7 +345,7 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 
 					Path workingdirpath = getWorkingDirectory();
 					Path builddirpath = getBuildDirectory();
-					MemoryFileProvider memfiles = new MemoryFileProvider(
+					MemoryFileProvider memfiles = createMemoryFileProvider(
 							ObjectUtils.newTreeSet(WORKING_DIRECTORY_ROOT, BUILD_DIRECTORY_ROOT),
 							UUID.nameUUIDFromBytes(this.getClass().getName().getBytes(StandardCharsets.UTF_8)));
 					if (builddirpath != null) {
@@ -449,6 +449,10 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 				throw new AssertionError(e);
 			}
 		}
+	}
+
+	protected MemoryFileProvider createMemoryFileProvider(Set<String> roots, UUID filesuuid) {
+		return new MemoryFileProvider(roots, filesuuid);
 	}
 
 	protected void clearClusterEnvironmentCachedProperties(String clustername) throws InterruptedException {

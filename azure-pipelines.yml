@@ -60,3 +60,10 @@ steps:
   inputs:
     pathtoPublish: build/build_exportall.trace
     artifactName: 'export_trace_$(J_JAVA_MAJOR)'
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish export trace'
+  inputs:
+    pathtoPublish: build/saker.jar.create/
+    artifactName: 'export_jars'
+    parallel: true
+    

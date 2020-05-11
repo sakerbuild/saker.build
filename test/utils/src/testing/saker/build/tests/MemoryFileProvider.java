@@ -38,6 +38,7 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
@@ -197,12 +198,17 @@ public class MemoryFileProvider implements SakerFileProvider {
 
 	private ConcurrentNavigableMap<SakerPath, Collection<WeakReference<FileEventListener>>> directoryListeners = new ConcurrentSkipListMap<>();
 
-	private ConcurrentNavigableMap<SakerPath, MemoryFile> files = new ConcurrentSkipListMap<>();
+	private ConcurrentNavigableMap<SakerPath, MemoryFile> files;
 	private NavigableSet<String> roots = new TreeSet<>();
 
 	private RootFileProviderKey providerKey;
 
 	public MemoryFileProvider(Set<String> roots, UUID provideruuid) {
+		this(roots, provideruuid, null);
+	}
+
+	public MemoryFileProvider(Set<String> roots, UUID provideruuid, Comparator<? super SakerPath> comparator) {
+		files = new ConcurrentSkipListMap<>(comparator);
 		providerKey = new MemoryFileProviderKey(provideruuid);
 		FileTime rootmodtime = currentFileTime();
 		for (String r : roots) {
@@ -409,9 +415,10 @@ public class MemoryFileProvider implements SakerFileProvider {
 	}
 
 	private NoSuchFileException fileNotFound(SakerPath path) {
-		Entry<SakerPath, MemoryFile> parent = SakerPathFiles.getPathOrParentEntry(files, path);
-		return new NoSuchFileException(
-				"File not found: " + path + (parent == null ? "" : " first parent: " + parent.getKey()));
+		//don't include parent information as we allow non-natural ordering in files
+//		Entry<SakerPath, MemoryFile> parent = SakerPathFiles.getPathOrParentEntry(files, path);
+		return new NoSuchFileException("File not found: " + path);
+		//+ (parent == null ? "" : " first parent: " + parent.getKey())
 	}
 
 	@Override
