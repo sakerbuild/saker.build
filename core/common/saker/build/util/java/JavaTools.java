@@ -157,6 +157,19 @@ public class JavaTools {
 	}
 
 	/**
+	 * Gets the JDK tools classloader if it is already loaded.
+	 * <p>
+	 * This method is the same as {@link #getJDKToolsClassLoader()}, but returns <code>null</code> if the
+	 * {@link ClassLoader} has not yet been loaded.
+	 * 
+	 * @return The classloader for accessing JDK classes or <code>null</code> if not yet loaded.
+	 * @since saker.build 0.8.12
+	 */
+	public static ClassLoader getJDKToolsClassLoaderIfLoaded() {
+		return JavaCompilerAccessor.getJDKToolsClassLoaderIfLoaded();
+	}
+
+	/**
 	 * Gets a classloader resolver instance that resolves the classes in the {@linkplain #getJDKToolsClassLoader() JDK
 	 * tools classloader}.
 	 * <p>
