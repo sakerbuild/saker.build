@@ -146,6 +146,20 @@ public interface DirectoryVisitPredicate {
 	}
 
 	/**
+	 * Gets a directory visitor that synchronizes none of the files.
+	 * <p>
+	 * This differs from {@link #nothing()} in that it returns <code>null</code> from
+	 * {@link #getSynchronizeFilesToKeep()}. It can be useful if you want to synchronize a directory but only perform
+	 * the directory creation and no other operations.
+	 * 
+	 * @return The visitor.
+	 * @since saker.build 0.8.12
+	 */
+	public static DirectoryVisitPredicate synchronizeNothing() {
+		return CommonDirectoryVisitPredicate.SYNCHRONIZE_NOTHING;
+	}
+
+	/**
 	 * Gets a directory visitor that visits only the children of the directory.
 	 * 
 	 * @return The visitor.

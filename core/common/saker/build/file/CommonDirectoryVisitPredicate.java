@@ -15,6 +15,8 @@
  */
 package saker.build.file;
 
+import java.util.NavigableSet;
+
 enum CommonDirectoryVisitPredicate implements DirectoryVisitPredicate {
 	EVERYTHING {
 		@Override
@@ -127,5 +129,28 @@ enum CommonDirectoryVisitPredicate implements DirectoryVisitPredicate {
 		public boolean visitDirectory(String name, SakerDirectory directory) {
 			return false;
 		}
-	};
+	},
+	SYNCHRONIZE_NOTHING {
+		@Override
+		public DirectoryVisitPredicate directoryVisitor(String name, SakerDirectory directory) {
+			return null;
+		}
+
+		@Override
+		public boolean visitFile(String name, SakerFile file) {
+			return false;
+		}
+
+		@Override
+		public boolean visitDirectory(String name, SakerDirectory directory) {
+			return false;
+		}
+
+		@Override
+		public NavigableSet<String> getSynchronizeFilesToKeep() {
+			return null;
+		}
+	},
+
+	;
 }
