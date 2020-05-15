@@ -76,7 +76,7 @@ export(
 	in buildconfig = include(Target: _configure, testing: false, apidocumenting: false)[buildconfig],
 	
 	out compile,
-	out Path = $jar[Path],
+	out Path,
 ) {
 	$compile = include(
 		Target: compile,
@@ -156,6 +156,7 @@ export(
 			},
 		},
 	)
+	$Path = saker.jar.multi_release.optimize($jar)[Path]
 }
 exportide(
 	in buildconfig = include(Target: _configure, testing: false, apidocumenting: false)[buildconfig],
@@ -637,6 +638,7 @@ _configure(
 					saker.java.classpath.bundle(Bundles: "saker.apiextract-api-v{ global(VERSION_saker.apiextract) }"),
 				],
 				SourceVersion: RELEASE_8,
+				TargetVersion: RELEASE_8,
 			},
 			include(_getdocprocessoroptions, apidocumenting: $apidocumenting, identifier: core-jdk8, basepackages: "saker.build", excludepackages: "saker.build.thirdparty")[options],
 			include(_getdocprocessoroptions, apidocumenting: $apidocumenting, identifier: thirdparty-jdk8, basepackages: "saker.build.thirdparty", warndoc: false)[options],
