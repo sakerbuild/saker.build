@@ -1,9 +1,9 @@
 # UPDATE saker.build.meta.Versions when updating this version value
-global(saker.build.VERSION) = "0.8.11"
+global(saker.build.VERSION) = "0.8.12"
 
 global(VERSION_saker.apiextract) = "0.8.0"
 global(VERSION_sipka.syntax.parser) = "0.8.2"
-global(VERSION_sipka.cmdline) = "0.8.0"
+global(VERSION_sipka.cmdline) = "0.8.1"
 static(TargetJDKVersions) = [
 	{
 		Id: jdk8,
@@ -480,13 +480,13 @@ testjava12(){
 testjava13(){
 	include(
 		test, 
-		jre: saker.java.sdk(12),
+		jre: saker.java.sdk(13),
 	)
 }
 testjava14(){
 	include(
 		test, 
-		jre: saker.java.sdk(12),
+		jre: saker.java.sdk(14),
 	)
 }
 testwatcher(
@@ -623,22 +623,22 @@ _configure(
 		javajdkoptions: [
 			{
 				Identifier: jdk8,
-				SDKs: {
-					Java: saker.java.sdk(8),
-				},
+				Parameters: [--release, 8,]
 			},
 			{
 				Identifier: jdk9,
-				SDKs: {
-					Java: saker.java.sdk(9),
-				},
+				Parameters: [--release, 9,]
 			},
 			{
 				ClassPath: [
 					saker.java.classpath.bundle(Bundles: "saker.apiextract-api-v{ global(VERSION_saker.apiextract) }"),
 				],
+				SDKs: {
+					Java: saker.java.sdk(9),
+				},
 				SourceVersion: RELEASE_8,
 				TargetVersion: RELEASE_8,
+				AllowTargetReleaseMismatch: true,
 			},
 			include(_getdocprocessoroptions, apidocumenting: $apidocumenting, identifier: core-jdk8, basepackages: "saker.build", excludepackages: "saker.build.thirdparty")[options],
 			include(_getdocprocessoroptions, apidocumenting: $apidocumenting, identifier: thirdparty-jdk8, basepackages: "saker.build.thirdparty", warndoc: false)[options],
