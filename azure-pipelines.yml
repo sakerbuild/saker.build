@@ -28,7 +28,7 @@ strategy:
       J_JAVA_MAJOR: '14'
       J_JDKS: '8 9 14'
 steps:
-- script: curl https://api.nest.saker.build/bundle/download/saker.build-v$(curl -s https://mirror.nest.saker.build/badges/saker.build/latest.txt) -o saker.build.jar
+- script: curl -L https://api.nest.saker.build/bundle/download/saker.build-v$(curl -s https://mirror.nest.saker.build/badges/saker.build/latest.txt) -o saker.build.jar
   displayName: 'Download saker.build'
 - script: curl -s https://gist.githubusercontent.com/Sipkab/1505a8659af20003ae09295e99d3cba3/raw/azure_ubuntu_jdksetup_variables.sh -o /tmp/azure_ubuntu_jdksetup_variables.sh
   displayName: 'Download JDK setup script'
