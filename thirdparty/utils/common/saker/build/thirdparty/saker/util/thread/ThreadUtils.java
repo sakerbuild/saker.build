@@ -1698,8 +1698,6 @@ public class ThreadUtils {
 							Thread t2 = tref2.get();
 							if (t2 != null) {
 								t2.interrupt();
-							} else {
-								it.remove();
 							}
 						}
 						interrupted = true;

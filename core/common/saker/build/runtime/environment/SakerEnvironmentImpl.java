@@ -284,7 +284,7 @@ public final class SakerEnvironmentImpl implements Closeable {
 			if (realStdOut == null) {
 				throw new IllegalStateException("Standard IO was not redirected.");
 			}
-			unredirectStandardIOImpl();
+			unredirectStandardIOLockedImpl();
 		}
 	}
 
@@ -858,21 +858,23 @@ public final class SakerEnvironmentImpl implements Closeable {
 	private void unredirectStandardIOIfInstalled() {
 		synchronized (JVMSynchronizationObjects.getStandardIOLock()) {
 			if (realStdOut != null) {
-				unredirectStandardIOImpl();
+				unredirectStandardIOLockedImpl();
 			}
 		}
 	}
 
-	private void unredirectStandardIOImpl() {
-		synchronized (JVMSynchronizationObjects.getStandardIOLock()) {
-			IOUtils.closePrint(stdIn, stdOutPrint, stdErrPrint);
+	/**
+	 * Caller should lock on {@link JVMSynchronizationObjects#getStandardIOLock()}.
+	 */
+	private void unredirectStandardIOLockedImpl() {
+		IOUtils.closePrint(stdIn, stdOutPrint, stdErrPrint);
 
-			//XXX we should only set the i/o when it is actually the ones we replaced?
+		//XXX we should only set the i/o when it is actually the ones we replaced?
 
-			System.setIn(realStdIn);
-			System.setOut(realStdOut);
-			System.setErr(realStdErr);
-		}
+		System.setIn(realStdIn);
+		System.setOut(realStdOut);
+		System.setErr(realStdErr);
+
 		realStdOut = null;
 		realStdErr = null;
 		realStdIn = null;
