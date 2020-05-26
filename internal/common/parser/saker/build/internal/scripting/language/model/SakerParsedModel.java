@@ -4374,6 +4374,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		int endpos = stm.getEndOffset();
 		String stmname = stm.getName();
 		ArrayDeque<? extends Statement> statementstack = leaf.statementStack;
+		System.out.println("SakerParsedModel.addLeafProposals() " + stmname);
 		switch (stmname) {
 			case "dereference": {
 				//at a $ sign
@@ -4441,8 +4442,11 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			case "exp_false":
 			case "subscript_index_expression":
 			case "expression_placeholder": {
-				if (stm.firstScope("expression") != null) {
+				Statement expressionstm = stm.firstScope("expression");
+				if (expressionstm != null && (!"expression_placeholder".equals(stmname)
+						|| !isInvokedOnLineBefore(offset, stm, expressionstm))) {
 					//there is already an expression in this placeholder
+					//and the asisstance is invoked on the same line
 					//no proposals
 					break;
 				}
@@ -4472,8 +4476,14 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 						}
 					}
 				}
-				Collection<? extends TypedModelInformation> rectypes = analyzer.getExpressionReceiverType(derived, stm,
-						statementstack);
+				Collection<? extends TypedModelInformation> rectypes;
+				if (expressionstm != null) {
+					Statement theexpressionstm = SakerScriptTargetConfigurationReader.visitFlattenExpressionStatements(
+							expressionstm, StatementReturningFlattenedStatementVisitor.INSTANCE);
+					rectypes = analyzer.getExpressionReceiverType(derived, theexpressionstm, statementstack);
+				} else {
+					rectypes = analyzer.getExpressionReceiverType(derived, stm, statementstack);
+				}
 
 				addGenericExpressionProposals(derived, result, statementstack, rectypes, proposalfactory, collector,
 						analyzer);
@@ -4845,17 +4855,15 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		//XXX also propose the usages from related include() tasks
 	}
 
-	private static boolean isParameterProposalInvokedOnLineBefore(int offset, Statement paramnamestm,
-			Statement paramnamecontentscope) {
-		int paramnamestmoffset = paramnamestm.getOffset();
-		if (offset < paramnamestmoffset) {
+	private static boolean isInvokedOnLineBefore(int offset, Statement enclosingstatement, Statement innerstm) {
+		int enclosingstmoffset = enclosingstatement.getOffset();
+		if (offset < enclosingstmoffset) {
 			return false;
 		}
-		int end = paramnamecontentscope.getOffset();
-		//XXX use raw sequence
-		String rawval = paramnamestm.getRawValue();
+		int end = innerstm.getOffset();
+		CharSequence rawval = enclosingstatement.getRawValueSequence();
 		int len = end - offset;
-		int shift = offset - paramnamestmoffset;
+		int shift = offset - enclosingstmoffset;
 		for (int i = 0; i < len; i++) {
 			char c = rawval.charAt(shift + i);
 			if (c == '\n' || c == '\r') {
@@ -4864,6 +4872,11 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			}
 		}
 		return false;
+	}
+
+	private static boolean isParameterProposalInvokedOnLineBefore(int offset, Statement paramnamestm,
+			Statement paramnamecontentscope) {
+		return isInvokedOnLineBefore(offset, paramnamestm, paramnamecontentscope);
 	}
 
 	private void addProposalsForStringLiteral(DerivedData derived, int offset, Statement stm,

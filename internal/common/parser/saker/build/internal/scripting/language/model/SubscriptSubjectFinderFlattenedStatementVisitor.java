@@ -44,12 +44,12 @@ public class SubscriptSubjectFinderFlattenedStatementVisitor extends BaseFlatten
 	}
 
 	@Override
-	public Void visitSubscript(Statement stm, List<? extends FlattenedToken> subject) {
-		if (stm == subscriptStatement) {
+	public Void visitSubscript(FlattenedToken token, List<? extends FlattenedToken> subject) {
+		if (token.getStatement() == subscriptStatement) {
 			Statement subjectstm = SakerScriptTargetConfigurationReader.visitFlattenedStatements(subject,
 					StatementReturningFlattenedStatementVisitor.INSTANCE);
 			throw new StatementFoundAbortException(subjectstm);
 		}
-		return super.visitSubscript(stm, subject);
+		return super.visitSubscript(token, subject);
 	}
 }

@@ -24,45 +24,92 @@ import sipka.syntax.parser.model.statement.Statement;
  * @see SakerScriptTargetConfigurationReader#visitFlattenedStatements(List, FlattenedStatementVisitor)
  */
 public interface FlattenedStatementVisitor<R> {
-	public R visitMissing(Statement expplaceholderstm);
+	public default R visitMissing(Statement expplaceholderstm) {
+		return null;
+	}
 
-	public R visitStringLiteral(Statement stm);
+	public default R visitStringLiteral(FlattenedToken stm) {
+		return null;
+	}
 
-	public R visitLiteral(Statement stm);
+	public default R visitLiteral(FlattenedToken stm) {
+		return null;
+	}
 
-	public R visitParentheses(Statement stm);
+	public default R visitParentheses(FlattenedToken stm) {
+		return null;
+	}
 
-	public R visitList(Statement stm);
+	public default R visitList(FlattenedToken stm) {
+		return null;
+	}
 
-	public R visitMap(Statement stm);
+	public default R visitMap(FlattenedToken stm) {
+		return null;
+	}
 
-	public R visitForeach(Statement stm);
+	public default R visitForeach(FlattenedToken stm) {
+		return null;
+	}
 
-	public R visitTask(Statement stm);
+	public default R visitTask(FlattenedToken stm) {
+		return null;
+	}
 
-	public R visitDereference(Statement stm, List<? extends FlattenedToken> subject);
+	public default R visitDereference(FlattenedToken stm, List<? extends FlattenedToken> subject) {
+		return null;
+	}
 
-	public R visitUnary(Statement stm, List<? extends FlattenedToken> subject);
+	public default R visitUnary(FlattenedToken stm, List<? extends FlattenedToken> subject) {
+		return null;
+	}
 
-	public R visitSubscript(Statement stm, List<? extends FlattenedToken> subject);
+	public default R visitSubscript(FlattenedToken stm, List<? extends FlattenedToken> subject) {
+		return null;
+	}
 
-	public R visitAssignment(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right);
+	public default R visitAssignment(FlattenedToken stm, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		return null;
+	}
 
-	public R visitAddOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right);
+	public default R visitAddOp(FlattenedToken stm, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		return null;
+	}
 
-	public R visitMultiplyOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right);
+	public default R visitMultiplyOp(FlattenedToken stm, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		return null;
+	}
 
-	public R visitEqualityOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right);
+	public default R visitEqualityOp(FlattenedToken stm, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		return null;
+	}
 
-	public R visitComparisonOp(Statement stm, List<? extends FlattenedToken> left,
-			List<? extends FlattenedToken> right);
+	public default R visitComparisonOp(FlattenedToken stm, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		return null;
+	}
 
-	public R visitShiftOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right);
+	public default R visitShiftOp(FlattenedToken stm, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		return null;
+	}
 
-	public R visitBitOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right);
+	public default R visitBitOp(FlattenedToken stm, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		return null;
+	}
 
-	public R visitBoolOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right);
+	public default R visitBoolOp(FlattenedToken stm, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		return null;
+	}
 
-	public R visitTernary(Statement stm, List<? extends FlattenedToken> condition,
-			List<? extends FlattenedToken> falseres);
+	public default R visitTernary(FlattenedToken stm, List<? extends FlattenedToken> condition,
+			List<? extends FlattenedToken> falseres) {
+		return null;
+	}
 }

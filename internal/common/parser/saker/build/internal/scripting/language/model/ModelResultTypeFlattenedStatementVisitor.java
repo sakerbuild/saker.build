@@ -92,13 +92,15 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitStringLiteral(Statement stm) {
+	public Statement visitStringLiteral(FlattenedToken token) {
+		Statement stm = token.getStatement();
 		analyzer.setResultTypes(stm, SakerParsedModel.STRING_TYPE_SET, Collections.emptySet());
 		return stm;
 	}
 
 	@Override
-	public Statement visitLiteral(Statement stm) {
+	public Statement visitLiteral(FlattenedToken token) {
+		Statement stm = token.getStatement();
 		String litval = SakerParsedModel.getLiteralValue(stm);
 		if (litval == null) {
 			//cannot determine literal value. probably has an inline expression or something.
@@ -131,7 +133,8 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitParentheses(Statement stm) {
+	public Statement visitParentheses(FlattenedToken token) {
+		Statement stm = token.getStatement();
 		ResultTypeStatementTypeInformationPart stipart = analyzer.initResultTypes(stm);
 		if (stipart == null) {
 			return stm;
@@ -143,7 +146,8 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitList(Statement stm) {
+	public Statement visitList(FlattenedToken token) {
+		Statement stm = token.getStatement();
 		ResultTypeStatementTypeInformationPart stipart = analyzer.initResultTypes(stm);
 		if (stipart == null) {
 			return stm;
@@ -170,7 +174,8 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitMap(Statement stm) {
+	public Statement visitMap(FlattenedToken token) {
+		Statement stm = token.getStatement();
 		ResultTypeStatementTypeInformationPart stipart = analyzer.initResultTypes(stm);
 		if (stipart == null) {
 			return stm;
@@ -245,7 +250,8 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitForeach(Statement stm) {
+	public Statement visitForeach(FlattenedToken token) {
+		Statement stm = token.getStatement();
 		ResultTypeStatementTypeInformationPart stipart = analyzer.initResultTypes(stm);
 		if (stipart == null) {
 			return stm;
@@ -298,7 +304,8 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitTask(Statement stm) {
+	public Statement visitTask(FlattenedToken token) {
+		Statement stm = token.getStatement();
 		ResultTypeStatementTypeInformationPart stipart = analyzer.initResultTypes(stm);
 		if (stipart == null) {
 			return stm;
@@ -478,7 +485,8 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitDereference(Statement stm, List<? extends FlattenedToken> subject) {
+	public Statement visitDereference(FlattenedToken token, List<? extends FlattenedToken> subject) {
+		Statement stm = token.getStatement();
 		ResultTypeStatementTypeInformationPart stipart = analyzer.initResultTypes(stm);
 		if (stipart == null) {
 			return stm;
@@ -610,7 +618,8 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitUnary(Statement stm, List<? extends FlattenedToken> subject) {
+	public Statement visitUnary(FlattenedToken token, List<? extends FlattenedToken> subject) {
+		Statement stm = token.getStatement();
 		ResultTypeStatementTypeInformationPart stipart = analyzer.initResultTypes(stm);
 		if (stipart == null) {
 			return stm;
@@ -621,7 +630,8 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitSubscript(Statement stm, List<? extends FlattenedToken> subject) {
+	public Statement visitSubscript(FlattenedToken token, List<? extends FlattenedToken> subject) {
+		Statement stm = token.getStatement();
 		ResultTypeStatementTypeInformationPart stipart = analyzer.initResultTypes(stm);
 		if (stipart == null) {
 			return stm;
@@ -638,8 +648,9 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitAssignment(Statement stm, List<? extends FlattenedToken> left,
+	public Statement visitAssignment(FlattenedToken token, List<? extends FlattenedToken> left,
 			List<? extends FlattenedToken> right) {
+		Statement stm = token.getStatement();
 		ResultTypeStatementTypeInformationPart stipart = analyzer.initResultTypes(stm);
 		if (stipart == null) {
 			return stm;
@@ -651,8 +662,9 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitAddOp(Statement stm, List<? extends FlattenedToken> left,
+	public Statement visitAddOp(FlattenedToken token, List<? extends FlattenedToken> left,
 			List<? extends FlattenedToken> right) {
+		Statement stm = token.getStatement();
 		//XXX reify for collection and map types
 		if (!analyzer.setResultTypes(stm, SakerParsedModel.NUMBER_TYPE_SET, Collections.emptySet())) {
 			return stm;
@@ -663,8 +675,9 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitMultiplyOp(Statement stm, List<? extends FlattenedToken> left,
+	public Statement visitMultiplyOp(FlattenedToken token, List<? extends FlattenedToken> left,
 			List<? extends FlattenedToken> right) {
+		Statement stm = token.getStatement();
 		if (!analyzer.setResultTypes(stm, SakerParsedModel.NUMBER_TYPE_SET, Collections.emptySet())) {
 			return stm;
 		}
@@ -674,8 +687,9 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitEqualityOp(Statement stm, List<? extends FlattenedToken> left,
+	public Statement visitEqualityOp(FlattenedToken token, List<? extends FlattenedToken> left,
 			List<? extends FlattenedToken> right) {
+		Statement stm = token.getStatement();
 		if (!analyzer.setResultTypes(stm, SakerParsedModel.BOOLEAN_TYPE_SET, Collections.emptySet())) {
 			return stm;
 		}
@@ -685,8 +699,9 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitComparisonOp(Statement stm, List<? extends FlattenedToken> left,
+	public Statement visitComparisonOp(FlattenedToken token, List<? extends FlattenedToken> left,
 			List<? extends FlattenedToken> right) {
+		Statement stm = token.getStatement();
 		if (!analyzer.setResultTypes(stm, SakerParsedModel.BOOLEAN_TYPE_SET, Collections.emptySet())) {
 			return stm;
 		}
@@ -696,8 +711,9 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitShiftOp(Statement stm, List<? extends FlattenedToken> left,
+	public Statement visitShiftOp(FlattenedToken token, List<? extends FlattenedToken> left,
 			List<? extends FlattenedToken> right) {
+		Statement stm = token.getStatement();
 		if (!analyzer.setResultTypes(stm, SakerParsedModel.NUMBER_TYPE_SET, Collections.emptySet())) {
 			return stm;
 		}
@@ -707,8 +723,9 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitBitOp(Statement stm, List<? extends FlattenedToken> left,
+	public Statement visitBitOp(FlattenedToken token, List<? extends FlattenedToken> left,
 			List<? extends FlattenedToken> right) {
+		Statement stm = token.getStatement();
 		if (!analyzer.setResultTypes(stm, SakerParsedModel.NUMBER_TYPE_SET, Collections.emptySet())) {
 			return stm;
 		}
@@ -718,8 +735,9 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitBoolOp(Statement stm, List<? extends FlattenedToken> left,
+	public Statement visitBoolOp(FlattenedToken token, List<? extends FlattenedToken> left,
 			List<? extends FlattenedToken> right) {
+		Statement stm = token.getStatement();
 		if (!analyzer.setResultTypes(stm, SakerParsedModel.BOOLEAN_TYPE_SET, Collections.emptySet())) {
 			return stm;
 		}
@@ -729,8 +747,9 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 	}
 
 	@Override
-	public Statement visitTernary(Statement stm, List<? extends FlattenedToken> condition,
+	public Statement visitTernary(FlattenedToken token, List<? extends FlattenedToken> condition,
 			List<? extends FlattenedToken> falseres) {
+		Statement stm = token.getStatement();
 		ResultTypeStatementTypeInformationPart stipart = analyzer.initResultTypes(stm);
 		if (stipart == null) {
 			return stm;
@@ -738,7 +757,7 @@ public final class ModelResultTypeFlattenedStatementVisitor implements Flattened
 
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(condition, this);
 		Statement falsestm = SakerScriptTargetConfigurationReader.visitFlattenedStatements(falseres, this);
-		Statement truestm = SakerScriptTargetConfigurationReader.visitTernaryTrueExpressionStatement(stm, this);
+		Statement truestm = SakerScriptTargetConfigurationReader.visitTernaryTrueExpressionStatement(token, this);
 
 		stipart.associatedTypes.add(new TypeAssociation(new StatementLocation(derivedData, truestm, null)));
 		stipart.associatedTypes.add(new TypeAssociation(new StatementLocation(derivedData, falsestm, null)));

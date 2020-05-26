@@ -24,6 +24,6 @@ build{
 	)
 
 }
-static(enumvar) = 
 static(enumvar) = F
 static(enumvar) = FIRST
+static(enumvar) = 

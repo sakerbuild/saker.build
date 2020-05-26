@@ -24,32 +24,33 @@ import sipka.syntax.parser.model.statement.Statement;
 
 public class BaseFlattenedStatementVisitor<R> implements FlattenedStatementVisitor<R> {
 	//TODO this visitor doesn't visit inner expressions. this might not be what the subclasses expect. verify it
-	
+
 	@Override
 	public R visitMissing(Statement expplaceholderstm) {
 		return null;
 	}
 
 	@Override
-	public R visitStringLiteral(Statement stm) {
+	public R visitStringLiteral(FlattenedToken token) {
 		//inline expressions are base receiver expressions
 		return null;
 	}
 
 	@Override
-	public R visitLiteral(Statement stm) {
+	public R visitLiteral(FlattenedToken token) {
 		//inline expressions are base receiver expressions
 		return null;
 	}
 
 	@Override
-	public R visitParentheses(Statement stm) {
-		SakerScriptTargetConfigurationReader.visitParenthesesExpressionStatement(stm, this);
+	public R visitParentheses(FlattenedToken token) {
+		SakerScriptTargetConfigurationReader.visitParenthesesExpressionStatement(token.getStatement(), this);
 		return null;
 	}
 
 	@Override
-	public R visitList(Statement stm) {
+	public R visitList(FlattenedToken token) {
+		Statement stm = token.getStatement();
 		List<Statement> elements = stm.scopeTo("list_element");
 		if (!elements.isEmpty()) {
 			for (Statement elem : elements) {
@@ -65,7 +66,8 @@ public class BaseFlattenedStatementVisitor<R> implements FlattenedStatementVisit
 	}
 
 	@Override
-	public R visitMap(Statement stm) {
+	public R visitMap(FlattenedToken token) {
+		Statement stm = token.getStatement();
 		List<Statement> elements = stm.scopeTo("map_element");
 		if (!elements.isEmpty()) {
 			for (Statement elem : elements) {
@@ -87,66 +89,38 @@ public class BaseFlattenedStatementVisitor<R> implements FlattenedStatementVisit
 	}
 
 	@Override
-	public R visitForeach(Statement stm) {
+	public R visitForeach(FlattenedToken token) {
 		//iterable is base receiver expression
 		//foreach statements are base receiver expressions, there's nothing to visit in it
 		return null;
 	}
 
 	@Override
-	public R visitTask(Statement stm) {
+	public R visitTask(FlattenedToken token) {
 		// params and qualifiers are base receiver expressions
 		return null;
 	}
 
 	@Override
-	public R visitDereference(Statement stm, List<? extends FlattenedToken> subject) {
+	public R visitDereference(FlattenedToken token, List<? extends FlattenedToken> subject) {
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(subject, this);
 		return null;
 	}
 
 	@Override
-	public R visitUnary(Statement stm, List<? extends FlattenedToken> subject) {
+	public R visitUnary(FlattenedToken token, List<? extends FlattenedToken> subject) {
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(subject, this);
 		return null;
 	}
 
 	@Override
-	public R visitSubscript(Statement stm, List<? extends FlattenedToken> subject) {
+	public R visitSubscript(FlattenedToken token, List<? extends FlattenedToken> subject) {
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(subject, this);
 		return null;
 	}
 
 	@Override
-	public R visitAssignment(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right) {
-		SakerScriptTargetConfigurationReader.visitFlattenedStatements(left, this);
-		SakerScriptTargetConfigurationReader.visitFlattenedStatements(right, this);
-		return null;
-	}
-
-	@Override
-	public R visitAddOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right) {
-		SakerScriptTargetConfigurationReader.visitFlattenedStatements(left, this);
-		SakerScriptTargetConfigurationReader.visitFlattenedStatements(right, this);
-		return null;
-	}
-
-	@Override
-	public R visitMultiplyOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right) {
-		SakerScriptTargetConfigurationReader.visitFlattenedStatements(left, this);
-		SakerScriptTargetConfigurationReader.visitFlattenedStatements(right, this);
-		return null;
-	}
-
-	@Override
-	public R visitEqualityOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right) {
-		SakerScriptTargetConfigurationReader.visitFlattenedStatements(left, this);
-		SakerScriptTargetConfigurationReader.visitFlattenedStatements(right, this);
-		return null;
-	}
-
-	@Override
-	public R visitComparisonOp(Statement stm, List<? extends FlattenedToken> left,
+	public R visitAssignment(FlattenedToken token, List<? extends FlattenedToken> left,
 			List<? extends FlattenedToken> right) {
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(left, this);
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(right, this);
@@ -154,32 +128,67 @@ public class BaseFlattenedStatementVisitor<R> implements FlattenedStatementVisit
 	}
 
 	@Override
-	public R visitShiftOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right) {
+	public R visitAddOp(FlattenedToken token, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(left, this);
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(right, this);
 		return null;
 	}
 
 	@Override
-	public R visitBitOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right) {
+	public R visitMultiplyOp(FlattenedToken token, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(left, this);
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(right, this);
 		return null;
 	}
 
 	@Override
-	public R visitBoolOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right) {
+	public R visitEqualityOp(FlattenedToken token, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(left, this);
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(right, this);
 		return null;
 	}
 
 	@Override
-	public R visitTernary(Statement stm, List<? extends FlattenedToken> condition,
+	public R visitComparisonOp(FlattenedToken token, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		SakerScriptTargetConfigurationReader.visitFlattenedStatements(left, this);
+		SakerScriptTargetConfigurationReader.visitFlattenedStatements(right, this);
+		return null;
+	}
+
+	@Override
+	public R visitShiftOp(FlattenedToken token, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		SakerScriptTargetConfigurationReader.visitFlattenedStatements(left, this);
+		SakerScriptTargetConfigurationReader.visitFlattenedStatements(right, this);
+		return null;
+	}
+
+	@Override
+	public R visitBitOp(FlattenedToken token, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		SakerScriptTargetConfigurationReader.visitFlattenedStatements(left, this);
+		SakerScriptTargetConfigurationReader.visitFlattenedStatements(right, this);
+		return null;
+	}
+
+	@Override
+	public R visitBoolOp(FlattenedToken token, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		SakerScriptTargetConfigurationReader.visitFlattenedStatements(left, this);
+		SakerScriptTargetConfigurationReader.visitFlattenedStatements(right, this);
+		return null;
+	}
+
+	@Override
+	public R visitTernary(FlattenedToken token, List<? extends FlattenedToken> condition,
 			List<? extends FlattenedToken> falseres) {
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(condition, this);
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(falseres, this);
-		SakerScriptTargetConfigurationReader.visitTernaryTrueExpressionStatement(stm, this);
+		SakerScriptTargetConfigurationReader.visitTernaryTrueExpressionStatement(token, this);
 		return null;
 	}
 

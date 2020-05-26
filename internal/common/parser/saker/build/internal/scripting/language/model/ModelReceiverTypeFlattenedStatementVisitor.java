@@ -55,7 +55,7 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 	}
 
 	public void visitTargetParameterStatement(Statement stm) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+		if (!setAnalyzerReceiverTypes(stm)) {
 			return;
 		}
 		Statement initval = stm.firstScope("init_value");
@@ -63,35 +63,26 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 			Statement expplaceholder = initval.firstScope("expression_placeholder");
 			Statement expressionstm = expplaceholder.firstScope("expression");
 			if (expressionstm != null) {
-				if (analyzer.setReceiverTypes(expressionstm, receiverTypes, associatedReceiverTypes)) {
+				if (setAnalyzerReceiverTypes(expressionstm)) {
 					SakerScriptTargetConfigurationReader.visitFlattenExpressionStatements(expressionstm,
 							subVisitor(receiverTypes, associatedReceiverTypes));
 				}
 			}
-			analyzer.setReceiverTypes(expplaceholder, receiverTypes, associatedReceiverTypes);
+			setAnalyzerReceiverTypes(expplaceholder);
 		}
 	}
 
 	@Override
 	public Void visitMissing(Statement expplaceholderstm) {
-		if (!analyzer.setReceiverTypes(expplaceholderstm, receiverTypes, associatedReceiverTypes)) {
+		if (!setAnalyzerReceiverTypes(expplaceholderstm)) {
 			return null;
 		}
 		return null;
 	}
 
 	@Override
-	public Void visitStringLiteral(Statement stm) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
-			return null;
-		}
-		//inline expressions are base expressions
-		return null;
-	}
-
-	@Override
-	public Void visitLiteral(Statement stm) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+	public Void visitStringLiteral(FlattenedToken token) {
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		//inline expressions are base expressions
@@ -99,16 +90,27 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 	}
 
 	@Override
-	public Void visitParentheses(Statement stm) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+	public Void visitLiteral(FlattenedToken token) {
+		if (!setAnalyzerReceiverTypes(token)) {
+			return null;
+		}
+		//inline expressions are base expressions
+		return null;
+	}
+
+	@Override
+	public Void visitParentheses(FlattenedToken token) {
+		Statement stm = token.getStatement();
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		return SakerScriptTargetConfigurationReader.visitParenthesesExpressionStatement(stm, this);
 	}
 
 	@Override
-	public Void visitList(Statement stm) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+	public Void visitList(FlattenedToken token) {
+		Statement stm = token.getStatement();
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		List<Statement> elements = stm.scopeTo("list_element");
@@ -139,8 +141,9 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 	}
 
 	@Override
-	public Void visitMap(Statement stm) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+	public Void visitMap(FlattenedToken token) {
+		Statement stm = token.getStatement();
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		List<Statement> elements = stm.scopeTo("map_element");
@@ -200,8 +203,9 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 	}
 
 	@Override
-	public Void visitForeach(Statement stm) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+	public Void visitForeach(FlattenedToken token) {
+		Statement stm = token.getStatement();
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		Statement valueexpr = stm.firstScope("value_expression");
@@ -227,8 +231,8 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 	}
 
 	@Override
-	public Void visitTask(Statement stm) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+	public Void visitTask(FlattenedToken token) {
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		//don't examine the qualifiers and parameters as they should be base receiver expressions
@@ -236,8 +240,8 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 	}
 
 	@Override
-	public Void visitDereference(Statement stm, List<? extends FlattenedToken> subject) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+	public Void visitDereference(FlattenedToken token, List<? extends FlattenedToken> subject) {
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		return SakerScriptTargetConfigurationReader.visitFlattenedStatements(subject,
@@ -245,8 +249,9 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 	}
 
 	@Override
-	public Void visitUnary(Statement stm, List<? extends FlattenedToken> subject) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+	public Void visitUnary(FlattenedToken token, List<? extends FlattenedToken> subject) {
+		Statement stm = token.getStatement();
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		String op = stm.getValue();
@@ -272,8 +277,9 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 	}
 
 	@Override
-	public Void visitSubscript(Statement stm, List<? extends FlattenedToken> subject) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+	public Void visitSubscript(FlattenedToken token, List<? extends FlattenedToken> subject) {
+		Statement stm = token.getStatement();
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 
@@ -321,9 +327,10 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 	}
 
 	@Override
-	public Void visitAssignment(Statement stm, List<? extends FlattenedToken> left,
+	public Void visitAssignment(FlattenedToken token, List<? extends FlattenedToken> left,
 			List<? extends FlattenedToken> right) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+		Statement stm = token.getStatement();
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(left,
@@ -344,8 +351,9 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 	}
 
 	@Override
-	public Void visitAddOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+	public Void visitAddOp(FlattenedToken token, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		//forward the receiver types to the operands 
@@ -354,18 +362,18 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 	}
 
 	@Override
-	public Void visitMultiplyOp(Statement stm, List<? extends FlattenedToken> left,
+	public Void visitMultiplyOp(FlattenedToken token, List<? extends FlattenedToken> left,
 			List<? extends FlattenedToken> right) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		return visitNumbersOperandOp(left, right);
 	}
 
 	@Override
-	public Void visitEqualityOp(Statement stm, List<? extends FlattenedToken> left,
+	public Void visitEqualityOp(FlattenedToken token, List<? extends FlattenedToken> left,
 			List<? extends FlattenedToken> right) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		// XXX maybe reify?
@@ -373,42 +381,46 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 	}
 
 	@Override
-	public Void visitComparisonOp(Statement stm, List<? extends FlattenedToken> left,
+	public Void visitComparisonOp(FlattenedToken token, List<? extends FlattenedToken> left,
 			List<? extends FlattenedToken> right) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		return visitNumbersOperandOp(left, right);
 	}
 
 	@Override
-	public Void visitShiftOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+	public Void visitShiftOp(FlattenedToken token, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		return visitNumbersOperandOp(left, right);
 	}
 
 	@Override
-	public Void visitBitOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+	public Void visitBitOp(FlattenedToken token, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		return visitNumbersOperandOp(left, right);
 	}
 
 	@Override
-	public Void visitBoolOp(Statement stm, List<? extends FlattenedToken> left, List<? extends FlattenedToken> right) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+	public Void visitBoolOp(FlattenedToken token, List<? extends FlattenedToken> left,
+			List<? extends FlattenedToken> right) {
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		return visitBinaryOperatorWithVisitor(left, right, subVisitor(SakerParsedModel.BOOLEAN_TYPE_SET));
 	}
 
 	@Override
-	public Void visitTernary(Statement stm, List<? extends FlattenedToken> condition,
+	public Void visitTernary(FlattenedToken token, List<? extends FlattenedToken> condition,
 			List<? extends FlattenedToken> falseres) {
-		if (!analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes)) {
+		Statement stm = token.getStatement();
+		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
 		Statement trueexpplaceholder = stm.firstScope("exp_true");
@@ -416,19 +428,19 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 
 		SakerScriptTargetConfigurationReader.visitFlattenedStatements(condition,
 				subVisitor(SakerParsedModel.BOOLEAN_TYPE_SET));
-		if (analyzer.setReceiverTypes(falseexpplaceholder, receiverTypes, associatedReceiverTypes)) {
+		if (setAnalyzerReceiverTypes(falseexpplaceholder)) {
 			Statement falseexpstm = falseexpplaceholder.firstScope("expression");
 			if (falseexpstm != null) {
-				if (analyzer.setReceiverTypes(falseexpstm, receiverTypes, associatedReceiverTypes)) {
+				if (setAnalyzerReceiverTypes(falseexpstm)) {
 					SakerScriptTargetConfigurationReader.visitFlattenedStatements(falseres,
 							subVisitor(receiverTypes, associatedReceiverTypes));
 				}
 			}
 		}
-		if (analyzer.setReceiverTypes(trueexpplaceholder, receiverTypes, associatedReceiverTypes)) {
+		if (setAnalyzerReceiverTypes(trueexpplaceholder)) {
 			Statement trueexpstm = trueexpplaceholder.firstScope("expression");
 			if (trueexpstm != null) {
-				if (analyzer.setReceiverTypes(trueexpstm, receiverTypes, associatedReceiverTypes)) {
+				if (setAnalyzerReceiverTypes(trueexpstm)) {
 					SakerScriptTargetConfigurationReader.visitFlattenExpressionStatements(trueexpstm,
 							subVisitor(receiverTypes, associatedReceiverTypes));
 				}
@@ -774,5 +786,18 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 			Set<TypeAssociation> associatedreceivertypes) {
 		return new ModelReceiverTypeFlattenedStatementVisitor(analyzer, derivedData, receivertypes,
 				associatedreceivertypes);
+	}
+
+	private boolean setAnalyzerReceiverTypes(FlattenedToken token) {
+		return setAnalyzerReceiverTypes(token.getStatement());
+//		boolean result = setAnalyzerReceiverTypes(token.getExpressionPlaceholderStatement());
+//		if (result) {
+//			setAnalyzerReceiverTypes(token.getStatement());
+//		}
+//		return result;
+	}
+
+	private boolean setAnalyzerReceiverTypes(Statement stm) {
+		return analyzer.setReceiverTypes(stm, receiverTypes, associatedReceiverTypes);
 	}
 }

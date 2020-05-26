@@ -1,0 +1,3 @@
+example.task(EnumParam1: static(enumvar))
+static(enumvar) = 
+static(enumvar) = F

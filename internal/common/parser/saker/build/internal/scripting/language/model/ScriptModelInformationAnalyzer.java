@@ -104,7 +104,8 @@ public class ScriptModelInformationAnalyzer {
 		StatementTypeInformation result = getExpressionReceiverTypeImpl(derived, expstm, baserectypes);
 		if (result == null) {
 			throw new UnsupportedOperationException(expstm.getName() + " - " + expstm.getRawValue() + " - "
-					+ expstm.getPosition() + " with base rec: " + baserectypes.expressionStatement.getRawValue());
+					+ expstm.getPosition() + " with base rec: " + baserectypes.expressionStatement.getName() + " - "
+					+ baserectypes.expressionStatement.getRawValue());
 //			return Collections.emptySet();
 		}
 		return returnReceiverTypesWithAssociatedResolved(result, derived);

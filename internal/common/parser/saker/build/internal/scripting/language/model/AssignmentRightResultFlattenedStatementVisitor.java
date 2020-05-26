@@ -36,13 +36,13 @@ public class AssignmentRightResultFlattenedStatementVisitor extends BaseFlattene
 	}
 
 	@Override
-	public Void visitAssignment(Statement stm, List<? extends FlattenedToken> left,
+	public Void visitAssignment(FlattenedToken token, List<? extends FlattenedToken> left,
 			List<? extends FlattenedToken> right) {
 		if (varTask.equals(SakerParsedModel.getAssignmentLeftOperandVariableTaskUsage(left))) {
 			Statement rightstm = SakerScriptTargetConfigurationReader.visitFlattenedStatements(right,
 					StatementReturningFlattenedStatementVisitor.INSTANCE);
 			associationResults.add(new TypeAssociation(new StatementLocation(derived, rightstm, null)));
 		}
-		return super.visitAssignment(stm, left, right);
+		return super.visitAssignment(token, left, right);
 	}
 }

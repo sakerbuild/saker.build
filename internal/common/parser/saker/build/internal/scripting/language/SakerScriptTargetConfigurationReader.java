@@ -596,6 +596,13 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			return stm == null ? null : stm.getName();
 		}
 
+		public Statement getBoundaryStatement() {
+			if (stm == null) {
+				return expressionPlaceholderStm;
+			}
+			return stm;
+		}
+
 		@Override
 		public String toString() {
 			return "FlattenedToken [" + (stm != null ? "stm=" + stm + ", " : "") + "precedence=" + precedence + "]";
@@ -643,11 +650,11 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				}
 				case "subscript": {
 					result.add(new FlattenedToken(scope.value, PRECEDENCE_LEVEL_1_SUBSCRIPT, scope.value));
-					Statement exprplaceholder = scope.value.firstScope("subscript_index_expression");
-					Statement expression = exprplaceholder.firstScope("expression");
-					if (expression == null) {
-						break;
-					}
+//					Statement exprplaceholder = scope.value.firstScope("subscript_index_expression");
+//					Statement expression = exprplaceholder.firstScope("expression");
+//					if (expression == null) {
+//						break;
+//					}
 					//no need to flatten as expression is bounded by terminator
 					break;
 				}
@@ -810,8 +817,9 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		return visitFlattenExpressionStatements(expression, visitor);
 	}
 
-	public static <R> R visitTernaryTrueExpressionStatement(Statement ternarystm,
+	public static <R> R visitTernaryTrueExpressionStatement(FlattenedToken ternarytoken,
 			FlattenedStatementVisitor<R> visitor) {
+		Statement ternarystm = ternarytoken.getStatement();
 		Statement trueexpplaceholder = ternarystm.firstScope("exp_true");
 		Statement trueexpstm = trueexpplaceholder.firstScope("expression");
 		if (trueexpstm == null) {
@@ -834,29 +842,29 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			FlattenedToken firststm = statements.get(0);
 			Statement content = firststm.stm;
 			if (content == null) {
-				return visitor.visitMissing(firststm.expressionPlaceholderStm);
+				return visitor.visitMissing(firststm.getExpressionPlaceholderStatement());
 			}
 			switch (content.getName()) {
 				case "stringliteral": {
-					return visitor.visitStringLiteral(content);
+					return visitor.visitStringLiteral(firststm);
 				}
 				case "literal": {
-					return visitor.visitLiteral(content);
+					return visitor.visitLiteral(firststm);
 				}
 				case "parentheses": {
-					return visitor.visitParentheses(content);
+					return visitor.visitParentheses(firststm);
 				}
 				case "list": {
-					return visitor.visitList(content);
+					return visitor.visitList(firststm);
 				}
 				case "map": {
-					return visitor.visitMap(content);
+					return visitor.visitMap(firststm);
 				}
 				case "foreach": {
-					return visitor.visitForeach(content);
+					return visitor.visitForeach(firststm);
 				}
 				case "task": {
-					return visitor.visitTask(content);
+					return visitor.visitTask(firststm);
 				}
 				default: {
 					throw new AssertionError("Invalid expression kind: \"" + content.getName() + "\"");
@@ -881,88 +889,88 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		FlattenedToken maxprectoken = statements.get(rtl ? maxprecedencemaxidx : maxprecedenceidx);
 		Statement content = maxprectoken.stm;
 		if (content == null) {
-			return visitor.visitMissing(maxprectoken.expressionPlaceholderStm);
+			return visitor.visitMissing(maxprectoken.getExpressionPlaceholderStatement());
 		}
 		switch (content.getName()) {
 			case "dereference": {
 				if (maxprecedenceidx != 0) {
 					throw new AssertionError(maxprecedenceidx);
 				}
-				return visitor.visitDereference(content, statements.subList(1, size));
+				return visitor.visitDereference(maxprectoken, statements.subList(1, size));
 			}
 			case "unary": {
 				if (maxprecedenceidx != 0) {
 					throw new AssertionError(maxprecedenceidx);
 				}
-				return visitor.visitUnary(content, statements.subList(1, size));
+				return visitor.visitUnary(maxprectoken, statements.subList(1, size));
 			}
 			case "subscript": {
 				if (maxprecedencemaxidx != size - 1) {
 					throw new AssertionError(maxprecedencemaxidx + " - " + size);
 				}
-				return visitor.visitSubscript(content, statements.subList(0, maxprecedencemaxidx));
+				return visitor.visitSubscript(maxprectoken, statements.subList(0, maxprecedencemaxidx));
 			}
 			case "assignment": {
 				if (maxprecedenceidx == 0) {
 					throw new AssertionError(maxprecedenceidx);
 				}
-				return visitor.visitAssignment(content, statements.subList(0, maxprecedenceidx),
+				return visitor.visitAssignment(maxprectoken, statements.subList(0, maxprecedenceidx),
 						statements.subList(maxprecedenceidx + 1, size));
 			}
 			case "addop": {
 				if (maxprecedenceidx == 0) {
 					throw new AssertionError(maxprecedenceidx);
 				}
-				return visitor.visitAddOp(content, statements.subList(0, maxprecedencemaxidx),
+				return visitor.visitAddOp(maxprectoken, statements.subList(0, maxprecedencemaxidx),
 						statements.subList(maxprecedencemaxidx + 1, size));
 			}
 			case "multop": {
 				if (maxprecedenceidx == 0) {
 					throw new AssertionError(maxprecedenceidx);
 				}
-				return visitor.visitMultiplyOp(content, statements.subList(0, maxprecedencemaxidx),
+				return visitor.visitMultiplyOp(maxprectoken, statements.subList(0, maxprecedencemaxidx),
 						statements.subList(maxprecedencemaxidx + 1, size));
 			}
 			case "equalityop": {
 				if (maxprecedenceidx == 0) {
 					throw new AssertionError(maxprecedenceidx);
 				}
-				return visitor.visitEqualityOp(content, statements.subList(0, maxprecedencemaxidx),
+				return visitor.visitEqualityOp(maxprectoken, statements.subList(0, maxprecedencemaxidx),
 						statements.subList(maxprecedencemaxidx + 1, size));
 			}
 			case "comparison": {
 				if (maxprecedenceidx == 0) {
 					throw new AssertionError(maxprecedenceidx);
 				}
-				return visitor.visitComparisonOp(content, statements.subList(0, maxprecedenceidx),
+				return visitor.visitComparisonOp(maxprectoken, statements.subList(0, maxprecedenceidx),
 						statements.subList(maxprecedenceidx + 1, size));
 			}
 			case "shiftop": {
 				if (maxprecedenceidx == 0) {
 					throw new AssertionError(maxprecedenceidx);
 				}
-				return visitor.visitShiftOp(content, statements.subList(0, maxprecedencemaxidx),
+				return visitor.visitShiftOp(maxprectoken, statements.subList(0, maxprecedencemaxidx),
 						statements.subList(maxprecedencemaxidx + 1, size));
 			}
 			case "bitop": {
 				if (maxprecedenceidx == 0) {
 					throw new AssertionError(maxprecedenceidx);
 				}
-				return visitor.visitBitOp(content, statements.subList(0, maxprecedenceidx),
+				return visitor.visitBitOp(maxprectoken, statements.subList(0, maxprecedenceidx),
 						statements.subList(maxprecedenceidx + 1, size));
 			}
 			case "boolop": {
 				if (maxprecedenceidx == 0) {
 					throw new AssertionError(maxprecedenceidx);
 				}
-				return visitor.visitBoolOp(content, statements.subList(0, maxprecedenceidx),
+				return visitor.visitBoolOp(maxprectoken, statements.subList(0, maxprecedenceidx),
 						statements.subList(maxprecedenceidx + 1, size));
 			}
 			case "ternary": {
 				if (maxprecedenceidx == 0) {
 					throw new AssertionError(maxprecedenceidx);
 				}
-				return visitor.visitTernary(content, statements.subList(0, maxprecedenceidx),
+				return visitor.visitTernary(maxprectoken, statements.subList(0, maxprecedenceidx),
 						statements.subList(maxprecedenceidx + 1, size));
 			}
 			default: {
@@ -1377,16 +1385,16 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		private SakerTaskFactory evaluateFlattenedStatements(List<? extends FlattenedToken> statements,
 				ExpressionParsingState parsingstate, int flags) {
 			SakerTaskFactory result = evaluateFlattenedStatementsImpl(statements, parsingstate, flags);
-			positionLocator.addPositionIfAbsent(result, createScriptPosition(statements.get(0).expressionPlaceholderStm,
-					statements.get(statements.size() - 1).expressionPlaceholderStm));
+			positionLocator.addPositionIfAbsent(result, createScriptPosition(statements.get(0).getBoundaryStatement(),
+					statements.get(statements.size() - 1).getBoundaryStatement()));
 			return result;
 		}
 
 		private SakerTaskFactory evaluateFlattenedStatements(List<? extends FlattenedToken> statements,
 				FlattenedStatementFactoryVisitor visitor) {
 			SakerTaskFactory result = visitFlattenedStatements(statements, visitor);
-			positionLocator.addPositionIfAbsent(result, createScriptPosition(statements.get(0).expressionPlaceholderStm,
-					statements.get(statements.size() - 1).expressionPlaceholderStm));
+			positionLocator.addPositionIfAbsent(result, createScriptPosition(statements.get(0).getBoundaryStatement(),
+					statements.get(statements.size() - 1).getBoundaryStatement()));
 			return result;
 		}
 
@@ -1672,25 +1680,26 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitStringLiteral(Statement stm) {
+			public SakerTaskFactory visitStringLiteral(FlattenedToken token) {
+				Statement stm = token.getStatement();
 				return parseLiteralExpression(stm, expressionParsingState, "stringliteral_content");
 			}
 
 			@Override
-			public SakerTaskFactory visitLiteral(Statement stm) {
-				return parseLiteralExpression(stm, expressionParsingState, "literal_content");
+			public SakerTaskFactory visitLiteral(FlattenedToken stm) {
+				return parseLiteralExpression(stm.getStatement(), expressionParsingState, "literal_content");
 			}
 
 			@Override
-			public SakerTaskFactory visitParentheses(Statement stm) {
-				Statement exprplaceholder = stm.firstScope(STM_EXPRESSION_PLACEHOLDER);
+			public SakerTaskFactory visitParentheses(FlattenedToken stm) {
+				Statement exprplaceholder = stm.getStatement().firstScope(STM_EXPRESSION_PLACEHOLDER);
 				Statement expression = exprplaceholder.firstScope("expression");
 				return parseTaskExpressionConstantize(expression, expressionParsingState, exprplaceholder);
 			}
 
 			@Override
-			public SakerTaskFactory visitList(Statement stm) {
-				List<Statement> elements = stm.scopeTo("list_element");
+			public SakerTaskFactory visitList(FlattenedToken stm) {
+				List<Statement> elements = stm.getStatement().scopeTo("list_element");
 
 				ListTaskFactory listfactory = new ListTaskFactory();
 
@@ -1711,9 +1720,9 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitMap(Statement stm) {
+			public SakerTaskFactory visitMap(FlattenedToken stm) {
 				MapTaskFactory mapfactory = new MapTaskFactory();
-				List<Statement> elements = stm.scopeTo("map_element");
+				List<Statement> elements = stm.getStatement().scopeTo("map_element");
 				for (Statement elem : elements) {
 					Statement keyscope = elem.firstScope("map_key");
 					Statement keyexpression = keyscope.firstScope("expression");
@@ -1736,7 +1745,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitForeach(Statement stm) {
+			public SakerTaskFactory visitForeach(FlattenedToken token) {
+				Statement stm = token.getStatement();
 				List<Statement> loopvars = stm.scopeTo("loopvar");
 				ScriptPosition foreachposition = createScriptPosition(stm);
 				if (loopvars.size() > 2) {
@@ -1847,7 +1857,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitTask(Statement stm) {
+			public SakerTaskFactory visitTask(FlattenedToken token) {
+				Statement stm = token.getStatement();
 				Statement taskidstm = stm.firstScope("task_identifier");
 				List<Statement> qualifiers = taskidstm.scopeTo("qualifier");
 				String repository = taskidstm.firstValue("repository_identifier");
@@ -1954,8 +1965,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitDereference(Statement stm, List<? extends FlattenedToken> subject) {
-
+			public SakerTaskFactory visitDereference(FlattenedToken token, List<? extends FlattenedToken> subject) {
+				Statement stm = token.getStatement();
 				if (subject.size() == 1) {
 					FlattenedToken ftoken = subject.get(0);
 					//the statement can be null if there is a syntax error
@@ -1973,7 +1984,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitUnary(Statement stm, List<? extends FlattenedToken> subject) {
+			public SakerTaskFactory visitUnary(FlattenedToken token, List<? extends FlattenedToken> subject) {
+				Statement stm = token.getStatement();
 				SakerTaskFactory unarysubexp = evaluateFlattenedStatements(subject, this);
 				String op = stm.getValue();
 				switch (op) {
@@ -2037,7 +2049,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitSubscript(Statement stm, List<? extends FlattenedToken> subject) {
+			public SakerTaskFactory visitSubscript(FlattenedToken token, List<? extends FlattenedToken> subject) {
+				Statement stm = token.getStatement();
 				Statement expplaceholder = stm.firstScope("subscript_index_expression");
 				Statement expression = expplaceholder.firstScope("expression");
 				SakerTaskFactory index = parseTaskExpressionConstantize(expression, expressionParsingState,
@@ -2047,7 +2060,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitAssignment(Statement stm, List<? extends FlattenedToken> left,
+			public SakerTaskFactory visitAssignment(FlattenedToken token, List<? extends FlattenedToken> left,
 					List<? extends FlattenedToken> right) {
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
@@ -2055,8 +2068,9 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitAddOp(Statement stm, List<? extends FlattenedToken> left,
+			public SakerTaskFactory visitAddOp(FlattenedToken token, List<? extends FlattenedToken> left,
 					List<? extends FlattenedToken> right) {
+				Statement stm = token.getStatement();
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
 				switch (stm.getValue()) {
@@ -2073,8 +2087,9 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitMultiplyOp(Statement stm, List<? extends FlattenedToken> left,
+			public SakerTaskFactory visitMultiplyOp(FlattenedToken token, List<? extends FlattenedToken> left,
 					List<? extends FlattenedToken> right) {
+				Statement stm = token.getStatement();
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
 				switch (stm.getValue()) {
@@ -2094,8 +2109,9 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitEqualityOp(Statement stm, List<? extends FlattenedToken> left,
+			public SakerTaskFactory visitEqualityOp(FlattenedToken token, List<? extends FlattenedToken> left,
 					List<? extends FlattenedToken> right) {
+				Statement stm = token.getStatement();
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
 				switch (stm.getValue()) {
@@ -2112,8 +2128,9 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitComparisonOp(Statement stm, List<? extends FlattenedToken> left,
+			public SakerTaskFactory visitComparisonOp(FlattenedToken token, List<? extends FlattenedToken> left,
 					List<? extends FlattenedToken> right) {
+				Statement stm = token.getStatement();
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
 				switch (stm.getValue()) {
@@ -2136,8 +2153,9 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitShiftOp(Statement stm, List<? extends FlattenedToken> left,
+			public SakerTaskFactory visitShiftOp(FlattenedToken token, List<? extends FlattenedToken> left,
 					List<? extends FlattenedToken> right) {
+				Statement stm = token.getStatement();
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
 				switch (stm.getValue()) {
@@ -2154,8 +2172,9 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitBitOp(Statement stm, List<? extends FlattenedToken> left,
+			public SakerTaskFactory visitBitOp(FlattenedToken token, List<? extends FlattenedToken> left,
 					List<? extends FlattenedToken> right) {
+				Statement stm = token.getStatement();
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
 				switch (stm.getValue()) {
@@ -2175,8 +2194,9 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitBoolOp(Statement stm, List<? extends FlattenedToken> left,
+			public SakerTaskFactory visitBoolOp(FlattenedToken token, List<? extends FlattenedToken> left,
 					List<? extends FlattenedToken> right) {
+				Statement stm = token.getStatement();
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
 				switch (stm.getValue()) {
@@ -2193,8 +2213,9 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			}
 
 			@Override
-			public SakerTaskFactory visitTernary(Statement stm, List<? extends FlattenedToken> condition,
+			public SakerTaskFactory visitTernary(FlattenedToken token, List<? extends FlattenedToken> condition,
 					List<? extends FlattenedToken> falseres) {
+				Statement stm = token.getStatement();
 				Statement trueexpplaceholder = stm.firstScope("exp_true");
 				Statement trueexpstm = trueexpplaceholder.firstScope("expression");
 				SakerTaskFactory conditionfac = evaluateFlattenedStatements(condition, this);
@@ -2448,12 +2469,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitMissing(Statement expplaceholderstm) {
-			return null;
-		}
-
-		@Override
-		public Void visitStringLiteral(Statement stm) {
+		public Void visitStringLiteral(FlattenedToken token) {
+			Statement stm = token.getStatement();
 			OutlineFlattenedStatementVisitor inlineexpvisitor = this;
 			if (((flags & FLAG_LITERALS) == FLAG_LITERALS)) {
 				SimpleStructureOutlineEntry outline = createStringLiteralOutline(stm);
@@ -2482,7 +2499,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitLiteral(Statement stm) {
+		public Void visitLiteral(FlattenedToken token) {
+			Statement stm = token.getStatement();
 			if (((flags & FLAG_LITERALS) == FLAG_LITERALS)) {
 				parentConsumer.accept(createLiteralOutline(stm));
 			}
@@ -2490,13 +2508,15 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitParentheses(Statement stm) {
+		public Void visitParentheses(FlattenedToken token) {
+			Statement stm = token.getStatement();
 			visitParenthesesExpressionStatement(stm, this);
 			return null;
 		}
 
 		@Override
-		public Void visitList(Statement stm) {
+		public Void visitList(FlattenedToken token) {
+			Statement stm = token.getStatement();
 			List<Statement> expstms = new ArrayList<>();
 			List<Statement> listelements = stm.scopeTo("list_element");
 			for (Statement elemstm : listelements) {
@@ -2516,7 +2536,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitMap(Statement stm) {
+		public Void visitMap(FlattenedToken token) {
+			Statement stm = token.getStatement();
 			SimpleStructureOutlineEntry outline = new SimpleStructureOutlineEntry();
 			outline.setSchemaIdentifier(SakerParsedModel.OUTLINE_SCHEMA + ".map");
 
@@ -2530,7 +2551,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitForeach(Statement stm) {
+		public Void visitForeach(FlattenedToken token) {
+			Statement stm = token.getStatement();
 			SimpleStructureOutlineEntry outline = new SimpleStructureOutlineEntry();
 			outline.setType("Foreach");
 			outline.setSchemaIdentifier(SakerParsedModel.OUTLINE_SCHEMA + ".foreach");
@@ -2596,7 +2618,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitTask(Statement stm) {
+		public Void visitTask(FlattenedToken token) {
+			Statement stm = token.getStatement();
 			SimpleStructureOutlineEntry outline = new SimpleStructureOutlineEntry();
 			Statement taskidstm = stm.firstScope("task_identifier");
 			outline.setSchemaIdentifier(SakerParsedModel.OUTLINE_SCHEMA + ".task");
@@ -2699,21 +2722,22 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitDereference(Statement stm, List<? extends FlattenedToken> subject) {
+		public Void visitDereference(FlattenedToken token, List<? extends FlattenedToken> subject) {
 			OutlineFlattenedStatementVisitor subconsumer = new OutlineFlattenedStatementVisitor(parentConsumer);
 			visitFlattenedStatements(subject, subconsumer);
 			return null;
 		}
 
 		@Override
-		public Void visitUnary(Statement stm, List<? extends FlattenedToken> subject) {
+		public Void visitUnary(FlattenedToken token, List<? extends FlattenedToken> subject) {
 			OutlineFlattenedStatementVisitor subconsumer = new OutlineFlattenedStatementVisitor(parentConsumer);
 			visitFlattenedStatements(subject, subconsumer);
 			return null;
 		}
 
 		@Override
-		public Void visitSubscript(Statement stm, List<? extends FlattenedToken> subject) {
+		public Void visitSubscript(FlattenedToken token, List<? extends FlattenedToken> subject) {
+			Statement stm = token.getStatement();
 			OutlineFlattenedStatementVisitor subconsumer = new OutlineFlattenedStatementVisitor(parentConsumer);
 			visitFlattenedStatements(subject, subconsumer);
 			Statement indexexpression = stm.firstScope("subscript_index_expression").firstScope("expression");
@@ -2724,7 +2748,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitAssignment(Statement stm, List<? extends FlattenedToken> left,
+		public Void visitAssignment(FlattenedToken token, List<? extends FlattenedToken> left,
 				List<? extends FlattenedToken> right) {
 			OutlineFlattenedStatementVisitor subconsumer = new OutlineFlattenedStatementVisitor(parentConsumer);
 			visitFlattenedStatements(left, subconsumer);
@@ -2733,7 +2757,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitAddOp(Statement stm, List<? extends FlattenedToken> left,
+		public Void visitAddOp(FlattenedToken token, List<? extends FlattenedToken> left,
 				List<? extends FlattenedToken> right) {
 			OutlineFlattenedStatementVisitor subconsumer = new OutlineFlattenedStatementVisitor(parentConsumer);
 			visitFlattenedStatements(left, subconsumer);
@@ -2742,7 +2766,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitMultiplyOp(Statement stm, List<? extends FlattenedToken> left,
+		public Void visitMultiplyOp(FlattenedToken token, List<? extends FlattenedToken> left,
 				List<? extends FlattenedToken> right) {
 			OutlineFlattenedStatementVisitor subconsumer = new OutlineFlattenedStatementVisitor(parentConsumer);
 			visitFlattenedStatements(left, subconsumer);
@@ -2751,7 +2775,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitEqualityOp(Statement stm, List<? extends FlattenedToken> left,
+		public Void visitEqualityOp(FlattenedToken token, List<? extends FlattenedToken> left,
 				List<? extends FlattenedToken> right) {
 			OutlineFlattenedStatementVisitor subconsumer = new OutlineFlattenedStatementVisitor(parentConsumer);
 			visitFlattenedStatements(left, subconsumer);
@@ -2760,7 +2784,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitComparisonOp(Statement stm, List<? extends FlattenedToken> left,
+		public Void visitComparisonOp(FlattenedToken token, List<? extends FlattenedToken> left,
 				List<? extends FlattenedToken> right) {
 			OutlineFlattenedStatementVisitor subconsumer = new OutlineFlattenedStatementVisitor(parentConsumer);
 			visitFlattenedStatements(left, subconsumer);
@@ -2769,7 +2793,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitShiftOp(Statement stm, List<? extends FlattenedToken> left,
+		public Void visitShiftOp(FlattenedToken token, List<? extends FlattenedToken> left,
 				List<? extends FlattenedToken> right) {
 			OutlineFlattenedStatementVisitor subconsumer = new OutlineFlattenedStatementVisitor(parentConsumer);
 			visitFlattenedStatements(left, subconsumer);
@@ -2778,7 +2802,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitBitOp(Statement stm, List<? extends FlattenedToken> left,
+		public Void visitBitOp(FlattenedToken token, List<? extends FlattenedToken> left,
 				List<? extends FlattenedToken> right) {
 			OutlineFlattenedStatementVisitor subconsumer = new OutlineFlattenedStatementVisitor(parentConsumer);
 			visitFlattenedStatements(left, subconsumer);
@@ -2787,7 +2811,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitBoolOp(Statement stm, List<? extends FlattenedToken> left,
+		public Void visitBoolOp(FlattenedToken token, List<? extends FlattenedToken> left,
 				List<? extends FlattenedToken> right) {
 			OutlineFlattenedStatementVisitor subconsumer = new OutlineFlattenedStatementVisitor(parentConsumer);
 			visitFlattenedStatements(left, subconsumer);
@@ -2796,10 +2820,10 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		@Override
-		public Void visitTernary(Statement stm, List<? extends FlattenedToken> condition,
+		public Void visitTernary(FlattenedToken token, List<? extends FlattenedToken> condition,
 				List<? extends FlattenedToken> falseres) {
 			OutlineFlattenedStatementVisitor subconsumer = new OutlineFlattenedStatementVisitor(parentConsumer);
-			visitTernaryTrueExpressionStatement(stm, subconsumer);
+			visitTernaryTrueExpressionStatement(token, subconsumer);
 			visitFlattenedStatements(condition, subconsumer);
 			visitFlattenedStatements(falseres, subconsumer);
 			return null;
