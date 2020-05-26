@@ -121,9 +121,7 @@ export(
 	}
 	
 	$jar = saker.jar.create(
-		Output: $buildconfig[testing] 
-				? saker.build-test.jar 
-				: saker.build.jar,
+		Output: $buildconfig[testing] ? saker.build-test.jar : saker.build.jar,
 		Resources: [
 			{
 				Directory: resources/core,
@@ -165,9 +163,7 @@ exportide(
 	out export = include(export, buildconfig: $buildconfig),
 ){
 	$idesupportjar = saker.jar.create(
-		Output: $buildconfig[testing] 
-				? saker.build-ide-test.jar 
-				: saker.build-ide.jar,
+		Output: $buildconfig[testing] ? saker.build-ide-test.jar : saker.build-ide.jar,
 		Resources: [
 			{
 				Directory: $export[compile][idesupportcompile][javac][ClassDirectory],

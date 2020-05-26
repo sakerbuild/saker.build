@@ -1,0 +1,23 @@
+build(
+	out a = [
+		-flag1
+		-flag2
+		--flag3
+		------flag4
+	],
+	out b = [
+		+123
+		-123
+		1 - 2 - 3
+	],
+	out c = [
+		/a
+		/b
+		*c
+		%d
+	],
+	out d = [
+		1### comment ###+### comment ###3
+	]
+) {
+}

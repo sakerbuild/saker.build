@@ -74,7 +74,7 @@ public abstract class BinaryNumberOperatorTaskFactory extends BinaryOperatorTask
 		}
 		if (!(result instanceof Number)) {
 			throw new OperandExecutionException(
-					operandname + " operand  is not a Number. (" + result.getClass().getName() + ")", taskid);
+					operandname + " operand is not a Number. (" + result.getClass().getName() + ")", taskid);
 		}
 		return (Number) result;
 	}

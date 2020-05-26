@@ -2,8 +2,9 @@ build {
 	$condition = false
 	include(
 		secondtarget,
-		MyParam: $condition 
-				? "1", 
+		MyParam1: $condition 
+				? "1",
+		MyParam2: $condition ? "1", 
 				: "2",
 	)
 }

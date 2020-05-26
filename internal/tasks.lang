@@ -1,6 +1,6 @@
 language TasksLanguage {
 	regex TARGET_NAME_REGEX "[a-zA-Z_][a-zA-Z0-9_]*";
-	regex VARIABLE_NAME_REGEX "[a-zA-Z_][a-zA-Z0-9_]*";
+	regex VARIABLE_NAME_REGEX "[a-zA-Z0-9_]*";
 	regex TASK_NAME_REGEX "[a-zA-Z_][.a-zA-Z0-9_]*";
 	regex REPOSITORY_NAME_REGEX "[a-zA-Z_][a-zA-Z0-9_]*";
 	regex PARAMETER_NAME "[a-zA-Z_][a-zA-Z0-9_]*";
@@ -27,6 +27,11 @@ language TasksLanguage {
 		skip "[ \t\x0B\f]+" *;
 		include linecomment *;
 		include multilinecomment *;	
+	}
+	firstorder SINGLE_WHITESPACE {
+		skip "\s" 1;
+		include linecomment 1;
+		include multilinecomment 1;
 	}
 	
 	inorder comma_or_newline {
@@ -273,7 +278,7 @@ language TasksLanguage {
 			}
 			value literal 1{
 				value literal_content 1 {
-					matches "[^,\(\)\[\]\{\}:;\s]+" +;
+					matches "[^,\(\)\[\]\{\}:;\s#]+" +;
 				}
 			}
 		}
@@ -286,53 +291,63 @@ language TasksLanguage {
 				skip "\]" 1;
 			}
 			value equalityop 1{
-				include WHITESPACE *;
+				include WHITESPACE +;
 				matches "[!=]=" 1;
-				include nb_expression_placeholder as expression_placeholder 1;
+				include SINGLE_WHITESPACE 1;
+				include expression_placeholder as expression_placeholder 1;
 			}
 			value assignment 1 {
-				include WHITESPACE *;
+				include WHITESPACE +;
 				include marker as assign_operator_eq("=") 1;
-				include nb_expression_placeholder as expression_placeholder 1;
+				include SINGLE_WHITESPACE 1;
+				include expression_placeholder as expression_placeholder 1;
 			}
 			value shiftop 1{
-				include WHITESPACE *;
+				include WHITESPACE +;
 				matches "<<|>>" 1;
-				include nb_expression_placeholder as expression_placeholder 1;
+				include SINGLE_WHITESPACE 1;
+				include expression_placeholder as expression_placeholder 1;
 			}
 			value comparison 1 {
-				include WHITESPACE *;
+				include WHITESPACE +;
 				matches "[<>]=?" 1;
-				include nb_expression_placeholder as expression_placeholder 1;
+				include SINGLE_WHITESPACE 1;
+				include expression_placeholder as expression_placeholder 1;
 			}
 			value addop 1 {
-				include WHITESPACE *;
+				include WHITESPACE +;
 				matches "[\+\-]" 1;
-				include nb_expression_placeholder as expression_placeholder 1;
+				include SINGLE_WHITESPACE 1;
+				include expression_placeholder as expression_placeholder 1;
 			}
 			value multop 1 {
-				include WHITESPACE *;
+				include WHITESPACE +;
 				matches "[\*\/%]" 1;
-				include nb_expression_placeholder as expression_placeholder 1;
+				include SINGLE_WHITESPACE 1;
+				include expression_placeholder as expression_placeholder 1;
 			}
 			value boolop 1 {
-				include WHITESPACE *;
+				include WHITESPACE +;
 				matches "\|\||&&" 1;
-				include nb_expression_placeholder as expression_placeholder 1;
+				include SINGLE_WHITESPACE 1;
+				include expression_placeholder as expression_placeholder 1;
 			}
 			value bitop 1 {
-				include WHITESPACE *;
+				include WHITESPACE +;
 				matches "[&\^|]" 1;
-				include nb_expression_placeholder as expression_placeholder 1;
+				include SINGLE_WHITESPACE 1;
+				include expression_placeholder as expression_placeholder 1;
 			}
 			value ternary 1 {
-				include WHITESPACE *;
+				include WHITESPACE +;
 				skip "\?" 1;
-				include nb_expression_placeholder as exp_true 1;
+				include SINGLE_WHITESPACE 1;
+				include expression_placeholder as exp_true 1;
 				include WHITESPACE *;
 				inorder ?{
 					skip ":" 1;
-					include nb_expression_placeholder as exp_false 1;
+					include SINGLE_WHITESPACE 1;
+					include expression_placeholder as exp_false 1;
 				}
 			}
 		}
