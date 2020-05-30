@@ -196,6 +196,7 @@ public class DataConversionTest extends SakerTestCase {
 		convertToEnum();
 		convertWithValueOf();
 		convertValueToMethod();
+		convertWithToAndValueOf();
 
 		testAnnotationConversions();
 
@@ -587,6 +588,11 @@ public class DataConversionTest extends SakerTestCase {
 		public SomeInterfaceImpl toSomeInterfaceImpl() {
 			return new SomeInterfaceImpl(val);
 		}
+	}
+
+	private void convertWithToAndValueOf() throws AssertionError, Exception {
+		assertConvertibleExamineEquals(new AdaptToConvertValue("1"), SomeInterfaceValueOf.class,
+				new SomeInterfaceValueOf("1"));
 	}
 
 	private void convertValueToMethod() throws AssertionError, Exception {

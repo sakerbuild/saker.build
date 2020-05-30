@@ -1585,26 +1585,88 @@ public class DataConverterUtils {
 					break valueof_converter_block;
 				}
 
-				List<Method> adaptvalueofmethods = new ArrayList<>();
-				List<Method> matches = new ArrayList<>();
 				Comparator<? super Method> valueofmethodsorter = (l, r) -> {
 					return Integer.compare(allvalueclassinheritedtypedistances.get(l.getParameterTypes()[0]),
 							allvalueclassinheritedtypedistances.get(r.getParameterTypes()[0]));
 				};
-				matches.sort(valueofmethodsorter);
-				adaptvalueofmethods.sort(valueofmethodsorter);
 
-				for (Iterator<Method> it = valueofs.values().iterator(); it.hasNext();) {
-					Method m = it.next();
-					Class<?> paramtype = m.getParameterTypes()[0];
+				List<Method> matches = new ArrayList<>();
+				for (Iterator<Entry<Class<?>, Method>> it = valueofs.entrySet().iterator(); it.hasNext();) {
+					Entry<Class<?>, Method> entry = it.next();
+					Method m = entry.getValue();
+					Class<?> paramtype = entry.getKey();
 					if (paramtype.isAssignableFrom(valueclass)) {
 						matches.add(m);
 						it.remove();
 						continue;
 					}
+				}
+				matches.sort(valueofmethodsorter);
+				for (Method m : matches) {
+					try {
+						return ReflectUtils.invokeMethod((Object) null, m, value);
+					} catch (Exception e) {
+						excs = IOUtils.collectExc(excs,
+								new ConversionFailedException("Failed to convert using: " + m, e));
+					}
+				}
+
+				List<Entry<Method, Method>> toconvertthenvalueof = new ArrayList<>();
+				for (Iterator<Entry<Class<?>, Method>> it = valueofs.entrySet().iterator(); it.hasNext();) {
+					Entry<Class<?>, Method> entry = it.next();
+					Method m = entry.getValue();
+					Class<?> paramtype = entry.getKey();
+					try {
+						Method tovalueofparammethod = getToTargetClassConverterMethod(valueclass, paramtype);
+						toconvertthenvalueof.add(ImmutableUtils.makeImmutableMapEntry(tovalueofparammethod, m));
+						it.remove();
+						continue;
+					} catch (NoSuchMethodException | SecurityException e) {
+						excs = IOUtils.collectExc(excs,
+								new ConversionFailedException("No subject conversion for valueOf parameter: " + m, e));
+					}
+				}
+				//sort by valueOf argument class name as don't have a better heuristic
+				toconvertthenvalueof.sort((l, r) -> l.getValue().getParameterTypes()[0].getName()
+						.compareTo(r.getValue().getParameterTypes()[0].getName()));
+				for (Entry<Method, Method> entry : toconvertthenvalueof) {
+					Method toconvertmethod = entry.getKey();
+					Method valueofmethod = entry.getValue();
+					Object intermediate;
+					try {
+						intermediate = ReflectUtils.invokeMethod(value, toconvertmethod);
+					} catch (IllegalAccessException | IllegalArgumentException e) {
+						excs = IOUtils.collectExc(excs,
+								new ConversionFailedException("Failed to convert using: " + toconvertmethod, e));
+						continue;
+					} catch (InvocationTargetException e) {
+						excs = IOUtils.collectExc(excs, new ConversionFailedException(
+								"Failed to convert using: " + toconvertmethod, e.getCause()));
+						continue;
+					}
+					//XXX maybe adapt the result
+					try {
+						return ReflectUtils.invokeMethod((Object) null, valueofmethod, intermediate);
+					} catch (IllegalAccessException | IllegalArgumentException e) {
+						excs = IOUtils.collectExc(excs,
+								new ConversionFailedException("Failed to convert using: " + valueofmethod, e));
+						continue;
+					} catch (InvocationTargetException e) {
+						excs = IOUtils.collectExc(excs, new ConversionFailedException(
+								"Failed to convert using: " + valueofmethod, e.getCause()));
+						continue;
+					}
+				}
+
+				List<Method> adaptvalueofmethods = new ArrayList<>();
+				adaptvalueofmethods.sort(valueofmethodsorter);
+				for (Iterator<Entry<Class<?>, Method>> it = valueofs.entrySet().iterator(); it.hasNext();) {
+					Entry<Class<?>, Method> entry = it.next();
+					Method m = entry.getValue();
+					Class<?> paramtype = entry.getKey();
 					if (paramtype.isInterface()) {
 						Class<?> inheritednameclass = allvalueclassinheritedtypenameclasses.get(paramtype.getName());
-						if (inheritednameclass != paramtype) {
+						if (inheritednameclass != null && inheritednameclass != paramtype) {
 							//a valueOf method is present that has an interface parameter
 							//    that the value object implements
 							//    but the implemented interface in the value object
@@ -1614,14 +1676,6 @@ public class DataConverterUtils {
 							it.remove();
 							continue;
 						}
-					}
-				}
-				for (Method m : matches) {
-					try {
-						return ReflectUtils.invokeMethod((Object) null, m, value);
-					} catch (Exception e) {
-						excs = IOUtils.collectExc(excs,
-								new ConversionFailedException("Failed to convert using: " + m, e));
 					}
 				}
 				for (Method m : adaptvalueofmethods) {
@@ -1665,17 +1719,7 @@ public class DataConverterUtils {
 			}
 
 			try {
-				Method totargetmethod = null;
-				try {
-					totargetmethod = valueclass.getMethod("to" + targetclass.getCanonicalName().replace('.', '_'));
-				} catch (NoSuchMethodException | SecurityException e) {
-					try {
-						totargetmethod = valueclass.getMethod("to" + targetclass.getSimpleName());
-					} catch (NoSuchMethodException | SecurityException e2) {
-						e.addSuppressed(e2);
-						throw e;
-					}
-				}
+				Method totargetmethod = getToTargetClassConverterMethod(valueclass, targetclass);
 				if (targetclass.isAssignableFrom(totargetmethod.getReturnType())) {
 					try {
 						return ReflectUtils.invokeMethod(value, totargetmethod);
@@ -1760,6 +1804,20 @@ public class DataConverterUtils {
 			}
 		}
 		throw exc;
+	}
+
+	private static Method getToTargetClassConverterMethod(Class<? extends Object> valueclass,
+			final Class<?> targetclass) throws NoSuchMethodException, SecurityException {
+		try {
+			return valueclass.getMethod("to" + targetclass.getCanonicalName().replace('.', '_'));
+		} catch (NoSuchMethodException | SecurityException e) {
+			try {
+				return valueclass.getMethod("to" + targetclass.getSimpleName());
+			} catch (NoSuchMethodException | SecurityException e2) {
+				e.addSuppressed(e2);
+				throw e;
+			}
+		}
 	}
 
 	private static boolean isValidValueOfGenericParameterType(Type paramgentype) {

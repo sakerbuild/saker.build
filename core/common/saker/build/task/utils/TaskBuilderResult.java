@@ -45,8 +45,9 @@ public interface TaskBuilderResult<R> {
 	/**
 	 * Creates a new instance.
 	 * <p>
-	 * The returned instance implements the {@link #hashCode()} and {@link #equals(Object)} contract in relation with
-	 * other instances created by this method. The returned object also implements {@link Externalizable}.
+	 * The returned instance implements the {@link Object#hashCode() hashCode()} and {@link Object#equals(Object)
+	 * equals(Object)} contract in relation with other instances created by this method. The returned object also
+	 * implements {@link Externalizable}.
 	 * 
 	 * @param <R>
 	 *            The result type of the task.
