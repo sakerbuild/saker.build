@@ -19,6 +19,8 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.function.Supplier;
 
 import saker.build.runtime.execution.ExecutionContext;
@@ -28,6 +30,7 @@ import saker.build.task.TaskContext;
 import saker.build.task.TaskFactory;
 import saker.build.task.TaskResultCollection;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
@@ -162,6 +165,71 @@ public class StandardIOFormatterTest extends CollectingMetricEnvironmentTestCase
 		}
 	}
 
+	private static class SinkWriteTask implements TaskFactory<Void>, Task<Void>, Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		private byte[] bytes;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public SinkWriteTask() {
+		}
+
+		public SinkWriteTask(byte[] bytes) {
+			this.bytes = bytes;
+		}
+
+		public SinkWriteTask(String str) {
+			this(str.getBytes(StandardCharsets.UTF_8));
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			out.writeObject(bytes);
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			bytes = (byte[]) in.readObject();
+		}
+
+		@Override
+		public Void run(TaskContext taskcontext) throws Exception {
+			taskcontext.setStandardOutDisplayIdentifier("id");
+			taskcontext.getStandardOut().write(ByteArrayRegion.wrap(bytes));
+			return null;
+		}
+
+		@Override
+		public Task<? extends Void> createTask(ExecutionContext executioncontext) {
+			return this;
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + Arrays.hashCode(bytes);
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			SinkWriteTask other = (SinkWriteTask) obj;
+			if (!Arrays.equals(bytes, other.bytes))
+				return false;
+			return true;
+		}
+
+	}
+
 	private UnsyncByteArrayOutputStream out;
 
 	@Override
@@ -214,6 +282,27 @@ public class StandardIOFormatterTest extends CollectingMetricEnvironmentTestCase
 		assertTrue(
 				out.toString().equals("[taskid]pre" + sysls + "[taskid]test\n" + "[taskid]\n" + "[taskid]post" + sysls),
 				msgsupplier);
+
+		runTask("sink", new SinkWriteTask("A\r\nB\r\n"));
+		assertTrue(out.toString().equals("[id]A\r\n[id]B\r\n"), msgsupplier);
+		
+		runTask("sink", new SinkWriteTask("A\nB\n"));
+		assertTrue(out.toString().equals("[id]A\n[id]B\n"), msgsupplier);
+		
+		runTask("sink", new SinkWriteTask("A\rB\r"));
+		assertTrue(out.toString().equals("[id]A\r[id]B\r"), msgsupplier);
+		
+		runTask("sink", new SinkWriteTask("A\rB\n"));
+		assertTrue(out.toString().equals("[id]A\r[id]B\n"), msgsupplier);
+		
+		runTask("sink", new SinkWriteTask("A\rB\n\n"));
+		assertTrue(out.toString().equals("[id]A\r[id]B\n[id]\n"), msgsupplier);
+		
+		runTask("sink", new SinkWriteTask("A\r\rB\n\n"));
+		assertTrue(out.toString().equals("[id]A\r[id]\r[id]B\n[id]\n"), msgsupplier);
+		
+		runTask("sink", new SinkWriteTask("A\r\nB\n\n"));
+		assertTrue(out.toString().equals("[id]A\r\n[id]B\n[id]\n"), msgsupplier);
 	}
 
 	@Override

@@ -1,0 +1,11 @@
+build(
+	out output
+) {
+	if test.val() == 1 {
+		$output = 11
+	} else if test.val() == 2 {
+		$output = 22
+	} else {
+		$output = 33
+	}
+}

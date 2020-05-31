@@ -390,17 +390,30 @@ language TasksLanguage {
 		inorder ? {
 			include WHITESPACE *;
 			skip "else" 1;
-			include WHITESPACE *;
-			include marker as false_branch_start("\{") 1;
-			value condition_false_statement_block 1 {
+			
+			value ifelse {
+				include WHITESPACE +;
+				value false_step 1 {
+					include condition_step 1;
+				}
+			}
+			
+			value falseblock {
+				include WHITESPACE *;
+				include marker as false_branch_start("\{") 1;
 				anyorder * {
 					include WHITESPACE *;
 					value false_step * {
 						include general_step 1;
 					}
 				}
+				include marker as false_branch_end("\}") 1;
 			}
-			include marker as false_branch_end("\}") 1;
+			
+			firstorder 1 {
+				include ifelse as condition_false_statement_block 1;
+				include falseblock as condition_false_statement_block 1;
+			}
 		}
 	}
 	
