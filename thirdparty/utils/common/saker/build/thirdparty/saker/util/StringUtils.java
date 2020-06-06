@@ -101,7 +101,7 @@ public class StringUtils {
 	 * @param elements
 	 *            The elements to join.
 	 * @param suffix
-	 *            The suffix to end the reuslt wits.
+	 *            The suffix to end the result with.
 	 * @return The created string based on the arguments.
 	 * @see StringBuilder#append(Object)
 	 */
@@ -151,7 +151,7 @@ public class StringUtils {
 	 * @param elements
 	 *            The iterator of elements to join.
 	 * @param suffix
-	 *            The suffix to end the reuslt wits.
+	 *            The suffix to end the result with.
 	 * @return The created string based on the arguments.
 	 * @see StringBuilder#append(Object)
 	 */
@@ -200,7 +200,7 @@ public class StringUtils {
 	 * @param elements
 	 *            The array of elements to join.
 	 * @param suffix
-	 *            The suffix to end the reuslt wits.
+	 *            The suffix to end the result with.
 	 * @return The created string based on the arguments.
 	 * @see StringBuilder#append(Object)
 	 */

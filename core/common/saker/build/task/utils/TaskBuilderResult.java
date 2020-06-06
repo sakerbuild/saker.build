@@ -24,7 +24,7 @@ import saker.build.task.identifier.TaskIdentifier;
  * @param <R>
  *            The result type of the task.
  * @see TaskContext#startTask(TaskIdentifier, TaskFactory, TaskExecutionParameters)
- * @since saker.build 0.8.12
+ * @since saker.build 0.8.13
  */
 @PublicApi
 public interface TaskBuilderResult<R> {

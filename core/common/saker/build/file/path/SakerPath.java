@@ -815,7 +815,7 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 	/**
 	 * Returns the common path of this and the parameter path.
 	 * <p>
-	 * This works in the same way as {@link #getCommonSubPath(SakerPath)}, but will extract the common part of both
+	 * This works in the same way as {@link #getCommonNameCount(SakerPath)}, but will extract the common part of both
 	 * paths as a result.
 	 * <p>
 	 * If the roots differ then the result will be <code>null</code>.
@@ -823,7 +823,6 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 	 * @param other
 	 *            The path to compare with.
 	 * @return The common sub path or <code>null</code> if the roots differ.
-	 * @see #getCommonNameCount(SakerPath)
 	 */
 	public SakerPath getCommonSubPath(SakerPath other) {
 		if (!Objects.equals(this.root, other.root)) {

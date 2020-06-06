@@ -2477,6 +2477,10 @@ public class ObjectUtils {
 	 * If the transformer is <code>null</code>, a {@link NullPointerException} might be thrown when an iterator is
 	 * constructed from the result.
 	 * 
+	 * @param <T>
+	 *            The original element type.
+	 * @param <E>
+	 *            The new element type.
 	 * @param iterable
 	 *            The iterable to transform.
 	 * @param transformer
@@ -2497,6 +2501,10 @@ public class ObjectUtils {
 	 * <p>
 	 * The returned iterator will use the argument function to transform each element, and return the resulting object.
 	 * 
+	 * @param <T>
+	 *            The original element type.
+	 * @param <E>
+	 *            The new element type.
 	 * @param iterator
 	 *            The iterator to transform.
 	 * @param transformer
