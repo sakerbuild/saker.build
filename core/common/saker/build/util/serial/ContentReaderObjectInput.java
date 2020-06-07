@@ -37,13 +37,13 @@ import java.util.NavigableSet;
 import java.util.Set;
 
 import saker.build.runtime.execution.SakerLog;
+import saker.build.thirdparty.saker.util.ArrayUtils;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.StringUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.io.DataInputUnsyncByteArrayInputStream;
-import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.LimitInputStream;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.io.function.IOFunction;
@@ -777,39 +777,53 @@ public class ContentReaderObjectInput implements ObjectInput {
 		int idx = addSerializedObject(UnavailableSerializedObject.instance());
 
 		//catch and collect all exceptions in order to properly pre-read the proxy data
-		Exception failexc = null;
+		Exception[] failexc = {};
 		ClassLoader cl = null;
 		try {
 			cl = readExternalClassLoader();
-		} catch (IOException | RuntimeException e) {
-			IOUtils.addExc(failexc, e);
+		} catch (Exception e) {
+			failexc = ArrayUtils.appended(failexc, e);
 		}
 		//exception from readInt is propagated without collecting it. it is a hard failure.
 		int itfslen;
 		try {
 			itfslen = readInt();
 		} catch (Exception e) {
-			Exception cause = IOUtils.addExc(failexc, e);
+			for (Exception ex : failexc) {
+				e.addSuppressed(ex);
+			}
 			setSerializedObject(idx,
-					new FailedSerializedObject<>(() -> new ObjectReadException("Failed to read proxy object.", cause)));
+					new FailedSerializedObject<>(() -> new ObjectReadException("Failed to read proxy object.", e)));
 			throw e;
 		}
 		Class<?>[] interfaces = new Class<?>[itfslen];
 		for (int i = 0; i < itfslen; i++) {
 			try {
 				interfaces[i] = readTypeWithCommand();
-			} catch (IOException | ClassNotFoundException | RuntimeException e) {
-				IOUtils.addExc(failexc, e);
+			} catch (Exception e) {
+				failexc = ArrayUtils.appended(failexc, e);
 			}
 		}
 		Object ih;
 		try {
 			ih = readObject();
-		} catch (IOException | ClassNotFoundException | RuntimeException e) {
-			IOUtils.addExc(failexc, e);
-			setSerializedObject(idx, new FailedSerializedObject<>(
-					() -> new ObjectReadException("Failed to read proxy object.", failexc)));
+		} catch (Exception e) {
+			for (Exception ex : failexc) {
+				e.addSuppressed(ex);
+			}
+			setSerializedObject(idx,
+					new FailedSerializedObject<>(() -> new ObjectReadException("Failed to read proxy object.", e)));
 			throw e;
+		}
+		if (failexc.length > 0) {
+			Exception[] ffailexc = failexc;
+			setSerializedObject(idx, new FailedSerializedObject<>(() -> {
+				ObjectReadException e = new ObjectReadException("Failed to read proxy object.", ffailexc[0]);
+				for (int i = 1; i < ffailexc.length; i++) {
+					e.addSuppressed(ffailexc[i]);
+				}
+				return e;
+			}));
 		}
 		if (!(ih instanceof InvocationHandler)) {
 			throw new ObjectTypeException("Proxy invocation handler doesn't implement " + InvocationHandler.class
@@ -820,7 +834,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 			Object result = Proxy.newProxyInstance(cl, interfaces, (InvocationHandler) ih);
 			setSerializedObject(idx, new PresentSerializedObject<>(result));
 			return result;
-		} catch (IllegalArgumentException | SecurityException e) {
+		} catch (Exception e) {
 			throw new SerializationReflectionException(
 					"Failed to instantiate proxy object. (" + Arrays.toString(interfaces) + ")", e);
 		}
