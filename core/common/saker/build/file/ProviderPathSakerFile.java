@@ -15,6 +15,9 @@
  */
 package saker.build.file;
 
+import java.nio.file.attribute.PosixFilePermission;
+import java.util.Set;
+
 import saker.build.file.content.ContentDatabase;
 import saker.build.file.content.ContentDatabase.ContentHandle;
 import saker.build.file.content.ContentDescriptor;
@@ -80,5 +83,10 @@ public class ProviderPathSakerFile extends SakerPathFileBase {
 	@Override
 	ContentDatabase getContentDatabase() {
 		return contentHandle.getContentDatabase();
+	}
+
+	@Override
+	public Set<PosixFilePermission> getPosixFilePermissions() {
+		return contentHandle.getPosixFilePermissions();
 	}
 }

@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -27,6 +28,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Objects;
+import java.util.Set;
 
 import saker.build.exception.InvalidFileTypeException;
 import saker.build.exception.InvalidPathFormatException;
@@ -64,6 +66,7 @@ import saker.build.thirdparty.saker.util.rmi.wrap.RMIOutputStreamWrapper;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapSerializeKeyRemoteValueWrapper;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapSerializeKeySerializeValueWrapper;
 import saker.build.util.exc.ExceptionView;
+import saker.build.util.rmi.EnumSetRMIWrapper;
 
 /**
  * Interface for an utility class that provides extension functions for {@link TaskContext}.
@@ -1477,6 +1480,33 @@ public interface TaskExecutionUtilities {
 	 * Creates a {@link SakerFile} instance which has its contents backed by the specified file system file at the given
 	 * path.
 	 * <p>
+	 * The name of the file is the same as the name of the argument path.
+	 * <p>
+	 * This method is the same as:
+	 * 
+	 * <pre>
+	 * createProviderPathFile(pathkey.getPath().getFileName(), pathkey)
+	 * </pre>
+	 * 
+	 * @param pathkey
+	 *            The path key.
+	 * @return The file or directory instance.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @throws IOException
+	 *             If accessing the file at the given path results in an I/O error.
+	 * @since saker.build 0.8.13
+	 */
+	public default SakerFile createProviderPathFile(ProviderHolderPathKey pathkey)
+			throws NullPointerException, IOException {
+		Objects.requireNonNull(pathkey, "path key");
+		return createProviderPathFile(pathkey.getPath().getFileName(), pathkey);
+	}
+
+	/**
+	 * Creates a {@link SakerFile} instance which has its contents backed by the specified file system file at the given
+	 * path.
+	 * <p>
 	 * This method can be used to include files from a given file system in the build. The resulting file needs to be
 	 * added to a {@link SakerDirectory} to be included in the in-memory hierarchy.
 	 * <p>
@@ -1530,7 +1560,13 @@ public interface TaskExecutionUtilities {
 	 *             If the file is a directory.
 	 */
 	public SakerFile createProviderPathFile(String name, ProviderHolderPathKey pathkey,
-			ContentDescriptor currentpathcontentdescriptor)
+			@RMISerialize ContentDescriptor currentpathcontentdescriptor)
+			throws IOException, NullPointerException, InvalidFileTypeException;
+
+	//XXX doc: use PosixFilePermissionsDelegateContentDescriptor
+	public SakerFile createProviderPathFileWithPosixFilePermissions(String name, ProviderHolderPathKey pathkey,
+			@RMISerialize ContentDescriptor currentpathcontentdescriptor,
+			@RMIWrap(EnumSetRMIWrapper.class) Set<PosixFilePermission> permissions)
 			throws IOException, NullPointerException, InvalidFileTypeException;
 
 	/**
@@ -1609,6 +1645,9 @@ public interface TaskExecutionUtilities {
 	public void invalidate(@RMIWrap(RMIArrayListWrapper.class) Iterable<? extends PathKey> pathkeys)
 			throws NullPointerException;
 
+	public void invalidateWithPosixFilePermissions(ProviderHolderPathKey pathkey)
+			throws NullPointerException, IOException;
+
 	/**
 	 * Reports an unhandled exception that occurred during the execution of the task for informational purposes.
 	 * <p>
@@ -1647,6 +1686,8 @@ public interface TaskExecutionUtilities {
 	 * @see #synchronize(ProviderHolderPathKey, ProviderHolderPathKey, int)
 	 */
 	public static final int SYNCHRONIZE_FLAG_DELETE_INTERMEDIATE_FILES = 1 << 1;
+
+	public static final int SYNCHRONIZE_FLAG_COPY_ASSOCIATED_POSIX_FILE_PERMISSIONS = 1 << 2;
 
 	/**
 	 * Executes synchronization of files from the given source path to the specified target path.

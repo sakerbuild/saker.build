@@ -97,8 +97,8 @@ import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.trace.InternalBuildTrace;
-import saker.build.trace.InternalBuildTraceImpl;
 import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
+import saker.build.trace.InternalBuildTraceImpl;
 import saker.build.util.exc.ExceptionView;
 import saker.build.util.property.ScriptParsingConfigurationExecutionProperty;
 
@@ -618,6 +618,10 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 	public ContentDescriptor invalidateGetContentDescriptor(ProviderHolderPathKey pathkey) {
 		return contentDatabase.invalidateGetContentDescriptor(pathkey);
+	}
+
+	public void invalidateWithPosixFilePermissions(ProviderHolderPathKey pathkey) throws IOException {
+		contentDatabase.invalidateWithPosixFilePermissions(pathkey);
 	}
 
 	@Override

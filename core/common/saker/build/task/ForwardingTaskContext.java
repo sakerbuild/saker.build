@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
@@ -547,6 +548,14 @@ public class ForwardingTaskContext implements TaskContext, TaskExecutionUtilitie
 	}
 
 	@Override
+	public SakerFile createProviderPathFileWithPosixFilePermissions(String name, ProviderHolderPathKey pathkey,
+			ContentDescriptor currentpathcontentdescriptor, Set<PosixFilePermission> permissions)
+			throws IOException, NullPointerException, InvalidFileTypeException {
+		return utilities.createProviderPathFileWithPosixFilePermissions(name, pathkey, currentpathcontentdescriptor,
+				permissions);
+	}
+
+	@Override
 	public void invalidate(Iterable<? extends PathKey> pathkeys) throws NullPointerException {
 		utilities.invalidate(pathkeys);
 	}
@@ -787,6 +796,17 @@ public class ForwardingTaskContext implements TaskContext, TaskExecutionUtilitie
 	public MirroredFileContents mirrorFileAtPathContents(SakerPath path)
 			throws IOException, InvalidFileTypeException, FileNotFoundException, NullPointerException {
 		return utilities.mirrorFileAtPathContents(path);
+	}
+
+	@Override
+	public void invalidateWithPosixFilePermissions(ProviderHolderPathKey pathkey)
+			throws NullPointerException, IOException {
+		utilities.invalidateWithPosixFilePermissions(pathkey);
+	}
+
+	@Override
+	public SakerFile createProviderPathFile(ProviderHolderPathKey pathkey) throws NullPointerException, IOException {
+		return utilities.createProviderPathFile(pathkey);
 	}
 
 	/**

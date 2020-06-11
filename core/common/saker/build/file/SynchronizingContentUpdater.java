@@ -16,6 +16,8 @@
 package saker.build.file;
 
 import java.io.IOException;
+import java.nio.file.attribute.PosixFilePermission;
+import java.util.Set;
 
 import saker.build.file.content.ContentDatabase.ContentUpdater;
 import saker.build.file.path.ProviderHolderPathKey;
@@ -43,6 +45,11 @@ public final class SynchronizingContentUpdater implements ContentUpdater {
 	@Override
 	public boolean updateWithStream(ByteSink os) throws IOException, SecondaryStreamException {
 		return file.synchronizeImpl(pathKey, os);
+	}
+
+	@Override
+	public Set<PosixFilePermission> getPosixFilePermissions() {
+		return file.getPosixFilePermissions();
 	}
 
 	protected static final class UpdaterRMIWrapper implements RMIWrapper {

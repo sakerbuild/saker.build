@@ -37,8 +37,10 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
@@ -80,20 +82,39 @@ import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 public class MemoryFileProvider implements SakerFileProvider {
 	//XXX should refactor this class to a tree like concurrent representation
 
+	public static final NavigableSet<PosixFilePermission> FILE_DEFAULT_POSIX_PERMISSIONS = ImmutableUtils
+			.makeImmutableNavigableSet(new PosixFilePermission[] { PosixFilePermission.GROUP_READ,
+					PosixFilePermission.GROUP_WRITE, PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE,
+					PosixFilePermission.OTHERS_READ, PosixFilePermission.GROUP_WRITE });
+	public static final NavigableSet<PosixFilePermission> DIRECTORY_DEFAULT_POSIX_PERMISSIONS = ImmutableUtils
+			.makeImmutableNavigableSet(new PosixFilePermission[] { PosixFilePermission.GROUP_READ,
+					PosixFilePermission.GROUP_WRITE, PosixFilePermission.GROUP_EXECUTE, PosixFilePermission.OWNER_READ,
+					PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE, PosixFilePermission.OTHERS_READ,
+					PosixFilePermission.GROUP_WRITE, PosixFilePermission.GROUP_EXECUTE, });
+
 	private static class MemoryFile {
+
 		private final String name;
 		private volatile Supplier<ByteArrayRegion> bytes = Functionals.valSupplier(ByteArrayRegion.EMPTY);
 		private volatile FileEntry attributes;
 		private volatile SakerFileLock locker = null;
 
+		private volatile Set<PosixFilePermission> posixAttributes;
+
 		public MemoryFile(String name) {
 			this.name = name;
 			this.attributes = new FileEntry(FileEntry.TYPE_FILE, 0, currentFileTime());
+			this.posixAttributes = FILE_DEFAULT_POSIX_PERMISSIONS;
 		}
 
 		public MemoryFile(String name, FileEntry attributes) {
 			this.name = name;
 			this.attributes = attributes;
+			if (attributes.isDirectory()) {
+				this.posixAttributes = DIRECTORY_DEFAULT_POSIX_PERMISSIONS;
+			} else {
+				this.posixAttributes = FILE_DEFAULT_POSIX_PERMISSIONS;
+			}
 		}
 
 		public UnsyncByteArrayInputStream openInputStream() {
@@ -125,6 +146,14 @@ public class MemoryFileProvider implements SakerFileProvider {
 
 		public FileEntry getAttributes() {
 			return attributes;
+		}
+
+		public Set<PosixFilePermission> getPosixAttributes() {
+			return posixAttributes;
+		}
+
+		public void setPosixAttributes(Set<PosixFilePermission> posixAttributes) {
+			this.posixAttributes = posixAttributes;
 		}
 
 		public SakerFileLock createLock() {
@@ -203,6 +232,8 @@ public class MemoryFileProvider implements SakerFileProvider {
 
 	private RootFileProviderKey providerKey;
 
+	private boolean posixPermissionsSupported = true;
+
 	public MemoryFileProvider(Set<String> roots, UUID provideruuid) {
 		this(roots, provideruuid, null);
 	}
@@ -217,6 +248,10 @@ public class MemoryFileProvider implements SakerFileProvider {
 			this.files.put(rpath, new MemoryFile(null, new FileEntry(FileEntry.TYPE_DIRECTORY, 0, rootmodtime)));
 		}
 		this.roots = ImmutableUtils.unmodifiableNavigableSet(this.roots);
+	}
+
+	public void setPosixPermissionsSupported(boolean posixPermissionsSupported) {
+		this.posixPermissionsSupported = posixPermissionsSupported;
 	}
 
 	public void addDirectoryTo(SakerPath path, Path directory) throws IOException {
@@ -531,6 +566,62 @@ public class MemoryFileProvider implements SakerFileProvider {
 			throw fileNotFound(path);
 		}
 		return f.getAttributes();
+	}
+
+	@Override
+	public boolean setPosixFilePermissions(SakerPath path, Set<PosixFilePermission> permissions)
+			throws NullPointerException, IOException {
+		if (!posixPermissionsSupported) {
+			return false;
+		}
+		checkRoot(path);
+		MemoryFile f = files.get(path);
+		if (f == null) {
+			throw fileNotFound(path);
+		}
+		f.setPosixAttributes(ImmutableUtils.makeImmutableNavigableSet(permissions));
+		callListeners(path.getParent(), path.getFileName(), FileEventListener::changed);
+		return true;
+	}
+
+	@Override
+	public boolean modifyPosixFilePermissions(SakerPath path, Set<PosixFilePermission> addpermissions,
+			Set<PosixFilePermission> removepermissions) throws NullPointerException, IOException {
+		if (!posixPermissionsSupported) {
+			return false;
+		}
+		checkRoot(path);
+		MemoryFile f = files.get(path);
+		if (f == null) {
+			throw fileNotFound(path);
+		}
+		EnumSet<PosixFilePermission> nperms = EnumSet.noneOf(PosixFilePermission.class);
+		nperms.addAll(f.getPosixAttributes());
+		boolean modified = false;
+		if (addpermissions != null) {
+			modified |= nperms.addAll(addpermissions);
+		}
+		if (removepermissions != null) {
+			modified |= nperms.removeAll(removepermissions);
+		}
+		if (modified) {
+			f.setPosixAttributes(nperms);
+			callListeners(path.getParent(), path.getFileName(), FileEventListener::changed);
+		}
+		return true;
+	}
+
+	@Override
+	public Set<PosixFilePermission> getPosixFilePermissions(SakerPath path) throws NullPointerException, IOException {
+		if (!posixPermissionsSupported) {
+			return null;
+		}
+		checkRoot(path);
+		MemoryFile f = files.get(path);
+		if (f == null) {
+			throw fileNotFound(path);
+		}
+		return f.getPosixAttributes();
 	}
 
 	@Override

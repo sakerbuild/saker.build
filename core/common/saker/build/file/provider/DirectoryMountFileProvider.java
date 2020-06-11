@@ -23,6 +23,7 @@ import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.OpenOption;
+import java.nio.file.attribute.PosixFilePermission;
 import java.security.NoSuchAlgorithmException;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
@@ -162,6 +163,23 @@ public class DirectoryMountFileProvider implements SakerFileProvider {
 	}
 
 	@Override
+	public boolean setPosixFilePermissions(SakerPath path, Set<PosixFilePermission> permissions)
+			throws NullPointerException, IOException {
+		return subject.setPosixFilePermissions(toSubjectPath(path), permissions);
+	}
+
+	@Override
+	public boolean modifyPosixFilePermissions(SakerPath path, Set<PosixFilePermission> addpermissions,
+			Set<PosixFilePermission> removepermissions) throws NullPointerException, IOException {
+		return subject.modifyPosixFilePermissions(toSubjectPath(path), addpermissions, removepermissions);
+	}
+
+	@Override
+	public Set<PosixFilePermission> getPosixFilePermissions(SakerPath path) throws NullPointerException, IOException {
+		return subject.getPosixFilePermissions(toSubjectPath(path));
+	}
+
+	@Override
 	public void setLastModifiedMillis(SakerPath path, long millis) throws IOException {
 		subject.setLastModifiedMillis(toSubjectPath(path), millis);
 	}
@@ -205,7 +223,8 @@ public class DirectoryMountFileProvider implements SakerFileProvider {
 	}
 
 	@Override
-	public NavigableSet<String> deleteChildrenRecursivelyIfNotIn(SakerPath path, Set<String> childfilenames) throws IOException {
+	public NavigableSet<String> deleteChildrenRecursivelyIfNotIn(SakerPath path, Set<String> childfilenames)
+			throws IOException {
 		return subject.deleteChildrenRecursivelyIfNotIn(toSubjectPath(path), childfilenames);
 	}
 

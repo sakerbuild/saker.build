@@ -22,6 +22,7 @@ import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -2044,11 +2045,32 @@ public class TaskExecutionManager {
 		}
 
 		@Override
+		public SakerFile createProviderPathFileWithPosixFilePermissions(String name, ProviderHolderPathKey pathkey,
+				ContentDescriptor currentpathcontentdescriptor, Set<PosixFilePermission> permissions)
+				throws IOException, NullPointerException, InvalidFileTypeException {
+			Objects.requireNonNull(name, "name");
+			Objects.requireNonNull(pathkey, "path key");
+			Objects.requireNonNull(currentpathcontentdescriptor, "content descriptor");
+
+			ContentDatabase contentdb = executionContext.getContentDatabase();
+			ContentHandle contenthandle = contentdb.discoverWithPosixFilePermissions(pathkey,
+					currentpathcontentdescriptor, permissions);
+			return new ProviderPathSakerFile(name, pathkey, contenthandle);
+		}
+
+		@Override
 		public void invalidate(Iterable<? extends PathKey> pathkeys) {
 			Objects.requireNonNull(pathkeys, "path keys");
 			for (PathKey pk : pathkeys) {
 				this.executionContext.invalidate(pk);
 			}
+		}
+
+		@Override
+		public void invalidateWithPosixFilePermissions(ProviderHolderPathKey pathkey)
+				throws NullPointerException, IOException {
+			Objects.requireNonNull(pathkey, "path key");
+			this.executionContext.invalidateWithPosixFilePermissions(pathkey);
 		}
 
 		@Override
@@ -2058,10 +2080,20 @@ public class TaskExecutionManager {
 			Objects.requireNonNull(target, "target path key");
 
 			ContentDatabase contentdb = this.executionContext.getContentDatabase();
-			ContentDescriptor contentdescriptor = contentdb.getContentDescriptor(source);
 			if (source.equals(target)) {
 				//no need to synchronize, they are the same file
-				return contentdescriptor;
+				return contentdb.getContentDescriptor(source);
+			}
+			Set<PosixFilePermission> posixFilePermissions;
+			ContentDescriptor contentdescriptor;
+			if (((syncflag
+					& SYNCHRONIZE_FLAG_COPY_ASSOCIATED_POSIX_FILE_PERMISSIONS) == SYNCHRONIZE_FLAG_COPY_ASSOCIATED_POSIX_FILE_PERMISSIONS)) {
+				ContentHandle sourcecontenthandle = contentdb.getContentHandle(source);
+				contentdescriptor = sourcecontenthandle.getContent();
+				posixFilePermissions = sourcecontenthandle.getPosixFilePermissions();
+			} else {
+				posixFilePermissions = null;
+				contentdescriptor = contentdb.getContentDescriptor(source);
 			}
 			int ensureopflag = 0;
 			if (((syncflag & SYNCHRONIZE_FLAG_NO_OVERWRITE_DIRECTORY) == SYNCHRONIZE_FLAG_NO_OVERWRITE_DIRECTORY)) {
@@ -2086,6 +2118,10 @@ public class TaskExecutionManager {
 					try (ByteSink out = targetfp.openOutput(targetpath)) {
 						source.getFileProvider().writeTo(source.getPath(), out);
 					}
+					if (posixFilePermissions != null) {
+						//TODO set this in a single call when writing or opening the contents
+						targetfp.setPosixFilePermissions(targetpath, posixFilePermissions);
+					}
 				}
 
 				@Override
@@ -2105,7 +2141,16 @@ public class TaskExecutionManager {
 							throw new SecondaryStreamException(sec);
 						}
 					}
+					if (posixFilePermissions != null) {
+						//TODO set this in a single call when writing or opening the contents
+						targetfp.setPosixFilePermissions(targetpath, posixFilePermissions);
+					}
 					return true;
+				}
+
+				@Override
+				public Set<PosixFilePermission> getPosixFilePermissions() {
+					return posixFilePermissions;
 				}
 			});
 			return contentdescriptor;

@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.spi.FileSystemProvider;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -59,6 +60,7 @@ import saker.build.thirdparty.saker.util.rmi.wrap.RMIMapEntryWrapper;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapSerializeKeySerializeValueWrapper;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeSetStringElementWrapper;
 import saker.build.thirdparty.saker.util.rmi.writer.EnumArrayRMIObjectWriteHandler;
+import saker.build.util.rmi.EnumSetRMIWrapper;
 
 /**
  * Interface for providing direct access to the file system files.
@@ -257,6 +259,26 @@ public interface SakerFileProvider {
 	@RMIExceptionRethrow(RemoteIOException.class)
 	public FileEntry getFileAttributes(SakerPath path,
 			@RMIWriter(EnumArrayRMIObjectWriteHandler.class) LinkOption... linkoptions) throws IOException;
+
+	//posix since saker.build 0.8.13
+	public default boolean setPosixFilePermissions(SakerPath path,
+			@RMIWrap(EnumSetRMIWrapper.class) Set<PosixFilePermission> permissions)
+			throws NullPointerException, IOException {
+		return false;
+	}
+
+	public default boolean modifyPosixFilePermissions(SakerPath path,
+			@RMIWrap(EnumSetRMIWrapper.class) Set<PosixFilePermission> addpermissions,
+			@RMIWrap(EnumSetRMIWrapper.class) Set<PosixFilePermission> removepermissions)
+			throws NullPointerException, IOException {
+		return false;
+	}
+
+	@RMIWrap(EnumSetRMIWrapper.class)
+	public default Set<PosixFilePermission> getPosixFilePermissions(SakerPath path)
+			throws NullPointerException, IOException {
+		return null;
+	}
 
 	/**
 	 * Sets the last modified time of the file at the given path.

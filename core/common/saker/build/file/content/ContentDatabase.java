@@ -16,6 +16,7 @@
 package saker.build.file.content;
 
 import java.io.IOException;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.NavigableMap;
 import java.util.Set;
 
@@ -39,6 +40,7 @@ import saker.build.thirdparty.saker.util.io.PriorityMultiplexOutputStream;
 import saker.build.thirdparty.saker.util.io.function.IORunnable;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapWrapper;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeSetStringElementWrapper;
+import saker.build.util.rmi.EnumSetRMIWrapper;
 
 /**
  * A content database is responsible for storing expected contents of file system files.
@@ -91,6 +93,24 @@ public interface ContentDatabase {
 			update();
 			return false;
 		}
+
+		//since saker.build 0.8.13
+//		This method is defined in this interface instead of being passed as a parameter
+//		in the various synchronization or content retrieval methods in ContentDatabase.
+//		This is due that it is directly associated with the synchronization itself but not with
+//		the other content retrieval methods.
+//		E.g. calling getBytesWithContentOrSynchronize can work completely fine without having access
+//		to the posix file permissions, as if the contents didn't change, then it will be returned
+//		and the posix file permissions are not a required parameter in that case for the method to succeed.
+//		
+//		The posix file permissions associated with a given synchronization is only used to store
+//		the expected permissions when the file is accessed at a later date. (E.g. next build execution)
+//		They are used to detect some modifications, but aren't used to actively control the content
+//		retrieval mechanisms.
+		@RMIWrap(EnumSetRMIWrapper.class)
+		public default Set<PosixFilePermission> getPosixFilePermissions() {
+			return null;
+		}
 	}
 
 	/**
@@ -135,6 +155,12 @@ public interface ContentDatabase {
 		 */
 		@RMICacheResult
 		public ContentDatabase getContentDatabase();
+
+		//since saker.build 0.8.13
+		@RMIWrap(EnumSetRMIWrapper.class)
+		public default Set<PosixFilePermission> getPosixFilePermissions() {
+			return null;
+		}
 	}
 
 	/**
@@ -200,6 +226,9 @@ public interface ContentDatabase {
 	 */
 	public ContentHandle discover(ProviderHolderPathKey pathkey, @RMISerialize ContentDescriptor content)
 			throws IOException;
+
+	public ContentHandle discoverWithPosixFilePermissions(ProviderHolderPathKey pathkey,
+			@RMISerialize ContentDescriptor content, Set<PosixFilePermission> permissions) throws IOException;
 
 	/**
 	 * Writes the contents of the file specified by the argument path key, optionally synchronizing if the contents have

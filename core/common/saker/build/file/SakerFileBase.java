@@ -19,7 +19,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import saker.apiextract.api.PublicApi;
@@ -183,6 +185,7 @@ public abstract class SakerFileBase implements SakerFile {
 		Objects.requireNonNull(pathkey, "path key");
 		SakerFileProvider fp = pathkey.getFileProvider();
 		SakerPath path = pathkey.getPath();
+		Set<PosixFilePermission> posixpermissions = getPosixFilePermissions();
 		fp.ensureWriteRequest(path, FileEntry.TYPE_FILE, SakerFileProvider.OPERATION_FLAG_DELETE_INTERMEDIATE_FILES);
 
 		int effopenmethods = getEfficientOpeningMethods();
@@ -200,6 +203,10 @@ public abstract class SakerFileBase implements SakerFile {
 				writeToStreamImpl(os);
 			}
 		}
+		if (posixpermissions != null) {
+			//TODO set this in a single call when writing or opening the contents
+			fp.setPosixFilePermissions(path, posixpermissions);
+		}
 	}
 
 	@Override
@@ -210,6 +217,7 @@ public abstract class SakerFileBase implements SakerFile {
 
 		SakerFileProvider fp = pathkey.getFileProvider();
 		SakerPath path = pathkey.getPath();
+		Set<PosixFilePermission> posixpermissions = getPosixFilePermissions();
 		fp.ensureWriteRequest(path, FileEntry.TYPE_FILE, SakerFileProvider.OPERATION_FLAG_DELETE_INTERMEDIATE_FILES);
 
 		int effopenmethods = getEfficientOpeningMethods();
@@ -243,6 +251,10 @@ public abstract class SakerFileBase implements SakerFile {
 					throw new SecondaryStreamException(sec);
 				}
 			}
+		}
+		if (posixpermissions != null) {
+			//TODO set this in a single call when writing or opening the contents
+			fp.setPosixFilePermissions(path, posixpermissions);
 		}
 		return true;
 	}

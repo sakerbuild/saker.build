@@ -18,6 +18,8 @@ package saker.build.file;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.attribute.PosixFilePermission;
+import java.util.Set;
 
 import saker.build.file.content.ContentDescriptor;
 import saker.build.file.path.ProviderHolderPathKey;
@@ -35,6 +37,7 @@ import saker.build.thirdparty.saker.util.io.UnsyncByteArrayInputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMIInputStreamWrapper;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMIOutputStreamWrapper;
+import saker.build.util.rmi.EnumSetRMIWrapper;
 
 /**
  * Interface for file representation in the build system.
@@ -486,6 +489,12 @@ public interface SakerFile extends FileHandle {
 	 * @see TaskExecutionUtilities#addFile(SakerDirectory, SakerFile)
 	 */
 	public default Class<? extends RMIWrapper> getRemoteExecutionRMIWrapper() {
+		return null;
+	}
+
+	//since saker.build 0.8.13
+	@RMIWrap(EnumSetRMIWrapper.class)
+	public default Set<PosixFilePermission> getPosixFilePermissions() {
 		return null;
 	}
 }

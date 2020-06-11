@@ -18,7 +18,9 @@ package saker.build.file;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.Objects;
+import java.util.Set;
 
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
@@ -82,11 +84,16 @@ public abstract class SakerPathFileBase extends SakerFileBase {
 		}
 		SakerFileProvider targetfp = pathkey.getFileProvider();
 		SakerPath targetpath = pathkey.getPath();
+		Set<PosixFilePermission> posixpermissions = getPosixFilePermissions();
 		targetfp.ensureWriteRequest(targetpath, FileEntry.TYPE_FILE,
 				SakerFileProvider.OPERATION_FLAG_DELETE_INTERMEDIATE_FILES);
 		//XXX try direct copy if the file providers are the same
 		try (ByteSink out = targetfp.openOutput(targetpath)) {
 			fileProvider.writeTo(realPath, out);
+		}
+		if (posixpermissions != null) {
+			//TODO set this in a single call when writing or opening the contents
+			targetfp.setPosixFilePermissions(targetpath, posixpermissions);
 		}
 	}
 
@@ -101,6 +108,7 @@ public abstract class SakerPathFileBase extends SakerFileBase {
 
 		SakerFileProvider targetfp = pathkey.getFileProvider();
 		SakerPath targetpath = pathkey.getPath();
+		Set<PosixFilePermission> posixpermissions = getPosixFilePermissions();
 		targetfp.ensureWriteRequest(targetpath, FileEntry.TYPE_FILE,
 				SakerFileProvider.OPERATION_FLAG_DELETE_INTERMEDIATE_FILES);
 
@@ -112,8 +120,12 @@ public abstract class SakerPathFileBase extends SakerFileBase {
 			if (sec != null) {
 				throw new SecondaryStreamException(sec);
 			}
-			return true;
 		}
+		if (posixpermissions != null) {
+			//TODO set this in a single call when writing or opening the contents
+			targetfp.setPosixFilePermissions(targetpath, posixpermissions);
+		}
+		return true;
 	}
 
 }

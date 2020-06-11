@@ -17,12 +17,16 @@ package saker.build.file.content;
 
 import java.io.Closeable;
 import java.io.EOFException;
+import java.io.Externalizable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
 import java.io.OutputStream;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -62,6 +66,7 @@ import saker.build.task.BuildTaskResultDatabase;
 import saker.build.task.TaskExecutionResult;
 import saker.build.task.TaskExecutionResult.FileDependencies;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -74,6 +79,7 @@ import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.MultiplexOutputStream;
 import saker.build.thirdparty.saker.util.io.PriorityMultiplexOutputStream;
+import saker.build.thirdparty.saker.util.io.SerialUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncBufferedInputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncBufferedOutputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
@@ -108,7 +114,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 			synchronized (getPathLock(fpkey, path)) {
 				ContentDescriptor currentcontent = handle.getContent();
 				if (currentcontent == expectContentIdentity || content.isChanged(currentcontent)) {
-					executeSynchronizeLocked(pathkey.getFileProvider(), path, content, updater, handle, fpkey, pathkey);
+					executeSynchronizeLocked(pathkey.getFileProvider(), path, content, updater, handle, fpkey, pathkey,
+							getUpdaterPosixFilePermissions(updater));
 					//if update is called again, we should expect the synchronized content 
 					this.expectContentIdentity = this.content;
 				} else {
@@ -135,10 +142,43 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		private final ContentDescriptor userContent;
 		private final ContentDescriptor userExpectedDiskContent;
 
-		public UserContentState(ContentDescriptor userContent, ContentDescriptor userExpectedDiskContent) {
+		protected UserContentState(ContentDescriptor userContent, ContentDescriptor userExpectedDiskContent) {
 			this.userContent = userContent;
 			this.userExpectedDiskContent = userExpectedDiskContent;
 		}
+
+		public static UserContentState create(ContentDescriptor userContent,
+				ContentDescriptor userExpectedDiskContent) {
+			return new UserContentState(userContent, userExpectedDiskContent);
+		}
+
+		public static UserContentState create(ContentDescriptor userContent, ContentDescriptor userExpectedDiskContent,
+				Set<PosixFilePermission> expectedposixpermissions) {
+			if (expectedposixpermissions == null) {
+				return new UserContentState(userContent, userExpectedDiskContent);
+			}
+			return new PosixUserContentState(userContent, userExpectedDiskContent, expectedposixpermissions);
+		}
+
+		public Set<PosixFilePermission> getExpectedPosixFilePermissions() {
+			return null;
+		}
+	}
+
+	private static class PosixUserContentState extends UserContentState {
+		private final Set<PosixFilePermission> expectedPosixFilePermissions;
+
+		public PosixUserContentState(ContentDescriptor userContent, ContentDescriptor userExpectedDiskContent,
+				Set<PosixFilePermission> posixFilePermissions) {
+			super(userContent, userExpectedDiskContent);
+			this.expectedPosixFilePermissions = posixFilePermissions;
+		}
+
+		@Override
+		public Set<PosixFilePermission> getExpectedPosixFilePermissions() {
+			return expectedPosixFilePermissions;
+		}
+
 	}
 
 	private static final class ContentHandleImpl implements ContentHandle {
@@ -165,10 +205,10 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 
 		public ContentHandleImpl(ContentDatabaseImpl db, ContentDescriptor usercontent,
 				ContentDescriptor userexpecteddiskcontent, ProviderHolderPathKey pathKey,
-				ContentDescriptorSupplier contentsupplier) {
+				ContentDescriptorSupplier contentsupplier, Set<PosixFilePermission> expectedposixpermissions) {
 			this.db = db;
 			this.pathKey = pathKey;
-			this.userContent = new UserContentState(usercontent, userexpecteddiskcontent);
+			this.userContent = UserContentState.create(usercontent, userexpecteddiskcontent, expectedposixpermissions);
 			this.contentSupplier = contentsupplier;
 			this.diskContent = null;
 		}
@@ -198,6 +238,46 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 			this.diskAttributes = null;
 		}
 
+		public synchronized void invalidateWithPosixPermissions(Set<PosixFilePermission> permissions) {
+			//XXX enum set based immutable
+			permissions = ImmutableUtils.makeImmutableNavigableSet(permissions);
+
+			Supplier<ContentDescriptor> dcsupplier = createDiskContentSupplier();
+			this.diskContent = dcsupplier;
+			//XXX the disk attributes could be queried alongside the permissions
+			this.diskAttributes = null;
+			UserContentState usercontent = userContent;
+			if (usercontent != null) {
+				Set<PosixFilePermission> ucpermissions = usercontent.getExpectedPosixFilePermissions();
+				if (Objects.equals(ucpermissions, permissions)) {
+					ContentDescriptor diskcontents = dcsupplier.get();
+					if (!Objects.equals(diskcontents, usercontent.userExpectedDiskContent)) {
+						if (permissions != null) {
+							this.userContent = UserContentState.create(
+									new PosixFilePermissionsDelegateContentDescriptor(diskcontents, permissions),
+									diskcontents, permissions);
+						}
+						//null permissions, we can keep the user contents
+					}
+					//else the disk contents and posix permissions equal. we can keep the user contents
+				} else {
+					if (permissions == null) {
+						this.userContent = null;
+					} else {
+						ContentDescriptor diskcontents = dcsupplier.get();
+						this.userContent = UserContentState.create(
+								new PosixFilePermissionsDelegateContentDescriptor(diskcontents, permissions),
+								diskcontents, permissions);
+					}
+				}
+			} else if (permissions != null) {
+				ContentDescriptor diskcontents = dcsupplier.get();
+				this.userContent = UserContentState.create(
+						new PosixFilePermissionsDelegateContentDescriptor(diskcontents, permissions), diskcontents,
+						permissions);
+			}
+		}
+
 		public void invalidateOffline() {
 			this.diskContent = createDiskContentSupplier();
 			this.diskAttributes = null;
@@ -215,8 +295,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		}
 
 		public synchronized void setContent(ContentDescriptor usercontent, ContentDescriptor diskcontent,
-				BasicFileAttributes diskattributes) {
-			this.userContent = new UserContentState(usercontent, diskcontent);
+				BasicFileAttributes diskattributes, Set<PosixFilePermission> expectedposixpermissions) {
+			this.userContent = UserContentState.create(usercontent, diskcontent, expectedposixpermissions);
 			this.diskContent = Functionals.valSupplier(diskcontent);
 			this.diskAttributes = diskattributes;
 		}
@@ -237,6 +317,87 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 
 		@Override
 		public ContentDescriptor getContent() {
+			ContentDescriptor currentdiskcontent = getCurrentDiskContent();
+			if (currentdiskcontent == null) {
+				return null;
+			}
+			UserContentState usercontent = userContent;
+			if (usercontent == null) {
+				return currentdiskcontent;
+			}
+			if (!currentdiskcontent.isChanged(usercontent.userExpectedDiskContent)) {
+				Set<PosixFilePermission> expectedposixfilepermissions = usercontent.getExpectedPosixFilePermissions();
+				if (expectedposixfilepermissions != null) {
+					//check if the current posix permissions match the expected
+					//TODO can we do this more efficiently? caching or something
+					try {
+						Set<PosixFilePermission> perms = pathKey.getFileProvider()
+								.getPosixFilePermissions(pathKey.getPath());
+						//if the got permissions set is null the the file provider doesn't support posix attributes
+						//in that case don't trigger change in file contents
+						if (perms != null && !perms.equals(expectedposixfilepermissions)) {
+							//expected posix permissions mismatch
+							return currentdiskcontent;
+						}
+					} catch (IOException e) {
+						//failed to get the posix permissions
+						//fallback to current disk content
+						return currentdiskcontent;
+					}
+				}
+				return usercontent.userContent;
+			}
+			return currentdiskcontent;
+		}
+
+		@Override
+		public Set<PosixFilePermission> getPosixFilePermissions() {
+			//check that the content descriptors are up to date
+			//and return the expected posix file permissions if so
+			UserContentState usercontent = userContent;
+			if (usercontent == null) {
+				return null;
+			}
+			Set<PosixFilePermission> expectedposixfilepermissions = usercontent.getExpectedPosixFilePermissions();
+			if (expectedposixfilepermissions == null) {
+				return null;
+			}
+			ContentDescriptor currentdiskcontent = getCurrentDiskContent();
+			if (currentdiskcontent == null) {
+				return null;
+			}
+			if (currentdiskcontent.isChanged(usercontent.userExpectedDiskContent)) {
+				return null;
+			}
+			//check if the current posix permissions match the expected
+			//TODO can we do this more efficiently? caching or something
+			try {
+				Set<PosixFilePermission> perms = pathKey.getFileProvider().getPosixFilePermissions(pathKey.getPath());
+				//if the got permissions set is null then the file provider doesn't support posix attributes
+				//in that case proceed with returning the expected permissions
+				if (perms != null && !perms.equals(expectedposixfilepermissions)) {
+					//expected posix permissions mismatch
+					return expectedposixfilepermissions;
+				}
+			} catch (IOException e) {
+				//failed to get the posix permissions
+				return null;
+			}
+			return expectedposixfilepermissions;
+		}
+
+		@Override
+		public String toString() {
+			return getClass().getSimpleName() + "[" + pathKey.getFileProviderKey() + " : " + pathKey.getPath() + "]";
+		}
+
+		private ContentDescriptor getCurrentDiskContent() {
+			Supplier<? extends ContentDescriptor> diskcontentsupplier = getActualDiskContentSupplier();
+			ContentDescriptor currentdiskcontent = diskcontentsupplier.get();
+			return currentdiskcontent;
+		}
+
+		private Supplier<? extends ContentDescriptor> getActualDiskContentSupplier() {
 			Supplier<? extends ContentDescriptor> diskcontentsupplier = diskContent;
 			if (diskcontentsupplier == null) {
 				LazySupplier<ContentDescriptor> nsupplier = createDiskContentSupplier();
@@ -246,23 +407,7 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 					diskcontentsupplier = this.diskContent;
 				}
 			}
-			ContentDescriptor currentdiskcontent = diskcontentsupplier.get();
-			if (currentdiskcontent == null) {
-				return null;
-			}
-			UserContentState usercontent = userContent;
-			if (usercontent == null) {
-				return currentdiskcontent;
-			}
-			if (!currentdiskcontent.isChanged(usercontent.userExpectedDiskContent)) {
-				return usercontent.userContent;
-			}
-			return currentdiskcontent;
-		}
-
-		@Override
-		public String toString() {
-			return getClass().getSimpleName() + "[" + pathKey.getFileProviderKey() + " : " + pathKey.getPath() + "]";
+			return diskcontentsupplier;
 		}
 
 	}
@@ -527,6 +672,39 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		}
 	}
 
+	private static class PosixExpectedSerializedContents implements Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		public ContentDescriptor userExpectedDiskContent;
+		public Set<PosixFilePermission> posixFilePermissions;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public PosixExpectedSerializedContents() {
+		}
+
+		public PosixExpectedSerializedContents(ContentDescriptor userExpectedDiskContent,
+				Set<PosixFilePermission> posixFilePermissions) {
+			this.userExpectedDiskContent = userExpectedDiskContent;
+			this.posixFilePermissions = posixFilePermissions;
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			out.writeObject(userExpectedDiskContent);
+			SerialUtils.writeExternalCollection(out, posixFilePermissions);
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			userExpectedDiskContent = SerialUtils.readExternalObject(in);
+			//TODO use some enum set instead
+			posixFilePermissions = SerialUtils.readExternalImmutableNavigableSet(in);
+		}
+
+	}
+
 	private static void writeDependencies(ConcurrentSkipListMap<SakerPath, ContentHandleImpl> dependencies,
 			ContentWriterObjectOutput descobjout, OutputStream descos) throws IOException {
 		SakerPath relative = null;
@@ -548,7 +726,13 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 				}
 				relative = path.getParent();
 
-				descobjout.writeObject(usercontent.userExpectedDiskContent);
+				Set<PosixFilePermission> posix = usercontent.getExpectedPosixFilePermissions();
+				if (posix != null) {
+					descobjout.writeObject(
+							new PosixExpectedSerializedContents(usercontent.userExpectedDiskContent, posix));
+				} else {
+					descobjout.writeObject(usercontent.userExpectedDiskContent);
+				}
 				descobjout.writeObject(usercontent.userContent);
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -615,8 +799,16 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 			relative = path.getParent();
 
 			ContentDescriptor expecteddiskcontent;
+			Set<PosixFilePermission> expectedposixpermissions = null;
 			try {
-				expecteddiskcontent = (ContentDescriptor) reader.readObject();
+				Object expectedcontentsobj = reader.readObject();
+				if (expectedcontentsobj instanceof PosixExpectedSerializedContents) {
+					PosixExpectedSerializedContents sc = (PosixExpectedSerializedContents) expectedcontentsobj;
+					expecteddiskcontent = sc.userExpectedDiskContent;
+					expectedposixpermissions = sc.posixFilePermissions;
+				} else {
+					expecteddiskcontent = (ContentDescriptor) expectedcontentsobj;
+				}
 			} catch (ClassNotFoundException e) {
 				continue;
 			}
@@ -629,9 +821,10 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 			if (fileprovider == null) {
 				continue;
 			}
+
 			ContentDescriptorSupplier currentcontentsupplier = getContentDescriptorSupplier(providerkey, path);
 			ContentHandleImpl handle = new ContentHandleImpl(this, content, expecteddiskcontent,
-					SakerPathFiles.getPathKey(fileprovider, path), currentcontentsupplier);
+					SakerPathFiles.getPathKey(fileprovider, path), currentcontentsupplier, expectedposixpermissions);
 			coll.put(path, handle);
 		}
 	}
@@ -834,6 +1027,25 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		return handle.getContent();
 	}
 
+	public void invalidateWithPosixFilePermissions(ProviderHolderPathKey pathkey) throws IOException {
+		Objects.requireNonNull(pathkey, "path key");
+
+		RootFileProviderKey providerkey = pathkey.getFileProviderKey();
+		ConcurrentSkipListMap<SakerPath, ContentHandleImpl> coll = getContentHandleCollection(providerkey);
+		SakerPath path = pathkey.getPath();
+		Set<PosixFilePermission> permissions = pathkey.getFileProvider().getPosixFilePermissions(path);
+
+		ContentHandleImpl ch = getContentHandleFromCollection(pathkey, providerkey, path, coll);
+		ch.invalidateWithPosixPermissions(permissions);
+
+		//invalidate the children nonetheless
+		ConcurrentNavigableMap<SakerPath, ContentHandleImpl> dirandchildren = SakerPathFiles
+				.getPathSubMapDirectoryChildren(coll, path, false);
+		for (ContentHandleImpl handle : dirandchildren.values()) {
+			handle.invalidate();
+		}
+	}
+
 	private void invalidateSingle(RootFileProviderKey providerkey, SakerPath path) {
 		ConcurrentSkipListMap<SakerPath, ContentHandleImpl> coll = providerKeyPathDependencies.get(providerkey);
 		if (ObjectUtils.isNullOrEmpty(coll)) {
@@ -872,6 +1084,17 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 
 	@Override
 	public ContentHandle discover(ProviderHolderPathKey pathkey, ContentDescriptor content) throws IOException {
+		return discoverWithPosixFilePermissionsImpl(pathkey, content, null);
+	}
+
+	@Override
+	public ContentHandle discoverWithPosixFilePermissions(ProviderHolderPathKey pathkey,
+			@RMISerialize ContentDescriptor content, Set<PosixFilePermission> permissions) throws IOException {
+		return discoverWithPosixFilePermissionsImpl(pathkey, content, permissions);
+	}
+
+	private ContentHandle discoverWithPosixFilePermissionsImpl(ProviderHolderPathKey pathkey, ContentDescriptor content,
+			Set<PosixFilePermission> permissions) throws IOException, InvalidFileTypeException {
 		RootFileProviderKey fpkey = pathkey.getFileProviderKey();
 		SakerPath path = pathkey.getPath();
 		SakerFileProvider fp = pathkey.getFileProvider();
@@ -890,7 +1113,7 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 			if (DirectoryContentDescriptor.INSTANCE.equals(diskcontent)) {
 				throw new InvalidFileTypeException("File at path: " + path + " is a directory.");
 			}
-			handle.setContent(content, diskcontent, diskattributes);
+			handle.setContent(content, diskcontent, diskattributes, permissions);
 		}
 		return handle;
 	}
@@ -904,9 +1127,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 	public ContentHandleAttributes discoverFileAttributes(ProviderHolderPathKey pathkey) throws IOException {
 		SakerPath filepath = pathkey.getPath();
 
-		FileEntry attributes;
 		ContentHandleImpl handle;
-		attributes = pathkey.getFileProvider().getFileAttributes(filepath);
+		FileEntry attributes = pathkey.getFileProvider().getFileAttributes(filepath);
 		if (attributes.isDirectory()) {
 			handle = null;
 		} else {
@@ -1059,7 +1281,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 			if (!content.isChanged(pathcontent)) {
 				return fp.openInput(path);
 			}
-			executeSynchronizeLocked(fp, path, content, updater, handle, fpkey, pathkey);
+			executeSynchronizeLocked(fp, path, content, updater, handle, fpkey, pathkey,
+					getUpdaterPosixFilePermissions(updater));
 
 			return fp.openInput(path);
 		}
@@ -1099,7 +1322,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 							fp.writeTo(path, multiplexer);
 						}
 						ContentDescriptor diskcontent = contentsupplier.getCalculatedOutput(pathkey, contentcalcoutput);
-						handle.setContent(content, diskcontent, getFileAttributesIfTracked(fp, path));
+						handle.setContent(content, diskcontent, getFileAttributesIfTracked(fp, path),
+								getUpdaterPosixFilePermissions(updater));
 						IOUtils.throwExc(IOUtils.addExc(secondaryioexc, multiplexer.getSecondaryException()));
 					} finally {
 						contentcalcoutput.close();
@@ -1121,7 +1345,7 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 					} else {
 						diskcontent = contentsupplier.get(pathkey);
 					}
-					handle.setContent(content, diskcontent, diskattributes);
+					handle.setContent(content, diskcontent, diskattributes, getUpdaterPosixFilePermissions(updater));
 					if (!streamed) {
 						fp.writeTo(path, os);
 					}
@@ -1133,6 +1357,11 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 			}
 			IOUtils.throwExc(secondaryioexc);
 		}
+	}
+
+	private static Set<PosixFilePermission> getUpdaterPosixFilePermissions(ContentUpdater updater) {
+		//TODO use some immutable enum set or something instead
+		return ImmutableUtils.makeImmutableNavigableSet(updater.getPosixFilePermissions());
 	}
 
 	@Override
@@ -1195,13 +1424,13 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 						}
 						if (calculated) {
 							handle.setContent(content, contentsupplier.getCalculatedOutput(pathkey, contentcalcoutput),
-									getFileAttributesIfTracked(fp, path));
+									getFileAttributesIfTracked(fp, path), getUpdaterPosixFilePermissions(updater));
 							return baos.toByteArrayRegion();
 						}
 						ByteArrayRegion result = fp.getAllBytes(path);
 						BasicFileAttributes trackedattrs = getFileAttributesIfTracked(fp, path);
 						handle.setContent(content, contentsupplier.getUsingFileContent(pathkey, result, trackedattrs),
-								trackedattrs);
+								trackedattrs, getUpdaterPosixFilePermissions(updater));
 						return result;
 					} finally {
 						contentcalcoutput.close();
@@ -1223,7 +1452,7 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 				}
 				BasicFileAttributes trackedattrs = getFileAttributesIfTracked(fp, path);
 				ContentDescriptor diskcontent = contentsupplier.getUsingFileContent(pathkey, result, trackedattrs);
-				handle.setContent(content, diskcontent, trackedattrs);
+				handle.setContent(content, diskcontent, trackedattrs, getUpdaterPosixFilePermissions(updater));
 				return result;
 			} catch (IOException e) {
 				handle.invalidate();
@@ -1252,7 +1481,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 
 		synchronized (getPathLock(fpkey, path)) {
 			if (content.isChanged(handle.getContent())) {
-				executeSynchronizeLocked(fp, path, content, updater, handle, fpkey, pathkey);
+				executeSynchronizeLocked(fp, path, content, updater, handle, fpkey, pathkey,
+						getUpdaterPosixFilePermissions(updater));
 			}
 		}
 	}
@@ -1261,7 +1491,7 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 
 	private void executeSynchronizeLocked(SakerFileProvider fp, SakerPath path, ContentDescriptor content,
 			ContentUpdater updater, ContentHandleImpl handle, RootFileProviderKey providerkey,
-			ProviderHolderPathKey pathkey) throws IOException {
+			ProviderHolderPathKey pathkey, Set<PosixFilePermission> expectedposixpermissions) throws IOException {
 		checkWriteEnabled(providerkey, path);
 
 		setDirty();
@@ -1290,7 +1520,7 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 							diskcontent = contentsupplier.get(pathkey);
 						}
 					}
-					handle.setContent(content, diskcontent, diskattributes);
+					handle.setContent(content, diskcontent, diskattributes, expectedposixpermissions);
 				} finally {
 					contentcalcoutput.close();
 				}
@@ -1304,7 +1534,7 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 				} else {
 					diskcontent = contentsupplier.get(pathkey);
 				}
-				handle.setContent(content, diskcontent, diskattributes);
+				handle.setContent(content, diskcontent, diskattributes, expectedposixpermissions);
 			}
 		} catch (IOException e) {
 			handle.invalidate();

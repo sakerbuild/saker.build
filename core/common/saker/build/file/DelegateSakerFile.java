@@ -18,7 +18,9 @@ package saker.build.file;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.Objects;
+import java.util.Set;
 
 import saker.apiextract.api.PublicApi;
 import saker.build.file.content.ContentDescriptor;
@@ -34,10 +36,15 @@ import saker.build.thirdparty.saker.util.io.ByteSource;
  * construct a link to another file.
  * <p>
  * The delegate file cannot be initialized with a directory as a subject.
+ * <p>
+ * This class shouldn't be extended by clients.
  */
 @PublicApi
 public class DelegateSakerFile extends SakerFileBase {
-	private final SakerFile file;
+	/**
+	 * The file that is the subject of delegation.
+	 */
+	protected final SakerFile file;
 
 	/**
 	 * Creates a new delegate file initialized with the specified name and subject.
@@ -124,4 +131,8 @@ public class DelegateSakerFile extends SakerFileBase {
 		file.synchronizeImpl(pathkey);
 	}
 
+	@Override
+	public Set<PosixFilePermission> getPosixFilePermissions() {
+		return file.getPosixFilePermissions();
+	}
 }

@@ -64,7 +64,7 @@ import saker.build.util.exc.ExceptionView;
 class ClusterTaskContext implements TaskContext, InternalTaskContext {
 	private ClusterExecutionContext executionContext;
 	protected TaskContext realTaskContext;
-	private ContentDatabase clusterContentDatabase;
+	private ContentDatabaseImpl clusterContentDatabase;
 	private TaskExecutionUtilities clusterTaskUtilities;
 
 	public ClusterTaskContext(ClusterExecutionContext executionContext, TaskContext realTaskContext,
@@ -362,6 +362,14 @@ class ClusterTaskContext implements TaskContext, InternalTaskContext {
 		ContentDatabase clusterdb = clusterContentDatabase;
 		if (clusterdb != null) {
 			clusterdb.invalidate(pathkey);
+		}
+	}
+
+	public void invalidateWithPosixFilePermissionsInClusterDatabase(ProviderHolderPathKey pathkey) throws IOException {
+		Objects.requireNonNull(pathkey, "path key");
+		ContentDatabaseImpl clusterdb = clusterContentDatabase;
+		if (clusterdb != null) {
+			clusterdb.invalidateWithPosixFilePermissions(pathkey);
 		}
 	}
 }

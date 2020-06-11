@@ -20,10 +20,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
+import java.util.Set;
 
 import saker.build.exception.InvalidFileTypeException;
 import saker.build.exception.InvalidPathFormatException;
@@ -54,6 +56,7 @@ import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
+import saker.build.thirdparty.saker.util.io.IOUtils;
 
 class ClusterTaskExecutionUtilities implements TaskExecutionUtilities {
 	private final TaskExecutionUtilities utils;
@@ -449,6 +452,14 @@ class ClusterTaskExecutionUtilities implements TaskExecutionUtilities {
 	}
 
 	@Override
+	public SakerFile createProviderPathFileWithPosixFilePermissions(String name, ProviderHolderPathKey pathkey,
+			ContentDescriptor currentpathcontentdescriptor, Set<PosixFilePermission> permissions)
+			throws IOException, NullPointerException, InvalidFileTypeException {
+		return utils.createProviderPathFileWithPosixFilePermissions(name, pathkey, currentpathcontentdescriptor,
+				permissions);
+	}
+
+	@Override
 	public NavigableMap<SakerPath, SakerFile> toPathFileMap(Iterable<? extends SakerFile> files) {
 		return utils.toPathFileMap(files);
 	}
@@ -467,6 +478,24 @@ class ClusterTaskExecutionUtilities implements TaskExecutionUtilities {
 	public void invalidate(Iterable<? extends PathKey> pathkeys) {
 		clusterTaskContext.invalidateInClusterDatabase(pathkeys);
 		this.utils.invalidate(pathkeys);
+	}
+
+	@Override
+	public void invalidateWithPosixFilePermissions(ProviderHolderPathKey pathkey)
+			throws NullPointerException, IOException {
+		IOException s = null;
+		try {
+			clusterTaskContext.invalidateWithPosixFilePermissionsInClusterDatabase(pathkey);
+		} catch (IOException e) {
+			s = e;
+		}
+		try {
+			this.utils.invalidateWithPosixFilePermissions(pathkey);
+		} catch (IOException e) {
+			IOUtils.addExc(e, s);
+			throw e;
+		}
+		IOUtils.throwExc(s);
 	}
 
 	@Override

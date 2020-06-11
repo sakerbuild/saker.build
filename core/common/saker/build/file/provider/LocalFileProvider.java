@@ -56,6 +56,9 @@ import java.nio.file.Watchable;
 import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFileAttributes;
+import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.spi.FileSystemProvider;
 import java.security.AccessController;
 import java.security.MessageDigest;
@@ -2085,6 +2088,91 @@ public final class LocalFileProvider implements SakerFileProvider {
 		file = requireLocalAbsolutePath(file);
 
 		return readFileEntryImpl(file, linkoptions);
+	}
+
+	@Override
+	public boolean setPosixFilePermissions(SakerPath path, Set<PosixFilePermission> permissions)
+			throws NullPointerException, IOException {
+		return setPosixFilePermissionsImpl(toRealPath(path), permissions);
+	}
+
+	/**
+	 * @see #setPosixFilePermissions(SakerPath, Set)
+	 */
+	public boolean setPosixFilePermissions(Path path, Set<PosixFilePermission> permissions)
+			throws NullPointerException, IOException {
+		path = requireLocalAbsolutePath(path);
+
+		return setPosixFilePermissionsImpl(path, permissions);
+	}
+
+	private static boolean setPosixFilePermissionsImpl(Path path, Set<PosixFilePermission> permissions)
+			throws IOException {
+		PosixFileAttributeView view = localFileSystemProvider.getFileAttributeView(path, PosixFileAttributeView.class);
+		if (view == null) {
+			return false;
+		}
+		view.setPermissions(permissions);
+		return true;
+	}
+
+	@Override
+	public boolean modifyPosixFilePermissions(SakerPath path, Set<PosixFilePermission> addpermissions,
+			Set<PosixFilePermission> removepermissions) throws NullPointerException, IOException {
+		return modifyPosixFilePermissionsimpl(toRealPath(path), addpermissions, removepermissions);
+	}
+
+	/**
+	 * @see #modifyPosixFilePermissions(SakerPath, Set, Set)
+	 */
+	public boolean modifyPosixFilePermissions(Path path, Set<PosixFilePermission> addpermissions,
+			Set<PosixFilePermission> removepermissions) throws NullPointerException, IOException {
+		path = requireLocalAbsolutePath(path);
+
+		return modifyPosixFilePermissionsimpl(path, addpermissions, removepermissions);
+	}
+
+	private static boolean modifyPosixFilePermissionsimpl(Path path, Set<PosixFilePermission> addpermissions,
+			Set<PosixFilePermission> removepermissions) throws IOException {
+		PosixFileAttributeView view = localFileSystemProvider.getFileAttributeView(path, PosixFileAttributeView.class);
+		if (view == null) {
+			return false;
+		}
+		PosixFileAttributes attrs = view.readAttributes();
+		Set<PosixFilePermission> existingpermissions = attrs.permissions();
+		boolean modified = false;
+		if (addpermissions != null) {
+			modified |= existingpermissions.addAll(addpermissions);
+		}
+		if (removepermissions != null) {
+			modified |= existingpermissions.removeAll(removepermissions);
+		}
+		if (modified) {
+			view.setPermissions(existingpermissions);
+		}
+		return true;
+	}
+
+	@Override
+	public Set<PosixFilePermission> getPosixFilePermissions(SakerPath path) throws NullPointerException, IOException {
+		return getPosixFilePermissionsImpl(toRealPath(path));
+	}
+
+	/**
+	 * @see #getPosixFilePermissions(SakerPath)
+	 */
+	public Set<PosixFilePermission> getPosixFilePermissions(Path path) throws NullPointerException, IOException {
+		path = requireLocalAbsolutePath(path);
+
+		return getPosixFilePermissionsImpl(path);
+	}
+
+	private static Set<PosixFilePermission> getPosixFilePermissionsImpl(Path path) throws IOException {
+		PosixFileAttributeView view = localFileSystemProvider.getFileAttributeView(path, PosixFileAttributeView.class);
+		if (view == null) {
+			return null;
+		}
+		return view.readAttributes().permissions();
 	}
 
 	@Override
