@@ -593,6 +593,14 @@ public class DataConversionTest extends SakerTestCase {
 	private void convertWithToAndValueOf() throws AssertionError, Exception {
 		assertConvertibleExamineEquals(new AdaptToConvertValue("1"), SomeInterfaceValueOf.class,
 				new SomeInterfaceValueOf("1"));
+
+		//test with adapting interfaces between the conversion
+		ClassLoader cl = TestUtils.createClassLoaderForClasses(AdaptToConvertValue.class, SomeInterface.class,
+				SomeInterfaceImpl.class);
+		Object cladapttoconvertvalueinstance = Class.forName(AdaptToConvertValue.class.getName(), false, cl)
+				.getConstructor(String.class).newInstance("1");
+		assertConvertibleExamineEquals(cladapttoconvertvalueinstance, SomeInterfaceValueOf.class,
+				new SomeInterfaceValueOf("1"));
 	}
 
 	private void convertValueToMethod() throws AssertionError, Exception {

@@ -1633,18 +1633,42 @@ public class DataConverterUtils {
 					Method toconvertmethod = entry.getKey();
 					Method valueofmethod = entry.getValue();
 					Object intermediate;
-					try {
-						intermediate = ReflectUtils.invokeMethod(value, toconvertmethod);
-					} catch (IllegalAccessException | IllegalArgumentException e) {
-						excs = IOUtils.collectExc(excs,
-								new ConversionFailedException("Failed to convert using: " + toconvertmethod, e));
-						continue;
-					} catch (InvocationTargetException e) {
-						excs = IOUtils.collectExc(excs, new ConversionFailedException(
-								"Failed to convert using: " + toconvertmethod, e.getCause()));
-						continue;
+					Class<?> valueofargclass = valueofmethod.getParameterTypes()[0];
+					if (valueofargclass.isAssignableFrom(toconvertmethod.getReturnType())) {
+						try {
+							intermediate = ReflectUtils.invokeMethod(value, toconvertmethod);
+						} catch (IllegalAccessException | IllegalArgumentException e) {
+							excs = IOUtils.collectExc(excs,
+									new ConversionFailedException("Failed to convert using: " + toconvertmethod, e));
+							continue;
+						} catch (InvocationTargetException e) {
+							excs = IOUtils.collectExc(excs, new ConversionFailedException(
+									"Failed to convert using: " + toconvertmethod, e.getCause()));
+							continue;
+						}
+					} else {
+						//types are not assignable. is the valueof argument is an interface
+						//    we can adapt the result of the to...() method call to the target class
+						if (shouldAdaptToMethodResultToTargetClass(toconvertmethod, valueofargclass)) {
+							try {
+								intermediate = adaptInterface(conversioncontext.getBaseClassLoader(),
+										ReflectUtils.invokeMethod(value, toconvertmethod));
+							} catch (IllegalAccessException | IllegalArgumentException e) {
+								excs = IOUtils.collectExc(excs, new ConversionFailedException(
+										"Failed to convert using: " + toconvertmethod, e));
+								continue;
+							} catch (InvocationTargetException e) {
+								excs = IOUtils.collectExc(excs, new ConversionFailedException(
+										"Failed to convert using: " + toconvertmethod, e.getCause()));
+								continue;
+							}
+						} else {
+							excs = IOUtils.collectExc(excs,
+									new ConversionFailedException("Subject conversion method return type mismatch: "
+											+ toconvertmethod + " for " + targetclass));
+							continue;
+						}
 					}
-					//XXX maybe adapt the result
 					try {
 						return ReflectUtils.invokeMethod((Object) null, valueofmethod, intermediate);
 					} catch (IllegalAccessException | IllegalArgumentException e) {
