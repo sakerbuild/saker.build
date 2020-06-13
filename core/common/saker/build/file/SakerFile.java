@@ -22,6 +22,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.util.Set;
 
 import saker.build.file.content.ContentDescriptor;
+import saker.build.file.content.PosixFilePermissionsDelegateContentDescriptor;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.task.TaskExecutionUtilities;
@@ -169,6 +170,10 @@ public interface SakerFile extends FileHandle {
 	 * <p>
 	 * See {@link ContentDescriptor}. Content descriptors are used to determine if the file contents need to be
 	 * persisted to the file system.
+	 * <p>
+	 * Subclasses should note that if they use {@linkplain #getPosixFilePermissions() posix file permissions} then they
+	 * should return a content descriptor that reflects this behaviour. They are recommended to use
+	 * {@link PosixFilePermissionsDelegateContentDescriptor} to construct the actual content descriptor.
 	 * 
 	 * @return The content descriptor. Never <code>null</code>.
 	 */
@@ -337,6 +342,9 @@ public interface SakerFile extends FileHandle {
 	 * If subclasses override this method, they must override {@link #synchronizeImpl(ProviderHolderPathKey, ByteSink)}
 	 * as well. (They can just simply call {@link #synchronizeImpl(ProviderHolderPathKey)} and return
 	 * <code>false</code>.)
+	 * <p>
+	 * Subclasses should set any {@linkplain #getPosixFilePermissions() posix file permissions} there are associated
+	 * with the file during synchronization.
 	 * 
 	 * @param pathkey
 	 *            The target location of the synchronization.
@@ -369,6 +377,9 @@ public interface SakerFile extends FileHandle {
 	 * Overriding this method will improve the overall synchronization performance.
 	 * <p>
 	 * If subclasses override this method, they must override {@link #synchronizeImpl(ProviderHolderPathKey)} as well.
+	 * <p>
+	 * Subclasses should set any {@linkplain #getPosixFilePermissions() posix file permissions} there are associated
+	 * with the file during synchronization.
 	 * 
 	 * @param pathkey
 	 *            The target location of the synchronization.
@@ -492,7 +503,27 @@ public interface SakerFile extends FileHandle {
 		return null;
 	}
 
-	//since saker.build 0.8.13
+	/**
+	 * Gets the posix file permissions that are associated with this file.
+	 * <p>
+	 * This method returns the set of posix file permissions that were associated with the given file as part of the
+	 * build execution.
+	 * <p>
+	 * Subclasses can override this method to explicitly set the permissions, however, if they do so then they also need
+	 * to return a {@linkplain #getContentDescriptor() content descriptor} that reflects this association. They are
+	 * encouraged to use {@link PosixFilePermissionsDelegateContentDescriptor} to construct the actual content
+	 * descriptor if posix file permissions are set for a file.
+	 * <p>
+	 * Subclasses that return non-<code>null</code> from this method are also required to set these permissions in the
+	 * synchronization methods.
+	 * <p>
+	 * <b>Note</b> that this method will return <code>null</code> by default even when the build is running on file
+	 * systems that support posix file permissions. The posix file permissions are not automatically queried by the
+	 * build system but only if a build execution previously set it.
+	 * 
+	 * @return The set of permissions or <code>null</code> if none are associated.
+	 * @since saker.build 0.8.13
+	 */
 	@RMIWrap(EnumSetRMIWrapper.class)
 	public default Set<PosixFilePermission> getPosixFilePermissions() {
 		return null;

@@ -94,7 +94,6 @@ public interface ContentDatabase {
 			return false;
 		}
 
-		//since saker.build 0.8.13
 //		This method is defined in this interface instead of being passed as a parameter
 //		in the various synchronization or content retrieval methods in ContentDatabase.
 //		This is due that it is directly associated with the synchronization itself but not with
@@ -107,6 +106,19 @@ public interface ContentDatabase {
 //		the expected permissions when the file is accessed at a later date. (E.g. next build execution)
 //		They are used to detect some modifications, but aren't used to actively control the content
 //		retrieval mechanisms.
+		/**
+		 * Gets the posix file permissions that are to be expected for the synchronized file to have.
+		 * <p>
+		 * If this method returns non-<code>null</code> then the build system will expect the returned posix file
+		 * permissions to be present on the synchronized file.
+		 * <p>
+		 * These are used when detecting changes in the files during incremental builds. If the underlying file system
+		 * supports posix file permissions, and they mismatch with the expected permissions, then a change in the file
+		 * contents will be detected.
+		 * 
+		 * @return The posix file permissions that is expected from the synchronized file or <code>null</code> if none.
+		 * @since saker.build 0.8.13
+		 */
 		@RMIWrap(EnumSetRMIWrapper.class)
 		public default Set<PosixFilePermission> getPosixFilePermissions() {
 			return null;
@@ -156,7 +168,15 @@ public interface ContentDatabase {
 		@RMICacheResult
 		public ContentDatabase getContentDatabase();
 
-		//since saker.build 0.8.13
+		/**
+		 * Gets the posix file permissions that are associated with the given file.
+		 * <p>
+		 * The permissions are only returned if a build execution previously associated posix file permissions with a
+		 * given file.
+		 * 
+		 * @return The permissions or <code>null</code> if none are associated.
+		 * @since saker.build 0.8.13
+		 */
 		@RMIWrap(EnumSetRMIWrapper.class)
 		public default Set<PosixFilePermission> getPosixFilePermissions() {
 			return null;
@@ -220,15 +240,30 @@ public interface ContentDatabase {
 	 *            The path key to discover.
 	 * @param content
 	 *            The contents to associate the discovered file with.
-	 * @return A content handle to the disovered file.
+	 * @return A content handle to the discovered file.
 	 * @throws IOException
 	 *             In case of I/O error.
 	 */
 	public ContentHandle discover(ProviderHolderPathKey pathkey, @RMISerialize ContentDescriptor content)
 			throws IOException;
 
+	/**
+	 * Discovers a file at the given path and associates the provided contents and posix file permissions with it.
+	 * 
+	 * @param pathkey
+	 *            The path key to discover.
+	 * @param content
+	 *            The contents to associate the discovered file with.
+	 * @param permissions
+	 *            The posix file permissions to associate with the file. May be <code>null</code>.
+	 * @return A content handle to the discovered file.
+	 * @throws IOException
+	 *             In case of I/O error.
+	 * @since saker.build 0.8.13
+	 */
 	public ContentHandle discoverWithPosixFilePermissions(ProviderHolderPathKey pathkey,
-			@RMISerialize ContentDescriptor content, Set<PosixFilePermission> permissions) throws IOException;
+			@RMISerialize ContentDescriptor content,
+			@RMIWrap(EnumSetRMIWrapper.class) Set<PosixFilePermission> permissions) throws IOException;
 
 	/**
 	 * Writes the contents of the file specified by the argument path key, optionally synchronizing if the contents have

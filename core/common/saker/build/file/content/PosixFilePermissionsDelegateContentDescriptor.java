@@ -10,9 +10,22 @@ import java.util.Objects;
 import java.util.Set;
 
 import saker.apiextract.api.PublicApi;
+import saker.build.file.SakerFile;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 
+/**
+ * Delegate {@link ContentDescriptor} that also holds associated posix file permissions.
+ * <p>
+ * Instances of this content descriptor can (and recommended to) be used when {@linkplain SakerFile files} are
+ * associated with posix file permissions. That is, if the {@link SakerFile#getPosixFilePermissions()} method is to
+ * return non-<code>null</code>, then its {@linkplain SakerFile#getContentDescriptor() content descriptor} should
+ * reflect those permissions as well.
+ * <p>
+ * Clients can use {@link #get(ContentDescriptor, Set)} to create a new instance.
+ * 
+ * @since saker.build 0.8.13
+ */
 @PublicApi
 public class PosixFilePermissionsDelegateContentDescriptor implements ContentDescriptor, Externalizable {
 	private static final long serialVersionUID = 1L;
@@ -26,8 +39,18 @@ public class PosixFilePermissionsDelegateContentDescriptor implements ContentDes
 	public PosixFilePermissionsDelegateContentDescriptor() {
 	}
 
+	/**
+	 * Creates a new instance.
+	 * 
+	 * @param contents
+	 *            The delegate content descriptor.
+	 * @param permissions
+	 *            The posix file permissions.
+	 * @throws NullPointerException
+	 *             If any of the arguments are <code>null</code>.
+	 */
 	public PosixFilePermissionsDelegateContentDescriptor(ContentDescriptor contents,
-			Set<PosixFilePermission> permissions) {
+			Set<PosixFilePermission> permissions) throws NullPointerException {
 		Objects.requireNonNull(contents, "contents");
 		Objects.requireNonNull(permissions, "permissions");
 		this.contents = contents;
@@ -35,7 +58,22 @@ public class PosixFilePermissionsDelegateContentDescriptor implements ContentDes
 		this.permissions = ImmutableUtils.makeImmutableNavigableSet(permissions);
 	}
 
-	public static ContentDescriptor get(ContentDescriptor contents, Set<PosixFilePermission> permissions) {
+	/**
+	 * Gets a content descriptor that reflects the argument posix file permissions.
+	 * <p>
+	 * If the specified permissions set is <code>null</code>, then this method will just return the argument content
+	 * descriptor without creating a new {@link PosixFilePermissionsDelegateContentDescriptor} instance.
+	 * 
+	 * @param contents
+	 *            The delegate content descriptor.
+	 * @param permissions
+	 *            The posix file permissions.
+	 * @return A content descriptor that reflects the argument posix file permissions.
+	 * @throws NullPointerException
+	 *             If the delegate content descriptor is <code>null</code>.
+	 */
+	public static ContentDescriptor get(ContentDescriptor contents, Set<PosixFilePermission> permissions)
+			throws NullPointerException {
 		Objects.requireNonNull(contents, "contents");
 		if (permissions == null) {
 			return contents;
@@ -43,11 +81,21 @@ public class PosixFilePermissionsDelegateContentDescriptor implements ContentDes
 		return new PosixFilePermissionsDelegateContentDescriptor(contents, permissions);
 	}
 
+	/**
+	 * Gets the delegate content desctiptor.
+	 * 
+	 * @return The contents.
+	 */
 	public ContentDescriptor getContents() {
 		return contents;
 	}
 
-	public Set<PosixFilePermission> getPermissions() {
+	/**
+	 * Gets the associated posix file permissions.
+	 * 
+	 * @return An unmodifiable set of posix file permissions.
+	 */
+	public Set<PosixFilePermission> getPosixFilePermissions() {
 		return permissions;
 	}
 

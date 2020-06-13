@@ -39,6 +39,7 @@ import saker.build.file.RemoteExecutionSakerFileRMIWrapper;
 import saker.build.file.SakerDirectory;
 import saker.build.file.SakerFile;
 import saker.build.file.content.ContentDescriptor;
+import saker.build.file.content.PosixFilePermissionsDelegateContentDescriptor;
 import saker.build.file.path.PathKey;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
@@ -1563,7 +1564,39 @@ public interface TaskExecutionUtilities {
 			@RMISerialize ContentDescriptor currentpathcontentdescriptor)
 			throws IOException, NullPointerException, InvalidFileTypeException;
 
-	//XXX doc: use PosixFilePermissionsDelegateContentDescriptor
+	/**
+	 * Creates a {@link SakerFile} instance which has its contents backed by the specified file system file at the given
+	 * path, and associates the argument content descriptor and posix file permissions with the current contents.
+	 * <p>
+	 * The method works the same way as
+	 * {@link #createProviderPathFile(String, ProviderHolderPathKey, ContentDescriptor)}, but also associated the
+	 * specified posix file permissions with the file.
+	 * <p>
+	 * The result file will return the argument posix file permissions from its
+	 * {@link SakerFile#getPosixFilePermissions()} method.
+	 * <p>
+	 * It is not required for the underlying filesystem to support posix file permissions.
+	 * <p>
+	 * <b>Note</b> that the argument content descriptor should reflect the specified posix file permissions as well. It
+	 * is recommended to use {@link PosixFilePermissionsDelegateContentDescriptor}.
+	 * 
+	 * @param name
+	 *            The name to create the file with.
+	 * @param pathkey
+	 *            The path to the contents which is used by the created file.
+	 * @param currentpathcontentdescriptor
+	 *            The content descriptor to associate with the current file system contents.
+	 * @param permissions
+	 *            The posix file permissions to associate with the given file. May be <code>null</code>.
+	 * @return The created file.
+	 * @throws IOException
+	 *             If the operation fails due to I/O error.
+	 * @throws NullPointerException
+	 *             If any of the arguments except the posix file permissions are <code>null</code>.
+	 * @throws InvalidFileTypeException
+	 *             If the file is a directory.
+	 * @since saker.build 0.8.13
+	 */
 	public SakerFile createProviderPathFileWithPosixFilePermissions(String name, ProviderHolderPathKey pathkey,
 			@RMISerialize ContentDescriptor currentpathcontentdescriptor,
 			@RMIWrap(EnumSetRMIWrapper.class) Set<PosixFilePermission> permissions)
@@ -1645,6 +1678,27 @@ public interface TaskExecutionUtilities {
 	public void invalidate(@RMIWrap(RMIArrayListWrapper.class) Iterable<? extends PathKey> pathkeys)
 			throws NullPointerException;
 
+	/**
+	 * Invalidates the specified file and also associates the current posix file permissions of the file in the build
+	 * system.
+	 * <p>
+	 * The method works like {@link TaskContext#invalidate(PathKey)}, but also instructs the build system to track the
+	 * posix file permissions of the specified file. This will cause the file returned from
+	 * {@link #createProviderPathFile(String, ProviderHolderPathKey)} to have its
+	 * {@link SakerFile#getPosixFilePermissions()} filled.
+	 * <p>
+	 * This method works only if the argument file resides on a filesystem that supports posix file permissions.
+	 * Otherwise this method works the same way as {@link TaskContext#invalidate(PathKey)} without taking posix file
+	 * permissions into account.
+	 * 
+	 * @param pathkey
+	 *            The path key to invalidate.
+	 * @throws NullPointerException
+	 *             If the path key is <code>null</code>.
+	 * @throws IOException
+	 *             In case of I/O error.
+	 * @since saker.build 0.8.13
+	 */
 	public void invalidateWithPosixFilePermissions(ProviderHolderPathKey pathkey)
 			throws NullPointerException, IOException;
 
@@ -1687,6 +1741,13 @@ public interface TaskExecutionUtilities {
 	 */
 	public static final int SYNCHRONIZE_FLAG_DELETE_INTERMEDIATE_FILES = 1 << 1;
 
+	/**
+	 * Synchronization operation flag to signal that the posix file permissions should be copied from the source file to
+	 * the target.
+	 * 
+	 * @see #synchronize(ProviderHolderPathKey, ProviderHolderPathKey, int)
+	 * @since saker.build 0.8.13
+	 */
 	public static final int SYNCHRONIZE_FLAG_COPY_ASSOCIATED_POSIX_FILE_PERMISSIONS = 1 << 2;
 
 	/**

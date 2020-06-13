@@ -260,13 +260,62 @@ public interface SakerFileProvider {
 	public FileEntry getFileAttributes(SakerPath path,
 			@RMIWriter(EnumArrayRMIObjectWriteHandler.class) LinkOption... linkoptions) throws IOException;
 
-	//posix since saker.build 0.8.13
+	/**
+	 * Sets the posix file permissions for the file at the given path.
+	 * <p>
+	 * This method will only set the file permissions if the underlying filesystem supports it. In that case the method
+	 * will return <code>true</code>. Otherwise <code>false</code>.
+	 * <p>
+	 * The method <b>does not</b> throw an exception if the underlying filesystem doesn't support posix file
+	 * permissions.
+	 * 
+	 * @param path
+	 *            The path of the file.
+	 * @param permissions
+	 *            The permississions to set.
+	 * @return <code>true</code> if the underlying filesystem supports posix file permissions. <code>false</code>
+	 *             otherwise.
+	 * @throws NullPointerException
+	 *             If any of the arguments are <code>null</code>.
+	 * @throws IOException
+	 *             In case of I/O error.
+	 * @since saker.build 0.8.13
+	 */
 	public default boolean setPosixFilePermissions(SakerPath path,
 			@RMIWrap(EnumSetRMIWrapper.class) Set<PosixFilePermission> permissions)
 			throws NullPointerException, IOException {
 		return false;
 	}
 
+	/**
+	 * Modifies the posix file permissions for the file at the given path.
+	 * <p>
+	 * The method takes two permission set arguments which control how the permissions should be modified. First all
+	 * permissions in the <code>add</code> argument are added, then all permissions in the <code>remove</code> argument
+	 * are removed.
+	 * <p>
+	 * The adding and removal are performed in a single filesystem operation.
+	 * <p>
+	 * If a permission is present in both <code>add</code> and <code>remove</code> permission sets, then it will be
+	 * removed.
+	 * <p>
+	 * The method <b>does not</b> throw an exception if the underlying filesystem doesn't support posix file
+	 * permissions.
+	 * 
+	 * @param path
+	 *            The path of the file.
+	 * @param addpermissions
+	 *            The permissons to add. May be <code>null</code> to not add anything.
+	 * @param removepermissions
+	 *            The permissions to remove. May be <code>null</code> to not remove anything.
+	 * @return <code>true</code> if the underlying filesystem supports posix file permissions. <code>false</code>
+	 *             otherwise.
+	 * @throws NullPointerException
+	 *             If the path argument or any of the permission elements are <code>null</code>.
+	 * @throws IOException
+	 *             In case of I/O error.
+	 * @since saker.build 0.8.13
+	 */
 	public default boolean modifyPosixFilePermissions(SakerPath path,
 			@RMIWrap(EnumSetRMIWrapper.class) Set<PosixFilePermission> addpermissions,
 			@RMIWrap(EnumSetRMIWrapper.class) Set<PosixFilePermission> removepermissions)
@@ -274,6 +323,25 @@ public interface SakerFileProvider {
 		return false;
 	}
 
+	/**
+	 * Gets the posix file permissions of the file at the given path.
+	 * <p>
+	 * The method will query the posix file permissions of the specified file if the underlying file system supports
+	 * them.
+	 * <p>
+	 * The method <b>does not</b> throw an exception if the underlying filesystem doesn't support posix file
+	 * permissions.
+	 * 
+	 * @param path
+	 *            The path of the file.
+	 * @return The posix file permissions of the file or <code>null</code> if the underlying filesystem doesn't support
+	 *             them.
+	 * @throws NullPointerException
+	 *             If the path argument is <code>null</code>.
+	 * @throws IOException
+	 *             In case of I/O error.
+	 * @since saker.build 0.8.13
+	 */
 	@RMIWrap(EnumSetRMIWrapper.class)
 	public default Set<PosixFilePermission> getPosixFilePermissions(SakerPath path)
 			throws NullPointerException, IOException {
