@@ -1,0 +1,7 @@
+build {
+	$OutputParam1 = #...
+}
+other { $OutputParam1 = ###...### }
+other { $OutputParam1 = ###...###}
+other { $OutputParam1 =###...###}
+other { $OutputParam1 =###...### }

@@ -363,7 +363,7 @@ language TasksLanguage {
 	value EXPRESSION_CLOSING {
 		firstorder 1 {
 			skip "[\t ]*(;|\z|\r\n?|\n)" 1;
-			skip "[\t ]*(?=#)" 1;
+			skip "[\t ]*(?=[#\}])" 1;
 		}
 	}
 	
