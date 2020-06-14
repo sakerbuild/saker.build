@@ -209,7 +209,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	private long endExecutionNanos;
 	private long endNanos;
 
-	private ConcurrentHashMap<TaskIdentifier, TaskBuildTraceImpl> taskBuildTraces = new ConcurrentHashMap<>();
+	private final ConcurrentHashMap<TaskIdentifier, TaskBuildTraceImpl> taskBuildTraces = new ConcurrentHashMap<>();
 	private SakerPath workingDirectoryPath;
 	private SakerPath buildDirectoryPath;
 	private SakerPath mirrorDirectoryPath;
@@ -217,8 +217,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	/**
 	 * Maps {@link EnvironmentInformation#buildEnvironmentUUID} to informations.
 	 */
-	private NavigableMap<UUID, EnvironmentReference> environmentInformations = new ConcurrentSkipListMap<>();
-	private NavigableMap<UUID, Long> clusterInitializationTimeNanos = new ConcurrentSkipListMap<>();
+	private final NavigableMap<UUID, EnvironmentReference> environmentInformations = new ConcurrentSkipListMap<>();
+	private final NavigableMap<UUID, Long> clusterInitializationTimeNanos = new ConcurrentSkipListMap<>();
 
 	private ConcurrentPrependAccumulator<ExceptionView> ignoredExceptions = new ConcurrentPrependAccumulator<>();
 	private BuildInformation buildInformation;
@@ -229,12 +229,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	private ExecutionPathConfiguration pathConfiguration;
 	private boolean successful;
 
-	private NavigableMap<SakerPath, ByteArrayRegion> readScriptContents = new ConcurrentSkipListMap<>();
+	private final NavigableMap<SakerPath, ByteArrayRegion> readScriptContents = new ConcurrentSkipListMap<>();
 
 	/**
 	 * Maps category strings to linked hash maps that should be synchronized on.
 	 */
-	private ConcurrentSkipListMap<String, LinkedHashMap<String, Object>> values = new ConcurrentSkipListMap<>();
+	private final ConcurrentSkipListMap<String, LinkedHashMap<String, Object>> values = new ConcurrentSkipListMap<>();
 
 	public InternalBuildTraceImpl(ProviderHolderPathKey buildtraceoutput) {
 		this.buildTraceOutputPathKey = buildtraceoutput;
@@ -654,8 +654,10 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			writeFieldName(os, "mirror_dir");
 			writeTypedObject(os, Objects.toString(mirrorDirectoryPath, null));
 
-			writeFieldName(os, "execution_environment_uuid");
-			writeString(os, localEnvironmentReference.environmentInfo.buildEnvironmentUUID.toString());
+			if (localEnvironmentReference != null) {
+				writeFieldName(os, "execution_environment_uuid");
+				writeString(os, localEnvironmentReference.environmentInfo.buildEnvironmentUUID.toString());
+			}
 
 			writeFieldName(os, "ide_config_required");
 			writeBoolean(os, ideConfigurationRequired);
@@ -757,9 +759,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			}
 
 			NavigableMap<String, PathKey> rootsPathKey = new TreeMap<>();
-			for (Entry<String, SakerFileProvider> entry : pathConfiguration.getRootFileProviders().entrySet()) {
-				rootsPathKey.put(entry.getKey(),
-						SakerPathFiles.getPathKey(entry.getValue(), SakerPath.valueOf(entry.getKey())));
+			if (pathConfiguration != null) {
+				for (Entry<String, SakerFileProvider> entry : pathConfiguration.getRootFileProviders().entrySet()) {
+					rootsPathKey.put(entry.getKey(),
+							SakerPathFiles.getPathKey(entry.getValue(), SakerPath.valueOf(entry.getKey())));
+				}
 			}
 
 			writeFieldName(os, "path_config");
