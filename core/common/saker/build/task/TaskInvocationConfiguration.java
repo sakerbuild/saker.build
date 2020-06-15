@@ -460,6 +460,66 @@ public final class TaskInvocationConfiguration {
 		public TaskInvocationConfiguration buildReuse() {
 			return new TaskInvocationConfiguration(result);
 		}
+
+		/**
+		 * Gets the current value of the short task setting.
+		 * 
+		 * @return <code>true</code> if the task is short.
+		 * @since saker.build 0.8.14
+		 */
+		public boolean isShort() {
+			return result.shortTask;
+		}
+
+		/**
+		 * Gets the current value of the remote dispatchability.
+		 * 
+		 * @return <code>true</code> if the task is remote dispatchable.
+		 * @since saker.build 0.8.14
+		 */
+		public boolean isRemoteDispatchable() {
+			return result.remoteDispatchable;
+		}
+
+		/**
+		 * Gets the current value of the cacheability.
+		 * 
+		 * @return <code>true</code> if the task is cacheable.
+		 * @since saker.build 0.8.14
+		 */
+		public boolean isCacheable() {
+			return result.cacheable;
+		}
+
+		/**
+		 * Gets the current value of the inner task computationality.
+		 * 
+		 * @return <code>true</code> if the inner tasks are computationals.
+		 * @since saker.build 0.8.14
+		 */
+		public boolean isInnerTasksComputationals() {
+			return result.innerTasksComputationals;
+		}
+
+		/**
+		 * Gets the current value of the requested computation tokens.
+		 * 
+		 * @return The number of requested computation tokens.
+		 * @since saker.build 0.8.14
+		 */
+		public int getRequestedComputationTokenCount() {
+			return result.computationTokenCount;
+		}
+
+		/**
+		 * Gets the currently set execution environment selector.
+		 * 
+		 * @return The environment selector.
+		 * @since saker.build 0.8.14
+		 */
+		public TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
+			return result.environmentSelector;
+		}
 	}
 
 }
