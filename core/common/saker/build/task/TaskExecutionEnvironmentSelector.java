@@ -20,6 +20,7 @@ import java.util.Set;
 
 import saker.build.runtime.environment.EnvironmentProperty;
 import saker.build.runtime.environment.SakerEnvironment;
+import saker.build.task.utils.MultiTaskExecutionEnvironmentSelector;
 import saker.build.thirdparty.saker.rmi.annot.invoke.RMIForbidden;
 
 /**
@@ -80,4 +81,38 @@ public interface TaskExecutionEnvironmentSelector {
 	 */
 	@Override
 	public boolean equals(Object obj);
+
+	/**
+	 * Gets a task environment selector that satisfies all the argument selectors.
+	 * <p>
+	 * The returned task execution environment selector will check all arguments for suitability.
+	 * 
+	 * @param selectors
+	 *            The environment selectors.
+	 * @return The environment selector.
+	 * @throws NullPointerException
+	 *             If the argument or any of its elements are <code>null</code>.
+	 * @since saker.build 0.8.14
+	 */
+	public static TaskExecutionEnvironmentSelector multi(TaskExecutionEnvironmentSelector... selectors)
+			throws NullPointerException {
+		return MultiTaskExecutionEnvironmentSelector.get(selectors);
+	}
+
+	/**
+	 * Gets a task environment selector that satisfies all the argument selectors.
+	 * <p>
+	 * The returned task execution environment selector will check all arguments for suitability.
+	 * 
+	 * @param selectors
+	 *            The environment selectors.
+	 * @return The environment selector.
+	 * @throws NullPointerException
+	 *             If the argument or any of its elements are <code>null</code>.
+	 * @since saker.build 0.8.14
+	 */
+	public static TaskExecutionEnvironmentSelector multi(Iterable<? extends TaskExecutionEnvironmentSelector> selectors)
+			throws NullPointerException {
+		return MultiTaskExecutionEnvironmentSelector.get(selectors);
+	}
 }

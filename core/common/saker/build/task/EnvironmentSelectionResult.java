@@ -19,7 +19,10 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Objects;
 
 import saker.build.runtime.environment.EnvironmentProperty;
@@ -59,6 +62,52 @@ public final class EnvironmentSelectionResult implements Externalizable {
 			throws NullPointerException {
 		Objects.requireNonNull(qualifierProperties, "qualifier properties");
 		this.qualifierProperties = ImmutableUtils.makeImmutableHashMap(qualifierProperties);
+	}
+
+	/**
+	 * Creates a new instance by merging the argument selection results.
+	 * 
+	 * @param selectionresults
+	 *            The selection results to merge.
+	 * @throws NullPointerException
+	 *             If the argument or any of its elements are <code>null</code>.
+	 * @throws IllegalArgumentException
+	 *             If multiple different values are encountered for a given environment property.
+	 * @since saker.build 0.8.14
+	 */
+	public EnvironmentSelectionResult(EnvironmentSelectionResult... selectionresults)
+			throws NullPointerException, IllegalArgumentException {
+		this(ImmutableUtils
+				.asUnmodifiableArrayList(Objects.requireNonNull(selectionresults, "environment selection results")));
+	}
+
+	/**
+	 * Creates a new instance by merging the argument selection results.
+	 * 
+	 * @param selectionresults
+	 *            The selection results to merge.
+	 * @throws NullPointerException
+	 *             If the argument or any of its elements are <code>null</code>.
+	 * @throws IllegalArgumentException
+	 *             If multiple different values are encountered for a given environment property.
+	 * @since saker.build 0.8.14
+	 */
+	public EnvironmentSelectionResult(Iterable<? extends EnvironmentSelectionResult> selectionresults)
+			throws NullPointerException, IllegalArgumentException {
+		Objects.requireNonNull(selectionresults, "environment selection results");
+		Map<EnvironmentProperty<?>, Object> map = new HashMap<>();
+		for (EnvironmentSelectionResult res : selectionresults) {
+			Objects.requireNonNull(res, "environment selection result");
+			for (Entry<? extends EnvironmentProperty<?>, ?> entry : res.qualifierProperties.entrySet()) {
+				Object val = entry.getValue();
+				Object prev = map.putIfAbsent(entry.getKey(), val);
+				if (prev != null && !prev.equals(val)) {
+					throw new IllegalArgumentException("Conflicting qualifier environment properties: " + entry.getKey()
+							+ " with values " + prev + " and " + val);
+				}
+			}
+		}
+		this.qualifierProperties = Collections.unmodifiableMap(map);
 	}
 
 	/**
