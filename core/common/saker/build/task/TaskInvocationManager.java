@@ -164,11 +164,19 @@ public class TaskInvocationManager implements Closeable {
 								.keySet())));
 			}
 		}
+		if (remotedispatchable) {
+			if (environmentselector.isRestrictedToLocalEnvironment()) {
+				remotedispatchable = false;
+			}
+		}
 
 		if (!remotedispatchable || ObjectUtils.isNullOrEmpty(invokerFactories)) {
 			final Exception finallocalselectionexception = localselectionexception;
 			return () -> {
-				throw new TaskEnvironmentSelectionFailedException(finallocalselectionexception);
+				if (finallocalselectionexception != null) {
+					throw new TaskEnvironmentSelectionFailedException(finallocalselectionexception);
+				}
+				throw new TaskEnvironmentSelectionFailedException("No suitable build environment found.");
 			};
 		}
 		ensureClustersStarted();

@@ -70,6 +70,23 @@ public interface TaskExecutionEnvironmentSelector {
 	@RMIForbidden
 	public EnvironmentSelectionResult isSuitableExecutionEnvironment(SakerEnvironment environment);
 
+	/**
+	 * Checks if the environment selection can only run on the local build environment.
+	 * <p>
+	 * The local build environment is the one the build execution was started on. It is also known as the coordinator.
+	 * <p>
+	 * If this method returns <code>true</code>, the build execution will not attempt to check remote clusters for
+	 * suitability. The method can be used if the environment selection is dependent on the local build environment.
+	 * <p>
+	 * The default implementation returns <code>false</code>.
+	 * 
+	 * @return <code>true</code> if the environment selection is restricted to the local environmnet.
+	 * @since 0.8.14
+	 */
+	public default boolean isRestrictedToLocalEnvironment() {
+		return false;
+	}
+
 	@Override
 	public int hashCode();
 

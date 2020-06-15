@@ -167,6 +167,8 @@ public final class TaskInvocationConfiguration {
 	 * machine was used.
 	 * <p>
 	 * To choose an appropriate build environment for the task, {@link #getExecutionEnvironmentSelector()} can be used.
+	 * Note that if the {@link TaskExecutionEnvironmentSelector#isRestrictedToLocalEnvironment()} method of the
+	 * environment selector returns <code>true</code>, then the remote dispatching will not proceed.
 	 * 
 	 * @return <code>true</code> if the build task is remote dispatchable.
 	 * @see #getExecutionEnvironmentSelector()

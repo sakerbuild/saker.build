@@ -111,6 +111,16 @@ public final class MultiTaskExecutionEnvironmentSelector implements TaskExecutio
 	}
 
 	@Override
+	public boolean isRestrictedToLocalEnvironment() {
+		for (TaskExecutionEnvironmentSelector s : selectors) {
+			if (s.isRestrictedToLocalEnvironment()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
 		SerialUtils.writeExternalCollection(out, selectors);
 	}
