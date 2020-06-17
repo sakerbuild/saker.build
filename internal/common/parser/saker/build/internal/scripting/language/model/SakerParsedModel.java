@@ -4366,6 +4366,34 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		}
 	}
 
+	private static boolean canSuggestDereferenceProposals(Statement stm) {
+		if (stm.isScopesEmpty()) {
+			//no children
+			return true;
+		}
+		//check $[subscript]
+		//it manifests as a dereference of a list
+		//e.g. structure:
+//		dereference: ""
+//		|	operator_subject: "" - 26 - 31
+//		|	|	list: "" - 26 - 31
+//		|	|	|	list_boundary: "" - 26 - 27
+//		|	|	|	list_element: "" - 27 - 30
+//		|	|	|	|	expression: "" - 27 - 30
+//		|	|	|	|	|	literal: "" - 27 - 30
+//		|	|	|	|	|	|	literal_content: "abc" - 27 - 30
+//		|	|	|	list_boundary: "" - 30 - 31
+		Statement subject = stm.firstScope("operator_subject");
+		if (subject != null) {
+			Statement liststm = subject.firstScope("list");
+			if (liststm != null) {
+				//allow proposals, but don't if there's multiple elements as that is not a subscript anymore
+				return liststm.scopeTo("list_element").size() <= 1;
+			}
+		}
+		return false;
+	}
+
 	private void addLeafProposals(ProposalLeaf leaf, DerivedData derived,
 			Collection<? super ScriptCompletionProposal> result, int offset, ProposalCollector collector,
 			ScriptModelInformationAnalyzer analyzer) {
@@ -4378,19 +4406,21 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		switch (stmname) {
 			case "dereference": {
 				//at a $ sign
-				if (offset == endpos && stm.isScopesEmpty()) {
-					//only suggest if we are after the $ sign, and got no children
+				if (offset == startpos + 1) {
+					if (canSuggestDereferenceProposals(stm)) {
+						//only suggest if we are after the $ sign, and got no children
 
-					ProposalFactory proposalfactory = proposalFactoryForPosition(startpos, endpos);
+						ProposalFactory proposalfactory = proposalFactoryForPosition(startpos, endpos);
 
-					for (String varname : getEnclosingForeachVariableNames(statementstack)) {
-						SimpleLiteralCompletionProposal proposal = createForeachVariableProposal(proposalfactory,
-								varname);
-						result.add(proposal);
-					}
-					for (String varname : getUsedTargetVariableNames(derived, stm)) {
-						SimpleLiteralCompletionProposal proposal = createVariableProposal(proposalfactory, varname);
-						result.add(proposal);
+						for (String varname : getEnclosingForeachVariableNames(statementstack)) {
+							SimpleLiteralCompletionProposal proposal = createForeachVariableProposal(proposalfactory,
+									varname);
+							result.add(proposal);
+						}
+						for (String varname : getUsedTargetVariableNames(derived, stm)) {
+							SimpleLiteralCompletionProposal proposal = createVariableProposal(proposalfactory, varname);
+							result.add(proposal);
+						}
 					}
 				}
 				break;
