@@ -40,6 +40,7 @@ steps:
     if [ $retVal -ne 0 ]; then
       if [ $(J_JAVA_MAJOR) -eq 11 ]; then
         echo "##vso[task.logissue type=warning]Tests failed on Java 11 (possible JVM crash)."
+        for f in hs_err_*.log; do echo "$f"; cat "$f"; done
         exit 0
       fi
       exit $retVal
