@@ -82,6 +82,7 @@ import saker.build.util.data.collection.ProxyIterable;
 import saker.build.util.data.collection.ProxyList;
 import saker.build.util.data.collection.ProxyListArray;
 import saker.build.util.data.collection.ProxyMap;
+import saker.build.util.data.collection.ProxyMapEntry;
 
 /**
  * Utility class providing functionality for converting between different types of objects.
@@ -1211,6 +1212,67 @@ public class DataConverterUtils {
 			return new ProxyMap(conversioncontext.genericChildContext(0), conversioncontext.genericChildContext(1),
 					(Map<?, ?>) value, keytype, valuetype);
 		}
+		if (targetclass == Map.Entry.class) {
+			if (value instanceof Map.Entry) {
+				Type keytype = ReflectTypes.getTypeArguments(targettype, 0);
+				Type valuetype = ReflectTypes.getTypeArguments(targettype, 1);
+				return new ProxyMapEntry(conversioncontext.genericChildContext(0),
+						conversioncontext.genericChildContext(1), (Map.Entry<?, ?>) value, keytype, valuetype);
+			}
+			if (value instanceof StructuredMapTaskResult) {
+				StructuredMapTaskResult mapresult = (StructuredMapTaskResult) value;
+				int size = mapresult.size();
+				if (size != 1) {
+					throw new ConversionFailedException("Failed to convert " + value.getClass().getName() + " (" + value
+							+ ") to " + targetclass.getName() + ". " + (size > 1 ? "Too many entries." : "Empty map."));
+				}
+				Entry<String, ? extends StructuredTaskResult> convertentry = mapresult.taskIterator().next();
+				Type keytype = ReflectTypes.getTypeArguments(targettype, 0);
+				Type valuetype = ReflectTypes.getTypeArguments(targettype, 1);
+				return new ProxyMapEntry(conversioncontext.genericChildContext(0),
+						conversioncontext.genericChildContext(1), convertentry, keytype, valuetype);
+			}
+			value = deTaskResultize(conversioncontext, value);
+			if (value == null) {
+				return null;
+			}
+			Class<?> valueclass = value.getClass();
+			if (Map.Entry.class.isAssignableFrom(valueclass)) {
+				Type keytype = ReflectTypes.getTypeArguments(targettype, 0);
+				Type valuetype = ReflectTypes.getTypeArguments(targettype, 1);
+				return new ProxyMapEntry(conversioncontext.genericChildContext(0),
+						conversioncontext.genericChildContext(1), (Map.Entry<?, ?>) value, keytype, valuetype);
+			}
+			try {
+				Method tomethod = getToTargetClassConverterMethod(valueclass, targetclass);
+				if (Map.Entry.class.isAssignableFrom(tomethod.getReturnType())) {
+					Entry<?, ?> entry = (Entry<?, ?>) tomethod.invoke(value);
+					Type keytype = ReflectTypes.getTypeArguments(targettype, 0);
+					Type valuetype = ReflectTypes.getTypeArguments(targettype, 1);
+					return new ProxyMapEntry(conversioncontext.genericChildContext(0),
+							conversioncontext.genericChildContext(1), entry, keytype, valuetype);
+				}
+			} catch (NoSuchMethodException e) {
+			} catch (Exception e) {
+				throw new ConversionFailedException("Failed to convert " + valueclass.getName() + " (" + value + ") to "
+						+ targetclass.getName() + ".", e);
+			}
+			if (Map.class.isAssignableFrom(valueclass)) {
+				Map<?, ?> m = (Map<?, ?>) value;
+				int size = m.size();
+				if (size != 1) {
+					throw new ConversionFailedException("Failed to convert " + valueclass.getName() + " (" + value
+							+ ") to " + targetclass.getName() + ". " + (size > 1 ? "Too many entries." : "Empty map."));
+				}
+				Entry<?, ?> convertentry = m.entrySet().iterator().next();
+				Type keytype = ReflectTypes.getTypeArguments(targettype, 0);
+				Type valuetype = ReflectTypes.getTypeArguments(targettype, 1);
+				return new ProxyMapEntry(conversioncontext.genericChildContext(0),
+						conversioncontext.genericChildContext(1), convertentry, keytype, valuetype);
+			}
+			throw new ConversionFailedException(
+					"Failed to convert " + valueclass.getName() + " (" + value + ") to " + targetclass.getName() + ".");
+		}
 		value = deTaskResultize(conversioncontext, value);
 		if (value == null) {
 			return null;
@@ -1454,21 +1516,24 @@ public class DataConverterUtils {
 		if (targetclass.isPrimitive()) {
 			return convertDefaultToPrimitiveImpl(conversioncontext, value, targetclass);
 		}
-		if (targetclass.isAssignableFrom(valueclass)) {
-			return value;
-		}
 		if (Iterable.class.isAssignableFrom(targetclass)) {
 			return convertDefaultToIterableTargetClass(conversioncontext, value);
 		}
 		if (targetclass == Map.class) {
 			//converting to a map
 			//can throw an exception, as we can only convert maps to maps
-			//assignability check was already done
 			return convertDefaultToMapTargetClass(conversioncontext, value);
+		}
+		if (targetclass == Map.Entry.class) {
+			//converting to a map entry, without type parameters
+			return convertDefaultToMapEntryTargetClass(conversioncontext, value);
 		}
 		if (targetclass.isArray()) {
 			//converting to an array
 			return convertDefaultToArrayTargetClass(conversioncontext, value, targetclass);
+		}
+		if (targetclass.isAssignableFrom(valueclass)) {
+			return value;
 		}
 		if (targetclass == String.class) {
 			return Objects.toString(deTaskResultize(conversioncontext, value), null);
@@ -1999,6 +2064,59 @@ public class DataConverterUtils {
 		}
 		throw new ConversionFailedException("Failed to convert " + untaskedvalueclass.getName() + " (" + untaskedvalue
 				+ ") to " + Map.class.getName() + ".");
+	}
+
+	private static Object convertDefaultToMapEntryTargetClass(ConversionContext conversioncontext, Object value) {
+		if (value instanceof Map.Entry) {
+			return new ProxyMapEntry(conversioncontext.genericChildContext(0), conversioncontext.genericChildContext(1),
+					(Map.Entry<?, ?>) value, Object.class, Object.class);
+		}
+		if (value instanceof StructuredMapTaskResult) {
+			StructuredMapTaskResult mapresult = (StructuredMapTaskResult) value;
+			int size = mapresult.size();
+			if (size != 1) {
+				throw new ConversionFailedException("Failed to convert " + value.getClass().getName() + " (" + value
+						+ ") to " + Map.Entry.class.getName() + ". " + (size > 1 ? "Too many entries." : "Empty map."));
+			}
+			Entry<String, ? extends StructuredTaskResult> convertentry = mapresult.taskIterator().next();
+			Type keytype = Object.class;
+			Type valuetype = Object.class;
+			return new ProxyMapEntry(conversioncontext.genericChildContext(0), conversioncontext.genericChildContext(1),
+					convertentry, keytype, valuetype);
+		}
+		value = deTaskResultize(conversioncontext, value);
+		if (value == null) {
+			return null;
+		}
+		if (value instanceof Map.Entry) {
+			return new ProxyMapEntry(conversioncontext.genericChildContext(0), conversioncontext.genericChildContext(1),
+					(Map.Entry<?, ?>) value, Object.class, Object.class);
+		}
+		try {
+			Method tomethod = getToTargetClassConverterMethod(value.getClass(), Map.Entry.class);
+			if (Map.Entry.class.isAssignableFrom(tomethod.getReturnType())) {
+				Entry<?, ?> entry = (Entry<?, ?>) tomethod.invoke(value);
+				return new ProxyMapEntry(conversioncontext.genericChildContext(0),
+						conversioncontext.genericChildContext(1), entry, Object.class, Object.class);
+			}
+		} catch (NoSuchMethodException e) {
+		} catch (Exception e) {
+			throw new ConversionFailedException("Failed to convert " + value.getClass().getName() + " (" + value
+					+ ") to " + Map.Entry.class.getName() + ".", e);
+		}
+		if (value instanceof Map) {
+			Map<?, ?> m = (Map<?, ?>) value;
+			int size = m.size();
+			if (size != 1) {
+				throw new ConversionFailedException("Failed to convert " + value.getClass().getName() + " (" + value
+						+ ") to " + Map.Entry.class.getName() + ". " + (size > 1 ? "Too many entries." : "Empty map."));
+			}
+			Entry<?, ?> entry = m.entrySet().iterator().next();
+			return new ProxyMapEntry(conversioncontext.genericChildContext(0), conversioncontext.genericChildContext(1),
+					entry, Object.class, Object.class);
+		}
+		throw new ConversionFailedException("Failed to convert " + value.getClass().getName() + " (" + value + ") to "
+				+ Map.Entry.class.getName() + ".");
 	}
 
 	private static Object convertDefaultToArrayTargetClass(ConversionContext conversioncontext, Object value,

@@ -1,0 +1,25 @@
+$var = 4
+test.mapentry(
+	P1: { 3: true },
+	P2: { 3: true },
+	
+	P3: { $var: true },
+	P4: { $var: true },
+	
+	P5: { true: $var },
+	P6: { true: $var },
+	
+	List1: { 3: true},
+	List2: [{ 3: true}, { 4: false }],
+	
+	List3: { $var: true},
+	List4: [{ 3: true}, { $var: false }],
+	
+	ValOf1: { 3: true },
+	ValOf2: { $var: true },
+	
+	ListValOf1: { 3: true},
+	ListValOf2: [{ 3: true}, { 4: false }],
+	ListValOf3: { $var: true},
+	ListValOf4: [{ 3: true}, { $var: false }],
+)

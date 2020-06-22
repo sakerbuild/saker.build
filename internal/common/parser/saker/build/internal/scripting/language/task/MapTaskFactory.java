@@ -28,8 +28,10 @@ import java.util.Objects;
 import java.util.TreeMap;
 
 import saker.build.internal.scripting.language.exc.OperandExecutionException;
+import saker.build.internal.scripting.language.task.result.MapEntrySingletonMapTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerMapTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
+import saker.build.internal.scripting.language.task.result.SimpleSakerTaskResult;
 import saker.build.task.TaskContext;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.SimpleStructuredObjectTaskResult;
@@ -61,24 +63,53 @@ public class MapTaskFactory extends SelfSakerTaskFactory {
 
 	@Override
 	public SakerTaskResult run(TaskContext taskcontext) {
+		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
+
+		int size = keys.size();
+		if (size == 1) {
+			//return a result that is also a map entry
+			SakerTaskFactory ktf = keys.get(0);
+			SakerTaskFactory vtf = values.get(0);
+
+			StructuredTaskResult valobjresult;
+			if (vtf instanceof SakerLiteralTaskFactory) {
+				valobjresult = new SimpleSakerTaskResult<>(((SakerLiteralTaskFactory) vtf).getValue());
+			} else {
+				TaskIdentifier valtaskid = vtf.createSubTaskIdentifier(thistaskid);
+				taskcontext.getTaskUtilities().startTaskFuture(valtaskid, vtf);
+				valobjresult = new SimpleStructuredObjectTaskResult(valtaskid);
+			}
+
+			Object keyobj;
+			if (ktf instanceof SakerLiteralTaskFactory) {
+				keyobj = ((SakerLiteralTaskFactory) ktf).getValue();
+			} else {
+				TaskIdentifier keytaskid = ktf.createSubTaskIdentifier(thistaskid);
+				taskcontext.getTaskUtilities().startTaskFuture(keytaskid, ktf);
+
+				keyobj = StructuredTaskResult.getActualTaskResult(keytaskid, taskcontext);
+			}
+			MapEntrySingletonMapTaskResult result = new MapEntrySingletonMapTaskResult(keyobj, valobjresult);
+			taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
+			return result;
+		}
 		NavigableMap<String, StructuredTaskResult> elements = new TreeMap<>(StringUtils.nullsFirstStringComparator());
 		Map<TaskIdentifier, StructuredTaskResult> keyvals = new HashMap<>();
 
-		int size = keys.size();
-		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
 		for (int i = 0; i < size; i++) {
 			SakerTaskFactory ktf = keys.get(i);
 			SakerTaskFactory vtf = values.get(i);
 
 			TaskIdentifier valtaskid = vtf.createSubTaskIdentifier(thistaskid);
 			taskcontext.getTaskUtilities().startTaskFuture(valtaskid, vtf);
-			SimpleStructuredObjectTaskResult valobjresult = new SimpleStructuredObjectTaskResult(valtaskid);
+			StructuredTaskResult valobjresult = new SimpleStructuredObjectTaskResult(valtaskid);
+
 			//optimize literal keys not to start a task unnecessarily
 			if (ktf instanceof SakerLiteralTaskFactory) {
-				Object keystr = ((SakerLiteralTaskFactory) ktf).getValue();
-				Object prev = elements.put(Objects.toString(keystr, null), valobjresult);
+				Object keyobj = ((SakerLiteralTaskFactory) ktf).getValue();
+				Object prev = elements.put(Objects.toString(keyobj, null), valobjresult);
 				if (prev != null) {
-					throw new OperandExecutionException("Map key present multiple times: " + keystr, valtaskid);
+					throw new OperandExecutionException("Map key present multiple times: " + keyobj, valtaskid);
 				}
 			} else {
 				TaskIdentifier keytaskid = ktf.createSubTaskIdentifier(thistaskid);
@@ -120,6 +151,11 @@ public class MapTaskFactory extends SelfSakerTaskFactory {
 			if (keyliterals[i] == null) {
 				return null;
 			}
+		}
+		if (keyliterals.length == 1) {
+			Object keyval = keyliterals[0].getValue();
+			return new SakerLiteralTaskFactory(
+					new MapEntryStringKeySingletonImmutableMap<>(keyval, valliterals[0].getValue()));
 		}
 		NavigableMap<String, Object> result = new TreeMap<>(StringUtils.nullsFirstStringComparator());
 		for (int i = 0; i < keyliterals.length; i++) {

@@ -326,8 +326,8 @@ public interface TaskFactory<R> {
 	public int hashCode();
 
 	/**
-	 * Checks if this task equals will execute exactly the same computations given the same circumstances as the
-	 * parameter.
+	 * Checks if this task equals to the argument in a sense that it will execute exactly the same computations given
+	 * the same circumstances.
 	 * <p>
 	 * The checks for equality should also take the {@linkplain #getExecutionEnvironmentSelector() execution environment
 	 * selector} into account.
