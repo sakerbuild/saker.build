@@ -195,7 +195,11 @@ public class ExceptionView implements Externalizable {
 	 *            The output stream for the stack trace.
 	 */
 	public void printStackTrace(PrintStream ps) {
-		printStackTraceImpl(ps);
+		try {
+			printStackTraceImpl(ps);
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
 	}
 
 	/**
@@ -207,7 +211,28 @@ public class ExceptionView implements Externalizable {
 	 *            The output stream for the stack trace.
 	 */
 	public void printStackTrace(PrintWriter ps) {
-		printStackTraceImpl(ps);
+		try {
+			printStackTraceImpl(ps);
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	/**
+	 * Prints the stack trace to the specified string builder.
+	 * <p>
+	 * The format is the same as {@link Throwable#printStackTrace(PrintWriter)}.
+	 * 
+	 * @param sb
+	 *            The output stream builder for the stack trace.
+	 * @since saker.build 0.8.14
+	 */
+	public void printStackTrace(StringBuilder sb) {
+		try {
+			printStackTraceImpl(sb);
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
 	}
 
 	@Override
@@ -289,31 +314,28 @@ public class ExceptionView implements Externalizable {
 	private static final String SUPPRESSED_CAPTION = "Suppressed: ";
 	private static final String CAUSE_CAPTION = "Caused by: ";
 
-	private void printStackTraceImpl(Appendable ps) {
+	private void printStackTraceImpl(Appendable ps) throws IOException {
 		String ls = System.lineSeparator();
-		try {
-			ps.append(this.toString());
+		ps.append(this.toString());
+		ps.append(ls);
+
+		StackTraceElement[] trace = this.stackTrace;
+		for (StackTraceElement traceElement : trace) {
+			ps.append("\tat " + traceElement);
 			ps.append(ls);
-
-			StackTraceElement[] trace = this.stackTrace;
-			for (StackTraceElement traceElement : trace) {
-				ps.append("\tat " + traceElement);
-				ps.append(ls);
-			}
-			Set<ExceptionView> dejaVu = ObjectUtils.newIdentityHashSet();
-			// Print suppressed exceptions, if any
-			for (ExceptionView se : suppressed) {
-				se.printEnclosedStackTrace(ps, trace, SUPPRESSED_CAPTION, "\t", dejaVu);
-			}
-
-			// Print cause, if any
-			ExceptionView ourCause = this.cause;
-			if (ourCause != null) {
-				ourCause.printEnclosedStackTrace(ps, trace, CAUSE_CAPTION, "", dejaVu);
-			}
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
 		}
+		Set<ExceptionView> dejaVu = ObjectUtils.newIdentityHashSet();
+		// Print suppressed exceptions, if any
+		for (ExceptionView se : suppressed) {
+			se.printEnclosedStackTrace(ps, trace, SUPPRESSED_CAPTION, "\t", dejaVu);
+		}
+
+		// Print cause, if any
+		ExceptionView ourCause = this.cause;
+		if (ourCause != null) {
+			ourCause.printEnclosedStackTrace(ps, trace, CAUSE_CAPTION, "", dejaVu);
+		}
+
 	}
 
 	private void printEnclosedStackTrace(Appendable ps, StackTraceElement[] enclosingTrace, String caption,

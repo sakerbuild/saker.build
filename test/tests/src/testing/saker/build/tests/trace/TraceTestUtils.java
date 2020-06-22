@@ -144,6 +144,9 @@ public class TraceTestUtils {
 			case InternalBuildTraceImpl.TYPE_DOUBLE_AS_STRING: {
 				return Double.parseDouble(readString(is));
 			}
+			case InternalBuildTraceImpl.TYPE_EXCEPTION_STACKTRACE: {
+				return new ExceptionStackTraceHolder(readString(is));
+			}
 			default: {
 				throw new IllegalArgumentException("Unknown type: " + type);
 			}
@@ -177,4 +180,41 @@ public class TraceTestUtils {
 		return result;
 	}
 
+	public static class ExceptionStackTraceHolder {
+		public final String stackTrace;
+
+		public ExceptionStackTraceHolder(String stackTrace) {
+			this.stackTrace = stackTrace;
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((stackTrace == null) ? 0 : stackTrace.hashCode());
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			ExceptionStackTraceHolder other = (ExceptionStackTraceHolder) obj;
+			if (stackTrace == null) {
+				if (other.stackTrace != null)
+					return false;
+			} else if (!stackTrace.equals(other.stackTrace))
+				return false;
+			return true;
+		}
+
+		@Override
+		public String toString() {
+			return "ExceptionStackTraceHolder[" + stackTrace.replace("\n", "\\n").replace("\r", "\\r") + "]";
+		}
+	}
 }

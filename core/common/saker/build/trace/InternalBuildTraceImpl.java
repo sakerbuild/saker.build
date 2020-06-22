@@ -183,6 +183,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	public static final byte TYPE_BOOLEAN_FALSE = 13;
 	public static final byte TYPE_FLOAT_AS_STRING = 14;
 	public static final byte TYPE_DOUBLE_AS_STRING = 15;
+	public static final byte TYPE_EXCEPTION_STACKTRACE = 16;
 
 	private static final InheritableThreadLocal<WeakReference<InternalBuildTraceImpl>> baseReferenceThreadLocal = new InheritableThreadLocal<>();
 
@@ -498,6 +499,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 					resultmap.put((String) key, normval);
 				}
 				return resultmap;
+			}
+			if (val instanceof ExceptionView) {
+				return val;
+			}
+			if (val instanceof Throwable) {
+				return ExceptionView.create((Throwable) val);
 			}
 			//unrecognized type
 			return null;
@@ -896,6 +903,16 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			}
 
 			NavigableMap<SakerPath, Collection<ArtifactOutputInformation>> artifacts = new TreeMap<>();
+
+			if (!ignoredExceptions.isEmpty()) {
+				writeFieldName(os, "ignored_exceptions");
+				os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
+				Iterator<ExceptionView> it = ignoredExceptions.clearAndIterator();
+				while (it.hasNext()) {
+					writeByteArray(os, printExceptionToBytes(it.next()));
+				}
+				writeNull(os);
+			}
 
 			writeFieldName(os, "tasks");
 			os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
@@ -1473,6 +1490,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		} else if (val instanceof Double) {
 			os.writeByte(TYPE_DOUBLE_AS_STRING);
 			writeStringImpl(os, val.toString());
+		} else if (val instanceof ExceptionView) {
+			os.writeByte(TYPE_EXCEPTION_STACKTRACE);
+			StringBuilder sb = new StringBuilder();
+			((ExceptionView) val).printStackTrace(sb);
+			writeStringImpl(os, sb.toString());
 		} else {
 			//unrecognized type
 			os.writeByte(TYPE_OBJECT);
@@ -1684,7 +1706,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		@Override
 		public void setValues(Map<?, ?> values, String category) {
-			if (BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
+			if (category == null || BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
 				setNormalizedValuesToMap(normalizeValues(values), this.traceInfo.values);
 			} else {
 				//TODO other categories
@@ -1693,7 +1715,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		@Override
 		public void addValues(Map<?, ?> values, String category) {
-			if (BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
+			if (category == null || BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
 				addNormalizedValuesToMap(normalizeValues(values), this.traceInfo.values);
 			} else {
 				//TODO other categories
@@ -1921,7 +1943,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 			@Override
 			public void setValues(Map<?, ?> values, String category) {
-				if (BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
+				if (category == null || BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
 					setNormalizedValuesToMap(normalizeValues(values), this.values);
 				} else {
 					//TODO other categories
@@ -1930,7 +1952,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 			@Override
 			public void addValues(Map<?, ?> values, String category) {
-				if (BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
+				if (category == null || BuildTrace.VALUE_CATEGORY_TASK.equals(category)) {
 					addNormalizedValuesToMap(normalizeValues(values), this.values);
 				} else {
 					//TODO other categories

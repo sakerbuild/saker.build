@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Collections;
+import java.util.Map;
 
 import saker.build.exception.PropertyComputationFailedException;
 import saker.build.file.path.ProviderHolderPathKey;
@@ -15,9 +16,12 @@ import saker.build.task.TaskContext;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.trace.BuildTrace;
 import saker.build.trace.TraceContributorEnvironmentProperty;
+import saker.build.util.exc.ExceptionView;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
+import testing.saker.build.tests.TestUtils;
 import testing.saker.build.tests.tasks.SelfStatelessTaskFactory;
+import testing.saker.build.tests.trace.TraceTestUtils.ExceptionStackTraceHolder;
 
 @SakerTest
 public class BuildTraceEnvironmentPropertyContributionTest extends CollectingMetricEnvironmentTestCase {
@@ -39,6 +43,13 @@ public class BuildTraceEnvironmentPropertyContributionTest extends CollectingMet
 		public void contributeBuildTraceInformation(Object propertyvalue,
 				PropertyComputationFailedException thrownexception) {
 			BuildTrace.setValues(Collections.singletonMap("key", "val"), BuildTrace.VALUE_CATEGORY_ENVIRONMENT);
+			RuntimeException re = new RuntimeException("mythrowable");
+			re.setStackTrace(new StackTraceElement[] {});
+			RuntimeException ev = new RuntimeException("myexcview");
+			ev.setStackTrace(new StackTraceElement[] {});
+			BuildTrace.setValues(Collections.singletonMap("throwable", re), BuildTrace.VALUE_CATEGORY_ENVIRONMENT);
+			BuildTrace.setValues(Collections.singletonMap("excview", ExceptionView.create(ev)),
+					BuildTrace.VALUE_CATEGORY_ENVIRONMENT);
 		}
 
 		@Override
@@ -80,16 +91,21 @@ public class BuildTraceEnvironmentPropertyContributionTest extends CollectingMet
 		if (project != null) {
 			project.waitExecutionFinalization();
 		}
-		assertEquals(TraceTestUtils.getTraceField(tracepathkey, "environments", 0, "values"),
-				Collections.singletonMap("key", "val"));
+		Map<Object, Object> expectmap = TestUtils.hashMapBuilder().put("key", "val")
+				.put("throwable",
+						new ExceptionStackTraceHolder(
+								"java.lang.RuntimeException: mythrowable" + System.lineSeparator()))
+				.put("excview",
+						new ExceptionStackTraceHolder("java.lang.RuntimeException: myexcview" + System.lineSeparator()))
+				.build();
+		assertEquals(TraceTestUtils.getTraceField(tracepathkey, "environments", 0, "values"), expectmap);
 
 		runTask("main", new EnvironmentPropertyDependentTraceTaskFactory());
 		assertEmpty(getMetric().getRunTaskIdResults());
 		if (project != null) {
 			project.waitExecutionFinalization();
 		}
-		assertEquals(TraceTestUtils.getTraceField(tracepathkey, "environments", 0, "values"),
-				Collections.singletonMap("key", "val"));
+		assertEquals(TraceTestUtils.getTraceField(tracepathkey, "environments", 0, "values"), expectmap);
 	}
 
 }

@@ -19,6 +19,7 @@ import java.util.Collection;
 import java.util.Map;
 
 import saker.apiextract.api.PublicApi;
+import saker.build.exception.PropertyComputationFailedException;
 import saker.build.file.path.SakerPath;
 import saker.build.runtime.environment.EnvironmentProperty;
 import saker.build.runtime.environment.SakerEnvironment;
@@ -28,6 +29,7 @@ import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.function.ThrowingRunnable;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
+import saker.build.util.exc.ExceptionView;
 
 /**
  * This is the client API class for reporting build trace information.
@@ -373,7 +375,7 @@ public final class BuildTrace {
 	 * <br>
 	 * To set build trace values related to environment properties, implement the
 	 * {@link TraceContributorEnvironmentProperty} interface in your {@link EnvironmentProperty}. The
-	 * {@link TraceContributorEnvironmentProperty#contributeBuildTraceInformation(Object, saker.build.exception.PropertyComputationFailedException)
+	 * {@link TraceContributorEnvironmentProperty#contributeBuildTraceInformation(Object, PropertyComputationFailedException)
 	 * contributeBuildTraceInformation} method will be automatically called for the property to contribute its values.
 	 * 
 	 * @see #setValues(Map, String)
@@ -394,8 +396,10 @@ public final class BuildTrace {
 	 * <li>{@link String}, or {@link CharSequence} instances.</li>
 	 * <li>Boxed primitive numbers and <code>boolean</code>.</li>
 	 * <li>Arrays of other values.</li>
-	 * <li>{@link Collection Collections} and {@link Iterable Iterables} of other values</li>
+	 * <li>{@link Collection Collections} and {@link Iterable Iterables} of other values.</li>
 	 * <li>{@link Map Maps} with {@link String} keys and other values as values.</li>
+	 * <li>{@link Throwable} or {@link ExceptionView} for which the full stacktrace will be saved. (since saker.build
+	 * 0.8.14)</li>
 	 * </ul>
 	 * The objects should be provided in a human-readable format as they may be displayed in the build trace viewer as
 	 * is.
@@ -424,7 +428,7 @@ public final class BuildTrace {
 		try {
 			if (category == null || VALUE_CATEGORY_TASK.equals(category)) {
 				InternalTaskBuildTrace tt = getTaskTrace();
-				tt.setValues(values, category);
+				tt.setValues(values, VALUE_CATEGORY_TASK);
 				return;
 			}
 			InternalBuildTrace trace = getTrace();
@@ -491,12 +495,64 @@ public final class BuildTrace {
 		try {
 			if (category == null || VALUE_CATEGORY_TASK.equals(category)) {
 				InternalTaskBuildTrace tt = getTaskTrace();
-				tt.addValues(values, category);
+				tt.addValues(values, VALUE_CATEGORY_TASK);
 				return;
 			}
 			InternalBuildTrace trace = getTrace();
 			trace.addValues(values, category);
 		} catch (Exception | StackOverflowError e) {
+			// no exceptions!
+		}
+	}
+
+	/**
+	 * Reports an ignored exception for the build trace.
+	 * <p>
+	 * Ignored exceptions are ones that don't cause the build to fail but can provide meaningful information about why
+	 * the build run as it did. E.g. if a given SDK was not found at a specified location, but was found elsewhere, an
+	 * ignored exception can be reported that tells the reasons why it was not found at the first location.
+	 * <p>
+	 * Tasks should call {@link TaskContext#reportIgnoredException(ExceptionView)} instead. This function is for
+	 * reporting ignored exceptions that are not directly associated with a given task execution.
+	 * 
+	 * @param e
+	 *            The exception that was ignored.
+	 * @since saker.build 0.8.14
+	 */
+	public static void ignoredException(Throwable e) {
+		if (e == null) {
+			return;
+		}
+		try {
+			InternalBuildTrace trace = getTrace();
+			trace.ignoredException(null, ExceptionView.create(e));
+		} catch (Exception | StackOverflowError e2) {
+			// no exceptions!
+		}
+	}
+
+	/**
+	 * Reports an ignored exception for the build trace.
+	 * <p>
+	 * Ignored exceptions are ones that don't cause the build to fail but can provide meaningful information about why
+	 * the build run as it did. E.g. if a given SDK was not found at a specified location, but was found elsewhere, an
+	 * ignored exception can be reported that tells the reasons why it was not found at the first location.
+	 * <p>
+	 * Tasks should call {@link TaskContext#reportIgnoredException(ExceptionView)} instead. This function is for
+	 * reporting ignored exceptions that are not directly associated with a given task execution.
+	 * 
+	 * @param e
+	 *            The exception that was ignored.
+	 * @since saker.build 0.8.14
+	 */
+	public static void ignoredException(ExceptionView e) {
+		if (e == null) {
+			return;
+		}
+		try {
+			InternalBuildTrace trace = getTrace();
+			trace.ignoredException(null, e);
+		} catch (Exception | StackOverflowError e2) {
 			// no exceptions!
 		}
 	}
