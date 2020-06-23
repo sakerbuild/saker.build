@@ -366,7 +366,7 @@ public interface ExecutionContext extends ExecutionDirectoryContext, ExecutionDi
 	 * 
 	 * @return <code>true</code> if a build trace is being recorded.
 	 * @see BuildTrace
-	 * @since 0.8.7
+	 * @since saker.build 0.8.7
 	 */
 	@RMICacheResult
 	public boolean isRecordsBuildTrace();

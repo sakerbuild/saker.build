@@ -127,7 +127,7 @@ public class JavaTools {
 	 * @return The main class for the jarsigner utility.
 	 * @throws RuntimeException
 	 *             If the class was not found. Callers should gracefully handle this scenario.
-	 * @since 0.8.10
+	 * @since saker.build 0.8.10
 	 */
 	public static Class<?> getJarSignerMainClass() throws RuntimeException {
 		return JavaCompilerAccessor.getJarSignerMainClass();

@@ -28,7 +28,7 @@ import saker.build.runtime.environment.SakerEnvironment;
  * {@link EnvironmentProperty} implementation that queries the value of an {@linkplain System#getenv() environment
  * variable}.
  * 
- * @since 0.8.10
+ * @since saker.build 0.8.10
  */
 public final class ProcessEnvEnvironmentProperty implements EnvironmentProperty<String>, Externalizable {
 	private static final long serialVersionUID = 1L;

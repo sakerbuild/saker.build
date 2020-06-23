@@ -22,7 +22,7 @@ import saker.build.runtime.environment.SakerEnvironment;
  *            The type of the environment property.
  * @see BuildTrace
  * @see BuildTrace#VALUE_CATEGORY_ENVIRONMENT
- * @since 0.8.9
+ * @since saker.build 0.8.9
  */
 @PublicApi
 public interface TraceContributorEnvironmentProperty<T> extends EnvironmentProperty<T> {

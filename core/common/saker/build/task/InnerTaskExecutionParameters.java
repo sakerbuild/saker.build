@@ -43,7 +43,7 @@ public final class InnerTaskExecutionParameters {
 	private NavigableSet<UUID> allowedClusterEnvironmentIdentifiers = null;
 
 	/**
-	 * @since 0.8.8
+	 * @since saker.build 0.8.8
 	 */
 	private int maxEnvironmentFactor;
 
@@ -115,7 +115,7 @@ public final class InnerTaskExecutionParameters {
 	 * that many times.
 	 * 
 	 * @return The environment factor.
-	 * @since 0.8.8
+	 * @since saker.build 0.8.8
 	 */
 	public int getMaxEnvironmentFactor() {
 		return maxEnvironmentFactor;
@@ -127,7 +127,7 @@ public final class InnerTaskExecutionParameters {
 	 * @param maxEnvironmentFactor
 	 *            The environment factor.
 	 * @see #getMaxEnvironmentFactor()
-	 * @since 0.8.8
+	 * @since saker.build 0.8.8
 	 */
 	public void setMaxEnvironmentFactor(int maxEnvironmentFactor) {
 		this.maxEnvironmentFactor = maxEnvironmentFactor;

@@ -238,7 +238,7 @@ public interface StructuredTaskResult {
 	 * @param literal
 	 *            The value to enclose in a structured task result.
 	 * @return The structured task result with the argument value.
-	 * @since 0.8.10
+	 * @since saker.build 0.8.10
 	 */
 	public static StructuredTaskResult createLiteral(Object literal) {
 		return new LiteralStructuredTaskResult(literal);

@@ -81,7 +81,7 @@ public interface TaskExecutionEnvironmentSelector {
 	 * The default implementation returns <code>false</code>.
 	 * 
 	 * @return <code>true</code> if the environment selection is restricted to the local environmnet.
-	 * @since 0.8.14
+	 * @since saker.build 0.8.14
 	 */
 	public default boolean isRestrictedToLocalEnvironment() {
 		return false;

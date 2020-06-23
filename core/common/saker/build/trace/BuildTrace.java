@@ -145,7 +145,7 @@ public final class BuildTrace {
 	 * purpose of consuming by another task, then it should be a transformation task.
 	 * 
 	 * @see #classifyTask(String)
-	 * @since 0.8.10
+	 * @since saker.build 0.8.10
 	 */
 	public static final String CLASSIFICATION_TRANSFORMATION = "transformation";
 
@@ -225,7 +225,7 @@ public final class BuildTrace {
 	 * The associated artifact will be embedded in the build trace if the user configures the build trace to embed
 	 * artifacts. (<code>-trace-artifacts-embed</code> command line parameter)
 	 * 
-	 * @since 0.8.7
+	 * @since saker.build 0.8.7
 	 * @see #reportOutputArtifact(SakerPath, int)
 	 */
 	public static final int ARTIFACT_EMBED_DEFAULT = 0;
@@ -234,7 +234,7 @@ public final class BuildTrace {
 	 * <p>
 	 * This constant is a value for embed flags when reporting output build artifacts.
 	 * 
-	 * @since 0.8.7
+	 * @since saker.build 0.8.7
 	 * @see #reportOutputArtifact(SakerPath, int)
 	 */
 	public static final int ARTIFACT_EMBED_NEVER = 1;
@@ -247,7 +247,7 @@ public final class BuildTrace {
 	 * artifact embedding. Generally, this value should be rarely used, only if the user explicitly specifies it for the
 	 * build task.
 	 * 
-	 * @since 0.8.7
+	 * @since saker.build 0.8.7
 	 * @see #reportOutputArtifact(SakerPath, int)
 	 */
 	public static final int ARTIFACT_EMBED_ALWAYS = 2;
@@ -262,7 +262,7 @@ public final class BuildTrace {
 	 * If the user haven't specified a password for the build trace, the contents of the artifact are not written in the
 	 * build trace at all, and instead a note is persisted telling them to specify a password.
 	 * 
-	 * @since 0.8.7
+	 * @since saker.build 0.8.7
 	 * @see #reportOutputArtifact(SakerPath, int)
 	 */
 	public static final int ARTIFACT_EMBED_FLAG_CONFIDENTAL = 1 << 15;
@@ -281,7 +281,7 @@ public final class BuildTrace {
 	 * @param embedflags
 	 *            The embedding flags for the artifact. See the <code>ARTIFACT_EMBED_*</code> constants in this class.
 	 *            May be 0 which is the same as {@link #ARTIFACT_EMBED_DEFAULT}.
-	 * @since 0.8.7
+	 * @since saker.build 0.8.7
 	 */
 	public static void reportOutputArtifact(SakerPath path, int embedflags) {
 		if (path == null) {
@@ -301,7 +301,7 @@ public final class BuildTrace {
 	 * If this method returns <code>false</code>, then calling other methods of this interface is a no-op.
 	 * 
 	 * @return <code>true</code> if a build trace is being recorded.
-	 * @since 0.8.9
+	 * @since saker.build 0.8.9
 	 */
 	public static boolean isRecordsBuildTrace() {
 		try {
@@ -325,7 +325,7 @@ public final class BuildTrace {
 	 * @param run
 	 *            The runnable to run.
 	 * @see #isRecordsBuildTrace()
-	 * @since 0.8.9
+	 * @since saker.build 0.8.9
 	 */
 	public static void runWithBuildTrace(ThrowingRunnable run) {
 		if (run == null) {
@@ -353,7 +353,7 @@ public final class BuildTrace {
 	 * enclosing task.
 	 * 
 	 * @see #setValues(Map, String)
-	 * @since 0.8.9
+	 * @since saker.build 0.8.9
 	 */
 	public static final String VALUE_CATEGORY_TASK = "task";
 	/**
@@ -379,7 +379,7 @@ public final class BuildTrace {
 	 * contributeBuildTraceInformation} method will be automatically called for the property to contribute its values.
 	 * 
 	 * @see #setValues(Map, String)
-	 * @since 0.8.9
+	 * @since saker.build 0.8.9
 	 */
 	public static final String VALUE_CATEGORY_ENVIRONMENT = "environment";
 
@@ -419,7 +419,7 @@ public final class BuildTrace {
 	 * @param category
 	 *            The associated category for the values. See the <code>VALUE_CATEGORY_*</code> constants. If
 	 *            <code>null</code>, {@link #VALUE_CATEGORY_TASK} is assumed.
-	 * @since 0.8.9
+	 * @since saker.build 0.8.9
 	 */
 	public static void setValues(Map<?, ?> values, String category) {
 		if (values == null) {
@@ -486,7 +486,7 @@ public final class BuildTrace {
 	 * @param category
 	 *            The associated category for the values. See the <code>VALUE_CATEGORY_*</code> constants. If
 	 *            <code>null</code>, {@link #VALUE_CATEGORY_TASK} is assumed.
-	 * @since 0.8.9
+	 * @since saker.build 0.8.9
 	 */
 	public static void addValues(Map<?, ?> values, String category) {
 		if (values == null) {
