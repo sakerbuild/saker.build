@@ -51,7 +51,7 @@ public class NestRepositoryClassPathLocation implements ClassPathLocation, Exter
 	 * The version number of the saker.nest repository that is loaded as the default for the build executions.
 	 */
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
-	public static final String DEFAULT_VERSION = "0.8.5";
+	public static final String DEFAULT_VERSION = "0.8.6";
 
 	private String version;
 
