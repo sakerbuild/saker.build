@@ -154,6 +154,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			"classifyTask", String.class);
 	protected static final Method METHOD_REPORTOUTPUTARTIFACT = ReflectUtils
 			.getMethodAssert(ClusterTaskBuildTrace.class, "reportOutputArtifact", SakerPath.class, int.class);
+	protected static final Method METHOD_OMITINNERTASK = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
+			"omitInnerTask", Object.class);
 
 	protected static final Method METHOD_SETDISPLAYINFORMATION = ReflectUtils
 			.getMethodAssert(ClusterTaskBuildTrace.class, "setDisplayInformation", String.class, String.class);
@@ -1073,6 +1075,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 					os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
 					//use foreach with lambda as the map is a synchronized identity map
 					ttrace.innerBuildTraces.values().forEach(ibt -> {
+						if (ibt.omitInnerTask) {
+							return;
+						}
 						try {
 							os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
 							writeFieldName(os, "trace_id");
@@ -1756,6 +1761,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
+		public void omitInnerTask(Object innertaskidentity) {
+			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(innertaskidentity);
+			innertrace.omitInnerTask();
+		}
+
+		@Override
 		public InternalTaskBuildTrace startInnerTask(TaskFactory<?> innertaskfactory) {
 			long nanos = System.nanoTime();
 			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(new Object());
@@ -1889,7 +1900,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		public final class InnerTaskBuildTraceImpl implements InternalTaskBuildTrace {
 			protected final int taskTraceId;
 
-			protected Object innerTaskIdentity;
+			protected final Object innerTaskIdentity;
+			protected boolean omitInnerTask;
 			protected long startNanos;
 			protected long endNanos;
 			protected UUID executionEnvironmentUUID;
@@ -1924,6 +1936,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			@Override
 			public void endInnerTask() {
 				this.endNanos = System.nanoTime();
+			}
+
+			@Override
+			public void omitInnerTask() {
+				this.omitInnerTask = true;
 			}
 
 			@Override
@@ -2126,6 +2143,13 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				noException(() -> {
 					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_ADDCLUSTERINNERTASKVALUES, innerTaskIdentity,
 							normalizeValues(values), category);
+				});
+			}
+
+			@Override
+			public void omitInnerTask() {
+				noException(() -> {
+					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_OMITINNERTASK, innerTaskIdentity);
 				});
 			}
 		}

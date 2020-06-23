@@ -556,4 +556,27 @@ public final class BuildTrace {
 			// no exceptions!
 		}
 	}
+
+	/**
+	 * Marks the caller inner task to be omitted from the build trace.
+	 * <p>
+	 * This method applies only to inner tasks. Calling it will cause the build trace to not contain the caller inner
+	 * task in it.
+	 * <p>
+	 * This can be useful when an inner task performs no operations as there's none left. This can happen if an inner
+	 * task gets duplicated to a build cluster, and gets executed, but there's no more work to be done as others already
+	 * performed it concurrently.
+	 * <p>
+	 * In this case the inner task doesn't need to be part of the build trace as it's considered a no-op.
+	 * 
+	 * @since saker.build 0.8.14
+	 */
+	public static void omitInnerTask() {
+		try {
+			InternalTaskBuildTrace trace = getTaskTrace();
+			trace.omitInnerTask();
+		} catch (Exception | StackOverflowError e) {
+			// no exceptions!
+		}
+	}
 }

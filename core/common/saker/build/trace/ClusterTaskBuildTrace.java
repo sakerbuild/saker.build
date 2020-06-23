@@ -39,4 +39,7 @@ public interface ClusterTaskBuildTrace extends InternalTaskBuildTrace {
 	public default void addClusterInnerTaskValues(Object innertaskidentity, @RMISerialize Map<String, ?> values,
 			String category) {
 	}
+
+	public default void omitInnerTask(Object innertaskidentity) {
+	}
 }

@@ -42,7 +42,6 @@ import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.thirdparty.saker.util.ObjectUtils;
-import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import saker.build.util.exc.ExceptionView;
 
@@ -212,6 +211,9 @@ public interface InternalBuildTrace extends Closeable {
 		}
 
 		public default void addValues(@RMISerialize Map<?, ?> values, String category) {
+		}
+
+		public default void omitInnerTask() {
 		}
 	}
 
