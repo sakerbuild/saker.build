@@ -1876,7 +1876,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		@Override
 		public void close(TaskContext taskcontext, TaskExecutionResult<?> taskresult) {
-			this.endNanos = System.nanoTime();
+			//the end nanos are set in other appropriate methods
 			this.traceInfo.structuredOutput = taskresult.getOutput() instanceof StructuredTaskResult;
 			taskresult.setBuildTraceInfo(traceInfo);
 			collectDependencies(taskresult);

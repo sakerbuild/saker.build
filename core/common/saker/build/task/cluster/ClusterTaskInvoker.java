@@ -192,9 +192,12 @@ public class ClusterTaskInvoker implements TaskInvoker {
 				InternalTaskBuildTrace btrace = clustertaskcontext.internalGetBuildTrace();
 				try (TaskContextReference contextref = new TaskContextReference(clustertaskcontext, btrace)) {
 					btrace.startTaskExecution();
-					taskres = task.run(clustertaskcontext);
+					try {
+						taskres = task.run(clustertaskcontext);
+					} finally {
+						btrace.endTaskExecution();
+					}
 				} finally {
-					btrace.endTaskExecution();
 					ctoken.closeAll();
 				}
 				event.executionSuccessful(taskres);

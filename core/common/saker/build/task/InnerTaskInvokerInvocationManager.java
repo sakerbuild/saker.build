@@ -80,9 +80,12 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 		@Override
 		public void cancelDuplication() {
 			duplicationCancelled = true;
-			Object ctlock = ComputationToken.getAllocationLock();
-			synchronized (ctlock) {
-				ctlock.notifyAll();
+			if (computationTokenCount > 0) {
+				//don't need to perform notification if there's no computation tokens used
+				Object ctlock = ComputationToken.getAllocationLock();
+				synchronized (ctlock) {
+					ctlock.notifyAll();
+				}
 			}
 		}
 
@@ -131,7 +134,6 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 		private void runDuplication(ThreadWorkPool workpool) {
 			// 1 as one duplication was already performed once before this method is called
 			int duplicatedcount = 1;
-			Object ctlock = ComputationToken.getAllocationLock();
 			while (!duplicationCancelled) {
 				if (maximumEnvironmentFactor >= 1 && duplicatedcount >= maximumEnvironmentFactor) {
 					// reached configured the maximum on this environment
@@ -147,24 +149,15 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 					return;
 				}
 				ComputationToken ct;
-				synchronized (ctlock) {
-					while (true) {
-						if (duplicationCancelled) {
-							return;
-						}
-						ct = ComputationToken.requestIfAnyAvailableLocked(computationTokenAllocator,
-								computationTokenCount);
-						if (ct == null) {
-							try {
-								ctlock.wait();
-							} catch (InterruptedException e) {
-								this.putExceptionResult(e, false);
-								return;
-							}
-							continue;
-						}
-						break;
-					}
+				try {
+					ct = ComputationToken.requestAdditionalAbortable(computationTokenAllocator, computationTokenCount,
+							() -> duplicationCancelled);
+				} catch (InterruptedException e) {
+					this.putExceptionResult(e, false);
+					return;
+				}
+				if (ct == null) {
+					return;
 				}
 
 				//the task is being duplicated, increase the counter
@@ -172,65 +165,85 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 
 				final ComputationToken fct = ct;
 				workpool.offer(() -> {
-					runDuplicatedInnerTaskWithComputationToken(fct);
+					runDuplicatedInnerTaskWithComputationToken(fct, true);
 				});
 			}
 		}
 
-		//suppress unreferenced closeables
-		@SuppressWarnings("try")
-		private void runDuplicatedInnerTaskWithComputationToken(ComputationToken token) {
-			try (ComputationToken ctres = token;
-					TaskContextReference contextref = new TaskContextReference(taskContext)) {
-				while (!duplicationCancelled) {
-					if (Thread.interrupted()) {
-						this.putExceptionResult(new InterruptedException("Inner task interrupted."), false);
-						return;
-					}
-					Task<? extends R> task = taskFactory.createTask(executionContext);
-					if (task == null) {
-						this.putExceptionResult(new NullPointerException(
-								"Task factory created null task: " + taskFactory.getClass().getName()), false);
-						return;
-					}
-					if (!listener.notifyTaskInvocationStart()) {
-						return;
-					}
-					try {
-						InternalTaskBuildTrace btrace = ((InternalTaskContext) taskContext).internalGetBuildTrace()
-								.startInnerTask(taskFactory);
-						contextref.initTaskBuildTrace(btrace);
-						try {
-							R result = task.run(taskContext);
-							this.putResult(result, false);
-						} catch (Throwable e) {
-							btrace.setThrownException(e);
-							throw e;
-						} finally {
-							btrace.endInnerTask();
+		private void runDuplicatedInnerTaskWithComputationToken(ComputationToken token, boolean releasable) {
+			try {
+				try (TaskContextReference contextref = new TaskContextReference(taskContext)) {
+					while (!duplicationCancelled) {
+						if (Thread.interrupted()) {
+							this.putExceptionResult(new InterruptedException("Inner task interrupted."), false);
+							return;
 						}
-					} catch (Exception e) {
-						this.putExceptionResult(e, false);
-					} catch (Throwable e) {
+						if (releasable) {
+							if (token.releaseIfOverAllocated()) {
+								token = null;
+								try {
+									token = ComputationToken.requestAdditionalAbortable(computationTokenAllocator,
+											computationTokenCount, () -> duplicationCancelled);
+								} catch (InterruptedException e) {
+									this.putExceptionResult(e, false);
+									return;
+								}
+								if (token == null) {
+									return;
+								}
+							}
+						}
+						Task<? extends R> task = taskFactory.createTask(executionContext);
+						if (task == null) {
+							this.putExceptionResult(
+									new NullPointerException(
+											"Task factory created null task: " + taskFactory.getClass().getName()),
+									false);
+							return;
+						}
+						if (!listener.notifyTaskInvocationStart()) {
+							return;
+						}
 						try {
+							InternalTaskBuildTrace btrace = ((InternalTaskContext) taskContext).internalGetBuildTrace()
+									.startInnerTask(taskFactory);
+							contextref.initTaskBuildTrace(btrace);
+							try {
+								R result = task.run(taskContext);
+								this.putResult(result, false);
+							} catch (Throwable e) {
+								btrace.setThrownException(e);
+								throw e;
+							} finally {
+								btrace.endInnerTask();
+							}
+						} catch (Exception e) {
 							this.putExceptionResult(e, false);
-						} catch (Throwable e2) {
-							e.addSuppressed(e2);
+						} catch (Throwable e) {
+							try {
+								this.putExceptionResult(e, false);
+							} catch (Throwable e2) {
+								e.addSuppressed(e2);
+							}
+							throw e;
 						}
-						throw e;
-					}
-					try {
-						if (!duplicationPredicate.shouldInvokeOnceMore()) {
-							break;
+						try {
+							if (!duplicationPredicate.shouldInvokeOnceMore()) {
+								break;
+							}
+						} catch (RuntimeException e) {
+							//some RMI exceptions or others may happen
+							this.putExceptionResult(e, false);
+							return;
 						}
-					} catch (RuntimeException e) {
-						//some RMI exceptions or others may happen
-						this.putExceptionResult(e, false);
-						return;
 					}
+				} catch (RMIRuntimeException e) {
+					//rmi exceptions shouldn't escape to the thread pool
 				}
-			} catch (RMIRuntimeException e) {
-				//rmi exceptions shouldn't escape to the thread pool
+			} finally {
+				if (token != null) {
+					token.close();
+				}
 			}
 		}
 
@@ -244,29 +257,24 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 			//        this allocation of the secondary tokens should only succeed if there are available tokens,
 			//        but not because the allocator is used again
 
-			Object ctlock = ComputationToken.getAllocationLock();
+			if (duplicationCancelled) {
+				listener.notifyNoMoreResults();
+				return;
+			}
 
 			ComputationToken corecomptoken;
-			synchronized (ctlock) {
-				while (true) {
-					if (duplicationCancelled) {
-						listener.notifyNoMoreResults();
-						return;
-					}
-					corecomptoken = ComputationToken.requestIfAnyAvailableOrAlreadyAllocatedLocked(
-							computationTokenAllocator, computationTokenCount);
-					if (corecomptoken == null) {
-						try {
-							ctlock.wait();
-						} catch (InterruptedException e) {
-							this.putExceptionResult(e, true);
-							return;
-						}
-						continue;
-					}
-					break;
-				}
+			try {
+				corecomptoken = ComputationToken.requestAbortable(computationTokenAllocator, computationTokenCount,
+						() -> duplicationCancelled);
+			} catch (InterruptedException e) {
+				this.putExceptionResult(e, true);
+				return;
 			}
+			if (corecomptoken == null) {
+				listener.notifyNoMoreResults();
+				return;
+			}
+
 			try (ComputationToken coretokenres = corecomptoken) {
 				if (this.duplicationPredicate != null) {
 					//if the computation token is not at least 1, then use a fixed thread pool, to avoid sudden overallocation of threads
@@ -276,7 +284,7 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 									"Inner-" + taskFactory.getClass().getSimpleName() + "-")
 							: ThreadUtils.newDynamicWorkPool("Inner-" + taskFactory.getClass().getSimpleName() + "-")) {
 						workpool.offer(() -> {
-							runDuplicatedInnerTaskWithComputationToken(coretokenres);
+							runDuplicatedInnerTaskWithComputationToken(coretokenres, false);
 						});
 						this.runDuplication(workpool);
 					} finally {

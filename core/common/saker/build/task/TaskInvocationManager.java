@@ -263,12 +263,15 @@ public class TaskInvocationManager implements Closeable {
 			InternalTaskBuildTrace btrace = taskcontext.internalGetBuildTrace();
 			try (TaskContextReference contextref = new TaskContextReference(taskcontext, btrace)) {
 				btrace.startTaskExecution();
-				taskres = task.run(taskcontext);
+				try {
+					taskres = task.run(taskcontext);
+				} finally {
+					btrace.endTaskExecution();
+				}
 			} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError | AssertionError
 					| Exception e) {
 				return new TaskInvocationResult<>(null, e);
 			} finally {
-				btrace.endTaskExecution();
 				ctoken.closeAll();
 			}
 			return new TaskInvocationResult<>(Optional.ofNullable(taskres), null);

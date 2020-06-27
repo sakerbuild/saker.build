@@ -17,11 +17,14 @@ package saker.build.task;
 
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.function.BooleanSupplier;
 
 import saker.apiextract.api.ExcludeApi;
 import saker.build.meta.PropertyNames;
 import saker.build.runtime.execution.SakerLog;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import testing.saker.build.flag.TestFlag;
 
 public class ComputationToken implements AutoCloseable {
@@ -51,6 +54,7 @@ public class ComputationToken implements AutoCloseable {
 	}
 
 	private static final Map<Object, Integer> allocatedTokens = new IdentityHashMap<>();
+	private static final Set<Object> priorityAllocators = ObjectUtils.newIdentityHashSet();
 	private static final Object allocationLock = new Object();
 
 	@ExcludeApi
@@ -59,83 +63,121 @@ public class ComputationToken implements AutoCloseable {
 	}
 
 	@ExcludeApi
-	public static ComputationToken requestIfAnyAvailableOrAlreadyAllocatedLocked(Object allocator, final int count) {
-		if (TestFlag.ENABLED && !Thread.holdsLock(allocationLock)) {
-			throw new AssertionError();
-		}
-		if (count <= 0) {
-			return new ComputationToken(allocator, 0);
-		}
-		Integer prev = allocatedTokens.computeIfPresent(allocator, (a, allocated) -> allocated + count);
-		if (prev != null) {
-			//there was already tokens allocated to the given allocator
-			return new ComputationToken(allocator, count);
-		}
-		int sum = 0;
-		for (Integer c : allocatedTokens.values()) {
-			sum += c.intValue();
-		}
-		//not yet allocated any tokens to the allocator
-		if (sum < MAX_TOKEN_COUNT) {
-			//we can allocate the given amount
-			//sum + count > MAX_TOKEN_COUNT is acceptable as we prefer overallocation over underutilization
-			allocatedTokens.putIfAbsent(allocator, count);
-			return new ComputationToken(allocator, count);
-		}
-		//sum is already equals or greater than the max token count, return null as we cannot allocate right now
-		return null;
-	}
-
-	@ExcludeApi
-	public static ComputationToken requestIfAnyAvailableLocked(Object allocator, final int count) {
-		if (TestFlag.ENABLED && !Thread.holdsLock(allocationLock)) {
-			throw new AssertionError();
-		}
-		if (count <= 0) {
-			return new ComputationToken(allocator, 0);
-		}
-		int sum = 0;
-		for (Integer c : allocatedTokens.values()) {
-			sum += c.intValue();
-		}
-		//not yet allocated any tokens to the allocator
-		if (sum < MAX_TOKEN_COUNT) {
-			//we can allocate the given amount
-			//sum + count > MAX_TOKEN_COUNT is acceptable as we prefer overallocation over underutilization
-			allocatedTokens.compute(allocator, (k, v) -> v == null ? count : v + count);
-			return new ComputationToken(allocator, count);
-		}
-		//sum is already equals or greater than the max token count, return null as we cannot allocate right now
-		return null;
-	}
-
-	@ExcludeApi
 	public static ComputationToken request(Object allocator, final int count) throws InterruptedException {
+		if (count <= 0) {
+			return new ComputationToken(allocator, 0);
+		}
+		boolean priorityadded = false;
+		synchronized (allocationLock) {
+			try {
+				while (true) {
+					Integer prev = allocatedTokens.computeIfPresent(allocator, (a, allocated) -> allocated + count);
+					if (prev != null) {
+						//there was already tokens allocated to the given allocator
+						return new ComputationToken(allocator, count);
+					}
+					int sum = getAllocatedCount();
+					//not yet allocated any tokens to the allocator
+					if (sum < MAX_TOKEN_COUNT) {
+						//we can allocate the given amount
+						//sum + count > MAX_TOKEN_COUNT is acceptable as we prefer overallocation over underutilization
+						allocatedTokens.putIfAbsent(allocator, count);
+						return new ComputationToken(allocator, count);
+					}
+					//sum is already equals or greater than the max token count, wait for the deallocation to occur
+					if (!priorityadded) {
+						priorityAllocators.add(allocator);
+						priorityadded = true;
+					}
+					allocationLock.wait();
+				}
+			} finally {
+				if (priorityadded) {
+					if (priorityAllocators.remove(allocator)) {
+						allocationLock.notifyAll();
+					}
+				}
+			}
+		}
+	}
+
+	@ExcludeApi
+	public static ComputationToken requestAbortable(Object allocator, final int count, BooleanSupplier abortedsupplier)
+			throws InterruptedException {
+		if (count <= 0) {
+			return new ComputationToken(allocator, 0);
+		}
+		boolean priorityadded = false;
+		synchronized (allocationLock) {
+			try {
+				while (true) {
+					Integer prev = allocatedTokens.computeIfPresent(allocator, (a, allocated) -> allocated + count);
+					if (prev != null) {
+						//there was already tokens allocated to the given allocator
+						return new ComputationToken(allocator, count);
+					}
+					if (abortedsupplier.getAsBoolean()) {
+						return null;
+					}
+					int sum = getAllocatedCount();
+					//not yet allocated any tokens to the allocator
+					if (sum < MAX_TOKEN_COUNT) {
+						//we can allocate the given amount
+						//sum + count > MAX_TOKEN_COUNT is acceptable as we prefer overallocation over underutilization
+						allocatedTokens.putIfAbsent(allocator, count);
+						return new ComputationToken(allocator, count);
+					}
+					//sum is already equals or greater than the max token count, wait for the deallocation to occur
+					if (!priorityadded) {
+						priorityAllocators.add(allocator);
+						priorityadded = true;
+					}
+					allocationLock.wait();
+				}
+			} finally {
+				if (priorityadded) {
+					if (priorityAllocators.remove(allocator)) {
+						allocationLock.notifyAll();
+					}
+				}
+			}
+		}
+	}
+
+	@ExcludeApi
+	public static ComputationToken requestAdditionalAbortable(Object allocator, final int count,
+			BooleanSupplier abortedsupplier) throws InterruptedException {
 		if (count <= 0) {
 			return new ComputationToken(allocator, 0);
 		}
 		synchronized (allocationLock) {
 			while (true) {
-				Integer prev = allocatedTokens.computeIfPresent(allocator, (a, allocated) -> allocated + count);
-				if (prev != null) {
-					//there was already tokens allocated to the given allocator
-					return new ComputationToken(allocator, count);
+				if (abortedsupplier.getAsBoolean()) {
+					return null;
 				}
-				int sum = 0;
-				for (Integer c : allocatedTokens.values()) {
-					sum += c.intValue();
+				if (priorityAllocators.isEmpty()) {
+					int sum = getAllocatedCount();
+					//not yet allocated any tokens to the allocator
+					if (sum < MAX_TOKEN_COUNT) {
+						//we can allocate the given amount
+						//sum + count > MAX_TOKEN_COUNT is acceptable as we prefer overallocation over underutilization
+						allocatedTokens.compute(allocator, (k, v) -> v == null ? count : v + count);
+						return new ComputationToken(allocator, count);
+					}
+					//sum is already equals or greater than the max token count, wait for the deallocation to occur
 				}
-				//not yet allocated any tokens to the allocator
-				if (sum < MAX_TOKEN_COUNT) {
-					//we can allocate the given amount
-					//sum + count > MAX_TOKEN_COUNT is acceptable as we prefer overallocation over underutilization
-					allocatedTokens.putIfAbsent(allocator, count);
-					return new ComputationToken(allocator, count);
-				}
-				//sum is already equals or greater than the max token count, wait for the deallocation to occur
+				//else there are priority allocators present. let them allocate before us
 				allocationLock.wait();
 			}
 		}
+	}
+
+	private static int getAllocatedCount() {
+		int sum = 0;
+		for (Integer c : allocatedTokens.values()) {
+			sum += c.intValue();
+		}
+		return sum;
 	}
 
 	private static void deallocateAll(Object allocator) {
@@ -150,20 +192,24 @@ public class ComputationToken implements AutoCloseable {
 			return;
 		}
 		synchronized (allocationLock) {
-			allocatedTokens.computeIfPresent(allocator, (a, allocated) -> {
-				int iav = allocated.intValue();
-				if (TestFlag.ENABLED) {
-					if (iav < count) {
-						throw new AssertionError(iav + " - " + count);
-					}
-				}
-				if (iav == count) {
-					return null;
-				}
-				return iav - count;
-			});
-			allocationLock.notifyAll();
+			deallocateLocked(allocator, count);
 		}
+	}
+
+	private static void deallocateLocked(Object allocator, int count) {
+		allocatedTokens.computeIfPresent(allocator, (a, allocated) -> {
+			int iav = allocated.intValue();
+			if (TestFlag.ENABLED) {
+				if (iav < count) {
+					throw new AssertionError(iav + " - " + count);
+				}
+			}
+			if (iav == count) {
+				return null;
+			}
+			return iav - count;
+		});
+		allocationLock.notifyAll();
 	}
 
 	public static int getMaxTokenCount() {
@@ -191,6 +237,30 @@ public class ComputationToken implements AutoCloseable {
 		}
 	}
 
+	public boolean releaseIfOverAllocated() {
+		if (allocated == 0) {
+			this.allocator = null;
+			return true;
+		}
+		if (allocator == null) {
+			return true;
+		}
+		synchronized (allocationLock) {
+			int sum = getAllocatedCount();
+			if (sum - MAX_TOKEN_COUNT >= allocated || !priorityAllocators.isEmpty()) {
+				//deallocate ourselves if
+				//  the overallocation is at least as much as our allocated token count
+				//  or there are more important waiters for the tokens
+				Object allocator = ARFU_allocator.getAndSet(this, null);
+				if (allocator != null) {
+					deallocateLocked(allocator, allocated);
+				}
+				return true;
+			}
+		}
+		return false;
+	}
+
 	@Override
 	public void close() {
 		Object allocator = ARFU_allocator.getAndSet(this, null);
@@ -199,4 +269,9 @@ public class ComputationToken implements AutoCloseable {
 		}
 	}
 
+	@Override
+	public String toString() {
+		return "ComputationToken[" + (allocator != null ? "allocator=" + allocator + ", " : "") + "allocated="
+				+ allocated + "]";
+	}
 }

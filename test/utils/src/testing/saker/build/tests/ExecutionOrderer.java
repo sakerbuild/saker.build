@@ -38,20 +38,25 @@ public class ExecutionOrderer {
 	}
 
 	public synchronized void enter(String id) throws InterruptedException {
-		while (true) {
-			String first = order.peekFirst();
-			if (first == null) {
-				throw new IllegalArgumentException("No more sections.");
+		try {
+			while (true) {
+				String first = order.peekFirst();
+				if (first == null) {
+					throw new IllegalArgumentException("No more sections.");
+				}
+				if (first.equals(id)) {
+					System.out.println("Reached: " + id);
+					order.pollFirst();
+					this.notifyAll();
+					return;
+				}
+				if (!order.contains(id)) {
+					throw new IllegalArgumentException("No section found: " + id + " in " + order);
+				}
+				this.wait();
 			}
-			if (first.equals(id)) {
-				order.pollFirst();
-				this.notifyAll();
-				return;
-			}
-			if (!order.contains(id)) {
-				throw new IllegalArgumentException("No section found: " + id + " in " + order);
-			}
-			this.wait();
+		} catch (InterruptedException e) {
+			throw new InterruptedException("Interrupted while waiting for: " + id + " in " + order);
 		}
 	}
 
@@ -61,6 +66,11 @@ public class ExecutionOrderer {
 
 	public boolean isAnySectionRemaining() {
 		return !order.isEmpty();
+	}
+
+	@Override
+	public String toString() {
+		return "ExecutionOrderer[" + order + "]";
 	}
 
 }
