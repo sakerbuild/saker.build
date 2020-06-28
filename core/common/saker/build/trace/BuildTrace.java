@@ -17,6 +17,7 @@ package saker.build.trace;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 
 import saker.apiextract.api.PublicApi;
 import saker.build.exception.PropertyComputationFailedException;
@@ -473,8 +474,9 @@ public final class BuildTrace {
 	 * <td>asCollection</td>
 	 * </tr>
 	 * </table>
-	 * The <i>addAll</i> action will cause the resulting value to be a collection with the existing element(s) first.
-	 * <br>
+	 * The <i>addAll</i> action will cause the resulting value to be a collection with the existing element(s) first. If
+	 * both the existing and new values are instance of {@link Set}, then the resulting collection will be a {@link Set}
+	 * as well. <br>
 	 * The <i>add</i> action will append the element to the existing collection. <br>
 	 * The <i>putAll</i> action will add all map entries to the existing collection. The map values are merged
 	 * recursively. <br>

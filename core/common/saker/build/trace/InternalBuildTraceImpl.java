@@ -34,7 +34,6 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.ListIterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
@@ -351,13 +350,25 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 		if (existing instanceof Collection<?>) {
 			if (v instanceof Collection<?>) {
+				if (existing instanceof Set<?> && v instanceof Set<?>) {
+					//if both are sets, then we merge them with set like behaviour, to deduplicate common values
+					LinkedHashSet<Object> result = new LinkedHashSet<>((Collection<?>) existing);
+					result.addAll((Collection<?>) v);
+					return result;
+				}
 				return ObjectUtils.newArrayList((Collection<?>) existing, (Collection<?>) v);
 			}
 			if (v instanceof Map<?, ?>) {
 				//ignore
 				return existing;
 			}
-			ArrayList<Object> res = new ArrayList<>((Collection<?>) existing);
+			Collection<Object> res;
+			if (existing instanceof Set<?>) {
+				//if the existing one is a set, then deduplicate
+				res = new LinkedHashSet<>((Collection<?>) existing);
+			} else {
+				res = new ArrayList<>((Collection<?>) existing);
+			}
 			res.add(v);
 			return res;
 		}
@@ -385,7 +396,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			return existing;
 		}
 		if (v instanceof Collection<?>) {
-			List<Object> result = new ArrayList<>();
+			Collection<Object> result = new ArrayList<>();
 			result.add(existing);
 			result.addAll((Collection<?>) v);
 			return result;
@@ -464,28 +475,21 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				val = ImmutableUtils.unmodifiableReflectionArrayList(val);
 				//continue with collectionized array
 			}
-			if (val instanceof Collection<?>) {
-				List<Object> vallist = new ArrayList<>(((Collection<?>) val));
-				for (ListIterator<Object> it = vallist.listIterator(); it.hasNext();) {
-					Object v = normalizeValue(it.next(), seenobjects);
-					if (v == null) {
-						it.remove();
-					} else {
-						it.set(v);
-					}
-				}
-				return vallist;
-			}
 			if (val instanceof Iterable<?>) {
-				List<Object> vallist = new ArrayList<>();
+				Collection<Object> normalizedcollection;
+				if (val instanceof Set<?>) {
+					normalizedcollection = new LinkedHashSet<>();
+				} else {
+					normalizedcollection = new ArrayList<>();
+				}
 				Iterator<?> it = ((Iterable<?>) val).iterator();
 				while (it.hasNext()) {
 					Object v = normalizeValue(it.next(), seenobjects);
 					if (v != null) {
-						vallist.add(v);
+						normalizedcollection.add(v);
 					}
 				}
-				return vallist;
+				return normalizedcollection;
 			}
 			if (val instanceof Map<?, ?>) {
 				Map<?, ?> m = (Map<?, ?>) val;
