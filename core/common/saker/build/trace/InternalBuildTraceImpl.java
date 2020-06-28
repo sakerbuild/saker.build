@@ -239,6 +239,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	 */
 	private final ConcurrentSkipListMap<String, LinkedHashMap<String, Object>> values = new ConcurrentSkipListMap<>();
 
+	private final Set<TraceContributorEnvironmentProperty<?>> contributedEnvironmentProperties = ConcurrentHashMap
+			.newKeySet();
+
 	public InternalBuildTraceImpl(ProviderHolderPathKey buildtraceoutput) {
 		this.buildTraceOutputPathKey = buildtraceoutput;
 		this.baseReference = new WeakReference<>(this);
@@ -619,7 +622,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 		noException(() -> {
 			TraceContributorEnvironmentProperty<? super T> contributor = (TraceContributorEnvironmentProperty<? super T>) property;
-			contributor.contributeBuildTraceInformation(value, e);
+			if (contributedEnvironmentProperties.add(contributor)) {
+				contributor.contributeBuildTraceInformation(value, e);
+			}
 		});
 	}
 
@@ -2377,6 +2382,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		private UUID environmentUUID;
 
+		private final Set<TraceContributorEnvironmentProperty<?>> contributedEnvironmentProperties = ConcurrentHashMap
+				.newKeySet();
+
 		public InternalBuildTraceImplRMIWrapper() {
 			this.readNanos = System.nanoTime();
 		}
@@ -2459,7 +2467,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			}
 			noException(() -> {
 				TraceContributorEnvironmentProperty<? super T> contributor = (TraceContributorEnvironmentProperty<? super T>) property;
-				contributor.contributeBuildTraceInformation(value, e);
+				if (contributedEnvironmentProperties.add(contributor)) {
+					contributor.contributeBuildTraceInformation(value, e);
+				}
 			});
 		}
 	}
