@@ -25,6 +25,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketAddress;
+import java.nio.channels.SocketChannel;
 import java.util.Collection;
 import java.util.Map.Entry;
 import java.util.Objects;
@@ -318,7 +319,7 @@ public class RMIServer implements AutoCloseable {
 			throws IOException, RMIShutdownRequestDeniedException, NullPointerException {
 		Objects.requireNonNull(address, "address");
 		int connectiontimeoutms = DEFAULT_CONNECTION_TIMEOUT_MS;
-		try (Socket s = socketfactory == null ? new Socket() : socketfactory.createSocket()) {
+		try (Socket s = socketfactory == null ? SocketChannel.open().socket() : socketfactory.createSocket()) {
 			s.connect(address, connectiontimeoutms);
 
 			OutputStream socketos = s.getOutputStream();
@@ -390,7 +391,7 @@ public class RMIServer implements AutoCloseable {
 	public static boolean pingServer(SocketFactory socketfactory, SocketAddress address) throws NullPointerException {
 		Objects.requireNonNull(address, "address");
 		int connectiontimeoutms = DEFAULT_CONNECTION_TIMEOUT_MS;
-		try (Socket s = socketfactory == null ? new Socket() : socketfactory.createSocket()) {
+		try (Socket s = socketfactory == null ? SocketChannel.open().socket() : socketfactory.createSocket()) {
 			s.connect(address, connectiontimeoutms);
 
 			OutputStream socketos = s.getOutputStream();
@@ -584,7 +585,7 @@ public class RMIServer implements AutoCloseable {
 			@SuppressWarnings("resource")
 			Socket s;
 			if (socketfactory == null) {
-				s = new Socket();
+				s = SocketChannel.open().socket();
 			} else {
 				s = socketfactory.createSocket();
 			}
@@ -872,7 +873,7 @@ public class RMIServer implements AutoCloseable {
 			try {
 				Socket sock;
 				if (socketfactory == null) {
-					sock = new Socket();
+					sock = SocketChannel.open().socket();
 				} else {
 					sock = socketfactory.createSocket();
 				}
