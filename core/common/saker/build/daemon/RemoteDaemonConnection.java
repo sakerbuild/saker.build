@@ -57,19 +57,7 @@ public interface RemoteDaemonConnection extends Closeable {
 	//doc: class loader resolver will be overwritten
 	public static RemoteDaemonConnection connect(SocketFactory socketfactory, SocketAddress address,
 			RMIOptions rmioptions) throws IOException {
-		//do not need to keep reference to connection or variables
-		//    they are going to be closed when the connection is closed
-
-		if (rmioptions == null) {
-			rmioptions = new RMIOptions();
-		}
-
-		ClassLoaderResolver clresolver = rmioptions.getClassLoaderResolver();
-		if (clresolver == null) {
-			clresolver = new ClassLoaderResolverRegistry(createConnectionBaseClassLoaderResolver());
-		}
-		rmioptions.classResolver(clresolver);
-		RMIConnection connection = rmioptions.connect(socketfactory, address);
+		RMIConnection connection = initiateRMIConnection(socketfactory, address, rmioptions);
 		RMIVariables vars = null;
 		try {
 			vars = connection.newVariables();
@@ -103,5 +91,28 @@ public interface RemoteDaemonConnection extends Closeable {
 
 	public static ClassLoaderResolverRegistry createConnectionBaseClassLoaderResolver() {
 		return SakerEnvironmentImpl.createEnvironmentBaseClassLoaderResolverRegistry();
+	}
+
+	public static RMIConnection initiateRMIConnection(SocketFactory socketfactory, SocketAddress address)
+			throws IOException {
+		return initiateRMIConnection(socketfactory, address, null);
+	}
+
+	public static RMIConnection initiateRMIConnection(SocketFactory socketfactory, SocketAddress address,
+			RMIOptions rmioptions) throws IOException {
+		//do not need to keep reference to connection or variables
+		//    they are going to be closed when the connection is closed
+
+		if (rmioptions == null) {
+			rmioptions = new RMIOptions();
+		}
+
+		ClassLoaderResolver clresolver = rmioptions.getClassLoaderResolver();
+		if (clresolver == null) {
+			clresolver = new ClassLoaderResolverRegistry(createConnectionBaseClassLoaderResolver());
+		}
+		rmioptions.classResolver(clresolver);
+		RMIConnection connection = rmioptions.connect(socketfactory, address);
+		return connection;
 	}
 }

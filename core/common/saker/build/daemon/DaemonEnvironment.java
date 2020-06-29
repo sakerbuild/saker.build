@@ -18,6 +18,8 @@ package saker.build.daemon;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.SocketAddress;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.UUID;
 
 import saker.build.file.path.PathKey;
@@ -25,8 +27,11 @@ import saker.build.file.provider.LocalFileProvider;
 import saker.build.file.provider.SakerFileProvider;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.project.ProjectCacheHandle;
+import saker.build.task.cluster.TaskInvokerFactory;
 import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
+import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
+import saker.build.thirdparty.saker.util.rmi.wrap.RMIArrayListRemoteElementWrapper;
 
 public interface DaemonEnvironment extends Closeable {
 	@RMICacheResult
@@ -36,6 +41,11 @@ public interface DaemonEnvironment extends Closeable {
 
 	public default RemoteDaemonConnection connectTo(@RMISerialize SocketAddress address) throws IOException {
 		throw new IOException("Remote connection unsupported.");
+	}
+
+	@RMIWrap(RMIArrayListRemoteElementWrapper.class)
+	public default Collection<? extends TaskInvokerFactory> getClientClusterTaskInvokerFactories() {
+		return Collections.emptyList();
 	}
 
 	@RMICacheResult

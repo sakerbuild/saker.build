@@ -17,14 +17,24 @@ package saker.build.daemon;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.RandomAccessFile;
+import java.lang.ref.WeakReference;
+import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
+import java.net.SocketTimeoutException;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 import javax.net.ServerSocketFactory;
@@ -50,21 +60,37 @@ import saker.build.task.cluster.ClusterTaskInvoker;
 import saker.build.task.cluster.TaskInvokerFactory;
 import saker.build.task.cluster.TaskInvokerInformation;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
+import saker.build.thirdparty.saker.rmi.connection.RMIConnection.IOErrorListener;
 import saker.build.thirdparty.saker.rmi.connection.RMIOptions;
 import saker.build.thirdparty.saker.rmi.connection.RMIServer;
+import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.util.DateUtils;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.StringUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
+import saker.build.thirdparty.saker.util.function.ThrowingRunnable;
 import saker.build.thirdparty.saker.util.io.FileUtils;
 import saker.build.thirdparty.saker.util.io.IOUtils;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
 import saker.build.util.cache.CacheKey;
 
 public class LocalDaemonEnvironment implements DaemonEnvironment {
 	//TODO implement auto shutdown
 
+	/**
+	 * {@link DaemonEnvironment}
+	 */
 	public static final String RMI_CONTEXT_VARIABLE_DAEMON_ENVIRONMENT_INSTANCE = "saker.daemon.environment.instance";
+	/**
+	 * {@link TaskInvokerFactory}
+	 */
 	public static final String RMI_CONTEXT_VARIABLE_DAEMON_CLUSTER_INVOKER_FACTORY = "saker.daemon.cluster.invoker.factory";
+	/**
+	 * {@link DaemonClientServer}
+	 */
+	public static final String RMI_CONTEXT_VARIABLE_DAEMON_CLIENT_SERVER = "saker.daemon.client.server";
 
 	private static final String DAEMON_LOCK_FILE_NAME = ".lock.daemon";
 	private static final int STATE_UNSTARTED = 0;
@@ -96,6 +122,12 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	private RMIOptions connectionBaseRMIOptions;
 	private ThreadGroup serverThreadGroup;
 
+	private Set<WeakReference<TaskInvokerFactory>> clientClusterTaskInvokers = Collections
+			.synchronizedSet(new HashSet<>());
+	private Set<SocketAddress> connectToAsClusterAddresses;
+	private ThreadWorkPool clusterClientConnectingWorkPool;
+	private ThreadGroup clusterClientConnectingThreadGroup;
+
 	public LocalDaemonEnvironment(Path sakerJarPath, DaemonLaunchParameters launchParameters,
 			DaemonOutputController outputController, SocketFactory connectionsocketfactory) {
 		Objects.requireNonNull(sakerJarPath, "sakerJarPath");
@@ -107,7 +139,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 	public LocalDaemonEnvironment(Path sakerJarPath, DaemonLaunchParameters launchParameters,
 			DaemonOutputController outputController) {
-		this(sakerJarPath, launchParameters, outputController, SocketFactory.getDefault());
+		this(sakerJarPath, launchParameters, outputController, null);
 	}
 
 	public void setConnectionBaseRMIOptions(RMIOptions connectionBaseRMIOptions) {
@@ -129,6 +161,14 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	public void setServerSocketFactory(ServerSocketFactory serverSocketFactory) {
 		checkUnstarted();
 		this.serverSocketFactory = serverSocketFactory;
+	}
+
+	public void setConnectToAsClusterAddresses(Set<SocketAddress> serveraddresses) {
+		checkUnstarted();
+		if (!constructLaunchParameters.isActsAsCluster()) {
+			throw new IllegalArgumentException("Daemon environment doesn't act as cluster.");
+		}
+		this.connectToAsClusterAddresses = serveraddresses;
 	}
 
 	@Override
@@ -241,6 +281,8 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 									new LocalDaemonClusterInvokerFactory(connectionclresolver,
 											constructLaunchParameters.getClusterMirrorDirectory()));
 						}
+						connection.putContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_CLIENT_SERVER,
+								new DaemonClientServerImpl(connection));
 						super.setupConnection(acceptedsocket, connection);
 					}
 				};
@@ -270,7 +312,19 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 			launchParameters = builder.build();
 			state = STATE_STARTED;
 		}
-
+		if (!ObjectUtils.isNullOrEmpty(connectToAsClusterAddresses)) {
+			if (serverThreadGroup != null) {
+				clusterClientConnectingThreadGroup = new ThreadGroup(serverThreadGroup, "Daemon client connector");
+			} else {
+				clusterClientConnectingThreadGroup = new ThreadGroup("Daemon client connector");
+			}
+			clusterClientConnectingThreadGroup.setDaemon(true);
+			clusterClientConnectingWorkPool = ThreadUtils.newDynamicWorkPool(clusterClientConnectingThreadGroup,
+					"cluster-client-", null, true);
+			for (SocketAddress addr : connectToAsClusterAddresses) {
+				clusterClientConnectingWorkPool.offer(new ClusterClientConnectingRunnable(addr));
+			}
+		}
 	}
 
 	protected static String createClusterTaskInvokerRMIRegistryClassResolverId(ExecutionPathConfiguration pathconfig) {
@@ -320,14 +374,24 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	public RemoteDaemonConnection connectTo(SocketAddress address) throws IOException {
 		checkStarted();
 		SocketFactory connsockfactory = connectionSocketFactory;
-		if (connsockfactory == null) {
-			throw new IOException("Connection socket factory is not set.");
-		}
 		try {
 			return environment.getCachedData(new RemoteConnectionCaheKey(connsockfactory, address));
 		} catch (Exception e) {
 			throw new IOException("Failed to connect to daemon at: " + address, e);
 		}
+	}
+
+	@Override
+	public Collection<? extends TaskInvokerFactory> getClientClusterTaskInvokerFactories() {
+		Collection<TaskInvokerFactory> result = new ArrayList<>();
+		clientClusterTaskInvokers.forEach(r -> {
+			TaskInvokerFactory tif = r.get();
+			if (tif == null) {
+				return;
+			}
+			result.add(tif);
+		});
+		return result;
 	}
 
 	private void checkUnstarted() {
@@ -349,6 +413,16 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 			return;
 		}
 		state = STATE_CLOSED;
+
+		if (clusterClientConnectingThreadGroup != null) {
+			clusterClientConnectingThreadGroup.interrupt();
+			try {
+				clusterClientConnectingWorkPool.close();
+			} catch (Exception e) {
+				//shouldn't happen but print anyway
+				e.printStackTrace();
+			}
+		}
 
 		IOUtils.closePrint(server);
 
@@ -389,6 +463,102 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 			throw e;
 		} catch (Exception e) {
 			throw new IOException(e);
+		}
+	}
+
+	private final class ClusterClientConnectingRunnable implements ThrowingRunnable {
+		private final SocketAddress addr;
+
+		private ClusterClientConnectingRunnable(SocketAddress addr) {
+			this.addr = addr;
+		}
+
+		@Override
+		public void run() throws Exception {
+			int sleepsecs = 5;
+			try {
+				while (!Thread.interrupted() && state == STATE_STARTED) {
+					try {
+						System.out.println("Connecting as client to: " + addr);
+						RMIConnection rmiconn = RemoteDaemonConnection.initiateRMIConnection(connectionSocketFactory,
+								addr);
+						System.out.println("Connected as client to: " + addr);
+						sleepsecs = 1;
+						RMIVariables vars = null;
+						try {
+							vars = rmiconn.newVariables();
+							DaemonClientServer clientserver = (DaemonClientServer) vars
+									.getRemoteContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_CLIENT_SERVER);
+
+							ClassLoaderResolverRegistry connectionclresolver = (ClassLoaderResolverRegistry) rmiconn
+									.getClassLoaderResolver();
+							clientserver.addClientClusterTaskInvokerFactory(new LocalDaemonClusterInvokerFactory(
+									connectionclresolver, constructLaunchParameters.getClusterMirrorDirectory()));
+							rmiconn.addErrorListener(new IOErrorListener() {
+								@Override
+								public void onIOError(Throwable exc) {
+									//restart connection
+									clusterClientConnectingWorkPool.offer(ClusterClientConnectingRunnable.this);
+								}
+							});
+							rmiconn = null;
+							break;
+						} catch (Exception e) {
+							e.printStackTrace(System.out);
+						} finally {
+							IOUtils.closePrint(rmiconn);
+						}
+					} catch (ConnectException e) {
+						//connection failed.
+					} catch (SocketTimeoutException e) {
+					} catch (ClosedByInterruptException | InterruptedIOException e) {
+						//exit gracefully
+						break;
+					} catch (Exception e) {
+						e.printStackTrace(System.out);
+					}
+					System.out.println("Connection failed to: " + addr + " Sleeping for " + sleepsecs + " seconds");
+					Thread.sleep(sleepsecs * 1000);
+					sleepsecs += 5;
+					if (sleepsecs > 30) {
+						sleepsecs = 30;
+					}
+				}
+			} catch (InterruptedException e) {
+				//exit gracefully
+			}
+			System.out.println("Exiting client connection thread of: " + addr);
+		}
+	}
+
+	private final class DaemonClientServerImpl implements DaemonClientServer {
+		private final RMIConnection connection;
+
+		private DaemonClientServerImpl(RMIConnection connection) {
+			this.connection = connection;
+		}
+
+		@Override
+		public void addClientClusterTaskInvokerFactory(TaskInvokerFactory factory) {
+			UUID id = UUID.randomUUID();
+			System.out.println("New cluster client connection: " + id);
+			//TODO handle if the connection is gracefully closed by the client (that is not caused by IO error)
+
+			RemoteDaemonConnectionImpl.TaskInvokerFactoryImpl invokerimpl = new RemoteDaemonConnectionImpl.TaskInvokerFactoryImpl(
+					(ClassLoaderResolverRegistry) connection.getClassLoaderResolver(), factory);
+			WeakReference<TaskInvokerFactory> weakref = new WeakReference<>(invokerimpl);
+			connection.addErrorListener(new RMIConnection.IOErrorListener() {
+				//reference to keep the proxy alive until the connection is present
+				@SuppressWarnings("unused")
+				private TaskInvokerFactory strongFactoryRef = invokerimpl;
+
+				@Override
+				public void onIOError(Throwable exc) {
+					System.out.println("Cluster client disconnected: " + id);
+					clientClusterTaskInvokers.remove(weakref);
+				}
+			});
+			clientClusterTaskInvokers.add(weakref);
 		}
 	}
 
@@ -686,4 +856,5 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 				.hashString(workingpathkey.getFileProviderKey().getUUID() + "/" + workingpathkey.getPath());
 		return basemirrordir.resolve(StringUtils.toHexString(hash));
 	}
+
 }

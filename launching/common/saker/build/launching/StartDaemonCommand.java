@@ -57,6 +57,8 @@ public class StartDaemonCommand {
 	public GeneralDaemonParams daemonParams = new GeneralDaemonParams();
 	@ParameterContext
 	public EnvironmentParams envParams = new EnvironmentParams();
+	@ParameterContext
+	public StartDaemonParams startParams = new StartDaemonParams();
 
 	@ParameterContext
 	public SakerJarLocatorParamContext sakerJarParam = new SakerJarLocatorParamContext();
@@ -96,6 +98,11 @@ public class StartDaemonCommand {
 
 	public static RemoteDaemonConnection connectOrCreateDaemon(Path javaexe, Path sakerjarpath,
 			DaemonLaunchParameters launchparams) throws IOException {
+		return connectOrCreateDaemon(javaexe, sakerjarpath, launchparams, null);
+	}
+
+	public static RemoteDaemonConnection connectOrCreateDaemon(Path javaexe, Path sakerjarpath,
+			DaemonLaunchParameters launchparams, StartDaemonParams startparams) throws IOException {
 		SakerPath storagedirpath = launchparams.getStorageDirectory();
 		InetAddress connectaddress = InetAddress.getLoopbackAddress();
 		Integer runningport = null;
@@ -124,7 +131,7 @@ public class StartDaemonCommand {
 		commands.add("daemon");
 		commands.add("run");
 
-		addDaemonLaunchParametersToCommandLine(commands, launchparams);
+		addDaemonLaunchParametersToCommandLine(commands, launchparams, startparams);
 
 		ProcessBuilder pb = new ProcessBuilder(commands);
 		pb.redirectErrorStream(true);
@@ -157,7 +164,7 @@ public class StartDaemonCommand {
 	}
 
 	private static void addDaemonLaunchParametersToCommandLine(List<String> commands,
-			DaemonLaunchParameters launchparams) {
+			DaemonLaunchParameters launchparams, StartDaemonParams startparams) {
 		SakerPath storagedir = launchparams.getStorageDirectory();
 		if (storagedir != null) {
 			commands.add("-storage-directory");
@@ -188,6 +195,12 @@ public class StartDaemonCommand {
 		if (!ObjectUtils.isNullOrEmpty(envuserparams)) {
 			for (Entry<String, String> entry : envuserparams.entrySet()) {
 				commands.add(ParseUtil.toKeyValueArgument("-EU", entry.getKey(), entry.getValue()));
+			}
+		}
+		if (startparams != null) {
+			for (DaemonAddressParam addr : startparams.connectClientParam) {
+				commands.add("-connect-client");
+				commands.add(addr.argument);
 			}
 		}
 	}

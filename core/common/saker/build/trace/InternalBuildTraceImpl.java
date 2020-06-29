@@ -714,6 +714,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				writeString(os, envinfo.javaVmName);
 				writeFieldName(os, "java_home");
 				writeString(os, envinfo.javaHome);
+				writeFieldName(os, "environment_name_info");
+				writeString(os, envinfo.environmentNameInfo);
 				writeFieldName(os, "processors");
 				writeInt(os, envinfo.availableProcessors);
 
@@ -2308,6 +2310,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		protected int availableProcessors;
 
 		protected String computerName;
+		protected String environmentNameInfo;
 
 		protected String sakerBuildVersion;
 		protected SakerPath clusterMirrorDirectory;
@@ -2331,6 +2334,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			this.javaVmVendor = System.getProperty("java.vm.vendor");
 			this.javaVmName = System.getProperty("java.vm.name");
 			this.javaHome = System.getProperty("java.home");
+			this.environmentNameInfo = System.getProperty("saker.build.info.environment.name");
 			//it is present in windows
 			this.computerName = System.getenv("COMPUTERNAME");
 			this.sakerBuildVersion = Versions.VERSION_STRING_FULL;
@@ -2349,6 +2353,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			out.writeObject(javaVmVendor);
 			out.writeObject(javaVmName);
 			out.writeObject(javaHome);
+			out.writeObject(environmentNameInfo);
 			out.writeInt(availableProcessors);
 			out.writeObject(computerName);
 			out.writeObject(sakerBuildVersion);
@@ -2368,6 +2373,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			javaVmVendor = (String) in.readObject();
 			javaVmName = (String) in.readObject();
 			javaHome = (String) in.readObject();
+			environmentNameInfo = (String) in.readObject();
 			availableProcessors = in.readInt();
 			computerName = (String) in.readObject();
 			sakerBuildVersion = (String) in.readObject();

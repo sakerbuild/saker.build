@@ -79,6 +79,7 @@ import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionParametersImpl;
 import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation;
 import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation.ConnectionInformation;
+import saker.build.runtime.execution.SakerLog;
 import saker.build.runtime.execution.SakerLog.CommonExceptionFormat;
 import saker.build.runtime.execution.SakerLog.ExceptionFormat;
 import saker.build.runtime.execution.SecretInputReader;
@@ -131,11 +132,14 @@ public class BuildCommand {
 	public static final String DAEMON_CLIENT_NAME_LOCAL = "local";
 	public static final String DAEMON_CLIENT_NAME_REMOTE = "remote";
 	public static final String DAEMON_CLIENT_NAME_PROC_WORK_DIR = "pwd";
+
 	private static final SakerPath DEFAULT_WORKING_DIRECTORY_PATH = SakerPath.valueOf(DEFAULT_WORKING_DIRECTORY_ROOT);
 	private static final Set<String> RESERVED_CONNECTION_NAMES = ImmutableUtils
 			.makeImmutableNavigableSet(new String[] { DAEMON_CLIENT_NAME_LOCAL, DAEMON_CLIENT_NAME_REMOTE,
 					DAEMON_CLIENT_NAME_PROC_WORK_DIR, "build", "http", "https", "ftp", "sftp", "file", "data", "jar",
 					"zip", "url", "uri", "tcp", "udp", "mem", "memory", "ide", "project", "null", "storage", "nest" });
+
+	private static final String PARAM_NAME_CLUSTER_USE_CLIENTS = "-cluster-use-clients";
 
 	private static final String DEFAULT_BUILD_FILE_NAME = "saker.build";
 	/**
@@ -254,7 +258,7 @@ public class BuildCommand {
 
 	/**
 	 * <pre>
-	 * Specifies a daemon connection that should be used as a cluster for the build
+	 * Specifies a daemon connection that should be used as a cluster for the build.
 	 * 
 	 * This parameter adds connection specified by the given name as cluster to
 	 * the build execution. Clusters can be used to execute a build over multiple
@@ -275,6 +279,20 @@ public class BuildCommand {
 	@Parameter({ "-cluster" })
 	@MultiParameter(String.class)
 	public Set<String> clusters = new LinkedHashSet<>();
+
+	/**
+	 * <pre>
+	 * Flag to specify to use the connected clients of the used daemon as clusters.
+	 * 
+	 * If the daemon that is used for build execution has other clients connected
+	 * to it, then they will be used as clusters for this build execution.
+	 * 
+	 * The default is false.
+	 * </pre>
+	 */
+	@Flag
+	@Parameter(PARAM_NAME_CLUSTER_USE_CLIENTS)
+	public boolean clusterUseClients = false;
 
 	/**
 	 * <pre>
@@ -834,8 +852,8 @@ public class BuildCommand {
 			}
 			params.setRepositoryConfiguration(repoconfigbuilder.build());
 		}
+		Collection<TaskInvokerFactory> taskinvokerfactories = new ArrayList<>();
 		if (!clusters.isEmpty()) {
-			Collection<TaskInvokerFactory> taskinvokerfactories = new ArrayList<>();
 			for (String clusterconnectionname : clusters) {
 				if (RESERVED_CONNECTION_NAMES.contains(clusterconnectionname)) {
 					throw new IllegalArgumentException("Invalid cluster connection name: " + clusterconnectionname);
@@ -852,8 +870,23 @@ public class BuildCommand {
 				}
 				taskinvokerfactories.add(clustertaskinvokerfactory);
 			}
-			params.setTaskInvokerFactories(taskinvokerfactories);
 		}
+		if (clusterUseClients) {
+			DaemonEnvironment useenv;
+			if (remoteenv != null) {
+				useenv = remoteenv;
+			} else if (localenv != null) {
+				useenv = localenv;
+			} else {
+				SakerLog.warning().out(System.out).println(
+						PARAM_NAME_CLUSTER_USE_CLIENTS + " was specified, but not using daemon for build execution.");
+				useenv = null;
+			}
+			if (useenv != null) {
+				taskinvokerfactories.addAll(useenv.getClientClusterTaskInvokerFactories());
+			}
+		}
+		params.setTaskInvokerFactories(taskinvokerfactories);
 		return params;
 	}
 

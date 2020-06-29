@@ -18,11 +18,15 @@ package saker.build.launching;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.net.SocketAddress;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 import saker.build.daemon.DaemonLaunchParameters;
 import saker.build.daemon.DaemonOutputController.StreamToken;
 import saker.build.daemon.LocalDaemonEnvironment;
 import saker.build.daemon.WeakRefDaemonOutputController;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import sipka.cmdline.api.Flag;
 import sipka.cmdline.api.Parameter;
@@ -54,6 +58,8 @@ public class RunDaemonCommand {
 	public GeneralDaemonParams daemonParams = new GeneralDaemonParams();
 	@ParameterContext
 	public EnvironmentParams envParams = new EnvironmentParams();
+	@ParameterContext
+	public StartDaemonParams startParams = new StartDaemonParams();
 
 	/**
 	 * <pre>
@@ -82,6 +88,17 @@ public class RunDaemonCommand {
 			}
 
 			daemonenv = new LocalDaemonEnvironment(sakerJarParam.getSakerJarPath(), launchparams, outputcontroller);
+			if (!ObjectUtils.isNullOrEmpty(startParams.connectClientParam)) {
+				if (!launchparams.isActsAsCluster()) {
+					throw new IllegalArgumentException(
+							"Cannot connect to daemon as client without acting as cluster. (Use -cluster-enable)");
+				}
+				Set<SocketAddress> serveraddresses = new LinkedHashSet<>();
+				for (DaemonAddressParam addr : startParams.connectClientParam) {
+					serveraddresses.add(addr.getSocketAddress());
+				}
+				daemonenv.setConnectToAsClusterAddresses(serveraddresses);
+			}
 
 			System.out.println("Starting daemon...");
 
