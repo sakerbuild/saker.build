@@ -49,6 +49,8 @@ public abstract class RemoteProxyObject {
 			return RMIVariables.invokeRedirectMethod(remoteobject, m.getRedirectMethod(), args);
 		} catch (InvocationTargetException e) {
 			throw e.getTargetException();
+		} finally {
+			reachabilityFence(remoteobject);
 		}
 	}
 
@@ -65,6 +67,8 @@ public abstract class RemoteProxyObject {
 			throw getExceptionRethrowException(m, e);
 		} catch (InvocationTargetException e) {
 			throw e.getTargetException();
+		} finally {
+			reachabilityFence(remoteobject);
 		}
 	}
 
@@ -74,7 +78,11 @@ public abstract class RemoteProxyObject {
 
 	protected static final Object callNonRedirectMethodFromStaticDelegate(MethodTransferProperties method,
 			RemoteProxyObject proxy, Object... args) throws Throwable {
-		return RMIVariables.invokeRemoteMethod(proxy, method, args);
+		try {
+			return RMIVariables.invokeRemoteMethod(proxy, method, args);
+		} finally {
+			reachabilityFence(proxy);
+		}
 	}
 
 	static final RMIVariables getCheckVariables(RemoteProxyObject remoteobject) {
@@ -95,6 +103,12 @@ public abstract class RemoteProxyObject {
 			}
 		}
 		return new RemoteInvocationRMIFailureException(e);
+	}
+
+	static final void reachabilityFence(@SuppressWarnings("unused") Object o) {
+		//see Reference.reachabilityFence on JDK 9
+		//this method is called in functions that work with remote proxy objects. As their garbage collection
+		//can cause remote references to be released, it needs to be called after the network requests.
 	}
 
 	protected static final class RMICacheHelper {
@@ -119,10 +133,14 @@ public abstract class RemoteProxyObject {
 				if (r != RESULT_NOT_READY) {
 					return r;
 				}
-				Object res = RemoteProxyObject.callMethodInternal(proxy, method, args);
-				//the following CAS will always succeed as we're in a synchronized block
-				ARFU_result.compareAndSet(this, RESULT_NOT_READY, res);
-				return res;
+				try {
+					Object res = RemoteProxyObject.callMethodInternal(proxy, method, args);
+					//the following CAS will always succeed as we're in a synchronized block
+					ARFU_result.compareAndSet(this, RESULT_NOT_READY, res);
+					return res;
+				} finally {
+					reachabilityFence(proxy);
+				}
 			}
 		}
 	}

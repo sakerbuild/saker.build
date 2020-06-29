@@ -371,8 +371,12 @@ public class RMIVariables implements AutoCloseable {
 		}
 		RemoteProxyObject remoteproxyobj = (RemoteProxyObject) remoteobject;
 		RMIVariables variables = RemoteProxyObject.getCheckVariables(remoteproxyobj);
-		return variables.invokeRemoteMethod(remoteproxyobj.remoteId,
-				variables.properties.getExecutableProperties(method), arguments);
+		try {
+			return variables.invokeRemoteMethod(remoteproxyobj.remoteId,
+					variables.properties.getExecutableProperties(method), arguments);
+		} finally {
+			RemoteProxyObject.reachabilityFence(remoteproxyobj);
+		}
 	}
 
 	/**
@@ -411,7 +415,11 @@ public class RMIVariables implements AutoCloseable {
 		}
 		RemoteProxyObject remoteproxyobj = (RemoteProxyObject) remoteobject;
 		RMIVariables variables = RemoteProxyObject.getCheckVariables(remoteproxyobj);
-		return variables.invokeRemoteMethod(remoteproxyobj.remoteId, method, arguments);
+		try {
+			return variables.invokeRemoteMethod(remoteproxyobj.remoteId, method, arguments);
+		} finally {
+			RemoteProxyObject.reachabilityFence(remoteproxyobj);
+		}
 	}
 
 	/**
@@ -451,8 +459,12 @@ public class RMIVariables implements AutoCloseable {
 		}
 		RemoteProxyObject remoteproxyobj = (RemoteProxyObject) remoteobject;
 		RMIVariables variables = RemoteProxyObject.getCheckVariables(remoteproxyobj);
-		return variables.invokeMethod(remoteproxyobj.remoteId, remoteobject,
-				variables.properties.getExecutableProperties(method), arguments);
+		try {
+			return variables.invokeMethod(remoteproxyobj.remoteId, remoteobject,
+					variables.properties.getExecutableProperties(method), arguments);
+		} finally {
+			RemoteProxyObject.reachabilityFence(remoteproxyobj);
+		}
 	}
 
 	/**
@@ -491,7 +503,11 @@ public class RMIVariables implements AutoCloseable {
 		}
 		RemoteProxyObject remoteproxyobj = (RemoteProxyObject) remoteobject;
 		RMIVariables variables = RemoteProxyObject.getCheckVariables(remoteproxyobj);
-		return variables.invokeMethod(remoteproxyobj.remoteId, remoteobject, method, arguments);
+		try {
+			return variables.invokeMethod(remoteproxyobj.remoteId, remoteobject, method, arguments);
+		} finally {
+			RemoteProxyObject.reachabilityFence(remoteproxyobj);
+		}
 	}
 
 	/**
@@ -550,8 +566,12 @@ public class RMIVariables implements AutoCloseable {
 		}
 		RemoteProxyObject remoteproxyobj = (RemoteProxyObject) remoteobject;
 		RMIVariables variables = RemoteProxyObject.getCheckVariables(remoteproxyobj);
-		variables.invokeRemoteMethodAsync(remoteproxyobj.remoteId, variables.properties.getExecutableProperties(method),
-				arguments);
+		try {
+			variables.invokeRemoteMethodAsync(remoteproxyobj.remoteId,
+					variables.properties.getExecutableProperties(method), arguments);
+		} finally {
+			RemoteProxyObject.reachabilityFence(remoteproxyobj);
+		}
 	}
 
 	/**
@@ -580,7 +600,11 @@ public class RMIVariables implements AutoCloseable {
 		}
 		RemoteProxyObject remoteproxyobj = (RemoteProxyObject) remoteobject;
 		RMIVariables variables = RemoteProxyObject.getCheckVariables(remoteproxyobj);
-		variables.invokeRemoteMethodAsync(remoteproxyobj.remoteId, method, arguments);
+		try {
+			variables.invokeRemoteMethodAsync(remoteproxyobj.remoteId, method, arguments);
+		} finally {
+			RemoteProxyObject.reachabilityFence(remoteproxyobj);
+		}
 	}
 
 	/**
@@ -614,9 +638,12 @@ public class RMIVariables implements AutoCloseable {
 		}
 		RemoteProxyObject remoteproxyobj = (RemoteProxyObject) object;
 		RMIVariables variables = RemoteProxyObject.getCheckVariables(remoteproxyobj);
-		variables.invokeRemoteMethodAsync(remoteproxyobj.remoteId, variables.properties.getExecutableProperties(method),
-				arguments);
-		return;
+		try {
+			variables.invokeRemoteMethodAsync(remoteproxyobj.remoteId,
+					variables.properties.getExecutableProperties(method), arguments);
+		} finally {
+			RemoteProxyObject.reachabilityFence(remoteproxyobj);
+		}
 	}
 
 	/**
@@ -651,7 +678,11 @@ public class RMIVariables implements AutoCloseable {
 		}
 		RemoteProxyObject remoteproxyobj = (RemoteProxyObject) object;
 		RMIVariables variables = RemoteProxyObject.getCheckVariables(remoteproxyobj);
-		variables.invokeRemoteMethodAsync(remoteproxyobj.remoteId, method, arguments);
+		try {
+			variables.invokeRemoteMethodAsync(remoteproxyobj.remoteId, method, arguments);
+		} finally {
+			RemoteProxyObject.reachabilityFence(remoteproxyobj);
+		}
 	}
 
 	/**
@@ -921,6 +952,18 @@ public class RMIVariables implements AutoCloseable {
 			return null;
 		}
 		return ref.strongReference;
+	}
+
+	Object requireObjectWithLocalId(int localid) {
+		LocalObjectReference ref = localIdentifiersToLocalObjects.get(localid);
+		if (ref == null) {
+			throw new RMICallFailedException("Remote object not found with id: " + localid + " (not tracked)");
+		}
+		Object result = ref.strongReference;
+		if (result == null) {
+			throw new RMICallFailedException("Remote object not found with id: " + localid + " (released reference)");
+		}
+		return result;
 	}
 
 	Integer getRemoteIdentifierForObject(Object obj) {

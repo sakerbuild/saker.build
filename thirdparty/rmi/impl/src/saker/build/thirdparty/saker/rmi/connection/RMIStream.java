@@ -1521,11 +1521,7 @@ final class RMIStream implements Closeable {
 			throw new RMICallFailedException("Failed to read remote object with null variables.");
 		}
 		int idx = in.readInt();
-		Object remobj = variables.getObjectWithLocalId(idx);
-		if (remobj == null) {
-			throw new RMICallFailedException("Remote object not found with id: " + idx);
-		}
-		return remobj;
+		return variables.requireObjectWithLocalId(idx);
 	}
 
 	private Object[] readMethodParameters(RMIVariables variables, DataInputUnsyncByteArrayInputStream in)
@@ -2094,11 +2090,7 @@ final class RMIStream implements Closeable {
 		if (localid == RMIVariables.NO_OBJECT_ID) {
 			return null;
 		}
-		Object result = variables.getObjectWithLocalId(localid);
-		if (result == null) {
-			throw new RMICallFailedException("Object not found with id: " + localid);
-		}
-		return result;
+		return variables.requireObjectWithLocalId(localid);
 	}
 
 	private void handleCommandMethodResult(DataInputUnsyncByteArrayInputStream in) throws IOException {
@@ -2201,7 +2193,7 @@ final class RMIStream implements Closeable {
 		if (localid == RMIVariables.NO_OBJECT_ID) {
 			return null;
 		}
-		Object obj = variables.getObjectWithLocalId(localid);
+		Object obj = variables.requireObjectWithLocalId(localid);
 		if (obj instanceof ClassLoader) {
 			return (ClassLoader) obj;
 		}
