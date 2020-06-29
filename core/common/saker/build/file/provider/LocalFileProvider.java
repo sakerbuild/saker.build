@@ -1659,6 +1659,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 			} catch (IllegalArgumentException | IOException e) {
 				Files.createDirectories(storagedir);
 				uuid = UUID.randomUUID();
+				//TODO protect against concurrent file writes
 				Files.write(filepath, uuid.toString().getBytes(StandardCharsets.UTF_8));
 			}
 		} catch (IOException e) {

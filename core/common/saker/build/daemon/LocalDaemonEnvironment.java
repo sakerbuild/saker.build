@@ -497,8 +497,16 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 							rmiconn.addErrorListener(new IOErrorListener() {
 								@Override
 								public void onIOError(Throwable exc) {
+									if (state != STATE_STARTED) {
+										return;
+									}
 									//restart connection
-									clusterClientConnectingWorkPool.offer(ClusterClientConnectingRunnable.this);
+									try {
+										clusterClientConnectingWorkPool.offer(ClusterClientConnectingRunnable.this);
+									} catch (Exception e) {
+										//the pool may've been closed already
+										e.printStackTrace();
+									}
 								}
 							});
 							rmiconn = null;

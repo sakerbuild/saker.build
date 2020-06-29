@@ -310,10 +310,18 @@ public final class SakerEnvironmentImpl implements Closeable {
 		try {
 			@SuppressWarnings("unchecked")
 			T resultval = (T) result.get();
-			InternalBuildTrace.current().environmentPropertyAccessed(this, environmentproperty, resultval, null);
+			try {
+				InternalBuildTrace.current().environmentPropertyAccessed(this, environmentproperty, resultval, null);
+			} catch (Exception e) {
+				//no exceptions!
+			}
 			return resultval;
 		} catch (PropertyComputationFailedException e) {
-			InternalBuildTrace.current().environmentPropertyAccessed(this, environmentproperty, null, e);
+			try {
+				InternalBuildTrace.current().environmentPropertyAccessed(this, environmentproperty, null, e);
+			} catch (Exception e2) {
+				//no exceptions!
+			}
 			throw e;
 		}
 	}

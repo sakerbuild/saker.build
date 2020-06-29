@@ -186,7 +186,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	public static final byte TYPE_DOUBLE_AS_STRING = 15;
 	public static final byte TYPE_EXCEPTION_STACKTRACE = 16;
 
-	private static final InheritableThreadLocal<WeakReference<InternalBuildTraceImpl>> baseReferenceThreadLocal = new InheritableThreadLocal<>();
+	private static final InheritableThreadLocal<WeakReference<? extends InternalBuildTrace>> baseReferenceThreadLocal = new InheritableThreadLocal<>();
 
 	private static final AtomicIntegerFieldUpdater<InternalBuildTraceImpl> AIFU_eventCounter = AtomicIntegerFieldUpdater
 			.newUpdater(InternalBuildTraceImpl.class, "eventCounter");
@@ -199,7 +199,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	private volatile int traceTaskIdCounter;
 
 	private final ProviderHolderPathKey buildTraceOutputPathKey;
-	private final transient WeakReference<InternalBuildTraceImpl> baseReference;
+	private final transient WeakReference<InternalBuildTrace> baseReference;
 	private boolean embedArtifacts;
 
 	private EnvironmentReference localEnvironmentReference;
@@ -2434,6 +2434,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		@Override
 		public void startBuildCluster(SakerEnvironmentImpl environment, Path mirrordir) {
+			baseReferenceThreadLocal.set(new WeakReference<>(this));
 			long currentbuildnanos = System.nanoTime() - readNanos + writeNanos;
 			environmentUUID = environment.getEnvironmentIdentifier();
 			noException(() -> {
