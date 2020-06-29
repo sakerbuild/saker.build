@@ -83,4 +83,8 @@ public interface TaskTestMetric extends TestMetric {
 	public default boolean isForceInnerTaskClusterInvocation(Object taskfactory) {
 		return false;
 	}
+
+	public default boolean isForcedRMILocalFileProvider() {
+		return false;
+	}
 }

@@ -109,6 +109,7 @@ import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.function.LazySupplier;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
+import saker.build.thirdparty.saker.util.io.ByteRegion;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.FileUtils;
@@ -124,6 +125,7 @@ import saker.build.util.config.ReferencePolicy;
 import saker.osnative.watcher.NativeWatcherService;
 import saker.osnative.watcher.RegisteringWatchService;
 import saker.osnative.watcher.WatchRegisterer;
+import testing.saker.api.TestMetric;
 import testing.saker.build.flag.TestFlag;
 
 /**
@@ -141,7 +143,7 @@ import testing.saker.build.flag.TestFlag;
  */
 @RMIWrap(LocalFileProvider.LocalFilesRMIWrapper.class)
 @PublicApi
-public final class LocalFileProvider implements SakerFileProvider {
+public final class LocalFileProvider implements SakerFileProvider, LocalFileProviderInternalRMIAccess {
 	private static final String UUID_FILE_NAME = "saker.files.uuid";
 	private static final Set<FileVisitOption> FOLLOW_LINKS_FILEVISITOPTIONS = ImmutableUtils
 			.singletonSet(FileVisitOption.FOLLOW_LINKS);
@@ -1917,6 +1919,57 @@ public final class LocalFileProvider implements SakerFileProvider {
 		return openInputImpl(ppath, openoptions);
 	}
 
+	@ExcludeApi
+	@Override
+	public OpenedRMIBufferedFileInput openRMIBufferedInput(SakerPath path, OpenOption... openoptions)
+			throws IOException {
+		Path ppath = toRealPath(path);
+		ReferencedInputStream inputimpl = openInputImpl(ppath, openoptions);
+		try {
+			ByteArrayRegion initialBytes;
+			boolean closed;
+			{
+				byte[] bytebuf = new byte[RMIBufferedFileInputByteSource.DEFAULT_BUFFER_SIZE];
+				int read = StreamUtils.readFillStreamBytes(inputimpl, bytebuf);
+				initialBytes = read == 0 ? null : ByteArrayRegion.wrap(bytebuf, 0, read);
+				closed = read < bytebuf.length;
+			}
+			if (closed) {
+				inputimpl.close();
+			}
+			RMIBufferedFileInput input = new RMIBufferedFileInput() {
+				@Override
+				public RMIBufferedReadResult read(int counthint) throws IOException {
+					if (counthint <= 0) {
+						counthint = RMIBufferedFileInputByteSource.DEFAULT_BUFFER_SIZE;
+					} else {
+						counthint = counthint * 3 / 2;
+					}
+					byte[] buf = new byte[counthint];
+					int read = StreamUtils.readFillStreamBytes(inputimpl, buf);
+					boolean closed = read < buf.length;
+					if (closed) {
+						inputimpl.close();
+					}
+					if (read == 0) {
+						return RMIBufferedReadResult.INSTANCE_NO_DATA_CLOSED;
+					}
+					return new RMIBufferedReadResult(ByteArrayRegion.wrap(buf, 0, read), closed);
+				}
+
+				@Override
+				public void close() throws IOException {
+					inputimpl.close();
+				}
+			};
+			return new OpenedRMIBufferedFileInput(input, initialBytes, closed);
+		} catch (Throwable e) {
+			//in case of error, close the stream
+			IOUtils.addExc(e, IOUtils.closeExc(inputimpl));
+			throw e;
+		}
+	}
+
 	/**
 	 * @see #openInput(SakerPath, OpenOption...)
 	 */
@@ -2573,7 +2626,7 @@ public final class LocalFileProvider implements SakerFileProvider {
 		return deleted;
 	}
 
-	private static ByteSource openInputImpl(Path path, OpenOption[] openoptions) throws IOException {
+	private static ReferencedInputStream openInputImpl(Path path, OpenOption[] openoptions) throws IOException {
 		return openInputStreamImpl(path, openoptions);
 	}
 
@@ -2713,42 +2766,142 @@ public final class LocalFileProvider implements SakerFileProvider {
 	//XXX we should replace Files.walkFileTree calls to direct localFileSystemProvider calls, or maybe JNI implementation as BasicFileAttributesHolder is internal class
 	//    and is slower when a security manager is installed
 
-	protected static class LocalFilesRMIWrapper implements RMIWrapper {
-		private SakerFileProvider fileProvider;
-
+	protected static class LocalFilesRMIWrapper extends ForwardingSakerFileProvider implements RMIWrapper {
 		public LocalFilesRMIWrapper() {
+			super(null);
 		}
 
 		public LocalFilesRMIWrapper(LocalFileProvider fileProvider) {
-			this.fileProvider = fileProvider;
+			super(fileProvider);
 		}
 
 		@Override
 		public void writeWrapped(RMIObjectOutput out) throws IOException {
-			out.writeRemoteObject(fileProvider);
+			out.writeRemoteObject(subject);
 		}
 
 		@Override
 		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
 			SakerFileProvider remotefp = (SakerFileProvider) in.readObject();
 			if (getProviderKeyStatic().equals(remotefp.getProviderKey())) {
-				this.fileProvider = LocalFileProvider.getInstance();
+				this.subject = LocalFileProvider.getInstance();
 			} else {
 				//TODO we can employ caching on the remote file provider
-				this.fileProvider = remotefp;
+				this.subject = remotefp;
 			}
 		}
 
 		@Override
+		public ByteSource openInput(SakerPath path, OpenOption... openoptions) throws IOException {
+			OpenedRMIBufferedFileInput openedinput = ((LocalFileProviderInternalRMIAccess) subject)
+					.openRMIBufferedInput(path, openoptions);
+			return new RMIBufferedFileInputByteSource(openedinput);
+		}
+
+		@Override
 		public Object getWrappedObject() {
-			throw new UnsupportedOperationException();
+			return subject;
 		}
 
 		@Override
 		public Object resolveWrapped() {
-			return fileProvider;
+			if (TestFlag.ENABLED) {
+				if (TestFlag.metric().isForcedRMILocalFileProvider()) {
+					return this;
+				}
+			}
+			if (subject instanceof LocalFileProvider) {
+				return subject;
+			}
+			//else perform wrapping
+			return this;
 		}
-
 	}
 
+	private static final class RMIBufferedFileInputByteSource implements ByteSource {
+		public static final int DEFAULT_BUFFER_SIZE = 8 * 1024;
+
+		private final RMIBufferedFileInput in;
+		private ByteArrayRegion buffer;
+		private boolean closed;
+
+		RMIBufferedFileInputByteSource(OpenedRMIBufferedFileInput openedinput) {
+			this.in = openedinput.getInput();
+			RMIBufferedReadResult readresult = openedinput.getReadResult();
+			this.buffer = readresult.getBytes();
+			this.closed = readresult.isClosed();
+		}
+
+		@Override
+		public int read(ByteRegion buffer) throws IOException, NullPointerException {
+			ByteArrayRegion thisbuf = this.buffer;
+			if (thisbuf != null) {
+				int availablebytes = thisbuf.getLength();
+				if (availablebytes > 0) {
+					int buflen = buffer.getLength();
+					if (availablebytes > buflen) {
+						int thisoffset = thisbuf.getOffset();
+						byte[] thisarray = thisbuf.getArray();
+						buffer.put(0, ByteArrayRegion.wrap(thisarray, thisoffset, buflen));
+						this.buffer = ByteArrayRegion.wrap(thisarray, thisoffset + buflen, availablebytes - buflen);
+						return buflen;
+					}
+					buffer.put(0, thisbuf);
+					this.buffer = null;
+					return availablebytes;
+				}
+				//no available bytes
+				this.buffer = null;
+			}
+			if (closed) {
+				return -1;
+			}
+			//no bytes available, need to read
+			int buflen = buffer.getLength();
+			RMIBufferedReadResult readresult = in.read(Math.max(buflen, DEFAULT_BUFFER_SIZE));
+			thisbuf = readresult.getBytes();
+			if (thisbuf.isEmpty()) {
+				thisbuf = null;
+			}
+			this.buffer = thisbuf;
+			this.closed = readresult.isClosed();
+			if (thisbuf == null) {
+				return -1;
+			}
+			int availablebytes = thisbuf.getLength();
+			if (availablebytes > buflen) {
+				int thisoffset = thisbuf.getOffset();
+				byte[] thisarray = thisbuf.getArray();
+				buffer.put(0, ByteArrayRegion.wrap(thisarray, thisoffset, buflen));
+				this.buffer = ByteArrayRegion.wrap(thisarray, thisoffset + buflen, availablebytes - buflen);
+				return buflen;
+			}
+			buffer.put(0, thisbuf);
+			this.buffer = null;
+			return availablebytes;
+		}
+
+		@Override
+		public long writeTo(ByteSink out) throws IOException, NullPointerException {
+			// TODO Auto-generated method stub
+			return ByteSource.super.writeTo(out);
+		}
+
+		@Override
+		public long skip(long n) throws IOException {
+			// TODO Auto-generated method stub
+			return ByteSource.super.skip(n);
+		}
+
+		@Override
+		public void close() throws IOException {
+			if (this.closed) {
+				//already closed
+				return;
+			}
+			this.buffer = null;
+			this.closed = true;
+			this.in.close();
+		}
+	}
 }
