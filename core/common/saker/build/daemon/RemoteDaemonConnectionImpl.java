@@ -34,12 +34,14 @@ import saker.build.task.TaskInvoker;
 import saker.build.task.cluster.TaskInvokerFactory;
 import saker.build.task.cluster.TaskInvokerInformation;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
+import saker.build.thirdparty.saker.rmi.connection.RMIStatistics;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.rmi.exception.RMICallForbiddenException;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
 import saker.build.thirdparty.saker.util.function.LazySupplier;
 import saker.build.thirdparty.saker.util.io.IOUtils;
+import saker.build.util.rmi.SakerRMIHelper;
 
 class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 
@@ -147,6 +149,7 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 		ConnectionImpl conn = ARFU_connection.getAndSet(this, null);
 		if (conn != null) {
 			IOUtils.closePrint(conn.rmiConnection);
+			SakerRMIHelper.dumpRMIStatistics(conn.rmiConnection);
 		}
 	}
 

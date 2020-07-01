@@ -25,6 +25,7 @@ import java.io.OutputStream;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
+import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
@@ -66,6 +67,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.PrivilegedAction;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -99,6 +101,7 @@ import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.SakerLog;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWriter;
+import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
@@ -125,7 +128,6 @@ import saker.build.util.config.ReferencePolicy;
 import saker.osnative.watcher.NativeWatcherService;
 import saker.osnative.watcher.RegisteringWatchService;
 import saker.osnative.watcher.WatchRegisterer;
-import testing.saker.api.TestMetric;
 import testing.saker.build.flag.TestFlag;
 
 /**
@@ -1970,6 +1972,166 @@ public final class LocalFileProvider implements SakerFileProvider, LocalFileProv
 		}
 	}
 
+	@ExcludeApi
+	@Override
+	public RMIBufferedFileOutput openRMIBufferedOutput(SakerPath path, OpenOption[] openoptions,
+			MultiByteArray writecontents) throws IOException {
+		Path ppath = toRealPath(path);
+
+		return openRMIBufferedOutputImpl(ppath, openoptions, writecontents);
+	}
+
+	@Override
+	public RMIBufferedFileOutput openRMIEnsureWriteBufferedOutput(SakerPath path, OpenOption[] openoptions,
+			int operationflags, MultiByteArray writecontents) throws IOException {
+		Path ppath = toRealPath(path);
+
+		ensureWriteRequestImpl(ppath, FileEntry.TYPE_FILE, operationflags);
+		return openRMIBufferedOutputImpl(ppath, openoptions, writecontents);
+	}
+
+	private static RMIBufferedFileOutput openRMIBufferedOutputImpl(Path path, OpenOption[] openoptions,
+			MultiByteArray writecontents) throws IOException {
+		ReferencedOutputStream outputimpl = openOutputImpl(path, openoptions);
+		try {
+			if (writecontents != null) {
+				for (ByteArrayRegion bar : writecontents.getArrays()) {
+					if (bar == null) {
+						continue;
+					}
+					bar.writeTo(outputimpl);
+				}
+			}
+			return new RMIBufferedFileOutput() {
+				@Override
+				public void write(MultiByteArray bytes) throws IOException {
+					if (bytes == null) {
+						return;
+					}
+					for (ByteArrayRegion bar : bytes.getArrays()) {
+						if (bar == null) {
+							continue;
+						}
+						bar.writeTo(outputimpl);
+					}
+				}
+
+				@Override
+				public void flush(ByteArrayRegion bytes) throws IOException {
+					if (bytes != null) {
+						bytes.writeTo(outputimpl);
+					}
+					outputimpl.flush();
+				}
+
+				@Override
+				public void close(ByteArrayRegion bytes) throws IOException {
+					if (bytes != null) {
+						bytes.writeTo(outputimpl);
+					}
+					outputimpl.close();
+				}
+			};
+		} catch (Throwable e) {
+			//in case of error, close the stream
+			IOUtils.addExc(e, IOUtils.closeExc(outputimpl));
+			throw e;
+		}
+	}
+
+	@ExcludeApi
+	@Override
+	public void touchRMIOpenOutput(SakerPath path, OpenOption[] openoptions, ByteArrayRegion bytes) throws IOException {
+		Path ppath = toRealPath(path);
+		touchRMIOpenOutputImpl(ppath, openoptions, bytes);
+	}
+
+	private static void touchRMIOpenOutputImpl(Path ppath, OpenOption[] openoptions, ByteArrayRegion bytes)
+			throws IOException {
+		try (ReferencedOutputStream outputimpl = openOutputImpl(ppath, openoptions)) {
+			if (bytes != null) {
+				bytes.writeTo(outputimpl);
+			}
+		}
+	}
+
+	@Override
+	public void touchRMIEnsureWriteOpenOutput(SakerPath path, OpenOption[] openoptions, int operationflags,
+			ByteArrayRegion bytes) throws IOException {
+		Path ppath = toRealPath(path);
+
+		ensureWriteRequestImpl(ppath, FileEntry.TYPE_FILE, operationflags);
+		touchRMIOpenOutputImpl(ppath, openoptions, bytes);
+	}
+
+	@Override
+	public RMIWriteToResult writeToRMIBuffered(SakerPath path, ByteSink out, OpenOption[] openoptions)
+			throws IOException {
+		Path ppath = toRealPath(path);
+		Set<OpenOption> optionsset;
+		if (openoptions == null) {
+			optionsset = Collections.emptySet();
+		} else {
+			optionsset = new HashSet<>(openoptions.length);
+			Collections.addAll(optionsset, openoptions);
+		}
+		try (FileChannel fc = localFileSystemProvider.newFileChannel(ppath, optionsset);
+				InputStream is = Channels.newInputStream(fc);
+				UnsyncByteArrayOutputStream baos = new UnsyncByteArrayOutputStream(
+						RMIBufferedFileOutputByteSink.DEFAULT_BUFFER_SIZE)) {
+			int read = baos.readFrom(is, RMIBufferedFileOutputByteSink.DEFAULT_BUFFER_SIZE);
+			if (read < RMIBufferedFileOutputByteSink.DEFAULT_BUFFER_SIZE) {
+				//file is shorter
+				if (RMIConnection.isRemoteObject(out)) {
+					return new RMIWriteToResult(baos.toByteArrayRegion());
+				}
+				out.write(baos.toByteArrayRegion());
+				return new RMIWriteToResult(read);
+			}
+			//file is longer than our default buffer size
+			//check the size of the file to see if we can do it in a single network call
+			long size = fc.size();
+			if (size <= read) {
+				//size is less that what we read? shouldn't happen, but check anyway.
+				//write the already read bytes and return
+				if (RMIConnection.isRemoteObject(out)) {
+					return new RMIWriteToResult(baos.toByteArrayRegion());
+				}
+				out.write(baos.toByteArrayRegion());
+				return new RMIWriteToResult(read);
+			}
+			if (size <= RMIBufferedFileOutputByteSink.DEFAULT_BUFFER_SIZE * 4) {
+				//read the whole thing in the buffer
+				baos.readFrom(is);
+				if (RMIConnection.isRemoteObject(out)) {
+					return new RMIWriteToResult(baos.toByteArrayRegion());
+				}
+				out.write(baos.toByteArrayRegion());
+				return new RMIWriteToResult(baos.size());
+			}
+			//perform multiple reads and writes
+			long result = read;
+			out.write(baos.toByteArrayRegion());
+			baos.reset();
+			while (true) {
+				read = baos.readFrom(is, RMIBufferedFileOutputByteSink.DEFAULT_BUFFER_SIZE);
+				if (read < RMIBufferedFileOutputByteSink.DEFAULT_BUFFER_SIZE) {
+					if (RMIConnection.isRemoteObject(out)) {
+						//the last read bytes should be written by the caller 
+						return new RMIWriteToResult(baos.toByteArrayRegion(), result);
+					}
+					result += read;
+					out.write(baos.toByteArrayRegion());
+					break;
+				}
+				result += read;
+				out.write(baos.toByteArrayRegion());
+				baos.reset();
+			}
+			return new RMIWriteToResult(result);
+		}
+	}
+
 	/**
 	 * @see #openInput(SakerPath, OpenOption...)
 	 */
@@ -2103,6 +2265,30 @@ public final class LocalFileProvider implements SakerFileProvider, LocalFileProv
 				throw new IllegalArgumentException("Invalid file type: " + filetype);
 			}
 		}
+	}
+
+	@Override
+	public ByteSink ensureWriteOpenOutput(SakerPath path, int operationflag, OpenOption... openoptions)
+			throws IOException, NullPointerException {
+		Path ppath = toRealPath(path);
+
+		return ensureWriteOpenOutputImpl(ppath, operationflag, openoptions);
+	}
+
+	/**
+	 * @see #ensureWriteOpenOutput(SakerPath, int, OpenOption...)
+	 */
+	public ByteSink ensureWriteOpenOutput(Path path, int operationflag, OpenOption... openoptions)
+			throws IOException, NullPointerException {
+		path = requireLocalAbsolutePath(path);
+
+		return ensureWriteOpenOutputImpl(path, operationflag, openoptions);
+	}
+
+	private static ByteSink ensureWriteOpenOutputImpl(Path path, int operationflag, OpenOption[] openoptions)
+			throws IOException, NullPointerException {
+		ensureWriteRequestImpl(path, FileEntry.TYPE_FILE, operationflag);
+		return openOutputImpl(path, openoptions);
 	}
 
 	/**
@@ -2630,7 +2816,7 @@ public final class LocalFileProvider implements SakerFileProvider, LocalFileProv
 		return openInputStreamImpl(path, openoptions);
 	}
 
-	private static ByteSink openOutputImpl(Path path, OpenOption[] openoptions) throws IOException {
+	private static ReferencedOutputStream openOutputImpl(Path path, OpenOption[] openoptions) throws IOException {
 		return openOutputStreamImpl(path, openoptions);
 	}
 
@@ -2767,6 +2953,8 @@ public final class LocalFileProvider implements SakerFileProvider, LocalFileProv
 	//    and is slower when a security manager is installed
 
 	protected static class LocalFilesRMIWrapper extends ForwardingSakerFileProvider implements RMIWrapper {
+		private FileProviderKey fileProviderKey;
+
 		public LocalFilesRMIWrapper() {
 			super(null);
 		}
@@ -2776,19 +2964,43 @@ public final class LocalFileProvider implements SakerFileProvider, LocalFileProv
 		}
 
 		@Override
+		public FileProviderKey getProviderKey() {
+			return fileProviderKey;
+		}
+
+		@Override
+		public SakerFileProvider getWrappedProvider() {
+			// Local file providers don't have wrapped providers
+			return null;
+		}
+
+		@Override
+		public SakerPath resolveWrappedPath(SakerPath path)
+				throws UnsupportedOperationException, IllegalArgumentException {
+			// Local file providers don't have wrapped providers
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
 		public void writeWrapped(RMIObjectOutput out) throws IOException {
 			out.writeRemoteObject(subject);
+			out.writeSerializedObject(subject.getProviderKey());
 		}
 
 		@Override
 		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
-			SakerFileProvider remotefp = (SakerFileProvider) in.readObject();
-			if (getProviderKeyStatic().equals(remotefp.getProviderKey())) {
+			SakerFileProvider fp = (SakerFileProvider) in.readObject();
+			FileProviderKey fpk = (FileProviderKey) in.readObject();
+			if (getProviderKeyStatic().equals(fpk)) {
 				this.subject = LocalFileProvider.getInstance();
+
+				if (TestFlag.ENABLED && TestFlag.metric().isForcedRMILocalFileProvider()) {
+					this.subject = fp;
+				}
 			} else {
-				//TODO we can employ caching on the remote file provider
-				this.subject = remotefp;
+				this.subject = fp;
 			}
+			this.fileProviderKey = fpk;
 		}
 
 		@Override
@@ -2796,6 +3008,40 @@ public final class LocalFileProvider implements SakerFileProvider, LocalFileProv
 			OpenedRMIBufferedFileInput openedinput = ((LocalFileProviderInternalRMIAccess) subject)
 					.openRMIBufferedInput(path, openoptions);
 			return new RMIBufferedFileInputByteSource(openedinput);
+		}
+
+		@Override
+		public ByteSink openOutput(SakerPath path, OpenOption... openoptions) throws IOException {
+			return new RMIBufferedFileOutputByteSink((LocalFileProviderInternalRMIAccess) subject, path, openoptions);
+		}
+
+		@Override
+		public long writeTo(SakerPath path, ByteSink out, OpenOption... openoptions) throws IOException {
+			RMIWriteToResult writetores = ((LocalFileProviderInternalRMIAccess) subject).writeToRMIBuffered(path, out,
+					openoptions);
+			long result = writetores.getWrittenByteCount();
+			ByteArrayRegion fc = writetores.getFileContents();
+			if (fc != null) {
+				out.write(fc);
+				result += fc.getLength();
+			}
+			return result;
+		}
+
+		@Override
+		public ByteSink ensureWriteOpenOutput(SakerPath path, int operationflag, OpenOption... openoptions)
+				throws IOException, NullPointerException {
+			return new RMIBufferedFileOutputByteSink((LocalFileProviderInternalRMIAccess) subject, path, openoptions) {
+				@Override
+				protected RMIBufferedFileOutput openOutputWithContents(MultiByteArray contents) throws IOException {
+					return fp.openRMIEnsureWriteBufferedOutput(this.path, this.openOptions, operationflag, contents);
+				}
+
+				@Override
+				protected void touchOutputWithContents(ByteArrayRegion contents) throws IOException {
+					fp.touchRMIEnsureWriteOpenOutput(this.path, this.openOptions, operationflag, contents);
+				}
+			};
 		}
 
 		@Override
@@ -2818,8 +3064,166 @@ public final class LocalFileProvider implements SakerFileProvider, LocalFileProv
 		}
 	}
 
+	private static class RMIBufferedFileOutputByteSink implements ByteSink {
+		public static final int DEFAULT_BUFFER_SIZE = 16 * 1024;
+
+		protected LocalFileProviderInternalRMIAccess fp;
+		protected SakerPath path;
+		protected OpenOption[] openOptions;
+
+		private RMIBufferedFileOutput output;
+		private UnsyncByteArrayOutputStream buffer;
+
+		public RMIBufferedFileOutputByteSink(LocalFileProviderInternalRMIAccess fp, SakerPath path,
+				OpenOption[] openoptions) {
+			if (openoptions == null) {
+				openoptions = EMPTY_OPEN_OPTIONS;
+			} else {
+				openoptions = openoptions.clone();
+			}
+			this.fp = fp;
+			this.path = path;
+			this.openOptions = openoptions;
+		}
+
+		@Override
+		public void write(ByteArrayRegion buf) throws IOException, NullPointerException {
+			int buflen = buf.getLength();
+			if (buflen <= 0) {
+				return;
+			}
+			if (fp == null && output == null) {
+				throw new IOException("Not open.");
+			}
+
+			int csize = buffer == null ? 0 : buffer.size();
+			int totalbytes = csize + buflen;
+			if (totalbytes <= DEFAULT_BUFFER_SIZE) {
+				if (buffer == null) {
+					buffer = new UnsyncByteArrayOutputStream(DEFAULT_BUFFER_SIZE);
+				}
+				buffer.write(buf);
+				return;
+			}
+			//more than buffer size amount of bytes need to be written
+			MultiByteArray contents = new MultiByteArray(getBufferBytesClear(), buf);
+			if (fp != null) {
+				try {
+					output = openOutputWithContents(contents);
+				} finally {
+					fp = null;
+					path = null;
+					openOptions = null;
+				}
+			} else {
+				output.write(contents);
+			}
+		}
+
+		@Override
+		public void write(int b) throws IOException {
+			// TODO Auto-generated method stub
+			ByteSink.super.write(b);
+		}
+
+		@Override
+		public long readFrom(ByteSource in) throws IOException, NullPointerException {
+			Objects.requireNonNull(in, "in");
+			if (fp == null && output == null) {
+				throw new IOException("Not open.");
+			}
+			if (buffer == null) {
+				buffer = new UnsyncByteArrayOutputStream(DEFAULT_BUFFER_SIZE);
+			}
+
+			long c = 0;
+			while (true) {
+				int toread = DEFAULT_BUFFER_SIZE - buffer.size();
+				//if toread == 0, then readFrom is no-op
+				int read = buffer.readFrom(in, toread);
+				c += read;
+				if (read < toread) {
+					//no more bytes in the input, break the loop
+					break;
+				}
+				//the input was fully read. write it to the output
+				MultiByteArray contents = new MultiByteArray(getBufferBytesClear());
+				if (fp != null) {
+					try {
+						output = openOutputWithContents(contents);
+					} finally {
+						fp = null;
+						path = null;
+						openOptions = null;
+					}
+				} else {
+					output.write(contents);
+				}
+			}
+			return c;
+		}
+
+		@Override
+		public void flush() throws IOException {
+			if (fp != null) {
+				try {
+					ByteArrayRegion bytes = getBufferBytesClear();
+					output = openOutputWithContents(bytes == null ? null : new MultiByteArray(bytes));
+				} finally {
+					fp = null;
+					path = null;
+					openOptions = null;
+				}
+			} else {
+				if (output == null) {
+					throw new IOException("Not open.");
+				}
+				ByteArrayRegion bytes = getBufferBytesClear();
+				output.flush(bytes);
+			}
+		}
+
+		@Override
+		public void close() throws IOException {
+			if (fp != null) {
+				try {
+					touchOutputWithContents(getBufferBytesClear());
+				} finally {
+					fp = null;
+					path = null;
+					openOptions = null;
+				}
+			} else {
+				if (output == null) {
+					//multiple closing, no-op
+					return;
+				}
+				output.close(getBufferBytesClear());
+				output = null;
+			}
+		}
+
+		protected void touchOutputWithContents(ByteArrayRegion contents) throws IOException {
+			fp.touchRMIOpenOutput(path, openOptions, contents);
+		}
+
+		protected RMIBufferedFileOutput openOutputWithContents(MultiByteArray contents) throws IOException {
+			return fp.openRMIBufferedOutput(path, openOptions, contents);
+		}
+
+		private ByteArrayRegion getBufferBytesClear() {
+			if (buffer == null) {
+				return null;
+			}
+			ByteArrayRegion bytes = buffer.toByteArrayRegion();
+			buffer.reset();
+			return bytes;
+		}
+	}
+
+	//XXX should extend InputStream as well
 	private static final class RMIBufferedFileInputByteSource implements ByteSource {
-		public static final int DEFAULT_BUFFER_SIZE = 8 * 1024;
+		public static final int DEFAULT_BUFFER_SIZE = 16 * 1024;
 
 		private final RMIBufferedFileInput in;
 		private ByteArrayRegion buffer;
@@ -2860,7 +3264,7 @@ public final class LocalFileProvider implements SakerFileProvider, LocalFileProv
 			int buflen = buffer.getLength();
 			RMIBufferedReadResult readresult = in.read(Math.max(buflen, DEFAULT_BUFFER_SIZE));
 			thisbuf = readresult.getBytes();
-			if (thisbuf.isEmpty()) {
+			if (thisbuf != null && thisbuf.isEmpty()) {
 				thisbuf = null;
 			}
 			this.buffer = thisbuf;
@@ -2883,8 +3287,26 @@ public final class LocalFileProvider implements SakerFileProvider, LocalFileProv
 
 		@Override
 		public long writeTo(ByteSink out) throws IOException, NullPointerException {
-			// TODO Auto-generated method stub
-			return ByteSource.super.writeTo(out);
+			long c = 0;
+			while (true) {
+				ByteArrayRegion thisbuf = this.buffer;
+				if (thisbuf != null) {
+					out.write(thisbuf);
+					c += thisbuf.getLength();
+					this.buffer = null;
+				}
+				if (closed) {
+					break;
+				}
+				RMIBufferedReadResult readresult = in.read(DEFAULT_BUFFER_SIZE);
+				thisbuf = readresult.getBytes();
+				if (thisbuf != null && thisbuf.isEmpty()) {
+					thisbuf = null;
+				}
+				this.buffer = thisbuf;
+				this.closed = readresult.isClosed();
+			}
+			return c;
 		}
 
 		@Override

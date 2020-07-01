@@ -524,20 +524,24 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 	@Override
 	public void taskUpToDate(TaskExecutionResult<?> prevexecresult, TaskInvocationConfiguration capabilities) {
-		TaskBuildTraceImpl trace = getTaskTraceForTaskId(prevexecresult.getTaskIdentifier());
-		trace.upToDate(prevexecresult, capabilities);
+		noException(() -> {
+			TaskBuildTraceImpl trace = getTaskTraceForTaskId(prevexecresult.getTaskIdentifier());
+			trace.upToDate(prevexecresult, capabilities);
+		});
 	}
 
 	@Override
 	public void upToDateTaskStandardOutput(TaskExecutionResult<?> prevexecresult, UnsyncByteArrayOutputStream baos) {
-		TaskBuildTraceImpl trace = getTaskTraceForTaskId(prevexecresult.getTaskIdentifier());
-		TaskBuildTraceInfo traceinfo = trace.traceInfo;
-		if (traceinfo == null) {
-			traceinfo = new TaskBuildTraceInfo();
-			trace.traceInfo = traceinfo;
-		}
-		traceinfo.standardOutBytes = baos == null ? ByteArrayRegion.EMPTY : baos.toByteArrayRegion();
-		traceinfo.standardErrBytes = ByteArrayRegion.EMPTY;
+		noException(() -> {
+			TaskBuildTraceImpl trace = getTaskTraceForTaskId(prevexecresult.getTaskIdentifier());
+			TaskBuildTraceInfo traceinfo = trace.traceInfo;
+			if (traceinfo == null) {
+				traceinfo = new TaskBuildTraceInfo();
+				trace.traceInfo = traceinfo;
+			}
+			traceinfo.standardOutBytes = baos == null ? ByteArrayRegion.EMPTY : baos.toByteArrayRegion();
+			traceinfo.standardErrBytes = ByteArrayRegion.EMPTY;
+		});
 	}
 
 	@Override
@@ -555,38 +559,45 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 	@Override
 	public void startBuild(SakerEnvironmentImpl environment, ExecutionContextImpl executioncontext) {
-		baseReferenceThreadLocal.set(baseReference);
+		noException(() -> {
+			baseReferenceThreadLocal.set(baseReference);
 
-		this.startNanos = System.nanoTime();
-		this.buildTimeDateMillis = executioncontext.getBuildTimeMillis();
+			this.startNanos = System.nanoTime();
+			this.buildTimeDateMillis = executioncontext.getBuildTimeMillis();
 
-		EnvironmentInformation localenvinfo = new EnvironmentInformation(environment);
-		this.localEnvironmentReference = environmentInformations.computeIfAbsent(localenvinfo.buildEnvironmentUUID,
-				x -> new EnvironmentReference());
-		this.localEnvironmentReference.environmentInfo = localenvinfo;
+			EnvironmentInformation localenvinfo = new EnvironmentInformation(environment);
+			this.localEnvironmentReference = environmentInformations.computeIfAbsent(localenvinfo.buildEnvironmentUUID,
+					x -> new EnvironmentReference());
+			this.localEnvironmentReference.environmentInfo = localenvinfo;
 
-		BuildInformation buildinfo = executioncontext.getExecutionParameters().getBuildInfo();
-		this.buildInformation = buildinfo;
+			BuildInformation buildinfo = executioncontext.getExecutionParameters().getBuildInfo();
+			this.buildInformation = buildinfo;
+		});
 	}
 
 	@Override
 	public void startBuildCluster(EnvironmentInformation envinfo, long nanos) {
-		environmentInformations.computeIfAbsent(envinfo.buildEnvironmentUUID,
-				x -> new EnvironmentReference()).environmentInfo = envinfo;
-		clusterInitializationTimeNanos.put(envinfo.buildEnvironmentUUID, nanos);
+		noException(() -> {
+			environmentInformations.computeIfAbsent(envinfo.buildEnvironmentUUID,
+					x -> new EnvironmentReference()).environmentInfo = envinfo;
+			clusterInitializationTimeNanos.put(envinfo.buildEnvironmentUUID, nanos);
+		});
 	}
 
 	@Override
 	public void initializeDone(ExecutionContextImpl executioncontext) {
-		this.executionUserParameters = executioncontext.getUserParameters();
-		this.workingDirectoryPath = executioncontext.getWorkingDirectoryPath();
-		this.mirrorDirectoryPath = SakerPath.valueOf(executioncontext.getMirrorDirectory());
-		this.buildDirectoryPath = executioncontext.getBuildDirectoryPath();
-		this.pathConfiguration = executioncontext.getPathConfiguration();
-		this.scriptConfiguration = executioncontext.getScriptConfiguration();
-		this.repositoryConfiguration = executioncontext.getRepositoryConfiguration();
-		this.databaseConfiguration = executioncontext.getDatabaseConfiguretion();
-		this.ideConfigurationRequired = executioncontext.isIDEConfigurationRequired();
+		noException(() -> {
+			Path mirrordir = executioncontext.getMirrorDirectory();
+			this.executionUserParameters = executioncontext.getUserParameters();
+			this.workingDirectoryPath = executioncontext.getWorkingDirectoryPath();
+			this.mirrorDirectoryPath = mirrordir == null ? null : SakerPath.valueOf(mirrordir);
+			this.buildDirectoryPath = executioncontext.getBuildDirectoryPath();
+			this.pathConfiguration = executioncontext.getPathConfiguration();
+			this.scriptConfiguration = executioncontext.getScriptConfiguration();
+			this.repositoryConfiguration = executioncontext.getRepositoryConfiguration();
+			this.databaseConfiguration = executioncontext.getDatabaseConfiguretion();
+			this.ideConfigurationRequired = executioncontext.isIDEConfigurationRequired();
+		});
 	}
 
 	@Override
@@ -1707,13 +1718,15 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		public void init(TaskFactory<?> taskfactory, TaskDirectoryPathContext taskDirectoryContext,
 				TaskInvocationConfiguration capabilityConfig) {
-			this.taskClassName = taskfactory.getClass().getName();
+			noException(() -> {
+				this.taskClassName = taskfactory.getClass().getName();
 
-			this.traceInfo = new TaskBuildTraceInfo();
-			this.traceInfo.setCapabilityConfig(capabilityConfig);
+				this.traceInfo = new TaskBuildTraceInfo();
+				this.traceInfo.setCapabilityConfig(capabilityConfig);
 
-			this.workingDirectory = taskDirectoryContext.getTaskWorkingDirectoryPath();
-			this.buildDirectory = taskDirectoryContext.getTaskBuildDirectoryPath();
+				this.workingDirectory = taskDirectoryContext.getTaskWorkingDirectoryPath();
+				this.buildDirectory = taskDirectoryContext.getTaskBuildDirectoryPath();
+			});
 		}
 
 		public void ignoredException(ExceptionView e) {

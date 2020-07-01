@@ -26,6 +26,7 @@ import saker.build.file.provider.SakerPathFiles;
 import saker.build.task.TaskExecutionUtilities;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapSerializeKeyRemoteValueWrapper;
+import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapWrapper;
 
 /**
  * Interface for directory file representation in the build system.
@@ -338,6 +339,10 @@ public interface SakerDirectory extends SakerFile {
 	@RMIWrap(RMITreeMapSerializeKeyRemoteValueWrapper.class)
 	public NavigableMap<SakerPath, SakerFile> getFilesRecursiveByPath(SakerPath basepath,
 			DirectoryVisitPredicate filepredicate) throws NullPointerException;
+
+	@RMIWrap(RMITreeMapWrapper.class)
+	public NavigableMap<String, ? extends SakerFileContentInformationHolder> getChildrenContentInformation(
+			DirectoryVisitPredicate childpredicate);
 
 	/**
 	 * {@inheritDoc}

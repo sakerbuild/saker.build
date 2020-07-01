@@ -75,6 +75,7 @@ import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
 import saker.build.util.cache.CacheKey;
+import saker.build.util.rmi.SakerRMIHelper;
 
 public class LocalDaemonEnvironment implements DaemonEnvironment {
 	//TODO implement auto shutdown
@@ -262,8 +263,9 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 							int protocolversion) {
 						RMIOptions options;
 						if (connectionBaseRMIOptions == null) {
-							options = new RMIOptions().classResolver(new ClassLoaderResolverRegistry(
-									RemoteDaemonConnection.createConnectionBaseClassLoaderResolver()));
+							options = SakerRMIHelper.createBaseRMIOptions()
+									.classResolver(new ClassLoaderResolverRegistry(
+											RemoteDaemonConnection.createConnectionBaseClassLoaderResolver()));
 						} else {
 							options = connectionBaseRMIOptions;
 						}
@@ -272,6 +274,12 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 					@Override
 					protected void setupConnection(Socket acceptedsocket, RMIConnection connection) throws IOException {
+						connection.addCloseListener(new RMIConnection.CloseListener() {
+							@Override
+							public void onConnectionClosed() {
+								SakerRMIHelper.dumpRMIStatistics(connection);
+							}
+						});
 						connection.putContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_ENVIRONMENT_INSTANCE,
 								LocalDaemonEnvironment.this);
 						if (actsascluster) {
@@ -494,9 +502,11 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 									.getClassLoaderResolver();
 							clientserver.addClientClusterTaskInvokerFactory(new LocalDaemonClusterInvokerFactory(
 									connectionclresolver, constructLaunchParameters.getClusterMirrorDirectory()));
-							rmiconn.addErrorListener(new IOErrorListener() {
+							final RMIConnection frmiconn = rmiconn;
+							rmiconn.addCloseListener(new RMIConnection.CloseListener() {
 								@Override
-								public void onIOError(Throwable exc) {
+								public void onConnectionClosed() {
+									SakerRMIHelper.dumpRMIStatistics(frmiconn);
 									if (state != STATE_STARTED) {
 										return;
 									}
@@ -555,13 +565,13 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 			RemoteDaemonConnectionImpl.TaskInvokerFactoryImpl invokerimpl = new RemoteDaemonConnectionImpl.TaskInvokerFactoryImpl(
 					(ClassLoaderResolverRegistry) connection.getClassLoaderResolver(), factory);
 			WeakReference<TaskInvokerFactory> weakref = new WeakReference<>(invokerimpl);
-			connection.addErrorListener(new RMIConnection.IOErrorListener() {
+			connection.addCloseListener(new RMIConnection.CloseListener() {
 				//reference to keep the proxy alive until the connection is present
 				@SuppressWarnings("unused")
 				private TaskInvokerFactory strongFactoryRef = invokerimpl;
 
 				@Override
-				public void onIOError(Throwable exc) {
+				public void onConnectionClosed() {
 					System.out.println("Cluster client disconnected: " + id);
 					clientClusterTaskInvokers.remove(weakref);
 				}

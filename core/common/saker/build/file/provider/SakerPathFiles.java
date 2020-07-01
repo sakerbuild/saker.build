@@ -40,6 +40,7 @@ import saker.build.file.DirectoryVisitPredicate;
 import saker.build.file.FileHandle;
 import saker.build.file.SakerDirectory;
 import saker.build.file.SakerFile;
+import saker.build.file.SakerFileContentInformationHolder;
 import saker.build.file.SynchronizingContentUpdater;
 import saker.build.file.content.ContentDatabase;
 import saker.build.file.content.ContentDatabase.DeferredSynchronizer;
@@ -55,6 +56,7 @@ import saker.build.task.TaskContextReference;
 import saker.build.task.TaskDirectoryContext;
 import saker.build.task.TaskDirectoryPathContext;
 import saker.build.task.TaskExecutionUtilities;
+import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -1804,7 +1806,12 @@ public class SakerPathFiles {
 			synchpredicate = DirectoryVisitPredicate.everything();
 		}
 
-		try (ThreadWorkPool pool = ThreadUtils.newFixedWorkPool("fsync-")) {
+		//if the directory is remote to the current build environment, then use a higher number of threads
+		//as the network communication needs to be taken into account as well.
+		//XXX maybe this can be improved with virtual threads?
+		try (ThreadWorkPool pool = RMIConnection.isRemoteObject(dir)
+				? ThreadUtils.newFixedWorkPool(ThreadUtils.getDefaultThreadFactor() * 4, "fsync-")
+				: ThreadUtils.newFixedWorkPool("fsync-")) {
 			synchronizeDirectoryImpl(dir, pathkey, synchpredicate, pool, db);
 		} catch (ParallelExecutionFailedException e) {
 			throw new IOException("Synchronization failed: " + pathkey.getPath(), e);
@@ -1814,12 +1821,21 @@ public class SakerPathFiles {
 	private static void synchronizeFileImpl(SakerFile file, ProviderHolderPathKey pathkey, ContentDatabase db)
 			throws IOException {
 		ContentDescriptor thiscontent = file.getContentDescriptor();
+		synchronizeFileImpl(file, pathkey, db, thiscontent);
+	}
+
+	private static void synchronizeFileImpl(SakerFile file, ProviderHolderPathKey pathkey, ContentDatabase db,
+			ContentDescriptor thiscontent) throws IOException {
 		db.synchronize(pathkey, thiscontent, new SynchronizingContentUpdater(file, pathkey));
 	}
 
 	private static DeferredSynchronizer synchronizeFileDeferredImpl(SakerFile file, ProviderHolderPathKey pathkey,
 			ContentDatabase db) {
-		ContentDescriptor thiscontent = file.getContentDescriptor();
+		return synchronizeFileDeferredImpl(file, pathkey, db, file.getContentDescriptor());
+	}
+
+	private static DeferredSynchronizer synchronizeFileDeferredImpl(SakerFile file, ProviderHolderPathKey pathkey,
+			ContentDatabase db, ContentDescriptor thiscontent) {
 		return db.synchronizeDeferred(pathkey, thiscontent, new SynchronizingContentUpdater(file, pathkey));
 	}
 
@@ -1832,26 +1848,27 @@ public class SakerPathFiles {
 		SakerPath dirpath = pathkey.getPath();
 		db.syncronizeDirectory(pathkey, () -> {
 			//get a snapshot of the files
-			NavigableMap<String, ? extends SakerFile> thistrackedfiles = dir.getChildren();
+			NavigableMap<String, ? extends SakerFileContentInformationHolder> thistrackedfiles = dir
+					.getChildrenContentInformation(synchpredicate);
 
-			Set<String> keepuntrackedchildren = synchpredicate.getSynchronizeFilesToKeep();
-			if (keepuntrackedchildren != null) {
+			Set<String> keepuntrackedchildrennames = synchpredicate.getSynchronizeFilesToKeep();
+			if (keepuntrackedchildrennames != null) {
 				if (thistrackedfiles.isEmpty()) {
 					//clear the directory as we contain no files
-					db.deleteChildrenIfNotIn(pathkey, keepuntrackedchildren);
+					db.deleteChildrenIfNotIn(pathkey, keepuntrackedchildrennames);
 					return;
 				}
-				NavigableSet<String> presentchildren;
-				if (!keepuntrackedchildren.isEmpty()) {
-					presentchildren = new TreeSet<>(thistrackedfiles.navigableKeySet());
-					presentchildren.addAll(keepuntrackedchildren);
+				NavigableSet<String> presentchildrennames;
+				if (!keepuntrackedchildrennames.isEmpty()) {
+					presentchildrennames = new TreeSet<>(thistrackedfiles.navigableKeySet());
+					presentchildrennames.addAll(keepuntrackedchildrennames);
 				} else {
-					presentchildren = thistrackedfiles.navigableKeySet();
+					presentchildrennames = thistrackedfiles.navigableKeySet();
 				}
 
 				pool.offer(() -> {
 					//delete the files that we don't contain
-					db.deleteChildrenIfNotIn(pathkey, presentchildren);
+					db.deleteChildrenIfNotIn(pathkey, presentchildrennames);
 				});
 			} else {
 				if (thistrackedfiles.isEmpty()) {
@@ -1859,8 +1876,11 @@ public class SakerPathFiles {
 					return;
 				}
 			}
-			for (SakerFile file : thistrackedfiles.values()) {
-				String filename = file.getName();
+			for (Entry<String, ? extends SakerFileContentInformationHolder> entry : thistrackedfiles.entrySet()) {
+				String filename = entry.getKey();
+				SakerFileContentInformationHolder fileinfo = entry.getValue();
+				SakerFile file = fileinfo.getFile();
+
 				if (file instanceof SakerDirectory) {
 					SakerDirectory subdir = (SakerDirectory) file;
 					DirectoryVisitPredicate dirsyncher = synchpredicate.directoryVisitor(filename, subdir);
@@ -1877,12 +1897,14 @@ public class SakerPathFiles {
 					}
 					pool.offer(() -> synchronizeDirectoryImpl(subdir, filepathkey, dirsyncher, pool, db));
 				} else {
-					if (!synchpredicate.visitFile(filename, file)) {
+					ContentDescriptor cd = fileinfo.getContentDescriptor();
+					if (cd == null) {
+						//if the content descriptor is null, then visitFile returned false and we're not interested in it
 						continue;
 					}
 					ProviderHolderPathKey filepathkey = new SimpleProviderHolderPathKey(pathkey,
 							dirpath.resolve(filename));
-					DeferredSynchronizer defsync = synchronizeFileDeferredImpl(file, filepathkey, db);
+					DeferredSynchronizer defsync = synchronizeFileDeferredImpl(file, filepathkey, db, cd);
 					if (defsync != null) {
 						pool.offer(defsync::update);
 					}

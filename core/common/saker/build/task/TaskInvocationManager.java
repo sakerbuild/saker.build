@@ -24,6 +24,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +62,8 @@ import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.thirdparty.saker.util.ArrayUtils;
+import saker.build.thirdparty.saker.util.ConcurrentAppendAccumulator;
+import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
@@ -83,7 +86,17 @@ public class TaskInvocationManager implements Closeable {
 				"interrupt");
 
 		@RMISerialize
+		@Deprecated
 		public InnerTaskResultHolder<R> getResultIfPresent() throws InterruptedException;
+
+		@RMIWrap(MultiInnerTaskResultHolderRMIWrapper.class)
+		public default Iterable<? extends InnerTaskResultHolder<R>> getResultsIfAny() throws InterruptedException {
+			InnerTaskResultHolder<R> r = getResultIfPresent();
+			if (r != null) {
+				return Collections.singleton(r);
+			}
+			return null;
+		}
 
 		public void waitFinish() throws InterruptedException;
 
@@ -93,6 +106,11 @@ public class TaskInvocationManager implements Closeable {
 	}
 
 	public interface InnerTaskInvocationListener {
+		public static final Method METHOD_NOTIFYRESULTREADY = ReflectUtils
+				.getMethodAssert(InnerTaskInvocationListener.class, "notifyResultReady", boolean.class);
+		public static final Method METHOD_NOTIFYNOMORERESULTS = ReflectUtils
+				.getMethodAssert(InnerTaskInvocationListener.class, "notifyNoMoreResults");
+
 		public void notifyResultReady(boolean lastresult);
 
 		public void notifyNoMoreResults();
@@ -1086,14 +1104,12 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		public void notifyResultReady(boolean lastresult) {
-			//XXX async?
-			event.notifyResultReady(lastresult);
+			callRMIAsyncAssert(event, METHOD_NOTIFYRESULTREADY, lastresult);
 		}
 
 		@Override
 		public void notifyNoMoreResults() {
-			//XXX async?
-			event.notifyNoMoreResults();
+			callRMIAsyncAssert(event, METHOD_NOTIFYNOMORERESULTS);
 		}
 
 		@Override
@@ -1172,6 +1188,8 @@ public class TaskInvocationManager implements Closeable {
 		private volatile InnerTaskInvocationHandle<R> handle;
 
 		private final Object responseLock = new Object();
+
+		private final ConcurrentPrependAccumulator<InnerTaskResultHolder<R>> presentResults = new ConcurrentPrependAccumulator<>();
 
 		public InnerClusterExecutionEventImpl(TaskInvocationContext invocationContext,
 				InnerTaskExecutionRequestImpl<R> request, ListenerInnerTaskInvocationHandler<R> invocationListener) {
@@ -1285,7 +1303,38 @@ public class TaskInvocationManager implements Closeable {
 				//this is an error
 				return null;
 			}
-			return h.getResultIfPresent();
+			InnerTaskResultHolder<R> present = presentResults.take();
+			if (present != null) {
+				return present;
+			}
+			Iterable<? extends InnerTaskResultHolder<R>> results = h.getResultsIfAny();
+			if (results == null) {
+				return null;
+			}
+			Iterator<? extends InnerTaskResultHolder<R>> it = results.iterator();
+			if (!it.hasNext()) {
+				return null;
+			}
+			InnerTaskResultHolder<R> methodresult = it.next();
+			it.forEachRemaining(presentResults::add);
+			return methodresult;
+		}
+
+		@Override
+		public Iterable<? extends InnerTaskResultHolder<R>> getResultsIfAny() throws InterruptedException {
+			//wait the cluster response, to have the handle set
+			waitForClusterResponse();
+			InnerTaskInvocationHandle<R> h = handle;
+			if (h == null) {
+				//TODO this shouldnt happen, handle as error
+				//the listener was notified about a new result, however the handle failed to set to this event
+				//this is an error
+				return null;
+			}
+			if (!presentResults.isEmpty()) {
+				return presentResults.clearAndIterable();
+			}
+			return h.getResultsIfAny();
 		}
 
 		@Override
@@ -1350,7 +1399,7 @@ public class TaskInvocationManager implements Closeable {
 		}
 	}
 
-	private static void callRMIAsyncAssert(Object obj, Method m, Object... args) {
+	protected static void callRMIAsyncAssert(Object obj, Method m, Object... args) {
 		try {
 			RMIVariables.invokeRemoteMethodAsyncOrLocal(obj, m, args);
 		} catch (InvocationTargetException | IllegalAccessException | IllegalArgumentException e) {
@@ -2015,5 +2064,59 @@ public class TaskInvocationManager implements Closeable {
 		public TaskResultReadyCountState getReadyState() {
 			return readyState;
 		}
+	}
+
+	//TODO this RMIWrapper should be tested for robustness if a result cannot be serialized
+	public static class MultiInnerTaskResultHolderRMIWrapper implements RMIWrapper {
+
+		private Iterable<?> results;
+
+		public MultiInnerTaskResultHolderRMIWrapper() {
+		}
+
+		public MultiInnerTaskResultHolderRMIWrapper(Iterable<?> results) {
+			this.results = results;
+		}
+
+		@Override
+		public void writeWrapped(RMIObjectOutput out) throws IOException {
+			Iterator<?> it = results.iterator();
+			while (it.hasNext()) {
+				Object val = it.next();
+				out.writeSerializedObject(val);
+			}
+			out.writeObject(null);
+		}
+
+		@Override
+		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
+			List<Object> results = new ArrayList<>();
+			while (true) {
+				Object obj;
+				try {
+					obj = in.readObject();
+				} catch (Exception e) {
+					// failed to read or something
+					results.add(new FailedInnerTaskOptionalResult<>("Failed to read inner task result.", e));
+					continue;
+				}
+				if (obj == null) {
+					break;
+				}
+				results.add(obj);
+			}
+			this.results = results;
+		}
+
+		@Override
+		public Object resolveWrapped() {
+			return results;
+		}
+
+		@Override
+		public Object getWrappedObject() {
+			throw new UnsupportedOperationException();
+		}
+
 	}
 }

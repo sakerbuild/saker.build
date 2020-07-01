@@ -31,6 +31,7 @@ import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
+import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.RemoteIOException;
 import saker.build.thirdparty.saker.util.rmi.writer.EnumArrayRMIObjectWriteHandler;
 
@@ -40,9 +41,137 @@ public interface LocalFileProviderInternalRMIAccess {
 	public OpenedRMIBufferedFileInput openRMIBufferedInput(SakerPath path,
 			@RMIWriter(EnumArrayRMIObjectWriteHandler.class) OpenOption... openoptions) throws IOException;
 
+	@RMIExceptionRethrow(RemoteIOException.class)
+	public RMIBufferedFileOutput openRMIBufferedOutput(SakerPath path,
+			@RMIWriter(EnumArrayRMIObjectWriteHandler.class) OpenOption[] openoptions, MultiByteArray writecontents)
+			throws IOException;
+
+	@RMIExceptionRethrow(RemoteIOException.class)
+	public RMIBufferedFileOutput openRMIEnsureWriteBufferedOutput(SakerPath path,
+			@RMIWriter(EnumArrayRMIObjectWriteHandler.class) OpenOption[] openoptions, int operationflags,
+			MultiByteArray writecontents) throws IOException;
+
+	@RMIExceptionRethrow(RemoteIOException.class)
+	public void touchRMIOpenOutput(SakerPath path,
+			@RMIWriter(EnumArrayRMIObjectWriteHandler.class) OpenOption[] openoptions, ByteArrayRegion bytes)
+			throws IOException;
+
+	@RMIExceptionRethrow(RemoteIOException.class)
+	public void touchRMIEnsureWriteOpenOutput(SakerPath path,
+			@RMIWriter(EnumArrayRMIObjectWriteHandler.class) OpenOption[] openoptions, int operationflags,
+			ByteArrayRegion bytes) throws IOException;
+
+	@RMIExceptionRethrow(RemoteIOException.class)
+	public RMIWriteToResult writeToRMIBuffered(SakerPath path, ByteSink out, OpenOption[] openoptions)
+			throws IOException;
+
 	public interface RMIBufferedFileInput extends Closeable {
 		@RMIExceptionRethrow(RemoteIOException.class)
 		public RMIBufferedReadResult read(int counthint) throws IOException;
+	}
+
+	public interface RMIBufferedFileOutput {
+		@RMIExceptionRethrow(RemoteIOException.class)
+		public void write(MultiByteArray bytes) throws IOException;
+
+		@RMIExceptionRethrow(RemoteIOException.class)
+		public void flush(ByteArrayRegion bytes) throws IOException;
+
+		@RMIExceptionRethrow(RemoteIOException.class)
+		public void close(ByteArrayRegion bytes) throws IOException;
+	}
+
+	public static class MultiByteArray implements Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		private ByteArrayRegion[] arrays;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public MultiByteArray() {
+		}
+
+		public MultiByteArray(ByteArrayRegion... arrays) {
+			this.arrays = arrays;
+		}
+
+		public ByteArrayRegion[] getArrays() {
+			return arrays;
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			int len = 0;
+			for (int i = 0; i < arrays.length; i++) {
+				ByteArrayRegion bar = arrays[i];
+				if (bar == null) {
+					continue;
+				}
+				len += bar.getLength();
+			}
+			out.writeInt(len);
+			for (int i = 0; i < arrays.length; i++) {
+				ByteArrayRegion bar = arrays[i];
+				if (bar == null) {
+					continue;
+				}
+				bar.writeTo(out);
+			}
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			int len = in.readInt();
+			byte[] array = new byte[len];
+			in.readFully(array);
+		}
+	}
+
+	public static class RMIWriteToResult implements Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		private ByteArrayRegion fileContents;
+		private long writtenByteCount;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public RMIWriteToResult() {
+		}
+
+		public RMIWriteToResult(ByteArrayRegion fileContents) {
+			this.fileContents = fileContents;
+		}
+
+		public RMIWriteToResult(long writtenBytes) {
+			this.writtenByteCount = writtenBytes;
+		}
+
+		public RMIWriteToResult(ByteArrayRegion fileContents, long writtenByteCount) {
+			this.fileContents = fileContents;
+			this.writtenByteCount = writtenByteCount;
+		}
+
+		public ByteArrayRegion getFileContents() {
+			return fileContents;
+		}
+
+		public long getWrittenByteCount() {
+			return writtenByteCount;
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			out.writeObject(fileContents);
+			out.writeLong(writtenByteCount);
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			fileContents = (ByteArrayRegion) in.readObject();
+			writtenByteCount = in.readLong();
+		}
 	}
 
 	public static class RMIBufferedReadResult implements Externalizable {

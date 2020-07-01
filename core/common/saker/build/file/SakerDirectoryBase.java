@@ -37,6 +37,7 @@ import saker.build.file.content.DirectoryContentDescriptor;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
+import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.function.LazySupplier;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
@@ -183,6 +184,43 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		Iterator<Entry<String, SakerFileBase>> it = trackedfiles.entrySet().iterator();
 		return ObjectUtils
 				.createConcurrentSkipListMapFromSortedIterator(new PopulatedNotPresentFileOmittingEntryIterator(it));
+	}
+
+	@Override
+	public NavigableMap<String, ? extends SakerFileContentInformationHolder> getChildrenContentInformation(
+			DirectoryVisitPredicate childpredicate) {
+		DirectoryVisitPredicate predicate;
+		if (childpredicate == null) {
+			predicate = DirectoryVisitPredicate.everything();
+		} else {
+			predicate = childpredicate;
+		}
+		ensurePopulated();
+
+		//see getChildren comment
+
+		ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = getTrackedFiles();
+		Iterator<Entry<String, SakerFileBase>> it = trackedfiles.entrySet().iterator();
+		Iterator<Entry<String, SakerFileContentInformationHolder>> contentinfoiterator = ObjectUtils
+				.transformIterator(new PopulatedNotPresentFileOmittingEntryIterator(it), e -> {
+					SakerFileBase file = e.getValue();
+					String filename = e.getKey();
+					ContentDescriptor cd;
+					if (file instanceof SakerDirectory) {
+						cd = DirectoryContentDescriptor.INSTANCE;
+					} else if (predicate.visitFile(filename, file)) {
+						cd = file.getContentDescriptor();
+						if (cd == null) {
+							//extra sanity check as the clients may depend on the nullability if this
+							throw new NullPointerException("getContentDescriptor() returned null by: " + file);
+						}
+					} else {
+						cd = null;
+					}
+					return ImmutableUtils.makeImmutableMapEntry(filename,
+							new SakerFileContentInformationHolder(file, cd));
+				});
+		return ObjectUtils.createConcurrentSkipListMapFromSortedIterator(contentinfoiterator);
 	}
 
 	public NavigableSet<String> getChildrenNames() {

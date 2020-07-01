@@ -85,10 +85,9 @@ public abstract class SakerPathFileBase extends SakerFileBase {
 		SakerFileProvider targetfp = pathkey.getFileProvider();
 		SakerPath targetpath = pathkey.getPath();
 		Set<PosixFilePermission> posixpermissions = getPosixFilePermissions();
-		targetfp.ensureWriteRequest(targetpath, FileEntry.TYPE_FILE,
-				SakerFileProvider.OPERATION_FLAG_DELETE_INTERMEDIATE_FILES);
 		//XXX try direct copy if the file providers are the same
-		try (ByteSink out = targetfp.openOutput(targetpath)) {
+		try (ByteSink out = targetfp.ensureWriteOpenOutput(targetpath,
+				SakerFileProvider.OPERATION_FLAG_DELETE_INTERMEDIATE_FILES)) {
 			fileProvider.writeTo(realPath, out);
 		}
 		if (posixpermissions != null) {
@@ -109,10 +108,9 @@ public abstract class SakerPathFileBase extends SakerFileBase {
 		SakerFileProvider targetfp = pathkey.getFileProvider();
 		SakerPath targetpath = pathkey.getPath();
 		Set<PosixFilePermission> posixpermissions = getPosixFilePermissions();
-		targetfp.ensureWriteRequest(targetpath, FileEntry.TYPE_FILE,
-				SakerFileProvider.OPERATION_FLAG_DELETE_INTERMEDIATE_FILES);
 
-		try (ByteSink fpoutput = targetfp.openOutput(targetpath);
+		try (ByteSink fpoutput = targetfp.ensureWriteOpenOutput(targetpath,
+				SakerFileProvider.OPERATION_FLAG_DELETE_INTERMEDIATE_FILES);
 				PriorityMultiplexOutputStream os = new PriorityMultiplexOutputStream(ByteSink.toOutputStream(fpoutput),
 						StreamUtils.closeProtectedOutputStream(ByteSink.toOutputStream(additionalwritestream)))) {
 			fileProvider.writeTo(realPath, os);

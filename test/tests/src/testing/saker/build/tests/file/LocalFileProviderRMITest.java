@@ -30,7 +30,9 @@ import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayInputStream;
+import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
+import saker.build.util.rmi.SakerRMIHelper;
 import testing.saker.SakerTest;
 import testing.saker.SakerTestCase;
 import testing.saker.api.TaskTestMetric;
@@ -63,7 +65,8 @@ public class LocalFileProviderRMITest extends SakerTestCase {
 		SakerPath builddir = SakerPath.valueOf(
 				EnvironmentTestCase.getTestingBaseBuildDirectory().resolve(getClass().getName().replace('.', '/')));
 
-		byte[] longcontent = new byte[64 * 1024];
+		//half MB
+		byte[] longcontent = new byte[512 * 1024];
 		for (int i = 0; i < longcontent.length; i++) {
 			longcontent[i] = (byte) ('0' + i);
 		}
@@ -72,7 +75,7 @@ public class LocalFileProviderRMITest extends SakerTestCase {
 		getLocalFileProvider().createDirectories(longcontentpath.getParent());
 		getLocalFileProvider().writeToFile(new UnsyncByteArrayInputStream(longcontent), longcontentpath);
 
-		RMIOptions opt = new RMIOptions();
+		RMIOptions opt = SakerRMIHelper.createBaseRMIOptions();
 		opt.classLoader(this.getClass().getClassLoader());
 		try (RMIServer server = new RMIServer() {
 
@@ -115,7 +118,14 @@ public class LocalFileProviderRMITest extends SakerTestCase {
 					assertEquals(StreamUtils.readSourceFully(in).copyOptionally(), longcontent);
 					assertTrue((boolean) ReflectUtils.getFieldValue(bufferingclass.getDeclaredField("closed"), in));
 				}
+				try (ByteSource in = fp.openInput(longcontentpath)) {
+					UnsyncByteArrayOutputStream bout = new UnsyncByteArrayOutputStream();
+					in.writeTo(bout);
+					assertEquals(bout.toByteArray(), longcontent);
+					assertTrue((boolean) ReflectUtils.getFieldValue(bufferingclass.getDeclaredField("closed"), in));
+				}
 
+				connection.getStatistics().dumpSummary(System.out, null);
 			}
 		}
 

@@ -281,6 +281,7 @@ public interface SakerFileProvider {
 	 *             In case of I/O error.
 	 * @since saker.build 0.8.13
 	 */
+	@RMIExceptionRethrow(RemoteIOException.class)
 	public default boolean setPosixFilePermissions(SakerPath path,
 			@RMIWrap(EnumSetRMIWrapper.class) Set<PosixFilePermission> permissions)
 			throws NullPointerException, IOException {
@@ -316,6 +317,7 @@ public interface SakerFileProvider {
 	 *             In case of I/O error.
 	 * @since saker.build 0.8.13
 	 */
+	@RMIExceptionRethrow(RemoteIOException.class)
 	public default boolean modifyPosixFilePermissions(SakerPath path,
 			@RMIWrap(EnumSetRMIWrapper.class) Set<PosixFilePermission> addpermissions,
 			@RMIWrap(EnumSetRMIWrapper.class) Set<PosixFilePermission> removepermissions)
@@ -343,6 +345,7 @@ public interface SakerFileProvider {
 	 * @since saker.build 0.8.13
 	 */
 	@RMIWrap(EnumSetRMIWrapper.class)
+	@RMIExceptionRethrow(RemoteIOException.class)
 	public default Set<PosixFilePermission> getPosixFilePermissions(SakerPath path)
 			throws NullPointerException, IOException {
 		return null;
@@ -419,6 +422,8 @@ public interface SakerFileProvider {
 	 * Opens an input stream to the file at the specified path.
 	 * <p>
 	 * The {@link OpenOption} argument must contain elements which are enumerations.
+	 * <p>
+	 * The returned stream is not thread-safe.
 	 * 
 	 * @param path
 	 *            The path to the file.
@@ -439,9 +444,16 @@ public interface SakerFileProvider {
 	 * Opens an output stream to the file at the specified path.
 	 * <p>
 	 * The caller must close the returned stream to properly persist the written bytes to the stream. If the caller
-	 * doesn't close the stream, data corruption might occur.
+	 * doesn't close the stream, data corruption might occur. If the stream is not closed, the data may not have been
+	 * written to the disk. Implementations may cache the written bytes and flush them when {@link ByteSink#close()
+	 * close()} is called.
+	 * <p>
+	 * If this method successfully returns, that doesn't necessarily mean that the file has been opened. Opening related
+	 * exceptions may be thrown by the writing or closing methods of the returned stream.
 	 * <p>
 	 * The {@link OpenOption} argument must contain elements which are enumerations.
+	 * <p>
+	 * The returned stream is not thread-safe.
 	 * 
 	 * @param path
 	 *            The path to the file.
@@ -769,6 +781,41 @@ public interface SakerFileProvider {
 		try (ByteSink os = openOutput(path, openoptions)) {
 			return os.readFrom(is);
 		}
+	}
+
+	/**
+	 * Ensures a write request for the given path and opens an output stream to it.
+	 * <p>
+	 * The method works the same way as if {@link #ensureWriteRequest(SakerPath, int, int)} and
+	 * {@link #openOutput(SakerPath, OpenOption...)} are called subsequently. This corresponds to the default
+	 * implementation of:
+	 * 
+	 * <pre>
+	 * ensureWriteRequest(path, FileEntry.TYPE_FILE, operationflag);
+	 * return openOutput(path, openoptions);
+	 * </pre>
+	 * 
+	 * @param path
+	 *            The output file path.
+	 * @param operationflag
+	 *            The operation flag to take into account. Acceptable flags:
+	 *            {@link #OPERATION_FLAG_NO_RECURSIVE_DIRECTORY_DELETE},
+	 *            {@link #OPERATION_FLAG_DELETE_INTERMEDIATE_FILES}.
+	 * @param openoptions
+	 *            The opening options for the output.
+	 * @return An opened output stream.
+	 * @throws IOException
+	 *             In case of I/O error.
+	 * @throws NullPointerException
+	 *             If any of the arguments are <code>null</code>.
+	 * @since saker.build 0.8.15
+	 */
+	@RMIExceptionRethrow(RemoteIOException.class)
+	public default ByteSink ensureWriteOpenOutput(SakerPath path, int operationflag,
+			@RMIWriter(EnumArrayRMIObjectWriteHandler.class) OpenOption... openoptions)
+			throws IOException, NullPointerException {
+		ensureWriteRequest(path, FileEntry.TYPE_FILE, operationflag);
+		return openOutput(path, openoptions);
 	}
 
 	/**

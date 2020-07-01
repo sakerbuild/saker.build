@@ -2023,13 +2023,34 @@ public class TaskExecutionManager {
 			SakerPath path = pathkey.getPath();
 			SakerFileProvider fp = pathkey.getFileProvider();
 			FileEntry attrs = fp.getFileAttributes(path);
-			ContentDatabase contentdb = executionContext.getContentDatabase();
 			if (attrs.isDirectory()) {
-				return new ProviderPathSakerDirectory(contentdb, name, fp, path);
+				return createProviderPathDirectoryImpl(name, path, fp);
 			}
+
+			return createProviderPathFileImpl(name, pathkey);
+		}
+
+		private SakerFile createProviderPathDirectoryImpl(String name, SakerPath path, SakerFileProvider fp) {
+			ContentDatabase contentdb = executionContext.getContentDatabase();
+			return new ProviderPathSakerDirectory(contentdb, name, fp, path);
+		}
+
+		private SakerFile createProviderPathFileImpl(String name, ProviderHolderPathKey pathkey) {
+			ContentDatabase contentdb = executionContext.getContentDatabase();
 
 			ContentHandle contenthandle = contentdb.getContentHandle(pathkey);
 			return new ProviderPathSakerFile(name, pathkey, contenthandle);
+		}
+
+		@Override
+		public SakerFile internalcreateProviderPathFile(String name, ProviderHolderPathKey pathkey, boolean directory)
+				throws NullPointerException, IOException {
+			if (directory) {
+				SakerPath path = pathkey.getPath();
+				SakerFileProvider fp = pathkey.getFileProvider();
+				return createProviderPathDirectoryImpl(name, path, fp);
+			}
+			return createProviderPathFileImpl(name, pathkey);
 		}
 
 		@Override
@@ -2165,6 +2186,15 @@ public class TaskExecutionManager {
 
 			invalidate(pathkey);
 			SakerFile file = createProviderPathFile(filename, pathkey);
+			directory.add(file);
+			file.synchronize();
+		}
+
+		@Override
+		public void internalAddSynchronizeInvalidatedProviderPathFileToDirectory(SakerDirectory directory,
+				ProviderHolderPathKey pathkey, String filename, boolean isdirectory) throws IOException {
+			invalidate(pathkey);
+			SakerFile file = internalcreateProviderPathFile(filename, pathkey, isdirectory);
 			directory.add(file);
 			file.synchronize();
 		}

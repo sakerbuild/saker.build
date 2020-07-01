@@ -31,6 +31,8 @@ import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
 import saker.build.thirdparty.saker.util.io.IOUtils;
+import saker.build.util.rmi.SakerRMIHelper;
+import testing.saker.build.flag.TestFlag;
 
 public interface RemoteDaemonConnection extends Closeable {
 	public interface ConnectionIOErrorListener {
@@ -104,14 +106,14 @@ public interface RemoteDaemonConnection extends Closeable {
 		//    they are going to be closed when the connection is closed
 
 		if (rmioptions == null) {
-			rmioptions = new RMIOptions();
+			rmioptions = SakerRMIHelper.createBaseRMIOptions();
 		}
 
 		ClassLoaderResolver clresolver = rmioptions.getClassLoaderResolver();
 		if (clresolver == null) {
 			clresolver = new ClassLoaderResolverRegistry(createConnectionBaseClassLoaderResolver());
+			rmioptions.classResolver(clresolver);
 		}
-		rmioptions.classResolver(clresolver);
 		RMIConnection connection = rmioptions.connect(socketfactory, address);
 		return connection;
 	}

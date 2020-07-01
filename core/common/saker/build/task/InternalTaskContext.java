@@ -18,8 +18,10 @@ package saker.build.task;
 import java.io.IOException;
 import java.util.Map.Entry;
 
+import saker.build.file.SakerDirectory;
 import saker.build.file.SakerFile;
 import saker.build.file.content.ContentDescriptor;
+import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.scripting.ScriptPosition;
 import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
@@ -43,7 +45,13 @@ public interface InternalTaskContext {
 
 	@RMICacheResult
 	public InternalTaskBuildTrace internalGetBuildTrace();
-	
+
+	public SakerFile internalcreateProviderPathFile(String name, ProviderHolderPathKey pathkey, boolean directory)
+			throws NullPointerException, IOException;
+
+	public void internalAddSynchronizeInvalidatedProviderPathFileToDirectory(SakerDirectory directory,
+			ProviderHolderPathKey pathkey, String filename, boolean isdirectory) throws IOException;
+
 	@RMIWrap(PathSakerFileContents.PathSakerFileContentsRMIWrapper.class)
 	public static class PathSakerFileContents {
 		protected SakerFile file;

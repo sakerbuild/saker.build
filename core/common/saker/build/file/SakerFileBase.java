@@ -242,8 +242,9 @@ public abstract class SakerFileBase implements SakerFile {
 
 			}
 		} else {
-			try (OutputStream os = ByteSink.toOutputStream(fp.openOutput(path));
-					PriorityMultiplexOutputStream multiplexos = new PriorityMultiplexOutputStream(os,
+			try (ByteSink os = fp.openOutput(path);
+					PriorityMultiplexOutputStream multiplexos = new PriorityMultiplexOutputStream(
+							ByteSink.toOutputStream(os),
 							StreamUtils.closeProtectedOutputStream(ByteSink.toOutputStream(additionalwritestream)))) {
 				writeToStreamImpl(multiplexos);
 				IOException sec = multiplexos.getSecondaryException();

@@ -73,8 +73,14 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public InnerTaskResultHolder<R> getResultIfPresent() {
 			return results.take();
+		}
+
+		@Override
+		public Iterable<? extends InnerTaskResultHolder<R>> getResultsIfAny() throws InterruptedException {
+			return results.clearAndIterable();
 		}
 
 		@Override
@@ -331,7 +337,13 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 
 	private static class NotInvokedInnerTaskInvocationHandle<R> implements InnerTaskInvocationHandle<R> {
 		@Override
+		@SuppressWarnings("deprecation")
 		public InnerTaskResultHolder<R> getResultIfPresent() {
+			return null;
+		}
+
+		@Override
+		public Iterable<? extends InnerTaskResultHolder<R>> getResultsIfAny() throws InterruptedException {
 			return null;
 		}
 

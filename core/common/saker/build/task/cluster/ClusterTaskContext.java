@@ -346,6 +346,19 @@ class ClusterTaskContext implements TaskContext, InternalTaskContext {
 		return ((InternalTaskContext) realTaskContext).internalGetBuildTrace();
 	}
 
+	@Override
+	public SakerFile internalcreateProviderPathFile(String name, ProviderHolderPathKey pathkey, boolean directory)
+			throws NullPointerException, IOException {
+		return ((InternalTaskContext) realTaskContext).internalcreateProviderPathFile(name, pathkey, directory);
+	}
+
+	@Override
+	public void internalAddSynchronizeInvalidatedProviderPathFileToDirectory(SakerDirectory directory,
+			ProviderHolderPathKey pathkey, String filename, boolean isdirectory) throws IOException {
+		((InternalTaskContext) realTaskContext).internalAddSynchronizeInvalidatedProviderPathFileToDirectory(directory,
+				pathkey, filename, isdirectory);
+	}
+
 	public void invalidateInClusterDatabase(Iterable<? extends PathKey> pathkeys) {
 		Objects.requireNonNull(pathkeys, "path keys");
 		ContentDatabase clusterdb = clusterContentDatabase;

@@ -38,6 +38,8 @@ import saker.build.file.content.ContentDescriptor;
 import saker.build.file.path.PathKey;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
+import saker.build.file.provider.FileEntry;
+import saker.build.file.provider.LocalFileProvider;
 import saker.build.file.provider.SakerPathFiles;
 import saker.build.runtime.environment.EnvironmentProperty;
 import saker.build.runtime.execution.ExecutionProperty;
@@ -442,6 +444,12 @@ class ClusterTaskExecutionUtilities implements TaskExecutionUtilities {
 	@Override
 	public SakerFile createProviderPathFile(String name, ProviderHolderPathKey pathkey)
 			throws NullPointerException, IOException {
+		Objects.requireNonNull(name, "name");
+		Objects.requireNonNull(pathkey, "path key");
+		if (LocalFileProvider.getProviderKeyStatic().equals(pathkey.getFileProviderKey())) {
+			FileEntry attrs = pathkey.getFileProvider().getFileAttributes(pathkey.getPath());
+			return clusterTaskContext.internalcreateProviderPathFile(name, pathkey, attrs.isDirectory());
+		}
 		return utils.createProviderPathFile(name, pathkey);
 	}
 
@@ -518,7 +526,19 @@ class ClusterTaskExecutionUtilities implements TaskExecutionUtilities {
 	@Override
 	public void addSynchronizeInvalidatedProviderPathFileToDirectory(SakerDirectory directory,
 			ProviderHolderPathKey pathkey, String filename) throws IOException, NullPointerException {
+		Objects.requireNonNull(directory, "directory");
+		Objects.requireNonNull(pathkey, "path key");
+		Objects.requireNonNull(filename, "file name");
+
 		clusterTaskContext.invalidateInClusterDatabase(pathkey);
+
+		if (LocalFileProvider.getProviderKeyStatic().equals(pathkey.getFileProviderKey())) {
+			FileEntry attrs = pathkey.getFileProvider().getFileAttributes(pathkey.getPath());
+			clusterTaskContext.internalAddSynchronizeInvalidatedProviderPathFileToDirectory(directory, pathkey,
+					filename, attrs.isDirectory());
+			return;
+		}
+
 		utils.addSynchronizeInvalidatedProviderPathFileToDirectory(directory, pathkey, filename);
 	}
 

@@ -30,7 +30,7 @@ import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeSetStringElementWrapper
  * It is strongly recommended that implementations of this interface are RMI-transferrable to avoid unnecessary network
  * traffic when designing tasks for remote execution.
  * <p>
- * It is recommended that this class adheres to the {@link #equals(Object)} and {@link #hashCode()} contract.
+ * It is recommended that implementations adhere to the {@link #equals(Object)} and {@link #hashCode()} contract.
  */
 public interface DirectoryVisitPredicate {
 	/**

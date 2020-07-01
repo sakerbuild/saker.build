@@ -88,6 +88,7 @@ import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.ResourceCloser;
 import saker.build.thirdparty.saker.util.thread.ExceptionThread;
+import saker.build.util.rmi.SakerRMIHelper;
 import testing.saker.SakerJavaTestingInvoker;
 import testing.saker.SakerTestCase;
 import testing.saker.api.TestMetric;
@@ -397,13 +398,13 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 							};
 							rescloser.add(clusterdaemon);
 							clusterdaemon.setServerThreadGroup(COMMON_THREAD_GROUP);
-							clusterdaemon.setConnectionBaseRMIOptions(new RMIOptions()
+							clusterdaemon.setConnectionBaseRMIOptions(SakerRMIHelper.createBaseRMIOptions()
 									.classResolver(new ClassLoaderResolverRegistry(daemonbaseregistry)));
 							clusterdaemon.start();
 							InetSocketAddress daemonaddr = new InetSocketAddress(InetAddress.getLoopbackAddress(),
 									clusterdaemon.getRuntimeLaunchConfiguration().getPort());
 							RemoteDaemonConnection daemonconnection = RemoteDaemonConnection.connect(null, daemonaddr,
-									new RMIOptions()
+									SakerRMIHelper.createBaseRMIOptions()
 											.classResolver(new ClassLoaderResolverRegistry(daemonbaseregistry)));
 							rescloser.add(daemonconnection);
 

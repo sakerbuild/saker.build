@@ -125,6 +125,7 @@ public class StartDaemonCommand {
 		//no daemon is running at the given path, try to start it
 		List<String> commands = new ArrayList<>();
 		commands.add(javaexe.toString());
+		//TODO should also add -D system properties if necessary
 		commands.add("-cp");
 		commands.add(sakerjarpath.toString());
 		commands.add(saker.build.launching.Main.class.getName());
