@@ -76,7 +76,10 @@ import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.function.Functionals;
 
 class ProxyGenerator {
-	public static byte[] generateProxyMarkerClass(String name) {
+
+	static final String PROXY_MARKER_RMI_STATISTICS_FIELD_NAME = "statistics";
+
+	public static byte[] generateProxyMarkerClass(String name, boolean withstatisticsfield) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
 		cw.visit(V1_8, ACC_PUBLIC | ACC_ABSTRACT, name.replace('.', '/'), null, REMOTEPROXYOBJECT_INTERNAL_NAME, null);
 
@@ -91,14 +94,21 @@ class ProxyGenerator {
 		constructorv.visitMaxs(0, 0);
 		constructorv.visitEnd();
 
+		if (withstatisticsfield) {
+			FieldVisitor fw = cw.visitField(ACC_PUBLIC | ACC_STATIC, PROXY_MARKER_RMI_STATISTICS_FIELD_NAME,
+					RMISTATISTICS_DESCRIPTOR, null, null);
+			fw.visitEnd();
+		}
+
 		cw.visitEnd();
 		return cw.toByteArray();
 	}
 
-	public static byte[] generateProxy(String name, Set<Class<?>> itfs, Class<?> markeredsuperclass,
-			RMITransferPropertiesHolder rmiproperties) throws RMIProxyCreationFailedException {
-		String superclassinternalname = markeredsuperclass == null ? REMOTEPROXYOBJECT_INTERNAL_NAME
-				: Type.getInternalName(markeredsuperclass);
+	public static byte[] generateProxy(String name, Set<Class<?>> itfs, String markerclassinternalname,
+			RMITransferPropertiesHolder rmiproperties, boolean collectstatistics)
+			throws RMIProxyCreationFailedException {
+		String superclassinternalname = markerclassinternalname == null ? REMOTEPROXYOBJECT_INTERNAL_NAME
+				: markerclassinternalname;
 		Set<Class<?>> interfaces = new LinkedHashSet<>(itfs);
 		//TODO test that the interfaces are all public, and non assignable with a test flag
 		//XXX these reductions should happen earlier in the proxy class generation
@@ -204,7 +214,7 @@ class ProxyGenerator {
 
 				//XXX we might create the array which has the proxy as the first element instead of just the parameters
 				writeCallInvokerMethodReturnInstructions(mw, thisclassinternalname, methodfieldname, mr, key,
-						"invokeRedirectInternal");
+						"invokeRedirectInternal", false, markerclassinternalname);
 
 				mw.visitMaxs(0, 0);
 				mw.visitEnd();
@@ -218,11 +228,19 @@ class ProxyGenerator {
 							METHODTRANSFERROPERTIES_DESCRIPTOR);
 					snrmw.visitVarInsn(ALOAD, 0);
 					writeLoadArgumentsArrayInstructions(snrmw, key.argTypes);
+					String methoddescriptor;
+					if (collectstatistics) {
+						methoddescriptor = "(" + METHODTRANSFERROPERTIES_DESCRIPTOR + REMOTEPROXYOBJECT_DESCRIPTOR
+								+ ARRAY_JAVA_LANG_OBJECT_DESCRIPTOR + RMISTATISTICS_DESCRIPTOR + ")"
+								+ JAVA_LANG_OBJECT_DESCRIPTOR;
+						snrmw.visitFieldInsn(GETSTATIC, markerclassinternalname, PROXY_MARKER_RMI_STATISTICS_FIELD_NAME,
+								RMISTATISTICS_DESCRIPTOR);
+					} else {
+						methoddescriptor = "(" + METHODTRANSFERROPERTIES_DESCRIPTOR + REMOTEPROXYOBJECT_DESCRIPTOR
+								+ ARRAY_JAVA_LANG_OBJECT_DESCRIPTOR + ")" + JAVA_LANG_OBJECT_DESCRIPTOR;
+					}
 					snrmw.visitMethodInsn(INVOKESTATIC, REMOTEPROXYOBJECT_INTERNAL_NAME,
-							"callNonRedirectMethodFromStaticDelegate",
-							"(" + METHODTRANSFERROPERTIES_DESCRIPTOR + REMOTEPROXYOBJECT_DESCRIPTOR
-									+ ARRAY_JAVA_LANG_OBJECT_DESCRIPTOR + ")" + JAVA_LANG_OBJECT_DESCRIPTOR,
-							false);
+							"callNonRedirectMethodFromStaticDelegate", methoddescriptor, false);
 					writeCheckCastReturn(snrmw, mr.getReturnType());
 
 					snrmw.visitMaxs(0, 0);
@@ -260,14 +278,21 @@ class ProxyGenerator {
 				mw.visitVarInsn(ALOAD, 0);
 				mw.visitFieldInsn(GETFIELD, thisclassinternalname, cachefieldname, cachehelperfielddescriptor);
 				loadCallInvokerMethodInstructionParameters(mw, thisclassinternalname, methodfieldname, key);
-				mw.visitMethodInsn(INVOKEVIRTUAL, RMICACHEHELPER_INTERNAL_NAME, "call",
-						"(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
-								+ "[Ljava/lang/Object;)Ljava/lang/Object;",
-						false);
+				String methoddescriptor;
+				if (collectstatistics) {
+					mw.visitFieldInsn(GETSTATIC, markerclassinternalname, PROXY_MARKER_RMI_STATISTICS_FIELD_NAME,
+							RMISTATISTICS_DESCRIPTOR);
+					methoddescriptor = "(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
+							+ "[Ljava/lang/Object;" + RMISTATISTICS_DESCRIPTOR + ")Ljava/lang/Object;";
+				} else {
+					methoddescriptor = "(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
+							+ "[Ljava/lang/Object;)Ljava/lang/Object;";
+				}
+				mw.visitMethodInsn(INVOKEVIRTUAL, RMICACHEHELPER_INTERNAL_NAME, "call", methoddescriptor, false);
 				writeObjectReturnInstructions(mw, mr);
 			} else {
 				writeCallInvokerMethodReturnInstructions(mw, thisclassinternalname, methodfieldname, mr, key,
-						"callMethodInternal");
+						"callMethodInternal", collectstatistics, markerclassinternalname);
 			}
 
 			mw.visitLabel(rmibodyend);
@@ -342,6 +367,7 @@ class ProxyGenerator {
 	private static final String RMICACHEHELPER_DESCRIPTOR = Type.getDescriptor(RMICacheHelper.class);
 	private static final String JAVA_LANG_OBJECT_DESCRIPTOR = Type.getDescriptor(Object.class);
 	private static final String ARRAY_JAVA_LANG_OBJECT_DESCRIPTOR = Type.getDescriptor(Object[].class);
+	private static final String RMISTATISTICS_DESCRIPTOR = Type.getDescriptor(RMIStatistics.class);
 
 	private static final String JAVA_LANG_THROWABLE_DESCRIPTOR = Type.getDescriptor(Throwable.class);
 	private static final String JAVA_LANG_OBJECT_INTERNAL_NAME = Type.getInternalName(Object.class);
@@ -355,6 +381,7 @@ class ProxyGenerator {
 	private static final String JAVA_LANG_BOOLEAN_INTERNAL_NAME = Type.getInternalName(Boolean.class);
 	private static final String JAVA_LANG_CLASS_DESCRIPTOR = Type.getDescriptor(Class.class);
 	private static final String JAVA_LANG_CLASS_INTERNAL_NAME = Type.getInternalName(Class.class);
+	private static final String JAVA_LANG_SYSTEM_INTERNAL_NAME = Type.getInternalName(System.class);
 
 	static final String INITIALIZE_CACHE_FIELDS_METHOD_NAME = "0rmi_initCacheFields";
 
@@ -669,13 +696,21 @@ class ProxyGenerator {
 	}
 
 	private static void writeCallInvokerMethodReturnInstructions(MethodVisitor mw, String thisclassinternalname,
-			String methodfieldname, MethodRef mr, MethodKey key, String callmethodname) {
+			String methodfieldname, MethodRef mr, MethodKey key, String callmethodname, boolean collectstatistics,
+			String markerclassinternalname) {
 		loadCallInvokerMethodInstructionParameters(mw, thisclassinternalname, methodfieldname, key);
 
-		mw.visitMethodInsn(INVOKESTATIC, REMOTEPROXYOBJECT_INTERNAL_NAME, callmethodname,
-				"(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
-						+ "[Ljava/lang/Object;)Ljava/lang/Object;",
-				false);
+		String methoddescriptor;
+		if (collectstatistics) {
+			methoddescriptor = "(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
+					+ "[Ljava/lang/Object;" + RMISTATISTICS_DESCRIPTOR + ")Ljava/lang/Object;";
+			mw.visitFieldInsn(GETSTATIC, markerclassinternalname, PROXY_MARKER_RMI_STATISTICS_FIELD_NAME,
+					RMISTATISTICS_DESCRIPTOR);
+		} else {
+			methoddescriptor = "(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
+					+ "[Ljava/lang/Object;)Ljava/lang/Object;";
+		}
+		mw.visitMethodInsn(INVOKESTATIC, REMOTEPROXYOBJECT_INTERNAL_NAME, callmethodname, methoddescriptor, false);
 
 		writeObjectReturnInstructions(mw, mr);
 	}

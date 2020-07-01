@@ -39,6 +39,7 @@ public final class RMIOptions {
 	ThreadGroup workerThreadGroup;
 	int maxStreamCount = -1;
 	boolean allowDirectRequests = true;
+	boolean collectStatistics = false;
 
 	/**
 	 * Creates a new instance with default values.
@@ -59,6 +60,7 @@ public final class RMIOptions {
 		this.workerThreadGroup = copy.workerThreadGroup;
 		this.maxStreamCount = copy.maxStreamCount;
 		this.allowDirectRequests = copy.allowDirectRequests;
+		this.collectStatistics = copy.collectStatistics;
 	}
 
 	/**
@@ -205,6 +207,22 @@ public final class RMIOptions {
 	 */
 	public RMIOptions allowDirectRequests(boolean allowDirectRequests) {
 		this.allowDirectRequests = allowDirectRequests;
+		return this;
+	}
+
+	/**
+	 * Specifies if RMI statistics should be collected during the lifetime of the RMI connection.
+	 * <p>
+	 * The default value is <code>false</code>.
+	 * 
+	 * @param collectStatistics
+	 *            <code>true</code> to collect statistics.
+	 * @return <code>this</code>
+	 * @see RMIConnection#getStatistics()
+	 * @since saker.rmi 0.8.2
+	 */
+	public RMIOptions collectStatistics(boolean collectStatistics) {
+		this.collectStatistics = collectStatistics;
 		return this;
 	}
 

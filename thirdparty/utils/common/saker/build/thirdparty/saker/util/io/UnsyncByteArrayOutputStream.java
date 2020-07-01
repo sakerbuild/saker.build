@@ -166,6 +166,39 @@ public class UnsyncByteArrayOutputStream extends OutputStream implements ByteSin
 	}
 
 	/**
+	 * Reads at most the given number of bytes from the byte source.
+	 * 
+	 * @param in
+	 *            The byte source.
+	 * @param count
+	 *            The maximum number of bytes to read.
+	 * @return The actually read number of bytes. This is less than <code>count</code> if there were no more available
+	 *             bytes in the byte source.
+	 * @throws IOException
+	 *             In case of I/O error.
+	 * @throws NullPointerException
+	 *             If the byte source is <code>null</code>.
+	 * @since saker.util 0.8.2
+	 */
+	public int readFrom(ByteSource in, int count) throws IOException {
+		Objects.requireNonNull(in, "in");
+		if (count <= 0) {
+			return 0;
+		}
+		ensureCapacity(this.count + count);
+		int totalread = 0;
+		while (totalread < count) {
+			int read = in.read(ByteArrayRegion.wrap(buf, this.count, count - totalread));
+			if (read <= 0) {
+				break;
+			}
+			this.count += read;
+			totalread += read;
+		}
+		return totalread;
+	}
+
+	/**
 	 * Reads bytes from the argument input stream until no more bytes are available.
 	 * 
 	 * @param in
@@ -196,6 +229,9 @@ public class UnsyncByteArrayOutputStream extends OutputStream implements ByteSin
 	 */
 	public int readFrom(InputStream in, int count) throws IOException, NullPointerException {
 		Objects.requireNonNull(in, "in");
+		if (count <= 0) {
+			return 0;
+		}
 		ensureCapacity(this.count + count);
 		int totalread = 0;
 		while (totalread < count) {

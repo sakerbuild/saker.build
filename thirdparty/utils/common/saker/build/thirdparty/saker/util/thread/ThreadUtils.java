@@ -909,7 +909,7 @@ public class ThreadUtils {
 	/**
 	 * Sets the default thread factor that newly created concurrent runners should use.
 	 * <p>
-	 * The default thread factor is set to an {@linkplain InheritableThreadLocal inheritable thrad local} variable,
+	 * The default thread factor is set to an {@linkplain InheritableThreadLocal inheritable thread local} variable,
 	 * therefore any value set here will be propagated to all started threads.
 	 * <p>
 	 * It is recommended that the thread factor is at least 2.
@@ -1472,7 +1472,14 @@ public class ThreadUtils {
 		return MONITOR_INSTANCE_NEVER_CANCELLED;
 	}
 
-	private static int getDefaultThreadFactor() {
+	/**
+	 * Gets the default thread concurrency factor.
+	 * 
+	 * @return The thread factor.
+	 * @see #setInheritableDefaultThreadFactor(int)
+	 * @since saker.util 0.8.2
+	 */
+	public static int getDefaultThreadFactor() {
 		return DEFAULT_THREAD_FACTOR.get();
 	}
 

@@ -32,6 +32,7 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
+import saker.build.thirdparty.org.objectweb.asm.Type;
 import saker.build.thirdparty.saker.rmi.exception.RMICallFailedException;
 import saker.build.thirdparty.saker.rmi.exception.RMICallForbiddenException;
 import saker.build.thirdparty.saker.rmi.exception.RMIIOFailureException;
@@ -79,7 +80,8 @@ public class RMIVariables implements AutoCloseable {
 			ObjectUtils.newTreeSet(RMIRuntimeException.class.getName(), RMICallFailedException.class.getName(),
 					MethodTransferProperties.class.getName(), RMITransferPropertiesHolder.class.getName(),
 					RemoteProxyObject.class.getName(), RemoteProxyObject.RMICacheHelper.class.getName(),
-					RemoteProxyObject.RemoteInvocationRMIFailureException.class.getName()));
+					RemoteProxyObject.RemoteInvocationRMIFailureException.class.getName(),
+					RMIStatistics.class.getName()));
 
 	private static final String PROXY_PACKAGE_NAME = ReflectUtils.getPackageNameOf(RMIVariables.class);
 
@@ -131,8 +133,17 @@ public class RMIVariables implements AutoCloseable {
 		this.remoteIdentifier = remoteIdentifier;
 		this.connection = connection;
 		this.proxyBaseClassLoader = new RMIProxyClassLoader(RMI_PROXY_CLASSLOADER_PARENT);
+		boolean hasstatistics = connection.isStatisticsCollected();
 		this.proxyMarkerClass = this.proxyBaseClassLoader.defineClass(PROXY_MARKER_CLASS_NAME,
-				ProxyGenerator.generateProxyMarkerClass(PROXY_MARKER_CLASS_NAME));
+				ProxyGenerator.generateProxyMarkerClass(PROXY_MARKER_CLASS_NAME, hasstatistics));
+		if (hasstatistics) {
+			try {
+				this.proxyMarkerClass.getField(ProxyGenerator.PROXY_MARKER_RMI_STATISTICS_FIELD_NAME).set(null,
+						connection.getCollectingStatistics());
+			} catch (IllegalArgumentException | IllegalAccessException | NoSuchFieldException | SecurityException e) {
+				throw new AssertionError("Failed to set field for RMI statistics collection.", e);
+			}
+		}
 
 		//dont inline this variable, or this RMIVariables is going to be strong referenced from the thread
 		ReferenceQueue<Object> refqueue = gcReferenceQueue;
@@ -372,7 +383,7 @@ public class RMIVariables implements AutoCloseable {
 		RemoteProxyObject remoteproxyobj = (RemoteProxyObject) remoteobject;
 		RMIVariables variables = RemoteProxyObject.getCheckVariables(remoteproxyobj);
 		try {
-			return variables.invokeRemoteMethod(remoteproxyobj.remoteId,
+			return variables.invokeRemoteMethodInternal(remoteproxyobj.remoteId,
 					variables.properties.getExecutableProperties(method), arguments);
 		} finally {
 			RemoteProxyObject.reachabilityFence(remoteproxyobj);
@@ -416,7 +427,7 @@ public class RMIVariables implements AutoCloseable {
 		RemoteProxyObject remoteproxyobj = (RemoteProxyObject) remoteobject;
 		RMIVariables variables = RemoteProxyObject.getCheckVariables(remoteproxyobj);
 		try {
-			return variables.invokeRemoteMethod(remoteproxyobj.remoteId, method, arguments);
+			return variables.invokeRemoteMethodInternal(remoteproxyobj.remoteId, method, arguments);
 		} finally {
 			RemoteProxyObject.reachabilityFence(remoteproxyobj);
 		}
@@ -1120,7 +1131,7 @@ public class RMIVariables implements AutoCloseable {
 		}
 	}
 
-	private Object invokeRemoteMethod(int remoteid, MethodTransferProperties method, Object[] arguments)
+	Object invokeRemoteMethodInternal(int remoteid, MethodTransferProperties method, Object[] arguments)
 			throws RMIRuntimeException, InvocationTargetException {
 		checkForbidden(method);
 		return invokeAllowedNonRedirectMethod(remoteid, method, arguments);
@@ -1208,7 +1219,8 @@ public class RMIVariables implements AutoCloseable {
 		String name = PROXY_PACKAGE_NAME + ".Proxy$" + proxyNameIdCounter++;
 		@SuppressWarnings("unchecked")
 		Class<? extends RemoteProxyObject> proxyclass = (Class<? extends RemoteProxyObject>) classdefiner
-				.defineClass(name, ProxyGenerator.generateProxy(name, interfaces, proxyMarkerClass, properties));
+				.defineClass(name, ProxyGenerator.generateProxy(name, interfaces,
+						Type.getInternalName(proxyMarkerClass), properties, connection.isStatisticsCollected()));
 		try {
 			proxyclass.getMethod(ProxyGenerator.INITIALIZE_CACHE_FIELDS_METHOD_NAME, RMITransferPropertiesHolder.class)
 					.invoke(null, properties);

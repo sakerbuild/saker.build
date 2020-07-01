@@ -44,7 +44,7 @@ public abstract class RemoteProxyObject {
 	}
 
 	protected static final Object invokeRedirectInternal(RemoteProxyObject remoteobject, MethodTransferProperties m,
-			Object... args) throws Throwable {
+			Object[] args) throws Throwable {
 		try {
 			return RMIVariables.invokeRedirectMethod(remoteobject, m.getRedirectMethod(), args);
 		} catch (InvocationTargetException e) {
@@ -60,7 +60,7 @@ public abstract class RemoteProxyObject {
 	}
 
 	protected static final Object callMethodInternal(RemoteProxyObject remoteobject, MethodTransferProperties m,
-			Object... args) throws Throwable {
+			Object[] args) throws Throwable {
 		try {
 			return getCheckVariables(remoteobject).invokeAllowedNonRedirectMethod(remoteobject.remoteId, m, args);
 		} catch (RMIRuntimeException e) {
@@ -72,15 +72,46 @@ public abstract class RemoteProxyObject {
 		}
 	}
 
+	protected static final Object callMethodInternal(RemoteProxyObject remoteobject, MethodTransferProperties m,
+			Object[] args, RMIStatistics statistics) throws Throwable {
+		try {
+			RMIVariables vars = getCheckVariables(remoteobject);
+			long nanos = System.nanoTime();
+			try {
+				return vars.invokeAllowedNonRedirectMethod(remoteobject.remoteId, m, args);
+			} finally {
+				statistics.recordMethodCall(m.getExecutable(), nanos, System.nanoTime());
+				reachabilityFence(remoteobject);
+			}
+		} catch (RMIRuntimeException e) {
+			throw getExceptionRethrowException(m, e);
+		} catch (InvocationTargetException e) {
+			throw e.getTargetException();
+		}
+	}
+
 	protected static final RMIVariables getVariables(RemoteProxyObject remoteobject) {
 		return remoteobject.variables.get();
 	}
 
 	protected static final Object callNonRedirectMethodFromStaticDelegate(MethodTransferProperties method,
-			RemoteProxyObject proxy, Object... args) throws Throwable {
+			RemoteProxyObject proxy, Object[] args) throws Throwable {
 		try {
-			return RMIVariables.invokeRemoteMethod(proxy, method, args);
+			RMIVariables vars = getCheckVariables(proxy);
+			return vars.invokeRemoteMethodInternal(proxy.remoteId, method, args);
 		} finally {
+			reachabilityFence(proxy);
+		}
+	}
+
+	protected static final Object callNonRedirectMethodFromStaticDelegate(MethodTransferProperties method,
+			RemoteProxyObject proxy, Object[] args, RMIStatistics statistics) throws Throwable {
+		RMIVariables vars = getCheckVariables(proxy);
+		long nanos = System.nanoTime();
+		try {
+			return vars.invokeRemoteMethodInternal(proxy.remoteId, method, args);
+		} finally {
+			statistics.recordMethodCall(method.getExecutable(), nanos, System.nanoTime());
 			reachabilityFence(proxy);
 		}
 	}
@@ -122,7 +153,7 @@ public abstract class RemoteProxyObject {
 		public RMICacheHelper() {
 		}
 
-		public Object call(RemoteProxyObject proxy, MethodTransferProperties method, Object... args) throws Throwable {
+		public Object call(RemoteProxyObject proxy, MethodTransferProperties method, Object[] args) throws Throwable {
 			//XXX it would be nice if we could spare the array object creation by the proxy for the stack when the result is already ready
 			Object r = this.result;
 			if (r != RESULT_NOT_READY) {
@@ -141,6 +172,25 @@ public abstract class RemoteProxyObject {
 				} finally {
 					reachabilityFence(proxy);
 				}
+			}
+		}
+
+		public Object call(RemoteProxyObject proxy, MethodTransferProperties method, Object[] args,
+				RMIStatistics statistics) throws Throwable {
+			//XXX it would be nice if we could spare the array object creation by the proxy for the stack when the result is already ready
+			Object r = this.result;
+			if (r != RESULT_NOT_READY) {
+				return r;
+			}
+			synchronized (this) {
+				r = this.result;
+				if (r != RESULT_NOT_READY) {
+					return r;
+				}
+				Object res = RemoteProxyObject.callMethodInternal(proxy, method, args, statistics);
+				//the following CAS will always succeed as we're in a synchronized block
+				ARFU_result.compareAndSet(this, RESULT_NOT_READY, res);
+				return res;
 			}
 		}
 	}

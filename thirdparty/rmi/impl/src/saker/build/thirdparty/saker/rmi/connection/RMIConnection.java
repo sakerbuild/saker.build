@@ -105,6 +105,21 @@ public final class RMIConnection implements AutoCloseable {
 		public void onIOError(Throwable exc);
 	}
 
+	/**
+	 * Event listener that is called when the {@link RMIConnection} is closed.
+	 * <p>
+	 * The closing may happen due to I/O errors, or by explicit request of the other endpoint. The listener is called in
+	 * any case when the connection is closed.
+	 *
+	 * @since saker.rmi 0.8.2
+	 */
+	public interface CloseListener {
+		/**
+		 * Notifies the listener about the connection closing.
+		 */
+		public void onConnectionClosed();
+	}
+
 	private static final AtomicIntegerFieldUpdater<RMIConnection> ARFU_streamRoundRobin = AtomicIntegerFieldUpdater
 			.newUpdater(RMIConnection.class, "streamRoundRobin");
 	private static final AtomicIntegerFieldUpdater<RMIConnection> ARFU_offeredStreamTaskCount = AtomicIntegerFieldUpdater
@@ -129,7 +144,6 @@ public final class RMIConnection implements AutoCloseable {
 
 	private volatile String exitMessage = null;
 	private volatile boolean aborting = false;
-	private volatile boolean closed = false;
 
 	private final Object stateModifyLock = new Object();
 
@@ -147,6 +161,7 @@ public final class RMIConnection implements AutoCloseable {
 
 	private Throwable ioErrorException = null;
 	private Collection<IOErrorListener> errorListeners = ObjectUtils.newIdentityHashSet();
+	private Collection<CloseListener> closeListeners = ObjectUtils.newIdentityHashSet();
 
 	private final RequestHandler requestHandler = new RequestHandler();
 	private final ThreadLocal<AtomicInteger> currentThreadPreviousMethodCallRequestId = ThreadLocal
@@ -159,6 +174,8 @@ public final class RMIConnection implements AutoCloseable {
 
 	private ConcurrentSkipListMap<Integer, RequestThreadState> requestThreadStates = new ConcurrentSkipListMap<>();
 	private short protocolVersion;
+
+	private RMIStatistics statistics;
 
 	RMIConnection(RMIOptions options, short protocolversion) {
 		this.protocolVersion = protocolversion;
@@ -176,11 +193,17 @@ public final class RMIConnection implements AutoCloseable {
 		this.nullClassLoader = defaultedNullClassLoader(options.nullClassLoader);
 		this.maxStreamCount = Math.max(options.getDefaultedMaxStreamCount(), 1);
 		this.taskPool = createWorkPool();
+		if (options.collectStatistics) {
+			this.statistics = new RMIStatistics();
+		}
 	}
 
 	RMIConnection(RMIOptions options, StreamPair streams, short protocolversion,
 			IOFunction<Collection<? super AutoCloseable>, StreamPair> streamconnector) throws IOException {
 		this.allowDirectRequests = options.allowDirectRequests;
+		if (options.collectStatistics) {
+			this.statistics = new RMIStatistics();
+		}
 		StreamPair streamstoclose = streams;
 		RMIStream streamclose = null;
 		IOException exc = null;
@@ -218,6 +241,22 @@ public final class RMIConnection implements AutoCloseable {
 			exc = IOUtils.closeExc(exc, streamclose);
 			IOUtils.throwExc(exc);
 		}
+	}
+
+	/**
+	 * Gets the RMI statistics that were collected.
+	 * <p>
+	 * This method returns non-<code>null</code> if and only if {@link RMIOptions#collectStatistics(boolean)} was set to
+	 * <code>true</code>.
+	 * <p>
+	 * If the connection is still alive (i.e. not closed) then the returned statistics object may be modified if RMI
+	 * calls are performed concurrently.
+	 * 
+	 * @return The statistics or <code>null</code> if none were collected.
+	 * @since saker.rmi 0.8.2
+	 */
+	public RMIStatistics getStatistics() {
+		return statistics;
 	}
 
 	/**
@@ -382,7 +421,7 @@ public final class RMIConnection implements AutoCloseable {
 	public void addErrorListener(IOErrorListener listener) throws NullPointerException, IllegalArgumentException {
 		Objects.requireNonNull(listener, "listener");
 		if (isRemoteObject(listener)) {
-			throw new IllegalArgumentException("Error listener must be a local object.");
+			throw new IllegalArgumentException("Listener must be a local object.");
 		}
 		synchronized (errorListeners) {
 			if (ioErrorException != null) {
@@ -407,10 +446,62 @@ public final class RMIConnection implements AutoCloseable {
 	public void removeErrorListener(IOErrorListener listener) throws NullPointerException, IllegalArgumentException {
 		Objects.requireNonNull(listener, "listener");
 		if (isRemoteObject(listener)) {
-			throw new IllegalArgumentException("Error listener must be a local object.");
+			throw new IllegalArgumentException("Listener must be a local object.");
 		}
 		synchronized (errorListeners) {
 			errorListeners.remove(listener);
+		}
+	}
+
+	/**
+	 * Adds a connection close listener to this connection.
+	 * <p>
+	 * The listener is called when the connection is being closed. It may be called asynchronously, and even before this
+	 * method finishes.
+	 * 
+	 * @param listener
+	 *            The listener.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @throws IllegalArgumentException
+	 *             If the listener is a remote object.
+	 * @since saker.rmi 0.8.2
+	 */
+	public void addCloseListener(CloseListener listener) throws NullPointerException, IllegalArgumentException {
+		Objects.requireNonNull(listener, "listener");
+		if (isRemoteObject(listener)) {
+			throw new IllegalArgumentException("Listener must be a local object.");
+		}
+		synchronized (stateModifyLock) {
+			if (aborting && this.variablesByLocalId.isEmpty()) {
+				listener.onConnectionClosed();
+				return;
+			}
+			synchronized (closeListeners) {
+				closeListeners.add(listener);
+			}
+		}
+	}
+
+	/**
+	 * Removes a previously added close listener.
+	 * 
+	 * @param listener
+	 *            The listener.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @throws IllegalArgumentException
+	 *             If the listener is a remote object.
+	 * @see #addCloseListener(CloseListener)
+	 * @since saker.rmi 0.8.2
+	 */
+	public void removeCloseListener(CloseListener listener) throws NullPointerException, IllegalArgumentException {
+		Objects.requireNonNull(listener, "listener");
+		if (isRemoteObject(listener)) {
+			throw new IllegalArgumentException("Listener must be a local object.");
+		}
+		synchronized (closeListeners) {
+			closeListeners.remove(listener);
 		}
 	}
 
@@ -703,6 +794,14 @@ public final class RMIConnection implements AutoCloseable {
 		return found;
 	}
 
+	boolean isStatisticsCollected() {
+		return statistics != null;
+	}
+
+	RMIStatistics getCollectingStatistics() {
+		return statistics;
+	}
+
 	static final class OnlyClassLoaderResolver implements ClassLoaderResolver {
 		private ClassLoader cl;
 
@@ -804,7 +903,7 @@ public final class RMIConnection implements AutoCloseable {
 	}
 
 	private void checkClosed() {
-		if (closed) {
+		if (aborting) {
 			throw new RMIIOFailureException("Closed." + (exitMessage == null ? "" : " (" + exitMessage + ")"));
 		}
 	}
@@ -913,6 +1012,18 @@ public final class RMIConnection implements AutoCloseable {
 
 		variablesByNames.clear();
 		contextVariables.clear();
+
+		Collection<CloseListener> copy;
+		synchronized (closeListeners) {
+			if (closeListeners.isEmpty()) {
+				return;
+			}
+			copy = new ArrayList<>(closeListeners);
+			closeListeners.clear();
+		}
+		for (CloseListener l : copy) {
+			l.onConnectionClosed();
+		}
 	}
 
 	private void addAdditionalStreams(
