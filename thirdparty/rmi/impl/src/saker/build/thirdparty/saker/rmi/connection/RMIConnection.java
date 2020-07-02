@@ -758,40 +758,49 @@ public final class RMIConnection implements AutoCloseable {
 		if (cl == nullClassLoader) {
 			return null;
 		}
-		String clid = classLoaderResolver.getClassLoaderIdentifier(cl);
-		if (clid == null) {
-			return null;
+		if (classLoaderResolver != null) {
+			String clid = classLoaderResolver.getClassLoaderIdentifier(cl);
+			if (clid != null) {
+				return clid;
+			}
 		}
-		return clid;
+		return null;
 	}
 
 	ClassLoader getClassLoaderById(String id) {
 		if (id == null) {
 			return nullClassLoader;
 		}
-		return classLoaderResolver.getClassLoaderForIdentifier(id);
+		if (classLoaderResolver != null) {
+			return classLoaderResolver.getClassLoaderForIdentifier(id);
+		}
+		return null;
 	}
 
 	Optional<ClassLoader> getClassLoaderByIdOptional(String id) {
 		if (id == null) {
 			return Optional.ofNullable(nullClassLoader);
 		}
-		ClassLoader found = classLoaderResolver.getClassLoaderForIdentifier(id);
-		if (found == null) {
-			return null;
+		if (classLoaderResolver != null) {
+			ClassLoader found = classLoaderResolver.getClassLoaderForIdentifier(id);
+			if (found != null) {
+				return Optional.of(found);
+			}
 		}
-		return Optional.ofNullable(found);
+		return null;
 	}
 
 	ClassLoader getClassLoaderByIdOrThrow(String id) throws ClassLoaderNotFoundIOException {
 		if (id == null) {
 			return nullClassLoader;
 		}
-		ClassLoader found = classLoaderResolver.getClassLoaderForIdentifier(id);
-		if (found == null) {
-			throw new ClassLoaderNotFoundIOException(id);
+		if (classLoaderResolver != null) {
+			ClassLoader found = classLoaderResolver.getClassLoaderForIdentifier(id);
+			if (found != null) {
+				return found;
+			}
 		}
-		return found;
+		throw new ClassLoaderNotFoundIOException(id);
 	}
 
 	boolean isStatisticsCollected() {

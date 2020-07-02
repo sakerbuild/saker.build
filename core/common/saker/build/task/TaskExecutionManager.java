@@ -49,6 +49,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.LockSupport;
@@ -4524,8 +4525,7 @@ public class TaskExecutionManager {
 			ExecutionContextImpl context, TaskExecutionResult<?> createdby, TaskExecutionParameters parameters,
 			TaskExecutorContext<?> currentexecutorcontext) {
 		TaskInvocationConfiguration capabilities = getTaskInvocationConfiguration(factory);
-		Consumer<Runnable> strategy = getExecutionStrategyForFactory(taskid, capabilities,
-				createTaskThreadName(factory));
+		Executor strategy = getExecutionStrategyForFactory(taskid, capabilities, createTaskThreadName(factory));
 
 		ManagerTaskFutureImpl<?> ancestorfuture = currentexecutorcontext == null ? null : currentexecutorcontext.future;
 
@@ -4542,24 +4542,24 @@ public class TaskExecutionManager {
 		return "Task: " + factory.getClass().getName();
 	}
 
-	private Consumer<Runnable> getExecutionStrategyForFactory(TaskIdentifier taskid,
-			TaskInvocationConfiguration capabalities, String name) {
+	private Executor getExecutionStrategyForFactory(TaskIdentifier taskid, TaskInvocationConfiguration capabalities,
+			String name) {
 		if (capabalities.isShort()) {
 			return executeStrategy();
 		}
 		return parallelRunnerStrategy(taskid, name);
 	}
 
-	private static Consumer<Runnable> executeStrategy() {
+	private static Executor executeStrategy() {
 		return Runnable::run;
 	}
 
-	private Consumer<Runnable> parallelRunnerStrategy(TaskIdentifier taskid, String name) {
+	private Executor parallelRunnerStrategy(TaskIdentifier taskid, String name) {
 		return r -> offerTaskRunnable(r::run, taskid, name);
 	}
 
 	private <R> ManagerTaskFutureImpl<R> executeWithStrategyImpl(TaskFactory<R> factory, TaskIdentifier taskid,
-			ExecutionContextImpl context, Consumer<Runnable> executionstrategy, TaskExecutionResult<?> createdby,
+			ExecutionContextImpl context, Executor executionstrategy, TaskExecutionResult<?> createdby,
 			TaskExecutionParameters parameters, SimpleTaskDirectoryPathContext currenttaskdirectorycontext,
 			TaskInvocationConfiguration capabilities, ManagerTaskFutureImpl<?> ancestorfuture) {
 		SpawnedResultTask spawnedtask = getCreateSpawnedTask(taskid);
@@ -4589,11 +4589,11 @@ public class TaskExecutionManager {
 	}
 
 	private <R> void executeExecutionWithStrategy(TaskFactory<R> factory, TaskIdentifier taskid,
-			ExecutionContextImpl context, Consumer<Runnable> executionstrategy, ManagerTaskFutureImpl<R> future,
+			ExecutionContextImpl context, Executor executionstrategy, ManagerTaskFutureImpl<R> future,
 			TaskExecutionParameters parameters, SimpleTaskDirectoryPathContext currenttaskdirectorycontext,
 			TaskInvocationConfiguration capabilities, ManagerTaskFutureImpl<?> ancestorfuture,
 			SpawnedResultTask spawnedtask) {
-		executionstrategy.accept(() -> {
+		executionstrategy.execute(() -> {
 			TaskExecutionResult<?> prevexecresult = getPreviousExecutionResult(taskid);
 
 			SimpleTaskDirectoryPathContext taskdircontext = getTaskDirectoryPathContext(context, parameters,

@@ -32,7 +32,6 @@ import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.util.rmi.SakerRMIHelper;
-import testing.saker.build.flag.TestFlag;
 
 public interface RemoteDaemonConnection extends Closeable {
 	public interface ConnectionIOErrorListener {
@@ -63,8 +62,13 @@ public interface RemoteDaemonConnection extends Closeable {
 		RMIVariables vars = null;
 		try {
 			vars = connection.newVariables();
-			DaemonEnvironment remoteenv = (DaemonEnvironment) vars
-					.getRemoteContextVariable(LocalDaemonEnvironment.RMI_CONTEXT_VARIABLE_DAEMON_ENVIRONMENT_INSTANCE);
+			DaemonAccess access = (DaemonAccess) vars
+					.getRemoteContextVariable(LocalDaemonEnvironment.RMI_CONTEXT_VARIABLE_DAEMON_ACCESS);
+			if (access == null) {
+				throw new IOException("Failed to connect to remote daemon. No daemon access available.",
+						IOUtils.closeExc(vars, connection));
+			}
+			DaemonEnvironment remoteenv = access.getDaemonEnvironment();
 			if (remoteenv == null) {
 				throw new IOException("Failed to connect to remote daemon. No environment found.",
 						IOUtils.closeExc(vars, connection));

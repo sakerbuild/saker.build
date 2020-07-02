@@ -58,7 +58,9 @@ import saker.build.task.TaskInvocationManager.TaskInvocationContext;
 import saker.build.task.TaskInvoker;
 import saker.build.task.cluster.ClusterTaskInvoker;
 import saker.build.task.cluster.TaskInvokerFactory;
+import saker.build.task.cluster.TaskInvokerFactoryRMIWrapper;
 import saker.build.task.cluster.TaskInvokerInformation;
+import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection.IOErrorListener;
 import saker.build.thirdparty.saker.rmi.connection.RMIOptions;
@@ -81,17 +83,9 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	//TODO implement auto shutdown
 
 	/**
-	 * {@link DaemonEnvironment}
+	 * {@link DaemonAccess}
 	 */
-	public static final String RMI_CONTEXT_VARIABLE_DAEMON_ENVIRONMENT_INSTANCE = "saker.daemon.environment.instance";
-	/**
-	 * {@link TaskInvokerFactory}
-	 */
-	public static final String RMI_CONTEXT_VARIABLE_DAEMON_CLUSTER_INVOKER_FACTORY = "saker.daemon.cluster.invoker.factory";
-	/**
-	 * {@link DaemonClientServer}
-	 */
-	public static final String RMI_CONTEXT_VARIABLE_DAEMON_CLIENT_SERVER = "saker.daemon.client.server";
+	public static final String RMI_CONTEXT_VARIABLE_DAEMON_ACCESS = "saker.daemon.access";
 
 	private static final String DAEMON_LOCK_FILE_NAME = ".lock.daemon";
 	private static final int STATE_UNSTARTED = 0;
@@ -280,17 +274,32 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 								SakerRMIHelper.dumpRMIStatistics(connection);
 							}
 						});
-						connection.putContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_ENVIRONMENT_INSTANCE,
-								LocalDaemonEnvironment.this);
+						LocalDaemonClusterInvokerFactory clusterinvokerfactory;
 						if (actsascluster) {
 							ClassLoaderResolverRegistry connectionclresolver = (ClassLoaderResolverRegistry) connection
 									.getClassLoaderResolver();
-							connection.putContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_CLUSTER_INVOKER_FACTORY,
-									new LocalDaemonClusterInvokerFactory(connectionclresolver,
-											constructLaunchParameters.getClusterMirrorDirectory()));
+							clusterinvokerfactory = new LocalDaemonClusterInvokerFactory(connectionclresolver,
+									constructLaunchParameters.getClusterMirrorDirectory());
+						} else {
+							clusterinvokerfactory = null;
 						}
-						connection.putContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_CLIENT_SERVER,
-								new DaemonClientServerImpl(connection));
+						DaemonClientServerImpl clientserver = new DaemonClientServerImpl(connection);
+						connection.putContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_ACCESS, new DaemonAccess() {
+							@Override
+							public DaemonEnvironment getDaemonEnvironment() {
+								return LocalDaemonEnvironment.this;
+							}
+
+							@Override
+							public DaemonClientServer getDaemonClientServer() {
+								return clientserver;
+							}
+
+							@Override
+							public TaskInvokerFactory getClusterTaskInvokerFactory() {
+								return clusterinvokerfactory;
+							}
+						});
 						super.setupConnection(acceptedsocket, connection);
 					}
 				};
@@ -495,8 +504,9 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 						RMIVariables vars = null;
 						try {
 							vars = rmiconn.newVariables();
-							DaemonClientServer clientserver = (DaemonClientServer) vars
-									.getRemoteContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_CLIENT_SERVER);
+							DaemonAccess access = (DaemonAccess) vars
+									.getRemoteContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_ACCESS);
+							DaemonClientServer clientserver = access.getDaemonClientServer();
 
 							ClassLoaderResolverRegistry connectionclresolver = (ClassLoaderResolverRegistry) rmiconn
 									.getClassLoaderResolver();
@@ -753,6 +763,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 	}
 
+	@RMIWrap(TaskInvokerFactoryRMIWrapper.class)
 	private class LocalDaemonClusterInvokerFactory implements TaskInvokerFactory {
 		private final Path clusterMirrorDirectory;
 		private final ClassLoaderResolverRegistry connectionClassLoaderRegistry;

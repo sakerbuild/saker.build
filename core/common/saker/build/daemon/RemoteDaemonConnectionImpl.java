@@ -23,8 +23,8 @@ import java.util.HashSet;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.function.Supplier;
 
-import saker.build.daemon.RemoteDaemonConnectionImpl.ConnectionImpl;
 import saker.build.file.content.ContentDatabaseImpl;
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.ExecutionContextImpl;
@@ -32,9 +32,10 @@ import saker.build.task.ForwardingTaskInvoker;
 import saker.build.task.TaskInvocationManager.TaskInvocationContext;
 import saker.build.task.TaskInvoker;
 import saker.build.task.cluster.TaskInvokerFactory;
+import saker.build.task.cluster.TaskInvokerFactoryRMIWrapper;
 import saker.build.task.cluster.TaskInvokerInformation;
+import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
-import saker.build.thirdparty.saker.rmi.connection.RMIStatistics;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.rmi.exception.RMICallForbiddenException;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
@@ -48,16 +49,17 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 	protected static final class ConnectionImpl {
 		protected final RMIConnection rmiConnection;
 		protected final DaemonEnvironment environment;
-		protected final LazySupplier<TaskInvokerFactory> clusterInvokerFactory;
+		protected final Supplier<TaskInvokerFactory> clusterInvokerFactory;
 		protected final ClassLoaderResolverRegistry connectionClassLoaderRegistry;
 
 		public ConnectionImpl(RMIConnection rmiConnection, DaemonEnvironment environment, RMIVariables vars) {
 			this.rmiConnection = rmiConnection;
 			this.environment = environment;
-			this.clusterInvokerFactory = LazySupplier.of(() -> {
-				return (TaskInvokerFactory) vars.getRemoteContextVariable(
-						LocalDaemonEnvironment.RMI_CONTEXT_VARIABLE_DAEMON_CLUSTER_INVOKER_FACTORY);
+			Supplier<DaemonAccess> accesssupplier = LazySupplier.of(() -> {
+				return (DaemonAccess) vars
+						.getRemoteContextVariable(LocalDaemonEnvironment.RMI_CONTEXT_VARIABLE_DAEMON_ACCESS);
 			});
+			this.clusterInvokerFactory = LazySupplier.of(() -> accesssupplier.get().getClusterTaskInvokerFactory());
 			this.connectionClassLoaderRegistry = (ClassLoaderResolverRegistry) rmiConnection.getClassLoaderResolver();
 		}
 	}
@@ -153,6 +155,7 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 		}
 	}
 
+	@RMIWrap(TaskInvokerFactoryRMIWrapper.class)
 	public static final class TaskInvokerFactoryImpl implements TaskInvokerFactory {
 		private final ClassLoaderResolverRegistry connectionClassLoaderRegistry;
 		private final TaskInvokerFactory invokerFactory;

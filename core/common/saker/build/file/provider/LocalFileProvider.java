@@ -1981,6 +1981,7 @@ public final class LocalFileProvider implements SakerFileProvider, LocalFileProv
 		return openRMIBufferedOutputImpl(ppath, openoptions, writecontents);
 	}
 
+	@ExcludeApi
 	@Override
 	public RMIBufferedFileOutput openRMIEnsureWriteBufferedOutput(SakerPath path, OpenOption[] openoptions,
 			int operationflags, MultiByteArray writecontents) throws IOException {
@@ -2055,6 +2056,7 @@ public final class LocalFileProvider implements SakerFileProvider, LocalFileProv
 		}
 	}
 
+	@ExcludeApi
 	@Override
 	public void touchRMIEnsureWriteOpenOutput(SakerPath path, OpenOption[] openoptions, int operationflags,
 			ByteArrayRegion bytes) throws IOException {
@@ -2064,6 +2066,7 @@ public final class LocalFileProvider implements SakerFileProvider, LocalFileProv
 		touchRMIOpenOutputImpl(ppath, openoptions, bytes);
 	}
 
+	@ExcludeApi
 	@Override
 	public RMIWriteToResult writeToRMIBuffered(SakerPath path, ByteSink out, OpenOption[] openoptions)
 			throws IOException {
