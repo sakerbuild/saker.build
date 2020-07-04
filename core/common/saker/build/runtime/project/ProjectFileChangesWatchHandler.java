@@ -140,8 +140,10 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 							watchedpaths.remove(parent);
 						}, dirdatabasetrackedpaths, recheckerpathset, database);
 				try {
+					ListenerToken ltoken;
 					synchronized (listener) {
-						listener.listenerToken = fp.addFileEventListener(parent, listener);
+						ltoken = fp.addFileEventListener(parent, listener);
+						listener.listenerToken = ltoken;
 
 						try {
 							FileEntry attrs = fp.getFileAttributes(p);
@@ -156,11 +158,11 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 						}
 					}
 					watchedpaths.add(parent);
-					FileEventListener.ListenerToken prev = listeners.putIfAbsent(parent, listener.listenerToken);
+					FileEventListener.ListenerToken prev = listeners.putIfAbsent(parent, ltoken);
 					if (prev != null) {
 						//internal error, the listener was installed multiple times
 						//should NEVER happen, but handle it by removing the listener nonetheless
-						listener.listenerToken.removeListener();
+						ltoken.removeListener();
 						if (TestFlag.ENABLED) {
 							//fail during testing, recover in production
 							throw new AssertionError();
@@ -317,8 +319,10 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 						watchedpathsset, containingmap, dirdatabasetrackedfiles, recheckerpathset,
 						filecomputedatahandler, database);
 				synchronized (listener) {
+					ListenerToken ltoken;
 					try {
-						listener.listenerToken = fp.addFileEventListener(mpath, listener);
+						ltoken = fp.addFileEventListener(mpath, listener);
+						listener.listenerToken = ltoken;
 					} catch (IOException e) {
 						if (database != null) {
 							database.invalidateOffline(fpkey, mpath);
@@ -338,7 +342,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 						database.invalidateEntriesOffline(fpkey, mpath, repaired);
 						dbinvalidateddirectorypaths.add(mpath);
 					}
-					containingmap.put(mpath, listener.listenerToken);
+					containingmap.put(mpath, ltoken);
 				}
 
 				watchedpathsset.add(mpath);
@@ -483,7 +487,10 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 			super.eventsMissed();
 
 			synchronized (this) {
-				listenerToken.removeListener();
+				ListenerToken lt = listenerToken;
+				if (lt != null) {
+					lt.removeListener();
+				}
 				error();
 			}
 		}

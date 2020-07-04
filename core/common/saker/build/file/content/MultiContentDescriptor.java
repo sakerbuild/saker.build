@@ -117,7 +117,7 @@ public final class MultiContentDescriptor implements ContentDescriptor, External
 	}
 
 	@Override
-	public synchronized boolean isChanged(ContentDescriptor content) {
+	public boolean isChanged(ContentDescriptor content) {
 		if (content == null || getClass() != content.getClass()) {
 			return true;
 		}

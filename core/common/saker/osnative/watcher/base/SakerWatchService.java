@@ -36,8 +36,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -61,7 +63,8 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 		}
 	}
 
-	protected final Object signaledKeysLock = new Object();
+	protected final ReentrantLock signaledKeysLock = new ReentrantLock();
+	protected final Condition signaledKeysCondition = signaledKeysLock.newCondition();
 	protected volatile Collection<SakerUserWatchKey> signaledKeys = new LinkedHashSet<>();
 	protected final Map<KeyConfig, Object> nativeKeyComputationLocks = new ConcurrentSkipListMap<>();
 	protected final Map<KeyConfig, SakerNativeWatchKey> nativeKeys = new ConcurrentSkipListMap<>();
@@ -76,7 +79,8 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 
 	@Override
 	public WatchKey poll() {
-		synchronized (signaledKeysLock) {
+		signaledKeysLock.lock();
+		try {
 			Collection<SakerUserWatchKey> keys = signaledKeys;
 			if (keys == null) {
 				throw new ClosedWatchServiceException();
@@ -86,12 +90,15 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 				result.removedFromQueue();
 			}
 			return result;
+		} finally {
+			signaledKeysLock.unlock();
 		}
 	}
 
 	@Override
 	public WatchKey poll(long timeout, TimeUnit unit) throws InterruptedException {
-		synchronized (signaledKeysLock) {
+		signaledKeysLock.lock();
+		try {
 			Collection<SakerUserWatchKey> keys = signaledKeys;
 			if (keys == null) {
 				throw new ClosedWatchServiceException();
@@ -106,7 +113,7 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 					first.removedFromQueue();
 					return first;
 				}
-				signaledKeysLock.wait(remaining / 1000000, (int) remaining % 1000000);
+				signaledKeysCondition.awaitNanos(remaining);
 				keys = signaledKeys;
 				if (keys == null) {
 					//we dont throw a closed watch service exception yet, but only return null
@@ -124,12 +131,15 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 				}
 				remaining = timeout - elapsed;
 			}
+		} finally {
+			signaledKeysLock.unlock();
 		}
 	}
 
 	@Override
 	public WatchKey take() throws InterruptedException {
-		synchronized (signaledKeysLock) {
+		signaledKeysLock.lock();
+		try {
 			while (true) {
 				Collection<SakerUserWatchKey> keys = signaledKeys;
 				if (keys == null) {
@@ -140,8 +150,10 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 					first.removedFromQueue();
 					return first;
 				}
-				signaledKeysLock.wait();
+				signaledKeysCondition.await();
 			}
+		} finally {
+			signaledKeysLock.unlock();
 		}
 	}
 
@@ -154,9 +166,12 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 			if (serviceptr == 0) {
 				return;
 			}
-			synchronized (signaledKeysLock) {
+			signaledKeysLock.lock();
+			try {
 				signaledKeys = null;
-				signaledKeysLock.notifyAll();
+				signaledKeysCondition.signalAll();
+			} finally {
+				signaledKeysLock.unlock();
 			}
 			//create a copy collection to defend against concurrent removal
 			List<SakerNativeWatchKey> copy = new ArrayList<>(nativeKeys.values());
@@ -362,16 +377,22 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 
 	void cancelUserKey(SakerUserWatchKey key, SakerNativeWatchKey nativekey) {
 		nativekey.removeAndCloseIfEmpty(key);
-		synchronized (signaledKeysLock) {
+		signaledKeysLock.lock();
+		try {
 			signaledKeys.remove(key);
+		} finally {
+			signaledKeysLock.unlock();
 		}
 	}
 
 	void enqueue(SakerUserWatchKey key) {
-		synchronized (signaledKeysLock) {
+		signaledKeysLock.lock();
+		try {
 			if (signaledKeys.add(key)) {
-				signaledKeysLock.notify();
+				signaledKeysCondition.signal();
 			}
+		} finally {
+			signaledKeysLock.unlock();
 		}
 	}
 

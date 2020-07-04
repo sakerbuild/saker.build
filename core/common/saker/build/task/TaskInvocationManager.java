@@ -1935,6 +1935,14 @@ public class TaskInvocationManager implements Closeable {
 
 		public boolean isEnded() {
 			return ended;
+//			if (!ended) {
+//				return false;
+//			}
+//			TaskResultReadyCountState s = readyState;
+//			if (s.invokingCount > s.readyCount) {
+//				return false;
+//			}
+//			return true;
 		}
 
 		public void cancelDuplicationOptionally() {
@@ -1971,7 +1979,11 @@ public class TaskInvocationManager implements Closeable {
 							new TaskResultReadyCountState(s.readyCount - 1, s.invokingCount))) {
 						continue;
 					}
-					return handle.getResultIfPresent();
+					InnerTaskResultHolder<R> res = handle.getResultIfPresent();
+					if (res == null) {
+						throw new AssertionError("Failed to retrieve inner task result.");
+					}
+					return res;
 				}
 				if (!ObjectUtils.isNullOrEmpty(s.hardFail)) {
 					if (!ARFU_readyState.compareAndSet(this, s,
@@ -1998,7 +2010,13 @@ public class TaskInvocationManager implements Closeable {
 					ended = true;
 					resultWaiterLock.notifyAll();
 				} else {
-					resultWaiterLock.notify();
+					if (ended) {
+						//there might be scenarios when the "no more result" notification arrives before the 
+						// "result ready" notification. in this case we need to notify all
+						resultWaiterLock.notifyAll();
+					} else {
+						resultWaiterLock.notify();
+					}
 				}
 			}
 		}

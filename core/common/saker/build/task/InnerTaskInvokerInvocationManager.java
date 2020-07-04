@@ -88,10 +88,7 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 			duplicationCancelled = true;
 			if (computationTokenCount > 0) {
 				//don't need to perform notification if there's no computation tokens used
-				Object ctlock = ComputationToken.getAllocationLock();
-				synchronized (ctlock) {
-					ctlock.notifyAll();
-				}
+				ComputationToken.wakeUpWaiters(computationTokenAllocator);
 			}
 		}
 

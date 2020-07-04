@@ -111,6 +111,17 @@ public class PropertyNames {
 	public static final String PROPERTY_DEFAULT_STORAGE_DIRECTORY = "saker.build.storage.directory.default";
 
 	/**
+	 * Property name for signalling that RMI statistics should be collected and displayed for measurement purposes.
+	 * <p>
+	 * If this property is set, any RMI connection that is opened should collect statistics of their requests. This
+	 * property name is just a hint that should allow better measurements and analysis. Some opened RMI connections may
+	 * not support this property.
+	 * 
+	 * @since saker.build 0.8.15
+	 */
+	public static final String PROPERTY_COLLECT_RMI_STATISTICS = "saker.build.rmi.statistics.collect";
+
+	/**
 	 * Gets the JVM level property with the given name.
 	 * <p>
 	 * This method will retrieve {@link System#getProperty(String)} for the specified name and return it if

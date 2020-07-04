@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import saker.apiextract.api.PublicApi;
 import saker.build.file.content.ContentDescriptor;
@@ -38,8 +39,11 @@ import saker.build.thirdparty.saker.util.io.UnsyncByteArrayInputStream;
  */
 @PublicApi
 public class ByteArraySakerFile extends SakerFileBase {
+	private static final AtomicReferenceFieldUpdater<ByteArraySakerFile, ContentDescriptor> ARFU_contentDescriptor = AtomicReferenceFieldUpdater
+			.newUpdater(ByteArraySakerFile.class, ContentDescriptor.class, "contentDescriptor");
+
 	private ByteArrayRegion bytes;
-	private volatile ContentDescriptor contentDescriptor = null;
+	private volatile ContentDescriptor contentDescriptor;
 
 	/**
 	 * Creates a new instance with the given name and no byte contents.
@@ -120,15 +124,11 @@ public class ByteArraySakerFile extends SakerFileBase {
 		if (cd != null) {
 			return cd;
 		}
-		synchronized (this) {
-			cd = contentDescriptor;
-			if (cd != null) {
-				return cd;
-			}
-			cd = HashContentDescriptor.hash(getBytesImpl());
-			contentDescriptor = cd;
+		cd = HashContentDescriptor.hash(getBytesImpl());
+		if (ARFU_contentDescriptor.compareAndSet(this, null, cd)) {
 			return cd;
 		}
+		return this.contentDescriptor;
 	}
 
 	@Override

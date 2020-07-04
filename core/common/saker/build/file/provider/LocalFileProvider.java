@@ -263,8 +263,9 @@ public final class LocalFileProvider implements SakerFileProvider, LocalFileProv
 			if (gcReferences.remove(reference)) {
 				reference.enqueue();
 			}
-			if (this.lock != null) {
-				this.lock.release();
+			FileLock lock = this.lock;
+			if (lock != null) {
+				lock.release();
 				this.lock = null;
 			}
 			channel.close();
@@ -283,16 +284,18 @@ public final class LocalFileProvider implements SakerFileProvider, LocalFileProv
 			if (this.lock != null) {
 				throw new IllegalStateException("Trying to acquire lock more than once.");
 			}
-			lock = channel.tryLock();
-			return lock != null;
+			FileLock nlock = channel.tryLock();
+			lock = nlock;
+			return nlock != null;
 		}
 
 		@Override
 		public synchronized void release() throws IOException {
-			if (this.lock == null) {
+			FileLock lock = this.lock;
+			if (lock == null) {
 				throw new IllegalStateException("Lock is not acquired.");
 			}
-			this.lock.release();
+			lock.release();
 			this.lock = null;
 		}
 	}

@@ -36,6 +36,7 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 import saker.build.cache.BuildCacheAccessor;
@@ -95,6 +96,7 @@ import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
+import saker.build.thirdparty.saker.util.ref.StrongWeakReference;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.trace.InternalBuildTrace;
 import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
@@ -139,7 +141,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	private Object environmentExecutionKey;
 
 	private Map<ExecutionProperty<?>, Supplier<?>> checkedExecutionProperties = new ConcurrentHashMap<>();
-	private final ConcurrentHashMap<ExecutionProperty<?>, Object> executionPropertyCalculateLocks = new ConcurrentHashMap<>();
+	private final ConcurrentHashMap<ExecutionProperty<?>, StrongWeakReference<ReentrantLock>> executionPropertyCalculateLocks = new ConcurrentHashMap<>();
 
 	private BuildTaskResultDatabase results;
 	private TaskResultCollectionImpl resultCollection;
@@ -365,8 +367,9 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		if (result != null) {
 			return (T) result.get();
 		}
-		synchronized (executionPropertyCalculateLocks.computeIfAbsent(executionproperty,
-				Functionals.objectComputer())) {
+		ReentrantLock lock = getExecutionPropertyCalculateLock(executionproperty);
+		lock.lock();
+		try {
 			result = checkedExecutionProperties.get(executionproperty);
 			if (result != null) {
 				return (T) result.get();
@@ -381,7 +384,21 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 			}
 			checkedExecutionProperties.putIfAbsent(executionproperty, result);
 			return (T) result.get();
+		} finally {
+			lock.unlock();
 		}
+	}
+
+	private ReentrantLock getExecutionPropertyCalculateLock(ExecutionProperty<?> executionproperty) {
+		StrongWeakReference<ReentrantLock> ref = executionPropertyCalculateLocks.compute(executionproperty, (k, v) -> {
+			if (v != null && v.makeStrong()) {
+				return v;
+			}
+			return new StrongWeakReference<>(new ReentrantLock());
+		});
+		ReentrantLock result = ref.get();
+		ref.makeWeak();
+		return result;
 	}
 
 	public boolean hasAnyExecutionPropertyDifference(Map<? extends ExecutionProperty<?>, ?> testproperties) {

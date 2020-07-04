@@ -23,6 +23,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.io.AsyncOutputStream;
@@ -70,90 +72,111 @@ public class WeakRefDaemonOutputController implements DaemonOutputController {
 	}
 
 	private static class WeakRefMultiplexOutputStream extends OutputStream {
+		private final Collection<WeakReference<AsyncOutputStream>> streams = ConcurrentHashMap.newKeySet();
+		private final ReentrantLock lock = new ReentrantLock();
 
-		private Collection<WeakReference<AsyncOutputStream>> streams = new HashSet<>();
-
-		public synchronized StreamToken addStream(OutputStream os) {
-			//keep strong reference on stack until it is actually added
-			AsyncOutputStream thestream = new AsyncOutputStream(os);
-			WeakReference<AsyncOutputStream> weakref = new WeakReference<>(thestream);
-			streams.add(weakref);
-			return new WeakRefStreamToken(this, weakref);
+		public StreamToken addStream(OutputStream os) {
+			lock.lock();
+			try {
+				//keep strong reference on stack until it is actually added
+				AsyncOutputStream thestream = new AsyncOutputStream(os);
+				WeakReference<AsyncOutputStream> weakref = new WeakReference<>(thestream);
+				streams.add(weakref);
+				return new WeakRefStreamToken(this, weakref);
+			} finally {
+				lock.unlock();
+			}
 		}
 
-		private synchronized void removeStream(WeakReference<? extends AsyncOutputStream> streamref) {
+		private void removeStream(WeakReference<? extends AsyncOutputStream> streamref) {
 			streams.remove(streamref);
 		}
 
 		@Override
-		public synchronized void write(int b) {
+		public void write(int b) {
 			if (streams.isEmpty()) {
 				return;
 			}
-			for (Iterator<? extends Reference<? extends OutputStream>> it = streams.iterator(); it.hasNext();) {
-				Reference<? extends OutputStream> s = it.next();
-				OutputStream os = s.get();
-				if (os == null) {
-					it.remove();
-					continue;
-				}
-				try {
-					os.write(b);
-				} catch (Exception e) {
-					it.remove();
-				}
-			}
-		}
-
-		@Override
-		public synchronized void write(byte[] b, int off, int len) {
-			if (streams.isEmpty()) {
-				return;
-			}
-			byte[] copy = null;
-			for (Iterator<? extends Reference<? extends OutputStream>> it = streams.iterator(); it.hasNext();) {
-				Reference<? extends OutputStream> s = it.next();
-				OutputStream os = s.get();
-				if (os == null) {
-					it.remove();
-					continue;
-				}
-				try {
-					if (copy == null) {
-						copy = Arrays.copyOfRange(b, off, off + len);
+			lock.lock();
+			try {
+				for (Iterator<? extends Reference<? extends OutputStream>> it = streams.iterator(); it.hasNext();) {
+					Reference<? extends OutputStream> s = it.next();
+					OutputStream os = s.get();
+					if (os == null) {
+						it.remove();
+						continue;
 					}
-					os.write(copy);
-				} catch (Exception e) {
-					it.remove();
+					try {
+						os.write(b);
+					} catch (Exception e) {
+						it.remove();
+					}
 				}
+			} finally {
+				lock.unlock();
 			}
 		}
 
 		@Override
-		public synchronized void flush() {
+		public void write(byte[] b, int off, int len) {
 			if (streams.isEmpty()) {
 				return;
 			}
-			for (Iterator<? extends Reference<? extends OutputStream>> it = streams.iterator(); it.hasNext();) {
-				Reference<? extends OutputStream> s = it.next();
-				OutputStream os = s.get();
-				if (os == null) {
-					it.remove();
-					continue;
+			lock.lock();
+			try {
+				byte[] copy = null;
+				for (Iterator<? extends Reference<? extends OutputStream>> it = streams.iterator(); it.hasNext();) {
+					Reference<? extends OutputStream> s = it.next();
+					OutputStream os = s.get();
+					if (os == null) {
+						it.remove();
+						continue;
+					}
+					try {
+						if (copy == null) {
+							copy = Arrays.copyOfRange(b, off, off + len);
+						}
+						os.write(copy);
+					} catch (Exception e) {
+						it.remove();
+					}
 				}
-				try {
-					os.flush();
-				} catch (Exception e) {
-					it.remove();
-				}
+			} finally {
+				lock.unlock();
 			}
 		}
 
 		@Override
-		public synchronized void close() {
+		public void flush() {
 			if (streams.isEmpty()) {
 				return;
 			}
+			lock.lock();
+			try {
+				for (Iterator<? extends Reference<? extends OutputStream>> it = streams.iterator(); it.hasNext();) {
+					Reference<? extends OutputStream> s = it.next();
+					OutputStream os = s.get();
+					if (os == null) {
+						it.remove();
+						continue;
+					}
+					try {
+						os.flush();
+					} catch (Exception e) {
+						it.remove();
+					}
+				}
+			} finally {
+				lock.unlock();
+			}
+		}
+
+		@Override
+		public void close() {
+			if (streams.isEmpty()) {
+				return;
+			}
+			//the async streams will shut themselves down
 			streams.clear();
 		}
 
@@ -176,19 +199,23 @@ public class WeakRefDaemonOutputController implements DaemonOutputController {
 	public StreamToken replaceStandardIOAndAttach() {
 		PrintStream out;
 		PrintStream err;
+		PrintStream noutstream = new PrintStream(stdOutStream);
+		PrintStream nerrstream = new PrintStream(stdErrStream);
 		synchronized (JVMSynchronizationObjects.getStandardIOLock()) {
 			out = System.out;
 			err = System.err;
-			System.setOut(new PrintStream(stdOutStream));
-			System.setErr(new PrintStream(stdErrStream));
+			System.setOut(noutstream);
+			System.setErr(nerrstream);
 		}
 		return new CompoundToken(addStandardOutput(ByteSink.valueOf(out)), addStandardError(ByteSink.valueOf(err)));
 	}
 
 	public void replaceStandardIO() {
+		PrintStream noutstream = new PrintStream(stdOutStream);
+		PrintStream nerrstream = new PrintStream(stdErrStream);
 		synchronized (JVMSynchronizationObjects.getStandardIOLock()) {
-			System.setOut(new PrintStream(stdOutStream));
-			System.setErr(new PrintStream(stdErrStream));
+			System.setOut(noutstream);
+			System.setErr(nerrstream);
 		}
 	}
 

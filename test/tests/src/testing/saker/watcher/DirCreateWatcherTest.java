@@ -39,13 +39,15 @@ public class DirCreateWatcherTest extends AbstractWatcherTestCase {
 		fp.clearDirectoryRecursively(dirpath);
 		Set<String> modfilenames = new ConcurrentSkipListSet<>();
 		ListenerToken token = fp.addFileEventListener(dirpath, new FileNameAdderFileEventListener(modfilenames));
-		fp.createDirectories(dirpath.resolve("mydir/subdir"));
+		try {
+			fp.createDirectories(dirpath.resolve("mydir/subdir"));
 
-		waitForFileName(modfilenames, "mydir");
-		//subdir not present
-		assertEquals(modfilenames, setOf("mydir"));
-
-		token.removeListener();
+			assertTrue(waitForFileName(modfilenames, "mydir"), () -> modfilenames.toString());
+			//subdir not present
+			assertEquals(modfilenames, setOf("mydir"));
+		} finally {
+			token.removeListener();
+		}
 
 		//ensure that the watchers are uninstalled if there are no more listeners
 		assertEmpty(metric.getWatchedPaths());

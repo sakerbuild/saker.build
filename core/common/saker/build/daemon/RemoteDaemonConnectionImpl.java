@@ -38,6 +38,8 @@ import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.rmi.exception.RMICallForbiddenException;
+import saker.build.thirdparty.saker.util.ArrayUtils;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
 import saker.build.thirdparty.saker.util.function.LazySupplier;
@@ -112,8 +114,20 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 			copy = new ArrayList<>(errorListeners);
 			errorListeners.clear();
 		}
+		Throwable[] listenerexceptions = ObjectUtils.EMPTY_THROWABLE_ARRAY;
 		for (ConnectionIOErrorListener l : copy) {
-			l.onConnectionError(exc);
+			try {
+				l.onConnectionError(exc);
+			} catch (Exception e) {
+				listenerexceptions = ArrayUtils.appended(listenerexceptions, e);
+			}
+		}
+		if (listenerexceptions.length > 0) {
+			RuntimeException ex = new RuntimeException("Connection error listeners caused an exception.");
+			for (Throwable t : listenerexceptions) {
+				ex.addSuppressed(t);
+			}
+			throw ex;
 		}
 	}
 

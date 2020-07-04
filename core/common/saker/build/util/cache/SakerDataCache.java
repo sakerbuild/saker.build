@@ -26,6 +26,7 @@ import java.security.PrivilegedAction;
 import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Predicate;
 
 import saker.build.runtime.environment.SakerEnvironment;
@@ -102,10 +103,12 @@ public class SakerDataCache implements Closeable {
 	}
 
 	private static class CacheEntry<DataType, ResourceType> {
-		private Reference<DataType> dataRef;
-		private Long expiryMillis;
-		private final CacheKey<DataType, ResourceType> key;
-		private ResourceType resource;
+		protected final ReentrantLock lock = new ReentrantLock();
+
+		protected Reference<DataType> dataRef;
+		protected Long expiryMillis;
+		protected final CacheKey<DataType, ResourceType> key;
+		protected ResourceType resource;
 
 		public CacheEntry(CacheKey<DataType, ResourceType> key) {
 			this.key = key;
@@ -162,7 +165,8 @@ public class SakerDataCache implements Closeable {
 		@SuppressWarnings("unchecked")
 		CacheEntry<D, R> entry = (CacheEntry<D, R>) entries.remove(key);
 		if (entry != null) {
-			synchronized (entry) {
+			entry.lock.lock();
+			try {
 				R entryres = entry.getResource();
 				if (entryres != null) {
 					try {
@@ -171,6 +175,8 @@ public class SakerDataCache implements Closeable {
 						e.printStackTrace();
 					}
 				}
+			} finally {
+				entry.lock.unlock();
 			}
 		}
 	}
@@ -185,7 +191,8 @@ public class SakerDataCache implements Closeable {
 				it.remove();
 				CacheEntry entry = cacheentry.getValue();
 				if (entry != null) {
-					synchronized (entry) {
+					entry.lock.lock();
+					try {
 						if (entry.resource != null) {
 							try {
 								key.close(entry.getData(), entry.getResource());
@@ -193,6 +200,8 @@ public class SakerDataCache implements Closeable {
 								e.printStackTrace();
 							}
 						}
+					} finally {
+						entry.lock.unlock();
 					}
 				}
 			}
@@ -208,7 +217,8 @@ public class SakerDataCache implements Closeable {
 			entry = prev;
 		}
 		while (true) {
-			synchronized (entry) {
+			entry.lock.lock();
+			try {
 				if (entry.isInvalidated()) {
 					CacheEntry<DataType, ResourceType> nentry = new CacheEntry<>(key);
 					if (entries.replace(key, entry, nentry)) {
@@ -306,6 +316,8 @@ public class SakerDataCache implements Closeable {
 				long nanos = System.nanoTime();
 				entry.expiryMillis = nanos / 1_000_000 + keyexpiry;
 				return val;
+			} finally {
+				entry.lock.unlock();
 			}
 		}
 	}
@@ -359,14 +371,17 @@ public class SakerDataCache implements Closeable {
 				}
 				remove_handler:
 				if (removed != null) {
-					CommonReference rpr = (CommonReference) removed;
-					CacheEntry entry = rpr.getEntry();
-					synchronized (entry) {
+					CommonReference<?, ?> rpr = (CommonReference<?, ?>) removed;
+					CacheEntry<?, ?> entry = rpr.getEntry();
+					entry.lock.lock();
+					try {
 						if (entry.dataRef != rpr) {
 							//dont close the resource as it is being used by a new data
 							break remove_handler;
 						}
 						entry.invalidate();
+					} finally {
+						entry.lock.unlock();
 					}
 					entries.remove(entry.key, entry);
 					try {
@@ -384,7 +399,8 @@ public class SakerDataCache implements Closeable {
 							.hasNext();) {
 						Entry<CacheKey<?, ?>, CacheEntry<?, ?>> entry = it.next();
 						CacheEntry ce = entry.getValue();
-						synchronized (ce) {
+						ce.lock.lock();
+						try {
 							if (!ce.isConstructed() || ce.isInvalidated()) {
 								//not yet finished constructing
 								continue;
@@ -400,6 +416,8 @@ public class SakerDataCache implements Closeable {
 								//use subtraction instead of greater than because of signed overflow
 								ce.dataRef = new ResourceWeakReference<>(value, queue, ce);
 							}
+						} finally {
+							ce.lock.unlock();
 						}
 					}
 					nextcheckmillis = System.nanoTime() / 1_000_000 + EXPIRY_RECHECK_INTERVAL_MILLIS;

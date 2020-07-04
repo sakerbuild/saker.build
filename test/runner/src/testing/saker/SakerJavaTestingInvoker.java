@@ -30,7 +30,7 @@ import saker.java.testing.api.test.invoker.TestInvokerParameters;
 
 public class SakerJavaTestingInvoker extends BasicInstrumentationJavaTestInvoker {
 	private static final String PARAM_TIMEOUT_MILLIS = "TimeoutMillis";
-	
+
 	private static final StackTraceElement[] EMPTY_STACK_TRACE_ELEMENT_ARRAY = {};
 
 	private static final LinkedList<AutoCloseable> closeables = new LinkedList<>();
@@ -179,7 +179,9 @@ public class SakerJavaTestingInvoker extends BasicInstrumentationJavaTestInvoker
 							}
 						}
 						ThreadGroup tg = tointerrupt.getThreadGroup();
-						tg.interrupt();
+						if (tg != null) {
+							tg.interrupt();
+						}
 					}
 				}
 			}

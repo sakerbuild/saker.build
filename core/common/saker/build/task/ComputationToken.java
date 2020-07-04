@@ -58,8 +58,11 @@ public class ComputationToken implements AutoCloseable {
 	private static final Object allocationLock = new Object();
 
 	@ExcludeApi
-	public static Object getAllocationLock() {
-		return allocationLock;
+	public static void wakeUpWaiters(Object allocator) {
+		//TODO wake up only waiters for the given allocator
+		synchronized (allocationLock) {
+			allocationLock.notifyAll();
+		}
 	}
 
 	@ExcludeApi
