@@ -1808,6 +1808,8 @@ public class TaskInvocationManager implements Closeable {
 							if (!ih.isResultAvailable()) {
 								if (!ih.isAnyMoreResultsExpected()) {
 									availihit.remove();
+								} else {
+									hadhandler = true;
 								}
 								continue;
 							}
@@ -1970,9 +1972,6 @@ public class TaskInvocationManager implements Closeable {
 
 		public boolean isAnyMoreResultsExpected() {
 			TaskResultReadyCountState s = readyState;
-			if (s.hardFail != null) {
-				return false;
-			}
 			return s.notifiedCount < s.invokingCount;
 		}
 
