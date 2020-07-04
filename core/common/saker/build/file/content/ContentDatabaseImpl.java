@@ -642,12 +642,11 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 			return;
 		}
 
-		synchronized (this) {
-			if (!this.dirty) {
-				return;
-			}
-			this.dirty = false;
+		if (!this.dirty) {
+			return;
 		}
+		this.dirty = false;
+
 		descriptorsFileProvider.createDirectories(descriptorsFilePath.getParent());
 		try (OutputStream descos = new UnsyncBufferedOutputStream(
 				ByteSink.toOutputStream(descriptorsFileProvider.openOutput(descriptorsFilePath)), OUTPUT_BUFFER_SIZE);

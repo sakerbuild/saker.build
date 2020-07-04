@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.UUID;
+import java.util.concurrent.locks.ReentrantLock;
 
 import saker.build.cache.BuildDataCache;
 import saker.build.file.path.PathKey;
@@ -428,6 +429,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		private final ExecutionProgressMonitor subject;
 		private volatile boolean cancelled = false;
 		private long lastCheck = System.nanoTime();
+		private final ReentrantLock lock = new ReentrantLock();
 
 		public TimedPollingProgressMonitor(ExecutionProgressMonitor subject) {
 			this.subject = subject;
@@ -443,7 +445,8 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 			if (nanos - lc >= 3 * DateUtils.NANOS_PER_SECOND) {
 				//check every 3 sec
 				boolean cancelres;
-				synchronized (this) {
+				lock.lock();
+				try {
 					if (lc != this.lastCheck) {
 						//somebody checked before we did
 						return cancelled;
@@ -451,6 +454,8 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 					cancelres = subject.isCancelled();
 					cancelled = cancelres;
 					lastCheck = nanos;
+				} finally {
+					lock.unlock();
 				}
 				return cancelres;
 			}
