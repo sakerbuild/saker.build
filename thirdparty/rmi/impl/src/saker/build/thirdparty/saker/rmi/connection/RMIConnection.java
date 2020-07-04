@@ -260,6 +260,16 @@ public final class RMIConnection implements AutoCloseable {
 	}
 
 	/**
+	 * Gets if RMI statistics are being collected.
+	 * 
+	 * @return <code>true</code> if {@link #getStatistics()} will return non-<code>null</code>.
+	 * @since saker.rmi 0.8.2
+	 */
+	public boolean isStatisticsCollected() {
+		return statistics != null;
+	}
+
+	/**
 	 * Gets the {@link ClassLoaderResolver} instance used by this RMI connection.
 	 * <p>
 	 * If it was set by {@link RMIOptions} then the specified instance else a defaulted resolver is returned.
@@ -801,10 +811,6 @@ public final class RMIConnection implements AutoCloseable {
 			}
 		}
 		throw new ClassLoaderNotFoundIOException(id);
-	}
-
-	boolean isStatisticsCollected() {
-		return statistics != null;
 	}
 
 	RMIStatistics getCollectingStatistics() {

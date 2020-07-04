@@ -1806,7 +1806,9 @@ public class TaskInvocationManager implements Closeable {
 						ListenerInnerTaskInvocationHandler<R> ih = availihit.next();
 						if (ih.isEnded()) {
 							if (!ih.isResultAvailable()) {
-								availihit.remove();
+								if (!ih.isAnyMoreResultsExpected()) {
+									availihit.remove();
+								}
 								continue;
 							}
 							availih = ih;
@@ -1883,9 +1885,10 @@ public class TaskInvocationManager implements Closeable {
 	}
 
 	private static class TaskResultReadyCountState {
-		public static final TaskResultReadyCountState ZERO = new TaskResultReadyCountState(0, 0);
+		public static final TaskResultReadyCountState ZERO = new TaskResultReadyCountState(0, 0, 0);
 
 		protected final int readyCount;
+		protected final int notifiedCount;
 		protected final int invokingCount;
 		/**
 		 * <code>null</code> if there was no hard failure yet. <br>
@@ -1894,24 +1897,26 @@ public class TaskInvocationManager implements Closeable {
 		 */
 		protected final Throwable[] hardFail;
 
-		public TaskResultReadyCountState(int readyCount, int invokingCount) {
+		public TaskResultReadyCountState(int readyCount, int invokingCount, int notifiedCount) {
 			this.readyCount = readyCount;
 			this.invokingCount = invokingCount;
+			this.notifiedCount = notifiedCount;
 			this.hardFail = null;
 		}
 
-		public TaskResultReadyCountState(int readyCount, int invokingCount, Throwable[] hardFail) {
+		public TaskResultReadyCountState(int readyCount, int invokingCount, int notifiedCount, Throwable[] hardFail) {
 			this.readyCount = readyCount;
 			this.invokingCount = invokingCount;
+			this.notifiedCount = notifiedCount;
 			this.hardFail = hardFail;
 		}
 
 		public TaskResultReadyCountState addReady() {
-			return new TaskResultReadyCountState(readyCount + 1, invokingCount);
+			return new TaskResultReadyCountState(readyCount + 1, invokingCount, notifiedCount + 1);
 		}
 
 		public TaskResultReadyCountState addInvoking() {
-			return new TaskResultReadyCountState(readyCount, invokingCount + 1);
+			return new TaskResultReadyCountState(readyCount, invokingCount + 1, notifiedCount);
 		}
 	}
 
@@ -1935,14 +1940,6 @@ public class TaskInvocationManager implements Closeable {
 
 		public boolean isEnded() {
 			return ended;
-//			if (!ended) {
-//				return false;
-//			}
-//			TaskResultReadyCountState s = readyState;
-//			if (s.invokingCount > s.readyCount) {
-//				return false;
-//			}
-//			return true;
 		}
 
 		public void cancelDuplicationOptionally() {
@@ -1971,12 +1968,20 @@ public class TaskInvocationManager implements Closeable {
 			return s.readyCount > 0 || s.hardFail != null;
 		}
 
+		public boolean isAnyMoreResultsExpected() {
+			TaskResultReadyCountState s = readyState;
+			if (s.hardFail != null) {
+				return false;
+			}
+			return s.notifiedCount < s.invokingCount;
+		}
+
 		public InnerTaskResultHolder<R> getResultIfPresent() throws Exception {
 			while (true) {
 				TaskResultReadyCountState s = this.readyState;
 				if (s.readyCount > 0) {
 					if (!ARFU_readyState.compareAndSet(this, s,
-							new TaskResultReadyCountState(s.readyCount - 1, s.invokingCount))) {
+							new TaskResultReadyCountState(s.readyCount - 1, s.invokingCount, s.notifiedCount))) {
 						continue;
 					}
 					InnerTaskResultHolder<R> res = handle.getResultIfPresent();
@@ -1987,7 +1992,7 @@ public class TaskInvocationManager implements Closeable {
 				}
 				if (!ObjectUtils.isNullOrEmpty(s.hardFail)) {
 					if (!ARFU_readyState.compareAndSet(this, s,
-							new TaskResultReadyCountState(s.readyCount, s.invokingCount, null))) {
+							new TaskResultReadyCountState(s.readyCount, s.invokingCount, s.notifiedCount, null))) {
 						continue;
 					}
 					Throwable firsthardfailexc = s.hardFail[0];
@@ -2061,14 +2066,14 @@ public class TaskInvocationManager implements Closeable {
 					break;
 				}
 				if (s.hardFail == null) {
-					if (ARFU_readyState.compareAndSet(this, s,
-							new TaskResultReadyCountState(s.readyCount, s.invokingCount, new Throwable[] { cause }))) {
+					if (ARFU_readyState.compareAndSet(this, s, new TaskResultReadyCountState(s.readyCount,
+							s.invokingCount, s.notifiedCount, new Throwable[] { cause }))) {
 						break;
 					}
 					continue;
 				}
 				if (ARFU_readyState.compareAndSet(this, s, new TaskResultReadyCountState(s.readyCount, s.invokingCount,
-						ArrayUtils.appended(s.hardFail, cause)))) {
+						s.notifiedCount, ArrayUtils.appended(s.hardFail, cause)))) {
 					break;
 				}
 				continue;
