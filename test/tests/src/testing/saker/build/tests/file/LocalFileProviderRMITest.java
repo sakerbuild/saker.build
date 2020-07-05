@@ -21,6 +21,7 @@ import java.util.Map;
 
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.LocalFileProvider;
+import saker.build.file.provider.LocalFileProviderImpl;
 import saker.build.file.provider.SakerFileProvider;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
 import saker.build.thirdparty.saker.rmi.connection.RMIOptions;
@@ -56,7 +57,7 @@ public class LocalFileProviderRMITest extends SakerTestCase {
 		};
 		TestFlag.set(metric);
 
-		Class<?> bufferingclass = Class.forName(LocalFileProvider.class.getName() + "$RMIBufferedFileInputByteSource",
+		Class<?> bufferingclass = Class.forName(LocalFileProviderImpl.class.getName() + "$RMIBufferedFileInputByteSource",
 				false, LocalFileProvider.class.getClassLoader());
 
 		SakerPath workingdir = SakerPath.valueOf(
