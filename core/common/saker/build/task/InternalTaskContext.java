@@ -24,6 +24,7 @@ import saker.build.file.content.ContentDescriptor;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.scripting.ScriptPosition;
+import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
@@ -51,6 +52,15 @@ public interface InternalTaskContext {
 
 	public void internalAddSynchronizeInvalidatedProviderPathFileToDirectory(SakerDirectory directory,
 			ProviderHolderPathKey pathkey, String filename, boolean isdirectory) throws IOException;
+
+	public <T> TaskFuture<T> internalStartTaskOnTaskThread(@RMISerialize TaskIdentifier taskid,
+			@RMISerialize TaskFactory<T> taskfactory, TaskExecutionParameters parameters);
+
+	public <T> T internalRunTaskResultOnTaskThread(@RMISerialize TaskIdentifier taskid,
+			@RMISerialize TaskFactory<T> taskfactory, TaskExecutionParameters parameters);
+
+	public <T> TaskFuture<T> internalRunTaskFutureOnTaskThread(@RMISerialize TaskIdentifier taskid,
+			@RMISerialize TaskFactory<T> taskfactory, TaskExecutionParameters parameters);
 
 	@RMIWrap(PathSakerFileContents.PathSakerFileContentsRMIWrapper.class)
 	public static class PathSakerFileContents {

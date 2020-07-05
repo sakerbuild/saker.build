@@ -159,7 +159,7 @@ public class ClusterTaskInvoker implements TaskInvoker {
 		}
 	}
 
-	//suppress unused computation token in try
+	//suppress unused resource in try
 	@SuppressWarnings("try")
 	protected <R> void handleTaskExecutionEvent(ClusterExecutionEvent<R> event) {
 		SelectionResult selectionresult = event.getSelectionResult();
@@ -170,27 +170,28 @@ public class ClusterTaskInvoker implements TaskInvoker {
 			event.failUnsuitable();
 			return;
 		}
-		int tokencount = event.getComputationTokenCount();
+		TaskFactory<R> factory = event.getTaskFactory();
+		Task<? extends R> task = factory.createTask(clusterExecutionContext);
+		if (task == null) {
+			event.fail(new NullPointerException("TaskFactory " + factory.getClass().getName() + " created null Task."));
+			return;
+		}
 		TaskContext realtaskcontext = event.getTaskContext();
+		ClusterTaskContext clustertaskcontext = new ClusterTaskContext(clusterExecutionContext, realtaskcontext,
+				clusterContentDatabase, event.getTaskUtilities());
+		InternalTaskBuildTrace btrace = clustertaskcontext.internalGetBuildTrace();
+		int tokencount = event.getComputationTokenCount();
+
 		//use the real task context as the computation token allocator, 
 		//    so if other allocations are being made for the task, it will always succeed
 		try (ComputationToken ctoken = ComputationToken.request(realtaskcontext, tokencount)) {
 			if (!event.startExecution()) {
 				return;
 			}
-			TaskFactory<R> factory = event.getTaskFactory();
-			Task<? extends R> task = factory.createTask(clusterExecutionContext);
-			if (task == null) {
-				event.executionException(new NullPointerException(
-						"TaskFactory " + factory.getClass().getName() + " created null Task."));
-				return;
-			}
 			try {
-				ClusterTaskContext clustertaskcontext = new ClusterTaskContext(clusterExecutionContext, realtaskcontext,
-						clusterContentDatabase, event.getTaskUtilities());
 				R taskres;
-				InternalTaskBuildTrace btrace = clustertaskcontext.internalGetBuildTrace();
-				try (TaskContextReference contextref = new TaskContextReference(clustertaskcontext, btrace)) {
+				try (TaskContextReference contextref = TaskContextReference.createForMainTask(clustertaskcontext,
+						btrace)) {
 					btrace.startTaskExecution();
 					try {
 						taskres = task.run(clustertaskcontext);

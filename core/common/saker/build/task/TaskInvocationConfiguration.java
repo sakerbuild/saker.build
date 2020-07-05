@@ -15,6 +15,10 @@
  */
 package saker.build.task;
 
+import java.io.Externalizable;
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
 import java.util.Objects;
 
 import saker.apiextract.api.PublicApi;
@@ -35,7 +39,9 @@ import saker.build.task.identifier.TaskIdentifier;
  * @see TaskFactory#getInvocationConfiguration()
  */
 @PublicApi
-public final class TaskInvocationConfiguration {
+public final class TaskInvocationConfiguration implements Externalizable {
+	private static final long serialVersionUID = 1L;
+
 	/**
 	 * Singleton instance for the default task invocation configuration.
 	 * <p>
@@ -59,7 +65,10 @@ public final class TaskInvocationConfiguration {
 	protected boolean cacheable;
 	protected boolean innerTasksComputationals;
 
-	protected TaskInvocationConfiguration() {
+	/**
+	 * For {@link Externalizable}.
+	 */
+	public TaskInvocationConfiguration() {
 		this.environmentSelector = AnyTaskExecutionEnvironmentSelector.INSTANCE;
 	}
 
@@ -288,6 +297,26 @@ public final class TaskInvocationConfiguration {
 	 */
 	public TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
 		return environmentSelector;
+	}
+
+	@Override
+	public void writeExternal(ObjectOutput out) throws IOException {
+		out.writeObject(environmentSelector);
+		out.writeInt(computationTokenCount);
+		out.writeBoolean(shortTask);
+		out.writeBoolean(remoteDispatchable);
+		out.writeBoolean(cacheable);
+		out.writeBoolean(innerTasksComputationals);
+	}
+
+	@Override
+	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+		environmentSelector = (TaskExecutionEnvironmentSelector) in.readObject();
+		computationTokenCount = in.readInt();
+		shortTask = in.readBoolean();
+		remoteDispatchable = in.readBoolean();
+		cacheable = in.readBoolean();
+		innerTasksComputationals = in.readBoolean();
 	}
 
 	@Override

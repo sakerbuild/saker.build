@@ -15,6 +15,7 @@
  */
 package saker.build.task.cluster;
 
+import saker.build.task.InternalTaskDependencyFuture;
 import saker.build.task.TaskDependencyFuture;
 import saker.build.task.dependencies.TaskOutputChangeDetector;
 import saker.build.task.exception.IllegalTaskOperationException;
@@ -26,7 +27,7 @@ import saker.build.thirdparty.saker.util.function.LazySupplier;
 final class ClusterTaskDependencyFuture<R> implements TaskDependencyFuture<R> {
 	private TaskIdentifier taskId;
 	private ClusterTaskContext clusterTaskContext;
-	private transient LazySupplier<TaskDependencyFuture<R>> dependencyFuture;
+	private LazySupplier<TaskDependencyFuture<R>> dependencyFuture;
 
 	@SuppressWarnings("unchecked")
 	public ClusterTaskDependencyFuture(TaskIdentifier taskId, ClusterTaskContext clustertaskcontext) {
@@ -38,7 +39,7 @@ final class ClusterTaskDependencyFuture<R> implements TaskDependencyFuture<R> {
 
 	public ClusterTaskDependencyFuture(ClusterTaskFuture<R> future) {
 		this.taskId = future.getTaskIdentifier();
-		this.dependencyFuture = LazySupplier.of(future::asDependencyFuture);
+		this.dependencyFuture = LazySupplier.of(() -> future.getActualFutureSupplier().get().asDependencyFuture());
 		this.clusterTaskContext = future.getTaskContext();
 	}
 
@@ -49,26 +50,29 @@ final class ClusterTaskDependencyFuture<R> implements TaskDependencyFuture<R> {
 		this.dependencyFuture = dependencyFuture;
 	}
 
+	@SuppressWarnings("unchecked")
 	@Override
 	public R get()
 			throws TaskResultWaitingFailedException, TaskExecutionFailedException, IllegalTaskOperationException {
-		return dependencyFuture.get().get();
+		clusterTaskContext.requireCalledOnMainThread(false);
+		TaskDependencyFuture<R> future = getActualFuture();
+		return ((InternalTaskDependencyFuture<R>) future).internalGetOnTaskThread();
 	}
 
 	@Override
 	public R getFinished() throws TaskExecutionFailedException, IllegalTaskOperationException {
-		return dependencyFuture.get().getFinished();
+		return getActualFuture().getFinished();
 	}
 
 	@Override
 	public void setTaskOutputChangeDetector(TaskOutputChangeDetector outputchangedetector)
 			throws IllegalStateException, NullPointerException {
-		dependencyFuture.get().setTaskOutputChangeDetector(outputchangedetector);
+		getActualFuture().setTaskOutputChangeDetector(outputchangedetector);
 	}
 
 	@Override
 	public Object getModificationStamp() throws IllegalTaskOperationException {
-		return dependencyFuture.get().getModificationStamp();
+		return getActualFuture().getModificationStamp();
 	}
 
 	@Override
@@ -90,4 +94,7 @@ final class ClusterTaskDependencyFuture<R> implements TaskDependencyFuture<R> {
 		return new ClusterTaskDependencyFuture<>(taskId, clusterTaskContext);
 	}
 
+	private TaskDependencyFuture<R> getActualFuture() {
+		return dependencyFuture.get();
+	}
 }

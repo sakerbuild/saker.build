@@ -433,20 +433,6 @@ public class BuildCommand {
 
 	/**
 	 * <pre>
-	 * Specifies the interval of the polling based deadlock detection mechanism.
-	 * 
-	 * The build system actively detects any deadlocks occurring during task
-	 * executions. The waiting tasks will be woken up in regular intervals based
-	 * on this parameter.
-	 * 
-	 * The value is expected in milliseconds, default is 3000 (3 seconds).
-	 * </pre>
-	 */
-	@Parameter("-deadlock-polling-millis")
-	public Long deadlockPollingMillis = null;
-
-	/**
-	 * <pre>
 	 * Sets the output path of the build trace for the build execution.
 	 * 
 	 * The path is expected to be in the same format as in the -mount 
@@ -758,9 +744,6 @@ public class BuildCommand {
 		}
 		if (mirrorDirectory != null) {
 			params.setMirrorDirectory(mirrorDirectory);
-		}
-		if (deadlockPollingMillis != null) {
-			params.setDeadlockPollingFrequencyMillis(deadlockPollingMillis);
 		}
 		if (buildTracePath != null) {
 			ProviderHolderPathKey buildtraceoutpathkey = mountPathToPathKey(DaemonPath.valueOf(buildTracePath),

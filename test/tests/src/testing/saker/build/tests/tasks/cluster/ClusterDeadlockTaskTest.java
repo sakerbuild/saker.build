@@ -20,7 +20,6 @@ import java.util.NavigableSet;
 
 import saker.build.task.TaskContext;
 import saker.build.task.TaskFactory;
-import saker.build.task.exception.IllegalTaskOperationException;
 import saker.build.task.exception.TaskExecutionDeadlockedException;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import testing.saker.SakerTest;
@@ -68,7 +67,7 @@ public class ClusterDeadlockTaskTest extends ClusterBuildTestCase {
 		//we should be able to detect the deadlock.
 		assertTaskException(TaskExecutionDeadlockedException.class, () -> runTask("main", starter));
 
-		assertTaskException(IllegalTaskOperationException.class, () -> runTask("main", new ClusterWaiterTaskFactory()));
+		assertTaskException(TaskExecutionDeadlockedException.class, () -> runTask("main", new ClusterWaiterTaskFactory()));
 	}
 
 }

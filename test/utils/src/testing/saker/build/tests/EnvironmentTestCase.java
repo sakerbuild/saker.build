@@ -332,14 +332,13 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 					env.getClassLoaderResolverRegistry().register(TEST_CLASSLOADER_RESOLVER_ID, testclresolver);
 
 					ExecutionParametersImpl params = new ExecutionParametersImpl();
-//				params.setStandardOutput(outStream);
-//				params.setErrorOutput(errStream);
+//					params.setStandardOutput(outStream);
+//					params.setErrorOutput(errStream);
 					params.setStandardOutput(ByteSink.valueOf(actulstdout));
 					params.setErrorOutput(ByteSink.valueOf(actulstderr));
 
 					params.setBuildDirectory(PATH_BUILD_DIRECTORY);
 					params.setMirrorDirectory(getMirrorDirectory());
-					params.setDeadlockPollingFrequencyMillis(1500);
 
 					params.setBuildTraceOutputPathKey(testconfig.getBuildTraceOutputPathKey());
 

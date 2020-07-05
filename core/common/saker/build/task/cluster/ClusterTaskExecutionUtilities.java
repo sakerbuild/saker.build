@@ -21,8 +21,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
-import java.util.List;
-import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Set;
@@ -50,9 +48,7 @@ import saker.build.task.TaskExecutionParameters;
 import saker.build.task.TaskExecutionUtilities;
 import saker.build.task.TaskFactory;
 import saker.build.task.TaskFuture;
-import saker.build.task.TaskLaunchArguments;
 import saker.build.task.dependencies.FileCollectionStrategy;
-import saker.build.task.exception.IllegalTaskOperationException;
 import saker.build.task.exception.TaskIdentifierConflictException;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
@@ -146,83 +142,18 @@ class ClusterTaskExecutionUtilities implements TaskExecutionUtilities {
 	@Override
 	public <R> TaskFuture<R> runTaskFuture(TaskIdentifier taskid, TaskFactory<R> taskfactory,
 			TaskExecutionParameters parameters) throws TaskIdentifierConflictException {
-		TaskFuture<R> future = this.utils.runTaskFuture(taskid, taskfactory, parameters);
+		clusterTaskContext.requireCalledOnMainThread(false);
+		TaskFuture<R> future = ((InternalTaskContext) clusterTaskContext.realTaskContext)
+				.internalRunTaskFutureOnTaskThread(taskid, taskfactory, parameters);
 		return new ClusterTaskFuture<>(taskid, future, clusterTaskContext);
-	}
-
-	@Override
-	public <R> TaskFuture<R> runTaskFuture(TaskIdentifier taskid, TaskFactory<R> taskfactory)
-			throws TaskIdentifierConflictException {
-		TaskFuture<R> future = this.utils.runTaskFuture(taskid, taskfactory);
-		return new ClusterTaskFuture<>(taskid, future, clusterTaskContext);
-	}
-
-	@Override
-	public void runTask(TaskIdentifier taskid, TaskFactory<?> taskfactory, TaskExecutionParameters parameters)
-			throws TaskIdentifierConflictException, NullPointerException, IllegalTaskOperationException {
-		this.utils.runTask(taskid, taskfactory, parameters);
-	}
-
-	@Override
-	public void runTask(TaskIdentifier taskid, TaskFactory<?> taskfactory)
-			throws TaskIdentifierConflictException, NullPointerException, IllegalTaskOperationException {
-		this.utils.runTask(taskid, taskfactory);
-	}
-
-	@Override
-	public <R> R runTaskResult(TaskIdentifier taskid, TaskFactory<R> taskfactory) {
-		return this.utils.runTaskResult(taskid, taskfactory);
 	}
 
 	@Override
 	public <R> R runTaskResult(TaskIdentifier taskid, TaskFactory<R> taskfactory, TaskExecutionParameters parameters)
 			throws TaskIdentifierConflictException {
-		return this.utils.runTaskResult(taskid, taskfactory, parameters);
-	}
-
-	@Override
-	public void startTask(TaskIdentifier taskid, TaskFactory<?> taskfactory)
-			throws TaskIdentifierConflictException, NullPointerException, IllegalTaskOperationException {
-		this.utils.startTask(taskid, taskfactory);
-	}
-
-	@Override
-	public <R> TaskFuture<R> startTaskFuture(TaskIdentifier taskid, TaskFactory<R> taskfactory) {
-		TaskFuture<R> future = this.utils.startTaskFuture(taskid, taskfactory);
-		return new ClusterTaskFuture<>(taskid, future, clusterTaskContext);
-	}
-
-	@Override
-	public void startTasks(Map<? extends TaskIdentifier, ? extends TaskFactory<?>> tasks)
-			throws TaskIdentifierConflictException, NullPointerException, IllegalTaskOperationException {
-		this.utils.startTasks(tasks);
-	}
-
-	@Override
-	public void startTasks(Map<? extends TaskIdentifier, ? extends TaskFactory<?>> tasks,
-			TaskExecutionParameters parameters)
-			throws TaskIdentifierConflictException, NullPointerException, IllegalTaskOperationException {
-		this.utils.startTasks(tasks, parameters);
-	}
-
-	@Override
-	public void startTask(TaskLaunchArguments<?> task) {
-		this.utils.startTask(task);
-	}
-
-	@Override
-	public <R> TaskFuture<R> startTaskFuture(TaskLaunchArguments<R> task) {
-		return this.utils.startTaskFuture(task);
-	}
-
-	@Override
-	public void startTasks(Iterable<? extends TaskLaunchArguments<?>> tasks) {
-		this.utils.startTasks(tasks);
-	}
-
-	@Override
-	public List<? extends TaskFuture<?>> startTasksFuture(Iterable<? extends TaskLaunchArguments<?>> tasks) {
-		return this.utils.startTasksFuture(tasks);
+		clusterTaskContext.requireCalledOnMainThread(false);
+		return ((InternalTaskContext) clusterTaskContext.realTaskContext).internalRunTaskResultOnTaskThread(taskid,
+				taskfactory, parameters);
 	}
 
 	@Override

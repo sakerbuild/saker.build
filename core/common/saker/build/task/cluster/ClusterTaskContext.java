@@ -42,6 +42,7 @@ import saker.build.task.InnerTaskResults;
 import saker.build.task.InternalTaskContext;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskDependencyFuture;
+import saker.build.task.TaskExecutionManager;
 import saker.build.task.TaskExecutionParameters;
 import saker.build.task.TaskExecutionUtilities;
 import saker.build.task.TaskFactory;
@@ -49,6 +50,7 @@ import saker.build.task.TaskFileDeltas;
 import saker.build.task.TaskFuture;
 import saker.build.task.TaskProgressMonitor;
 import saker.build.task.TaskResultDependencyHandle;
+import saker.build.task.TaskExecutionManager.TaskThreadInfo;
 import saker.build.task.delta.BuildDelta;
 import saker.build.task.delta.DeltaType;
 import saker.build.task.dependencies.FileCollectionStrategy;
@@ -147,13 +149,16 @@ class ClusterTaskContext implements TaskContext, InternalTaskContext {
 	@Override
 	public <R> TaskFuture<R> startTask(TaskIdentifier taskid, TaskFactory<R> taskfactory,
 			TaskExecutionParameters parameters) {
-		TaskFuture<R> future = realTaskContext.startTask(taskid, taskfactory, parameters);
+		requireCalledOnMainThread(false);
+		TaskFuture<R> future = ((InternalTaskContext) realTaskContext).internalStartTaskOnTaskThread(taskid,
+				taskfactory, parameters);
 		return new ClusterTaskFuture<>(taskid, future, this);
 	}
 
 	@Override
 	public <R> InnerTaskResults<R> startInnerTask(TaskFactory<R> taskfactory, InnerTaskExecutionParameters parameters) {
-		return realTaskContext.startInnerTask(taskfactory, parameters);
+		InnerTaskResults<R> results = realTaskContext.startInnerTask(taskfactory, parameters);
+		return new ClusterInnerTaskResults<>(this, results);
 	}
 
 	@Override
@@ -170,11 +175,6 @@ class ClusterTaskContext implements TaskContext, InternalTaskContext {
 	public TaskResultDependencyHandle getTaskResultDependencyHandle(TaskIdentifier taskid)
 			throws NullPointerException, IllegalArgumentException {
 		return realTaskContext.getTaskResultDependencyHandle(taskid);
-	}
-
-	@Override
-	public Object getTaskResult(TaskIdentifier taskid) {
-		return realTaskContext.getTaskResult(taskid);
 	}
 
 	@Override
@@ -359,6 +359,24 @@ class ClusterTaskContext implements TaskContext, InternalTaskContext {
 				pathkey, filename, isdirectory);
 	}
 
+	@Override
+	public <T> TaskFuture<T> internalStartTaskOnTaskThread(TaskIdentifier taskid, TaskFactory<T> taskfactory,
+			TaskExecutionParameters parameters) {
+		throw new AssertionError("This method shouldn't be called directly.");
+	}
+
+	@Override
+	public <T> T internalRunTaskResultOnTaskThread(TaskIdentifier taskid, TaskFactory<T> taskfactory,
+			TaskExecutionParameters parameters) {
+		throw new AssertionError("This method shouldn't be called directly.");
+	}
+
+	@Override
+	public <T> TaskFuture<T> internalRunTaskFutureOnTaskThread(TaskIdentifier taskid, TaskFactory<T> taskfactory,
+			TaskExecutionParameters parameters) {
+		throw new AssertionError("This method shouldn't be called directly.");
+	}
+
 	public void invalidateInClusterDatabase(Iterable<? extends PathKey> pathkeys) {
 		Objects.requireNonNull(pathkeys, "path keys");
 		ContentDatabase clusterdb = clusterContentDatabase;
@@ -383,6 +401,13 @@ class ClusterTaskContext implements TaskContext, InternalTaskContext {
 		ContentDatabaseImpl clusterdb = clusterContentDatabase;
 		if (clusterdb != null) {
 			clusterdb.invalidateWithPosixFilePermissions(pathkey);
+		}
+	}
+
+	protected void requireCalledOnMainThread(boolean allowinnertask) {
+		TaskThreadInfo info = TaskExecutionManager.THREADLOCAL_TASK_THREAD.get();
+		if (info == null || (!allowinnertask && info.innerTask) || info.taskContext != this) {
+			throw new IllegalTaskOperationException("Method can be called only on the task threads.", getTaskId());
 		}
 	}
 }

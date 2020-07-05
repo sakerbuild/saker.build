@@ -340,6 +340,23 @@ public interface SakerDirectory extends SakerFile {
 	public NavigableMap<SakerPath, SakerFile> getFilesRecursiveByPath(SakerPath basepath,
 			DirectoryVisitPredicate filepredicate) throws NullPointerException;
 
+	/**
+	 * Gets a snapshot of the children of this directory mapped to an {@link SakerFileContentInformationHolder}
+	 * instance.
+	 * <p>
+	 * The method returns the children of the directory the same way as {@link #getChildren()}, but includes additional
+	 * information alongside the {@link SakerFile} instance.
+	 * <p>
+	 * The argument predicate is used to determine for which files to include additional information. If
+	 * {@link DirectoryVisitPredicate#visitFile(String, SakerFile) visitFile} returns <code>false</code>, then only the
+	 * {@link SakerFile} instance will be contained in the associated {@link SakerFileContentInformationHolder}.
+	 * 
+	 * @param childpredicate
+	 *            The predicate to use. May be <code>null</code>, in which case
+	 *            {@link DirectoryVisitPredicate#everything()} is used.
+	 * @return The directory children mapped to their content information holders.
+	 * @since saker.build 0.8.15
+	 */
 	@RMIWrap(RMITreeMapWrapper.class)
 	public NavigableMap<String, ? extends SakerFileContentInformationHolder> getChildrenContentInformation(
 			DirectoryVisitPredicate childpredicate);

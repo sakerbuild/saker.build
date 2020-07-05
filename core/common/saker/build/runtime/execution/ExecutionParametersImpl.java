@@ -82,8 +82,6 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 	private SecretInputReader secretInputReader;
 	private BuildUserPromptHandler userPrompHandler;
 
-	private long deadlockPollingFrequencyMillis = 3000;
-
 	private ProviderHolderPathKey buildTraceOutputPathKey;
 	private boolean buildTraceEmbedArtifacts;
 
@@ -111,7 +109,6 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		this.publishCachedTasks = copy.publishCachedTasks;
 		this.secretInputReader = copy.secretInputReader;
 		this.userPrompHandler = copy.userPrompHandler;
-		this.deadlockPollingFrequencyMillis = copy.deadlockPollingFrequencyMillis;
 		this.buildTraceOutputPathKey = copy.buildTraceOutputPathKey;
 		this.buildInfo = copy.buildInfo;
 		this.buildTraceEmbedArtifacts = copy.buildTraceEmbedArtifacts;
@@ -151,10 +148,6 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 
 	public BuildUserPromptHandler getUserPrompHandler() {
 		return userPrompHandler;
-	}
-
-	public long getDeadlockPollingFrequencyMillis() {
-		return deadlockPollingFrequencyMillis;
 	}
 
 	@Override
@@ -242,10 +235,6 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 
 	public BuildInformation getBuildInfo() {
 		return buildInfo;
-	}
-
-	public void setDeadlockPollingFrequencyMillis(long deadlockPollingFrequencyMillis) {
-		this.deadlockPollingFrequencyMillis = deadlockPollingFrequencyMillis;
 	}
 
 	public void setSecretInputReader(SecretInputReader secretInputReader) {
@@ -506,8 +495,6 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 			SerialUtils.writeExternalCollection(out, params.protectionWriteEnabledDirectories);
 			SerialUtils.writeExternalMap(out, params.userParameters);
 
-			out.writeLong(params.deadlockPollingFrequencyMillis);
-
 			out.writeObject(params.buildTraceOutputPathKey);
 			out.writeBoolean(params.buildTraceEmbedArtifacts);
 			out.writeSerializedObject(params.buildInfo);
@@ -544,8 +531,6 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 			params.taskInvokerFactories = SerialUtils.readExternalImmutableList(in);
 			params.protectionWriteEnabledDirectories = SerialUtils.readExternalImmutableList(in);
 			params.userParameters = SerialUtils.readExternalImmutableLinkedHashMap(in);
-
-			params.deadlockPollingFrequencyMillis = in.readLong();
 
 			params.buildTraceOutputPathKey = (ProviderHolderPathKey) in.readObject();
 			params.buildTraceEmbedArtifacts = in.readBoolean();

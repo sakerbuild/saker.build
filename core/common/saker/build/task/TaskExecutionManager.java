@@ -151,7 +151,6 @@ import saker.build.thirdparty.saker.util.ConcurrentAppendAccumulator;
 import saker.build.thirdparty.saker.util.ConcurrentEntryMergeSorter;
 import saker.build.thirdparty.saker.util.ConcurrentEntryMergeSorter.MatchingKeyPolicy;
 import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
-import saker.build.thirdparty.saker.util.DateUtils;
 import saker.build.thirdparty.saker.util.EntryAccumulator;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -181,15 +180,30 @@ import saker.build.util.exc.ExceptionView;
 import testing.saker.build.flag.TestFlag;
 
 public class TaskExecutionManager {
-
-	private static final int DEFAULT_DEADLOCK_DETECTION_POLLING_MILLIS = 3000;
-
 	private static final TaskExecutionParameters DEFAULT_EXECUTION_PARAMETERS = new TaskExecutionParameters();
 	private static final InnerTaskExecutionParameters DEFAULT_INNER_TASK_EXECUTION_PARAMETERS = new InnerTaskExecutionParameters();
 
 	public static final char PRINTED_LINE_VARIABLES_MARKER_CHAR = '!';
 	public static final String PRINTED_LINE_VARIABLES_MARKER_CHAR_STR = "!";
 	public static final String PRINTED_LINE_VAR_LOG_TASK_SCRIPT_POSITION = "LOG_TASK_SCRIPT_POSITION";
+
+	public static final ThreadLocal<TaskThreadInfo> THREADLOCAL_TASK_THREAD = new ThreadLocal<>();
+
+	public static final class TaskThreadInfo {
+		public final TaskContext taskContext;
+		public final boolean innerTask;
+
+		public TaskThreadInfo(TaskContext taskContext, boolean innerTask) {
+			this.taskContext = taskContext;
+			this.innerTask = innerTask;
+		}
+
+		@Override
+		public String toString() {
+			return "TaskThreadInfo[" + (taskContext != null ? "taskContext=" + taskContext + ", " : "") + "innerTask="
+					+ innerTask + "]";
+		}
+	}
 
 	public static class SpawnedResultTask {
 		private TaskIdentifier taskIdentifier;
@@ -672,6 +686,14 @@ public class TaskExecutionManager {
 			}
 		}
 
+		protected void requireCalledOnMainThread(boolean allowinnertask) {
+			TaskThreadInfo info = THREADLOCAL_TASK_THREAD.get();
+			if (info == null || (!allowinnertask && info.innerTask) || info.taskContext != this) {
+				throw new IllegalTaskOperationException("Method can be called only on the main task thread.",
+						getTaskId());
+			}
+		}
+
 		@Override
 		public TaskContext getTaskContext() {
 			return this;
@@ -1130,6 +1152,13 @@ public class TaskExecutionManager {
 		@Override
 		public <T> TaskFuture<T> startTask(TaskIdentifier taskid, TaskFactory<T> taskfactory,
 				TaskExecutionParameters parameters) throws TaskIdentifierConflictException {
+			requireCalledOnMainThread(false);
+			return internalStartTaskOnTaskThread(taskid, taskfactory, parameters);
+		}
+
+		@Override
+		public <T> TaskFuture<T> internalStartTaskOnTaskThread(TaskIdentifier taskid, TaskFactory<T> taskfactory,
+				TaskExecutionParameters parameters) {
 			requireValidTaskIdForTaskStarting(taskid);
 			Objects.requireNonNull(taskfactory, "taskfactory");
 			return runOnUnfinished(() -> {
@@ -1168,6 +1197,13 @@ public class TaskExecutionManager {
 		@Override
 		public <T> T runTaskResult(TaskIdentifier taskid, TaskFactory<T> taskfactory,
 				TaskExecutionParameters parameters) throws TaskIdentifierConflictException {
+			requireCalledOnMainThread(false);
+			return internalRunTaskResultOnTaskThread(taskid, taskfactory, parameters);
+		}
+
+		@Override
+		public <T> T internalRunTaskResultOnTaskThread(TaskIdentifier taskid, TaskFactory<T> taskfactory,
+				TaskExecutionParameters parameters) {
 			requireValidTaskIdForTaskStarting(taskid);
 			Objects.requireNonNull(taskfactory, "taskfactory");
 			return runOnUnfinished(() -> {
@@ -1190,6 +1226,14 @@ public class TaskExecutionManager {
 		@Override
 		public <T> TaskFuture<T> runTaskFuture(TaskIdentifier taskid, TaskFactory<T> taskfactory,
 				TaskExecutionParameters parameters) throws TaskIdentifierConflictException {
+			//XXX can we allow this on an inner task thread?
+			requireCalledOnMainThread(false);
+			return internalRunTaskFutureOnTaskThread(taskid, taskfactory, parameters);
+		}
+
+		@Override
+		public <T> TaskFuture<T> internalRunTaskFutureOnTaskThread(TaskIdentifier taskid, TaskFactory<T> taskfactory,
+				TaskExecutionParameters parameters) {
 			requireValidTaskIdForTaskStarting(taskid);
 			Objects.requireNonNull(taskfactory, "taskfactory");
 			return runOnUnfinished(() -> {
@@ -1432,12 +1476,11 @@ public class TaskExecutionManager {
 					for (ManagerInnerTaskResults<?> h; (h = innerTasks.take()) != null;) {
 						while (true) {
 							try {
-
 								try {
 									h.waitFinishCancelOptionally();
 									while (true) {
 										//retrieve all results of the tasks
-										InnerTaskResultHolder<?> n = h.getNext();
+										InnerTaskResultHolder<?> n = h.internalGetNextOnExecutionFinish();
 										if (n == null) {
 											break;
 										}
@@ -2506,8 +2549,8 @@ public class TaskExecutionManager {
 
 	}
 
-	protected static final class TaskDependencyFutureImpl<R>
-			implements TaskDependencyFuture<R>, TaskResultDependencyHandle, Cloneable {
+	protected static final class TaskDependencyFutureImpl<R> implements TaskDependencyFuture<R>,
+			InternalTaskDependencyFuture<R>, TaskResultDependencyHandle, InternalTaskResultDependencyHandle, Cloneable {
 		private final TaskExecutorContext<?> context;
 		private final ManagerTaskFutureImpl<R> taskFuture;
 
@@ -2537,6 +2580,12 @@ public class TaskExecutionManager {
 
 		@Override
 		public R get() {
+			context.requireCalledOnMainThread(false);
+			return internalGetOnTaskThread();
+		}
+
+		@Override
+		public R internalGetOnTaskThread() {
 			TaskResultHolder<R> result = taskFuture.getWaitWithoutOutputChangeDetector(context);
 			context.events.add(new TaskIdTaskEvent(TaskExecutionEventKind.WAITED_TASK, getTaskIdentifier()));
 			if (this.outputChangeDetectors == null) {
@@ -2596,7 +2645,7 @@ public class TaskExecutionManager {
 		}
 	}
 
-	private static class UserTaskFuture<R> implements TaskFuture<R> {
+	private static class UserTaskFuture<R> implements TaskFuture<R>, InternalTaskFuture<R> {
 		private ManagerTaskFutureImpl<R> realFuture;
 		private TaskExecutorContext<?> taskContext;
 
@@ -2608,6 +2657,12 @@ public class TaskExecutionManager {
 		@Override
 		public R get()
 				throws TaskResultWaitingFailedException, TaskExecutionFailedException, IllegalTaskOperationException {
+			taskContext.requireCalledOnMainThread(false);
+			return internalGetOnTaskThread();
+		}
+
+		@Override
+		public R internalGetOnTaskThread() {
 			TaskResultHolder<R> result = realFuture.get(taskContext);
 			taskContext.events.add(new TaskIdTaskEvent(TaskExecutionEventKind.WAITED_TASK, getTaskIdentifier()));
 			return getOutputOrThrow(result);
@@ -3044,7 +3099,7 @@ public class TaskExecutionManager {
 				}
 				throw new AssertionError("Failed to set state for " + taskId + " (" + this.futureState + ") " + nstate);
 			}
-			unparkWaitingThreadsForResult(execmanager);
+			unparkAllWaitingThreads(execmanager);
 		}
 
 		protected TaskResultHolder<R> getWaitWithoutOutputChangeDetector(TaskExecutorContext<?> realcontext)
@@ -3277,7 +3332,6 @@ public class TaskExecutionManager {
 									+ ")",
 							context.getTaskId());
 				}
-				//XXX we shouldn't call getcapabilities here, but get an invocation configuration instance for the future
 				TaskInvocationConfiguration invocationconfig = s.getInvocationConfiguration();
 				if (invocationconfig == null) {
 					throw new AssertionError("Internal build system consistency error.");
@@ -3301,11 +3355,12 @@ public class TaskExecutionManager {
 								+ ")",
 						context.getTaskId());
 			}
-			if (context.isRemoteDispatchable()) {
-				throw new IllegalTaskOperationException(
-						"A remote dispatchable task cannot wait for other tasks. (Waiting for: " + taskId + ")",
-						context.getTaskId());
-			}
+//			if (context.isRemoteDispatchable()) {
+//				//XXX this restriction can be lifted when task waiting is confined to the task main thread
+//				throw new IllegalTaskOperationException(
+//						"A remote dispatchable task cannot wait for other tasks. (Waiting for: " + taskId + ")",
+//						context.getTaskId());
+//			}
 			return s;
 		}
 
@@ -3665,10 +3720,6 @@ public class TaskExecutionManager {
 				if (Thread.currentThread() != waiter.get()) {
 					throw new AssertionError("thread identity mismatch.");
 				}
-				if (!execmanager.executionThreadGroup.parentOf(waiter.get().getThreadGroup())) {
-					throw new AssertionError("Attempting to wait for task on a non-execution thread. "
-							+ "The thread must have the execution thread group as one of its parent.");
-				}
 				if (waiter.state != WaiterThreadHandle.STATE_INITIAL) {
 					throw new AssertionError("invalid waiter thread state.");
 				}
@@ -3694,92 +3745,84 @@ public class TaskExecutionManager {
 				waiter.finish(execmanager);
 				return;
 			}
-			//wait for notification or wake up to check deadlock
-			LockSupport.parkNanos(execmanager.deadlockDetectionPollingMillis * DateUtils.NANOS_PER_MS);
-			//check condition
-			if (condition.getAsBoolean()) {
-				waiter.finish(execmanager);
-				return;
-			}
 			//go ahead with locking, deadlock detecting, and others
 			while (true) {
-				synchronized (execmanager.deadlockDetectionLock) {
-					WaitingThreadCounter wtc;
-					state_updater_loop:
-					while (true) {
-						int s = waiter.state;
-						switch (s) {
-							case WaiterThreadHandle.STATE_INITIAL: {
-								if (WaiterThreadHandle.AIFU_state.compareAndSet(waiter,
-										WaiterThreadHandle.STATE_INITIAL, WaiterThreadHandle.STATE_WAITING)) {
-									wtc = execmanager.addWaitingThreadCount(1);
-									break state_updater_loop;
-								}
-								break;
-							}
-							case WaiterThreadHandle.STATE_WAITING: {
-								//already waiting
-								wtc = execmanager.waitingThreadCounter;
+				WaitingThreadCounter wtc;
+				state_updater_loop:
+				while (true) {
+					int s = waiter.state;
+					switch (s) {
+						case WaiterThreadHandle.STATE_INITIAL: {
+							if (WaiterThreadHandle.AIFU_state.compareAndSet(waiter, WaiterThreadHandle.STATE_INITIAL,
+									WaiterThreadHandle.STATE_WAITING)) {
+								wtc = execmanager.addWaitingThreadCount(1);
 								break state_updater_loop;
 							}
-							case WaiterThreadHandle.STATE_NOTIFIED: {
-								//the handle was notified. check condition, and set back the state to waiting if fails
-								if (condition.getAsBoolean()) {
-									//condition satisfied, finish
-									waiter.state = WaiterThreadHandle.STATE_FINISHED;
-									return;
-								}
-								if (WaiterThreadHandle.AIFU_state.compareAndSet(waiter,
-										WaiterThreadHandle.STATE_NOTIFIED, WaiterThreadHandle.STATE_WAITING)) {
-									wtc = execmanager.addWaitingThreadCount(1);
-									break state_updater_loop;
-								}
-								break;
+							break;
+						}
+						case WaiterThreadHandle.STATE_WAITING: {
+							//already waiting
+							wtc = execmanager.waitingThreadCounter;
+							break state_updater_loop;
+						}
+						case WaiterThreadHandle.STATE_NOTIFIED: {
+							//the handle was notified. check condition, and set back the state to waiting if fails
+							if (condition.getAsBoolean()) {
+								//condition satisfied, finish
+								waiter.state = WaiterThreadHandle.STATE_FINISHED;
+								return;
 							}
-							case WaiterThreadHandle.STATE_FINISHED: //can't happen
-							default: {
-								throw new AssertionError(s);
+							if (WaiterThreadHandle.AIFU_state.compareAndSet(waiter, WaiterThreadHandle.STATE_NOTIFIED,
+									WaiterThreadHandle.STATE_WAITING)) {
+								wtc = execmanager.addWaitingThreadCount(1);
+								break state_updater_loop;
 							}
+							break;
+						}
+						case WaiterThreadHandle.STATE_FINISHED: //can't happen
+						default: {
+							throw new AssertionError(s);
 						}
 					}
-					//we need to check the condition AFTER we've retrieved the waiting thread count
-					//    this is in order to avoid the concurrency issue when this thread gets unscheduled
-					//    just before retrieving the waiting thread count, then another thread notifies this and exists
-					//    and we get the WTC. this would cause us to forget to check the condition, and use a WTC 
-					//    without the condition check
-					if (condition.getAsBoolean()) {
-						waiter.finish(execmanager);
-						return;
+				}
+				//we need to check the condition AFTER we've retrieved the waiting thread count
+				//    this is in order to avoid the concurrency issue when this thread gets unscheduled
+				//    just before retrieving the waiting thread count, then another thread notifies this and exists
+				//    and we get the WTC. this would cause us to forget to check the condition, and use a WTC 
+				//    without the condition check
+				if (condition.getAsBoolean()) {
+					waiter.finish(execmanager);
+					return;
+				}
+				if (wtc == WAITING_THREAD_COUNTER_DEADLOCKED) {
+					waiter.finish(execmanager);
+					throw ExceptionAccessInternal
+							.createTaskExecutionDeadlockedException(futures.iterator().next().getTaskIdentifier());
+				}
+				int activecount = wtc.runningThreadCount;
+				if (TestFlag.ENABLED) {
+					if (wtc.waitingThreadCount > activecount) {
+						throw new AssertionError(
+								"Inconsistent thread counts: " + wtc.waitingThreadCount + " - " + activecount);
 					}
-					if (wtc == WAITING_THREAD_COUNTER_DEADLOCKED) {
+				}
+				if (wtc.waitingThreadCount == activecount) {
+					if (execmanager.deadlocked(wtc)) {
 						waiter.finish(execmanager);
 						throw ExceptionAccessInternal
 								.createTaskExecutionDeadlockedException(futures.iterator().next().getTaskIdentifier());
 					}
-					int activecount = execmanager.executionThreadGroup.activeCount();
-					if (TestFlag.ENABLED) {
-						if (wtc.waitingThreadCount > activecount) {
-							throw new AssertionError(
-									"Inconsistent thread counts: " + wtc.waitingThreadCount + " - " + activecount);
-						}
-					}
-					if (wtc.waitingThreadCount == activecount) {
-						if (execmanager.deadlocked(wtc)) {
-							waiter.finish(execmanager);
-							throw ExceptionAccessInternal.createTaskExecutionDeadlockedException(
-									futures.iterator().next().getTaskIdentifier());
-						}
-						//else the deadlock application didnt go through due to transient operations, 
-						//    continue and check again later
-					}
-					if (currentthread.isInterrupted()) {
-						waiter.finish(execmanager);
-						throw ExceptionAccessInternal.createTaskResultWaitingInterruptedException(
-								futures.iterator().next().getTaskIdentifier());
-					}
+					//else the deadlock application didnt go through due to transient operations, 
+					//    continue and check again later
+				}
+				if (currentthread.isInterrupted()) {
+					waiter.finish(execmanager);
+					throw ExceptionAccessInternal
+							.createTaskResultWaitingInterruptedException(futures.iterator().next().getTaskIdentifier());
 				}
 				//park the thread and recheck
-				LockSupport.parkNanos(execmanager.deadlockDetectionPollingMillis * DateUtils.NANOS_PER_MS);
+//				LockSupport.parkNanos(execmanager.deadlockDetectionPollingMillis * DateUtils.NANOS_PER_MS);
+				LockSupport.park();
 			}
 		}
 
@@ -3810,14 +3853,31 @@ public class TaskExecutionManager {
 			}
 		}
 
-		private void unparkWaitingThreadsForResult(TaskExecutionManager execmanager) {
+		protected boolean unparkAllWaitingThreads(TaskExecutionManager execmanager) {
+			boolean result = false;
 			for (Iterator<WaiterThreadHandle> it = waitingThreads.iterator(); it.hasNext();) {
 				WaiterThreadHandle t = it.next();
 				if (!t.unparkNotify(execmanager)) {
 					//thread handle finished
 					it.remove();
+				} else {
+					result = true;
 				}
 			}
+			return result;
+		}
+
+		protected boolean unparkOneWaitingThread(TaskExecutionManager execmanager) {
+			for (Iterator<WaiterThreadHandle> it = waitingThreads.iterator(); it.hasNext();) {
+				WaiterThreadHandle t = it.next();
+				if (!t.unparkNotify(execmanager)) {
+					//thread handle finished
+					it.remove();
+				} else {
+					return true;
+				}
+			}
+			return false;
 		}
 
 		public Entry<SakerPath, ScriptPosition> internalGetOriginatingBuildFile(TaskExecutionManager manager) {
@@ -3922,20 +3982,83 @@ public class TaskExecutionManager {
 	private static final Set<DeltaType> FILE_CHANGE_DELTA_TYPES = EnumSet.of(DeltaType.INPUT_FILE_ADDITION,
 			DeltaType.INPUT_FILE_CHANGE, DeltaType.OUTPUT_FILE_CHANGE);
 
-	private static final WaitingThreadCounter WAITING_THREAD_COUNTER_DEADLOCKED = new WaitingThreadCounter(-1);
+	private static final WaitingThreadCounter WAITING_THREAD_COUNTER_DEADLOCKED = new WaitingThreadCounter(0, 0);
+	private static final WaitingThreadCounter WAITING_THREAD_COUNTER_ZERO = new WaitingThreadCounter(0, 0);
 
-	private static class WaitingThreadCounter {
+	protected static class WaitingThreadCounter {
+		public final int runningThreadCount;
 		public final int waitingThreadCount;
 
-		public WaitingThreadCounter(int waitingThreadCount) {
+		public WaitingThreadCounter(int runningThreadCount, int waitingThreadCount) {
+			this.runningThreadCount = runningThreadCount;
 			this.waitingThreadCount = waitingThreadCount;
+			if (TestFlag.ENABLED
+					&& (this.waitingThreadCount > this.runningThreadCount || this.runningThreadCount < 0)) {
+				//the waitingThreadCount can be less than 0 in edge cases when the removal happens before the addition
+				throw new AssertionError(this);
+			}
+		}
+
+		public WaitingThreadCounter addWaiting(int count) {
+			return new WaitingThreadCounter(this.runningThreadCount, this.waitingThreadCount + count);
+		}
+
+		public WaitingThreadCounter removeWaiting(int count) {
+			return new WaitingThreadCounter(this.runningThreadCount, this.waitingThreadCount - count);
+		}
+
+		public WaitingThreadCounter addRunning(int count) {
+			return new WaitingThreadCounter(this.runningThreadCount + count, this.waitingThreadCount);
+		}
+
+		public WaitingThreadCounter removeRunning(int count) {
+			return new WaitingThreadCounter(this.runningThreadCount - count, this.waitingThreadCount);
+		}
+
+		public WaitingThreadCounter addRunningAndWaiting(int count) {
+			return new WaitingThreadCounter(this.runningThreadCount + count, this.waitingThreadCount + count);
+		}
+
+		public WaitingThreadCounter removeRunningAndWaiting(int count) {
+			return new WaitingThreadCounter(this.runningThreadCount - count, this.waitingThreadCount - count);
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + runningThreadCount;
+			result = prime * result + waitingThreadCount;
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			WaitingThreadCounter other = (WaitingThreadCounter) obj;
+			if (runningThreadCount != other.runningThreadCount)
+				return false;
+			if (waitingThreadCount != other.waitingThreadCount)
+				return false;
+			return true;
+		}
+
+		@Override
+		public String toString() {
+			return "WaitingThreadCounter[runningThreadCount=" + runningThreadCount + ", waitingThreadCount="
+					+ waitingThreadCount + "]";
 		}
 	}
 
 	private static final AtomicReferenceFieldUpdater<TaskExecutionManager, WaitingThreadCounter> ARFU_waitingThreadCounter = AtomicReferenceFieldUpdater
 			.newUpdater(TaskExecutionManager.class, WaitingThreadCounter.class, "waitingThreadCounter");
 
-	private volatile WaitingThreadCounter waitingThreadCounter = new WaitingThreadCounter(0);
+	private volatile WaitingThreadCounter waitingThreadCounter = WAITING_THREAD_COUNTER_ZERO;
 
 	private final ConcurrentHashMap<TaskIdentifier, ManagerTaskFutureImpl<?>> taskIdFutures;
 	private final ConcurrentHashMap<TaskIdentifier, Entry<SakerPath, ScriptPosition>> taskIdScriptPositionsCache = new ConcurrentHashMap<>();
@@ -3949,9 +4072,6 @@ public class TaskExecutionManager {
 	private final ConcurrentHashMap<TaskIdentifier, Boolean> checkedHasAnyDeltas = new ConcurrentHashMap<>();
 
 	protected UUID buildUUID;
-
-	protected final Object deadlockDetectionLock = new Object();
-	protected long deadlockDetectionPollingMillis = DEFAULT_DEADLOCK_DETECTION_POLLING_MILLIS;
 
 	private ThreadGroup executionThreadGroup;
 	protected ThreadWorkPool generalExecutionThreadWorkPool;
@@ -4004,10 +4124,6 @@ public class TaskExecutionManager {
 
 	public Map<TaskIdentifier, TaskExecutionResult<?>> getResultTaskIdTaskResults() {
 		return resultTaskIdTaskResults;
-	}
-
-	public void setDeadlockDetectionPollingMillis(long deadlockDetectionPollingMillis) {
-		this.deadlockDetectionPollingMillis = deadlockDetectionPollingMillis;
 	}
 
 	public void execute(TaskFactory<?> factory, TaskIdentifier taskid, ExecutionContextImpl executioncontext,
@@ -4107,6 +4223,11 @@ public class TaskExecutionManager {
 				failedexecution = true;
 				throw texc;
 			}
+			if (TestFlag.ENABLED) {
+				if (!WAITING_THREAD_COUNTER_ZERO.equals(waitingThreadCounter)) {
+					throw new AssertionError(waitingThreadCounter);
+				}
+			}
 		} finally {
 			if (!failedexecution) {
 				//only abandon tasks if the execution was successful
@@ -4197,14 +4318,14 @@ public class TaskExecutionManager {
 		return new TaskInvocationManager(executioncontext, taskinvokerfactories, clusterInteractionThreadGroup);
 	}
 
-	//this method should be called even if the count is 0
+	//this method can be called even if the count is 0
 	protected WaitingThreadCounter removeWaitingThreadCount(int count) {
 		while (true) {
 			WaitingThreadCounter wtc = this.waitingThreadCounter;
 			if (wtc == WAITING_THREAD_COUNTER_DEADLOCKED) {
 				return wtc;
 			}
-			WaitingThreadCounter nwtc = new WaitingThreadCounter(wtc.waitingThreadCount - count);
+			WaitingThreadCounter nwtc = wtc.removeWaiting(count);
 			if (ARFU_waitingThreadCounter.compareAndSet(this, wtc, nwtc)) {
 				return nwtc;
 			}
@@ -4224,7 +4345,51 @@ public class TaskExecutionManager {
 			if (wtc == WAITING_THREAD_COUNTER_DEADLOCKED) {
 				return wtc;
 			}
-			WaitingThreadCounter nwtc = new WaitingThreadCounter(wtc.waitingThreadCount + count);
+			WaitingThreadCounter nwtc = wtc.addWaiting(count);
+			if (ARFU_waitingThreadCounter.compareAndSet(this, wtc, nwtc)) {
+				return nwtc;
+			}
+			//continue
+		}
+	}
+
+	//this method can be called even if the count is 0
+	protected WaitingThreadCounter removeRunningThreadCount(int count) {
+		while (true) {
+			WaitingThreadCounter wtc = this.waitingThreadCounter;
+			if (wtc == WAITING_THREAD_COUNTER_DEADLOCKED) {
+				return wtc;
+			}
+			WaitingThreadCounter nwtc = wtc.removeRunning(count);
+			if (ARFU_waitingThreadCounter.compareAndSet(this, wtc, nwtc)) {
+				if (nwtc.runningThreadCount == nwtc.waitingThreadCount) {
+					//possible deadlock. unpark a waiter that should detect it
+					for (ManagerTaskFutureImpl<?> future : taskIdFutures.values()) {
+						if (future.unparkOneWaitingThread(this)) {
+							//a thread was unparked. it should detect the deadlock if any
+							break;
+						}
+					}
+				}
+				return nwtc;
+			}
+			//continue
+		}
+	}
+
+	//this method shouldn't be called with 0 count
+	protected WaitingThreadCounter addRunningThreadCount(int count) {
+		if (TestFlag.ENABLED) {
+			if (count == 0) {
+				throw new AssertionError("running thread count mustn't be 0");
+			}
+		}
+		while (true) {
+			WaitingThreadCounter wtc = this.waitingThreadCounter;
+			if (wtc == WAITING_THREAD_COUNTER_DEADLOCKED) {
+				return wtc;
+			}
+			WaitingThreadCounter nwtc = wtc.addRunning(count);
 			if (ARFU_waitingThreadCounter.compareAndSet(this, wtc, nwtc)) {
 				return nwtc;
 			}
@@ -4343,7 +4508,7 @@ public class TaskExecutionManager {
 
 	private void offerTaskRunnable(ThrowingRunnable run, TaskIdentifier taskid, String name) {
 		TaskExecutionThread excthread = new TaskExecutionThread(executionThreadGroup, run, taskid, name);
-		//start the thread before adding tot he collector
+		//start the thread before adding to the collector
 		//else there is a race condition when the consumer could join the thread before it is started
 		excthread.start();
 		taskThreads.add(excthread);
@@ -4466,7 +4631,7 @@ public class TaskExecutionManager {
 							"Inner task factory created null task: " + factory.getClass().getName());
 				}
 				R res;
-				try (TaskContextReference contextref = new TaskContextReference(taskcontext)) {
+				try (TaskContextReference contextref = TaskContextReference.createForInnerTask(taskcontext)) {
 					InternalTaskBuildTrace btrace = taskcontext.taskBuildTrace.startInnerTask(factory);
 					contextref.initTaskBuildTrace(btrace);
 					try {
@@ -4492,10 +4657,12 @@ public class TaskExecutionManager {
 		return result;
 	}
 
-	public interface ManagerInnerTaskResults<R> extends InnerTaskResults<R> {
+	public interface ManagerInnerTaskResults<R> extends InnerTaskResults<R>, InternalInnerTaskResults<R> {
 		public void waitFinishCancelOptionally() throws InterruptedException, RMIRuntimeException;
 
 		public void interrupt();
+
+		public InnerTaskResultHolder<R> internalGetNextOnExecutionFinish() throws InterruptedException;
 	}
 
 	static class CompletedInnerTaskResults<T> implements InnerTaskResults<T> {
@@ -4593,61 +4760,66 @@ public class TaskExecutionManager {
 			TaskExecutionParameters parameters, SimpleTaskDirectoryPathContext currenttaskdirectorycontext,
 			TaskInvocationConfiguration capabilities, ManagerTaskFutureImpl<?> ancestorfuture,
 			SpawnedResultTask spawnedtask) {
+		addRunningThreadCount(1);
 		executionstrategy.execute(() -> {
-			TaskExecutionResult<?> prevexecresult = getPreviousExecutionResult(taskid);
+			try {
+				TaskExecutionResult<?> prevexecresult = getPreviousExecutionResult(taskid);
 
-			SimpleTaskDirectoryPathContext taskdircontext = getTaskDirectoryPathContext(context, parameters,
-					currenttaskdirectorycontext);
-			if (prevexecresult != null) {
-				TaskDependencies prevexecdependencies = prevexecresult.getDependencies();
-				//TODO we should handle when a task factory changes it might return different qualifier system properties
-				Supplier<? extends TaskInvocationManager.SelectionResult> invokerselectionresult = invocationManager
-						.selectInvoker(taskid, capabilities,
-								prevexecdependencies.getEnvironmentPropertyDependenciesWithQualifiers(), null);
+				SimpleTaskDirectoryPathContext taskdircontext = getTaskDirectoryPathContext(context, parameters,
+						currenttaskdirectorycontext);
+				if (prevexecresult != null) {
+					TaskDependencies prevexecdependencies = prevexecresult.getDependencies();
+					//TODO we should handle when a task factory changes it might return different qualifier system properties
+					Supplier<? extends TaskInvocationManager.SelectionResult> invokerselectionresult = invocationManager
+							.selectInvoker(taskid, capabilities,
+									prevexecdependencies.getEnvironmentPropertyDependenciesWithQualifiers(), null);
 
-				TaskIdDependencyCollector collector = new TaskIdDependencyCollector(taskid, future,
-						prevexecdependencies, taskdircontext, context);
-				DependencyDelta deltas;
-				if (Boolean.FALSE.equals(checkedHasAnyDeltas.get(taskid))) {
-					deltas = DependencyDelta.EMPTY_DELTA;
-				} else {
-					try {
-						deltas = collectDependencyDeltasImpl(prevexecresult, context, taskdircontext,
-								invokerselectionresult, factory, taskid, collector);
-						collector.finishDependencyCollection(deltas);
-					} catch (TaskExecutionDeadlockedException e) {
-						TaskExecutionDeadlockedException te = ExceptionAccessInternal
-								.createTaskExecutionDeadlockedException(taskid);
-						te.addSuppressed(e);
-						throw te;
-					} catch (TaskResultWaitingInterruptedException e) {
-						throw e;
-					} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError
-							| AssertionError | Exception e) {
-						throw new AssertionError("Failed to collect deltas for task: " + taskid, e);
+					TaskIdDependencyCollector collector = new TaskIdDependencyCollector(taskid, future,
+							prevexecdependencies, taskdircontext, context);
+					DependencyDelta deltas;
+					if (Boolean.FALSE.equals(checkedHasAnyDeltas.get(taskid))) {
+						deltas = DependencyDelta.EMPTY_DELTA;
+					} else {
+						try {
+							deltas = collectDependencyDeltasImpl(prevexecresult, context, taskdircontext,
+									invokerselectionresult, factory, taskid, collector);
+							collector.finishDependencyCollection(deltas);
+						} catch (TaskExecutionDeadlockedException e) {
+							TaskExecutionDeadlockedException te = ExceptionAccessInternal
+									.createTaskExecutionDeadlockedException(taskid);
+							te.addSuppressed(e);
+							throw te;
+						} catch (TaskResultWaitingInterruptedException e) {
+							throw e;
+						} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError
+								| AssertionError | Exception e) {
+							throw new AssertionError("Failed to collect deltas for task: " + taskid, e);
+						}
 					}
+
+					if (deltas.isEmpty()) {
+						//no deltas for the task, nothing changed for it
+
+						@SuppressWarnings("unchecked")
+						TaskExecutionResult<R> prevexecres_r = (TaskExecutionResult<R>) prevexecresult;
+
+						this.buildTrace.taskUpToDate(prevexecresult, capabilities);
+
+						//TODO use the all transitive map
+						startUnchangedTaskSubTasks(prevexecres_r, context, currenttaskdirectorycontext, future,
+								collector.getAllTransitiveCreatedTaskIds().keySet(), parameters, spawnedtask);
+						return;
+					}
+					//there are some deltas, run the taks
+					executeTaskRunning(prevexecresult, taskid, context, future, factory, deltas, parameters,
+							capabilities, invokerselectionresult, taskdircontext, spawnedtask);
+				} else {
+					//no previous result is present, this is a new task
+					executeNewTaskRunning(taskid, context, future, factory, parameters, taskdircontext, capabilities,
+							spawnedtask);
 				}
-
-				if (deltas.isEmpty()) {
-					//no deltas for the task, nothing changed for it
-
-					@SuppressWarnings("unchecked")
-					TaskExecutionResult<R> prevexecres_r = (TaskExecutionResult<R>) prevexecresult;
-
-					this.buildTrace.taskUpToDate(prevexecresult, capabilities);
-
-					//TODO use the all transitive map
-					startUnchangedTaskSubTasks(prevexecres_r, context, currenttaskdirectorycontext, future,
-							collector.getAllTransitiveCreatedTaskIds().keySet(), parameters, spawnedtask);
-					return;
-				}
-				//there are some deltas, run the taks
-				executeTaskRunning(prevexecresult, taskid, context, future, factory, deltas, parameters, capabilities,
-						invokerselectionresult, taskdircontext, spawnedtask);
-			} else {
-				//no previous result is present, this is a new task
-				executeNewTaskRunning(taskid, context, future, factory, parameters, taskdircontext, capabilities,
-						spawnedtask);
+			} finally {
+				removeRunningThreadCount(1);
 			}
 		});
 	}
@@ -6022,7 +6194,6 @@ public class TaskExecutionManager {
 						capabilities, invokerselectionresult, taskcontext);
 				taskrunningexception = taskinvocationresult.getThrownException();
 				result = ObjectUtils.getOptional(taskinvocationresult.getResult());
-//				result = invokeTaskRunning(factory, capabilities, invokerselectionresult, taskcontext);
 			} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError | AssertionError
 					| Exception e) {
 				//catch some common errors, and exceptions
@@ -6031,7 +6202,8 @@ public class TaskExecutionManager {
 			} finally {
 				try {
 					taskcontext.executionFinished();
-				} catch (Exception e) {
+				} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError
+						| AssertionError | Exception e) {
 					taskrunningexception = IOUtils.addExc(taskrunningexception, e);
 				}
 			}

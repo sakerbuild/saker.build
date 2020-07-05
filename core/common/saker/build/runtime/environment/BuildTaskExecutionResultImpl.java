@@ -61,7 +61,8 @@ public class BuildTaskExecutionResultImpl implements BuildTaskExecutionResult {
 		result.resultCollection = resultcollection;
 		result.exception = exc;
 		result.scriptInformationResolver = new ScriptExceptionInformationResolver(
-				taskresultdatabase.getScriptInformationProviders(), resultcollection, roottaskid);
+				taskresultdatabase == null ? null : taskresultdatabase.getScriptInformationProviders(),
+				resultcollection, roottaskid);
 
 		result.exceptionView = result.createPositionedExceptionView(exc);
 		return result;
@@ -220,6 +221,9 @@ public class BuildTaskExecutionResultImpl implements BuildTaskExecutionResult {
 		}
 
 		private ScriptPosition lookupPositionForTaskId(TaskIdentifier taskid, SakerPath bfpath) {
+			if (informationProviders == null) {
+				return null;
+			}
 			if (taskid instanceof BuildFileTargetTaskIdentifier) {
 				BuildFileTargetTaskIdentifier bftid = (BuildFileTargetTaskIdentifier) taskid;
 				ScriptInformationProvider infoprovider = informationProviders.get(bftid.getFilePath());

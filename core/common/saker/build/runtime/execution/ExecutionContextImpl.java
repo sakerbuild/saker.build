@@ -443,7 +443,6 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 			BuildTaskResultDatabase prevresults = contentDatabase.getTaskResultDatabase();
 			TaskExecutionManager manager = new TaskExecutionManager(prevresults);
 			tasExecutionManager = manager;
-			manager.setDeadlockDetectionPollingMillis(executionParameters.getDeadlockPollingFrequencyMillis());
 
 			Collection<? extends TaskInvokerFactory> taskinvokerfactories = executionParameters
 					.getTaskInvokerFactories();

@@ -24,6 +24,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import saker.build.runtime.execution.ExecutionContext;
+import saker.build.task.TaskInvocationManager.InnerTaskInstanceInvocationHandle;
 import saker.build.task.TaskInvocationManager.InnerTaskInvocationHandle;
 import saker.build.task.TaskInvocationManager.InnerTaskInvocationListener;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
@@ -112,14 +113,22 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 		//TODO the notifications should be sent in a locked way
 		//as if the "last result" notification should arrive last, and the rmi methods can be 
 		// called out of order if invoked on multiple threads
-		public void putResult(R result, boolean lastresult) {
+		public void putResult(R result) {
 			results.add(new CompletedInnerTaskOptionalResult<>(result));
-			listener.notifyResultReady(lastresult);
 		}
 
-		public void putExceptionResult(Throwable e, boolean lastresult) {
+		public void putExceptionResult(Throwable e) {
 			results.add(new FailedInnerTaskOptionalResult<>(e));
-			listener.notifyResultReady(lastresult);
+		}
+
+		public void putFailureLastResult(Throwable e) {
+			results.add(new FailedInnerTaskOptionalResult<>(e));
+			listener.notifyResultReady(true);
+		}
+
+		public void putFailureResult(Throwable e) {
+			results.add(new FailedInnerTaskOptionalResult<>(e));
+			listener.notifyResultReady(false);
 		}
 
 		@Override
@@ -148,7 +157,7 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 					}
 				} catch (RuntimeException e) {
 					//some RMI exceptions or others may happen
-					this.putExceptionResult(e, false);
+					this.putFailureResult(e);
 					return;
 				}
 				ComputationToken ct;
@@ -156,7 +165,7 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 					ct = ComputationToken.requestAdditionalAbortable(computationTokenAllocator, computationTokenCount,
 							() -> duplicationCancelled);
 				} catch (InterruptedException e) {
-					this.putExceptionResult(e, false);
+					this.putFailureResult(e);
 					return;
 				}
 				if (ct == null) {
@@ -175,10 +184,10 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 
 		private void runDuplicatedInnerTaskWithComputationToken(ComputationToken token, boolean releasable) {
 			try {
-				try (TaskContextReference contextref = new TaskContextReference(taskContext)) {
+				try (TaskContextReference contextref = TaskContextReference.createForInnerTask(taskContext)) {
 					while (!duplicationCancelled) {
 						if (Thread.interrupted()) {
-							this.putExceptionResult(new InterruptedException("Inner task interrupted."), false);
+							this.putFailureResult(new InterruptedException("Inner task interrupted."));
 							return;
 						}
 						if (releasable) {
@@ -188,7 +197,7 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 									token = ComputationToken.requestAdditionalAbortable(computationTokenAllocator,
 											computationTokenCount, () -> duplicationCancelled);
 								} catch (InterruptedException e) {
-									this.putExceptionResult(e, false);
+									this.putFailureResult(e);
 									return;
 								}
 								if (token == null) {
@@ -198,13 +207,13 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 						}
 						Task<? extends R> task = taskFactory.createTask(executionContext);
 						if (task == null) {
-							this.putExceptionResult(
-									new NullPointerException(
-											"Task factory created null task: " + taskFactory.getClass().getName()),
-									false);
+							this.putFailureResult(new NullPointerException(
+									"Task factory created null task: " + taskFactory.getClass().getName()));
 							return;
 						}
-						if (!listener.notifyTaskInvocationStart()) {
+						InnerTaskInstanceInvocationHandle instanceinvocationhandle = listener
+								.notifyTaskInvocationStart();
+						if (instanceinvocationhandle == null) {
 							return;
 						}
 						try {
@@ -213,7 +222,7 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 							contextref.initTaskBuildTrace(btrace);
 							try {
 								R result = task.run(taskContext);
-								this.putResult(result, false);
+								this.putResult(result);
 							} catch (Throwable e) {
 								btrace.setThrownException(e);
 								throw e;
@@ -221,14 +230,16 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 								btrace.endInnerTask();
 							}
 						} catch (Exception e) {
-							this.putExceptionResult(e, false);
+							this.putExceptionResult(e);
 						} catch (Throwable e) {
 							try {
-								this.putExceptionResult(e, false);
+								this.putExceptionResult(e);
 							} catch (Throwable e2) {
 								e.addSuppressed(e2);
 							}
 							throw e;
+						} finally {
+							instanceinvocationhandle.done();
 						}
 						try {
 							if (!duplicationPredicate.shouldInvokeOnceMore()) {
@@ -236,7 +247,7 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 							}
 						} catch (RuntimeException e) {
 							//some RMI exceptions or others may happen
-							this.putExceptionResult(e, false);
+							this.putFailureResult(e);
 							return;
 						}
 					}
@@ -270,7 +281,7 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 				corecomptoken = ComputationToken.requestAbortable(computationTokenAllocator, computationTokenCount,
 						() -> duplicationCancelled);
 			} catch (InterruptedException e) {
-				this.putExceptionResult(e, true);
+				this.putFailureLastResult(e);
 				return;
 			}
 			if (corecomptoken == null) {
@@ -282,10 +293,10 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 				if (this.duplicationPredicate != null) {
 					//if the computation token is not at least 1, then use a fixed thread pool, to avoid sudden overallocation of threads
 					//    that could get out of hand really quickly if not contained, or in case of faulty implementation
+					String threadsname = "Inner-" + taskFactory.getClass().getSimpleName() + "-";
 					try (ThreadWorkPool workpool = computationTokenCount < 1
-							? ThreadUtils.newFixedWorkPool(NO_COMPUTATION_TOKEN_FIXED_THREAD_POOL_SIZE,
-									"Inner-" + taskFactory.getClass().getSimpleName() + "-")
-							: ThreadUtils.newDynamicWorkPool("Inner-" + taskFactory.getClass().getSimpleName() + "-")) {
+							? ThreadUtils.newFixedWorkPool(NO_COMPUTATION_TOKEN_FIXED_THREAD_POOL_SIZE, threadsname)
+							: ThreadUtils.newDynamicWorkPool(threadsname)) {
 						workpool.offer(() -> {
 							runDuplicatedInnerTaskWithComputationToken(coretokenres, false);
 						});
@@ -297,20 +308,21 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 				} else {
 					Task<? extends R> task = taskFactory.createTask(executionContext);
 					if (task == null) {
-						this.putExceptionResult(new NullPointerException(
-								"Task factory created null task: " + taskFactory.getClass().getName()), true);
+						this.putFailureLastResult(new NullPointerException(
+								"Task factory created null task: " + taskFactory.getClass().getName()));
 						return;
 					}
-					if (!listener.notifyTaskInvocationStart()) {
+					InnerTaskInstanceInvocationHandle instanceinvocationhandle = listener.notifyTaskInvocationStart();
+					if (instanceinvocationhandle == null) {
 						return;
 					}
-					try (TaskContextReference contextref = new TaskContextReference(taskContext)) {
+					try (TaskContextReference contextref = TaskContextReference.createForInnerTask(taskContext)) {
 						InternalTaskBuildTrace btrace = ((InternalTaskContext) taskContext).internalGetBuildTrace()
 								.startInnerTask(taskFactory);
 						contextref.initTaskBuildTrace(btrace);
 						try {
 							R result = task.run(taskContext);
-							this.putResult(result, true);
+							this.putResult(result);
 						} catch (Throwable e) {
 							btrace.setThrownException(e);
 							throw e;
@@ -318,14 +330,16 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 							btrace.endInnerTask();
 						}
 					} catch (Exception e) {
-						this.putExceptionResult(e, true);
+						this.putExceptionResult(e);
 					} catch (Throwable e) {
 						try {
-							this.putExceptionResult(e, true);
+							this.putExceptionResult(e);
 						} catch (Throwable e2) {
 							e.addSuppressed(e2);
 						}
 						throw e;
+					} finally {
+						instanceinvocationhandle.doneNoMoreResults();
 					}
 				}
 			}

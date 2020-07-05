@@ -17,6 +17,7 @@ package saker.build.task.cluster;
 
 import java.util.function.Supplier;
 
+import saker.build.task.InternalTaskFuture;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskDependencyFuture;
 import saker.build.task.TaskFuture;
@@ -51,10 +52,12 @@ class ClusterTaskFuture<R> implements TaskFuture<R> {
 		return taskId;
 	}
 
+	@SuppressWarnings("unchecked")
 	@Override
 	public R get()
 			throws TaskResultWaitingFailedException, TaskExecutionFailedException, IllegalTaskOperationException {
-		return getActualFuture().get();
+		clusterTaskContext.requireCalledOnMainThread(false);
+		return ((InternalTaskFuture<R>) getActualFuture()).internalGetOnTaskThread();
 	}
 
 	@Override
@@ -79,5 +82,9 @@ class ClusterTaskFuture<R> implements TaskFuture<R> {
 	@Override
 	public ClusterTaskContext getTaskContext() {
 		return clusterTaskContext;
+	}
+
+	public Supplier<TaskFuture<R>> getActualFutureSupplier() {
+		return future;
 	}
 }

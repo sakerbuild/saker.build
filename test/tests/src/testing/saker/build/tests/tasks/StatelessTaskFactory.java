@@ -27,11 +27,11 @@ public abstract class StatelessTaskFactory<R> implements TaskFactory<R>, Externa
 	private static final long serialVersionUID = 1L;
 
 	@Override
-	public final void writeExternal(ObjectOutput out) throws IOException {
+	public void writeExternal(ObjectOutput out) throws IOException {
 	}
 
 	@Override
-	public final void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 	}
 
 	@Override

@@ -62,7 +62,6 @@ import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.thirdparty.saker.util.ArrayUtils;
-import saker.build.thirdparty.saker.util.ConcurrentAppendAccumulator;
 import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -115,7 +114,18 @@ public class TaskInvocationManager implements Closeable {
 
 		public void notifyNoMoreResults();
 
-		public boolean notifyTaskInvocationStart();
+		public InnerTaskInstanceInvocationHandle notifyTaskInvocationStart();
+	}
+
+	public interface InnerTaskInstanceInvocationHandle {
+		public static final Method METHOD_DONE = ReflectUtils.getMethodAssert(InnerTaskInstanceInvocationHandle.class,
+				"done");
+		public static final Method METHOD_DONENOMORERESULTS = ReflectUtils
+				.getMethodAssert(InnerTaskInstanceInvocationHandle.class, "doneNoMoreResults");
+
+		public void done();
+
+		public void doneNoMoreResults();
 	}
 
 	private SakerEnvironmentImpl environment;
@@ -279,7 +289,7 @@ public class TaskInvocationManager implements Closeable {
 			}
 			R taskres;
 			InternalTaskBuildTrace btrace = taskcontext.internalGetBuildTrace();
-			try (TaskContextReference contextref = new TaskContextReference(taskcontext, btrace)) {
+			try (TaskContextReference contextref = TaskContextReference.createForMainTask(taskcontext, btrace)) {
 				btrace.startTaskExecution();
 				try {
 					taskres = task.run(taskcontext);
@@ -298,7 +308,7 @@ public class TaskInvocationManager implements Closeable {
 
 	public <R> ManagerInnerTaskResults<R> invokeInnerTaskRunning(TaskFactory<R> taskfactory,
 			SelectionResult selectionresult, int duplicationfactor, boolean duplicationcancellable,
-			TaskContext taskcontext, TaskDuplicationPredicate duplicationPredicate,
+			TaskExecutorContext<?> taskcontext, TaskDuplicationPredicate duplicationPredicate,
 			TaskInvocationConfiguration configuration, Set<UUID> allowedenvironmentids, int maximumenvironmentfactor) {
 		ConcurrentLinkedQueue<ListenerInnerTaskInvocationHandler<R>> invocationhandles = new ConcurrentLinkedQueue<>();
 		final Object resultwaiterlock = new Object();
@@ -335,7 +345,7 @@ public class TaskInvocationManager implements Closeable {
 		//TODO handle if all the clusters fail, and throw a proper initialization exception at the right time
 
 		InvokerTaskResultsHandler<R> fut = new InvokerTaskResultsHandler<>(invocationhandles, resultwaiterlock,
-				duplicationcancellable);
+				duplicationcancellable, taskcontext);
 
 		if (posttoenvironmentpredicate.test(environment.getEnvironmentIdentifier())) {
 			boolean hasdiffs = SakerEnvironmentImpl.hasAnyEnvironmentPropertyDifference(localTesterEnvironment,
@@ -1165,7 +1175,7 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public boolean notifyTaskInvocationStart() {
+		public InnerTaskInstanceInvocationHandle notifyTaskInvocationStart() {
 			return event.notifyTaskInvocationStart();
 		}
 	}
@@ -1394,7 +1404,7 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public boolean notifyTaskInvocationStart() {
+		public InnerTaskInstanceInvocationHandle notifyTaskInvocationStart() {
 			return invocationListener.notifyTaskInvocationStart();
 		}
 	}
@@ -1749,12 +1759,14 @@ public class TaskInvocationManager implements Closeable {
 		private boolean duplicationCancellable;
 		private volatile boolean allClustersFailed;
 		private boolean locallyRunnable;
+		private TaskExecutorContext<?> taskContext;
 
 		public InvokerTaskResultsHandler(ConcurrentLinkedQueue<ListenerInnerTaskInvocationHandler<R>> invocationHandles,
-				Object resultwaiterlock, boolean duplicationCancellable) {
+				Object resultwaiterlock, boolean duplicationCancellable, TaskExecutorContext<?> taskcontext) {
 			this.invocationHandles = invocationHandles;
 			this.resultWaiterLock = resultwaiterlock;
 			this.duplicationCancellable = duplicationCancellable;
+			this.taskContext = taskcontext;
 		}
 
 		public void setLocallyRunnable(boolean locallyRunnable) {
@@ -1770,6 +1782,21 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		public InnerTaskResultHolder<R> getNext() throws InterruptedException {
+			taskContext.requireCalledOnMainThread(true);
+			return internalGetNextOnTaskThread();
+		}
+
+		@Override
+		public InnerTaskResultHolder<R> internalGetNextOnTaskThread() throws InterruptedException {
+			return internalGetNextImpl();
+		}
+
+		@Override
+		public InnerTaskResultHolder<R> internalGetNextOnExecutionFinish() throws InterruptedException {
+			return internalGetNextImpl();
+		}
+
+		private InnerTaskResultHolder<R> internalGetNextImpl() throws InterruptedException {
 			while (true) {
 				if (!locallyRunnable && allClustersFailed) {
 					//XXX cause exceptions
@@ -1922,6 +1949,37 @@ public class TaskInvocationManager implements Closeable {
 		}
 	}
 
+	@RMIWrap(InnerTaskInstanceInvocationHandleRMIWrapper.class)
+	private static final class InnerTaskInstanceInvocationHandleImpl implements InnerTaskInstanceInvocationHandle {
+		@SuppressWarnings("rawtypes")
+		private static final AtomicReferenceFieldUpdater<TaskInvocationManager.InnerTaskInstanceInvocationHandleImpl, ListenerInnerTaskInvocationHandler> ARFU_handler = AtomicReferenceFieldUpdater
+				.newUpdater(TaskInvocationManager.InnerTaskInstanceInvocationHandleImpl.class,
+						ListenerInnerTaskInvocationHandler.class, "handler");
+
+		@SuppressWarnings("unused")
+		private volatile ListenerInnerTaskInvocationHandler<?> handler;
+
+		public InnerTaskInstanceInvocationHandleImpl(ListenerInnerTaskInvocationHandler<?> handler) {
+			this.handler = handler;
+		}
+
+		@Override
+		public void done() {
+			ListenerInnerTaskInvocationHandler<?> handler = ARFU_handler.getAndSet(this, null);
+			if (handler != null) {
+				handler.oneDone(this);
+			}
+		}
+
+		@Override
+		public void doneNoMoreResults() {
+			ListenerInnerTaskInvocationHandler<?> handler = ARFU_handler.getAndSet(this, null);
+			if (handler != null) {
+				handler.oneDoneNoMoreResults(this);
+			}
+		}
+	}
+
 	private static class ListenerInnerTaskInvocationHandler<R> implements InnerTaskInvocationListener {
 		@SuppressWarnings("rawtypes")
 		private static final AtomicReferenceFieldUpdater<TaskInvocationManager.ListenerInnerTaskInvocationHandler, TaskResultReadyCountState> ARFU_readyState = AtomicReferenceFieldUpdater
@@ -1933,11 +1991,25 @@ public class TaskInvocationManager implements Closeable {
 		private volatile boolean ended;
 
 		private final Object resultWaiterLock;
-		private final TaskContext taskContext;
+		private final TaskExecutorContext<?> taskContext;
 
-		public ListenerInnerTaskInvocationHandler(Object resultWaiterLock, TaskContext taskcontext) {
+		private final Set<InnerTaskInstanceInvocationHandleImpl> startedTaskInvocations = ConcurrentHashMap.newKeySet();
+
+		public ListenerInnerTaskInvocationHandler(Object resultWaiterLock, TaskExecutorContext<?> taskcontext) {
 			this.resultWaiterLock = resultWaiterLock;
 			this.taskContext = taskcontext;
+		}
+
+		public void oneDone(InnerTaskInstanceInvocationHandleImpl handle) {
+//			taskContext.executionManager.removeRunningThreadCount(1);
+			startedTaskInvocations.remove(handle);
+			notifyResultReadyImpl(false);
+		}
+
+		public void oneDoneNoMoreResults(InnerTaskInstanceInvocationHandleImpl handle) {
+//			taskContext.executionManager.removeRunningThreadCount(1);
+			startedTaskInvocations.remove(handle);
+			notifyResultReadyImpl(true);
 		}
 
 		public boolean isEnded() {
@@ -1972,7 +2044,7 @@ public class TaskInvocationManager implements Closeable {
 
 		public boolean isAnyMoreResultsExpected() {
 			TaskResultReadyCountState s = readyState;
-			return s.notifiedCount < s.invokingCount;
+			return s.notifiedCount < s.invokingCount || !startedTaskInvocations.isEmpty();
 		}
 
 		public InnerTaskResultHolder<R> getResultIfPresent() throws Exception {
@@ -2007,6 +2079,10 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		public void notifyResultReady(boolean lastresult) {
+			notifyResultReadyImpl(lastresult);
+		}
+
+		private void notifyResultReadyImpl(boolean lastresult) {
 			ARFU_readyState.updateAndGet(this, TaskResultReadyCountState::addReady);
 			synchronized (resultWaiterLock) {
 				if (lastresult) {
@@ -2040,18 +2116,21 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public boolean notifyTaskInvocationStart() {
+		public InnerTaskInstanceInvocationHandle notifyTaskInvocationStart() {
 			if (ended) {
-				return false;
+				return null;
 			}
 			while (true) {
 				TaskResultReadyCountState s = this.readyState;
 				if (s.hardFail != null) {
 					//we had a hard failure, no more invocations
-					return false;
+					return null;
 				}
 				if (ARFU_readyState.compareAndSet(this, s, s.addInvoking())) {
-					return true;
+					InnerTaskInstanceInvocationHandleImpl result = new InnerTaskInstanceInvocationHandleImpl(this);
+					startedTaskInvocations.add(result);
+//					taskContext.executionManager.addRunningThreadCount(1);
+					return result;
 				}
 			}
 		}
@@ -2138,6 +2217,49 @@ public class TaskInvocationManager implements Closeable {
 		@Override
 		public Object getWrappedObject() {
 			throw new UnsupportedOperationException();
+		}
+
+	}
+
+	public static class InnerTaskInstanceInvocationHandleRMIWrapper
+			implements RMIWrapper, InnerTaskInstanceInvocationHandle {
+		private InnerTaskInstanceInvocationHandle handle;
+
+		public InnerTaskInstanceInvocationHandleRMIWrapper() {
+		}
+
+		public InnerTaskInstanceInvocationHandleRMIWrapper(InnerTaskInstanceInvocationHandle handle) {
+			this.handle = handle;
+		}
+
+		@Override
+		public void writeWrapped(RMIObjectOutput out) throws IOException {
+			out.writeRemoteObject(handle);
+		}
+
+		@Override
+		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
+			handle = (InnerTaskInstanceInvocationHandle) in.readObject();
+		}
+
+		@Override
+		public Object resolveWrapped() {
+			return this;
+		}
+
+		@Override
+		public Object getWrappedObject() {
+			return handle;
+		}
+
+		@Override
+		public void done() {
+			callRMIAsyncAssert(handle, METHOD_DONE);
+		}
+
+		@Override
+		public void doneNoMoreResults() {
+			callRMIAsyncAssert(handle, METHOD_DONENOMORERESULTS);
 		}
 
 	}

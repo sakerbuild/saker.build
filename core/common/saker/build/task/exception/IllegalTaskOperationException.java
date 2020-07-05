@@ -23,8 +23,8 @@ import saker.build.task.identifier.TaskIdentifier;
  * <p>
  * Usually a result of calling task context related methods after the execution of the corresponding task is over.
  * <p>
- * Also used when the some task operation requirements are violated. (E.g. a method which is supposed to be called once
- * is called more than once)
+ * Also used when the some task operation requirements are violated. (E.g. a method which is supposed to be called at
+ * most once is called multiple times)
  */
 public class IllegalTaskOperationException extends TaskExecutionException {
 	private static final long serialVersionUID = 1L;
