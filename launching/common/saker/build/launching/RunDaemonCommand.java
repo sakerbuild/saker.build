@@ -21,6 +21,7 @@ import java.io.PrintStream;
 import java.net.SocketAddress;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import saker.build.daemon.DaemonLaunchParameters;
 import saker.build.daemon.DaemonOutputController.StreamToken;
@@ -48,6 +49,14 @@ import sipka.cmdline.api.ParameterContext;
  * </pre>
  */
 public class RunDaemonCommand {
+	private static final String FIRST_LINE_WITH_PORT_PREFIX = "Starting daemon on port ";
+	private static final String FIRST_LINE_WITH_PORT_SUFFIX = "...";
+
+	public static final String FIRST_LINE_NON_SERVER_DAEMON = "Starting daemon...";
+	public static final Pattern FIRST_LINE_PATTERN_WITH_PORT = Pattern.compile(
+			Pattern.quote("Starting daemon on port ") + "([0-9]+)" + Pattern.quote(FIRST_LINE_WITH_PORT_SUFFIX));
+	public static final int FIRST_LINE_PATTERN_WITH_PORT_GROUP_PORTNUMBER = 1;
+
 	private static class TokenRefs {
 		//only just for holding the reference
 		@SuppressWarnings("unused")
@@ -100,7 +109,24 @@ public class RunDaemonCommand {
 				daemonenv.setConnectToAsClusterAddresses(serveraddresses);
 			}
 
-			System.out.println("Starting daemon...");
+			Integer serverport = launchparams.getPort();
+			Integer useserverport;
+			if (serverport == null) {
+				useserverport = null;
+			} else {
+				useserverport = serverport < 0 ? DaemonLaunchParameters.DEFAULT_PORT : serverport;
+			}
+
+			if (useserverport != null) {
+				System.out.println(FIRST_LINE_WITH_PORT_PREFIX + useserverport + FIRST_LINE_WITH_PORT_SUFFIX);
+			} else {
+				if (ObjectUtils.isNullOrEmpty(startParams.connectClientParam)) {
+					throw new IllegalArgumentException("Invalid daemon start parameters. "
+							+ "Daemon doesn't accepts connections, or connects to servers. It has no purpose. "
+							+ "Specify -port or -connect-client parameters.");
+				}
+				System.out.println(FIRST_LINE_NON_SERVER_DAEMON);
+			}
 
 			daemonenv.start();
 
@@ -111,12 +137,15 @@ public class RunDaemonCommand {
 				InfoDaemonCommand.printInformation(daemonenv.getRuntimeLaunchConfiguration(), System.out);
 			}
 		} catch (Throwable e) {
-			//print the stacktrace to the original error stream
 			if (daemonenv != null) {
 				IOUtils.addExc(e, IOUtils.closeExc(daemonenv));
 			}
+			//print the stacktrace to the original error stream
 			e.printStackTrace(err);
-			throw e;
+			//exit the JVM
+			//we perform an exit as this command is not to be called programatically
+			//if we didn't exit, then the exception would be printed twice. Once by us, and once by the caller
+			System.exit(1);
 		}
 	}
 }

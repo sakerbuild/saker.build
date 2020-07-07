@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -62,7 +63,6 @@ import saker.build.task.cluster.TaskInvokerFactoryRMIWrapper;
 import saker.build.task.cluster.TaskInvokerInformation;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
-import saker.build.thirdparty.saker.rmi.connection.RMIConnection.IOErrorListener;
 import saker.build.thirdparty.saker.rmi.connection.RMIOptions;
 import saker.build.thirdparty.saker.rmi.connection.RMIServer;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
@@ -94,6 +94,13 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 	//4 byte port 
 	private static final long FILE_LOCK_DATA_LENGTH = 4;
+	//can't run more than 65535 daemons as we would run out of ports
+	private static final int DAEMON_INSTANCE_INDEX_END = 0xFFFF;
+
+	private static final long FILE_LOCK_REGION_START = Long.MAX_VALUE / 2;
+	private static final long FILE_LOCK_REGION_END = FILE_LOCK_REGION_START
+			+ FILE_LOCK_DATA_LENGTH * DAEMON_INSTANCE_INDEX_END;
+	private static final long FILE_LOCK_REGION_LENGTH = FILE_LOCK_REGION_END - FILE_LOCK_REGION_START;
 
 	protected SakerEnvironmentImpl environment;
 	private BuildExecutionInvoker buildExecutionInvoker;
@@ -102,6 +109,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 	private RandomAccessFile lockFile;
 	private FileLock fileLock;
+	private int daemonInstanceIndex = -1;
 
 	private SocketFactory connectionSocketFactory;
 	private ServerSocketFactory serverSocketFactory;
@@ -235,20 +243,27 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 			boolean actsascluster = constructLaunchParameters.isActsAsCluster();
 
-			//TODO allow running multiple daemons with shared storage directory
-
 			lockFile = new RandomAccessFile(lockpath.toFile(), "rw");
 			FileChannel channel = lockFile.getChannel();
-			try (FileLock portlock = channel.lock(0, FILE_LOCK_DATA_LENGTH, false)) {
-				fileLock = channel.tryLock(FILE_LOCK_DATA_LENGTH, Long.MAX_VALUE - FILE_LOCK_DATA_LENGTH, false);
-				if (fileLock == null) {
-					int port = lockFile.readInt();
-					IOUtils.closePrint(lockFile);
-					lockFile = null;
-					throw new IOException("Failed to create daemon environment. " + "Failed to lock storage directory: "
-							+ storagedirectory + ". " + "Daemon is already running on port: " + port);
+			//do not put the file lock in try-with-resources as closing is not idempotent
+			for (int i = 0; i < DAEMON_INSTANCE_INDEX_END; i++) {
+				FileLock flock = channel.tryLock(FILE_LOCK_REGION_START + i * FILE_LOCK_DATA_LENGTH,
+						FILE_LOCK_DATA_LENGTH, false);
+				if (flock == null) {
+					continue;
 				}
+				daemonInstanceIndex = i;
+				fileLock = flock;
+				break;
+			}
+			if (fileLock == null) {
+				throw new IOException("Failed to start daemon server, unable to acquire lock. Already running "
+						+ DAEMON_INSTANCE_INDEX_END + " daemons?");
+			}
 
+			//lock the data as well to lock initialization 
+			try (FileLock datalock = channel.lock(FILE_LOCK_DATA_LENGTH * daemonInstanceIndex, FILE_LOCK_DATA_LENGTH,
+					false)) {
 				environment = createSakerEnvironment(params);
 				buildExecutionInvoker = new EnvironmentBuildExecutionInvoker(environment);
 				server = new RMIServer(socketFactory, useport, serverBindAddress) {
@@ -304,6 +319,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 					}
 				};
 				int port = server.getPort();
+				lockFile.seek(daemonInstanceIndex * FILE_LOCK_DATA_LENGTH);
 				lockFile.writeInt(port);
 				builder.setPort(port);
 				builder.setStorageDirectory(SakerPath.valueOf(environment.getStorageDirectoryPath()));
@@ -314,6 +330,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 				//start the server as the last step, so new connections can access the resources right away
 				server.start(serverThreadGroup);
+
 			} catch (Throwable e) {
 				//in case of initialization error, close the file lock to signal that we're not running.
 				IOUtils.addExc(e, IOUtils.closeExc(fileLock));
@@ -326,6 +343,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 			builder.setStorageDirectory(SakerPath.valueOf(environment.getStorageDirectoryPath()));
 			builder.setThreadFactor(environment.getThreadFactor());
+			builder.setPort(null);
 			launchParameters = builder.build();
 			state = STATE_STARTED;
 		}
@@ -357,33 +375,88 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		return result;
 	}
 
-	public static Integer getRunningDaemonPort(SakerPath storagedirectory) throws IOException {
-		return getRunningDaemonPort(LocalFileProvider.toRealPath(storagedirectory));
+	public static List<Integer> getRunningDaemonPorts(SakerPath storagedirectory) throws IOException {
+		return getRunningDaemonPorts(LocalFileProvider.toRealPath(storagedirectory));
 	}
 
 	@SuppressWarnings("try")
-	public static Integer getRunningDaemonPort(Path storagedirectory) throws IOException {
+	public static List<Integer> getRunningDaemonPorts(Path storagedirectory) throws IOException {
+		List<Integer> result = new ArrayList<>();
 		Path lockpath = storagedirectory.resolve(DAEMON_LOCK_FILE_NAME);
 		try (RandomAccessFile f = new RandomAccessFile(lockpath.toFile(), "r")) {
-			FileChannel channel = f.getChannel();
-			try (FileLock portlock = channel.lock(0, FILE_LOCK_DATA_LENGTH, true)) {
-				try (FileLock mainlock = channel.tryLock(FILE_LOCK_DATA_LENGTH, Long.MAX_VALUE - FILE_LOCK_DATA_LENGTH,
-						true)) {
-					if (mainlock != null) {
-						//if we can acquire the main lock, then there is no daemon running
-						//return null to indicate that
-						return null;
-					}
-				}
-				int resport = f.readInt();
-				if (resport < 0) {
-					//return negative to signal that a daemon is running, but does not accept connections
-					return -1;
-				}
-				return resport;
-			}
+			collectDaemonPortsFromLockFile(result, f);
+			return result;
 		} catch (FileNotFoundException e) {
-			return null;
+			return Collections.emptyList();
+		}
+	}
+
+	@SuppressWarnings("try")
+	private static void collectDaemonPortsFromLockFile(List<Integer> result, RandomAccessFile f) throws IOException {
+		//XXX there is a race condition when concurrently creating deamons
+		//    in theory, if we poll the lock file with locks, and happen to lock the only
+		//    free region in the file, then concurrently creating daemons will not be possible
+		//    as they won't find a free slot.
+		//    this is such an edge case that currently its infeasible to support.
+		//    easy solution is not to create more than like 10000 daemons on a single machine.
+		FileChannel channel = f.getChannel();
+		for (int i = 0; i < DAEMON_INSTANCE_INDEX_END; i++) {
+			FileLock flock = channel.tryLock(FILE_LOCK_REGION_START + i * FILE_LOCK_DATA_LENGTH, FILE_LOCK_DATA_LENGTH,
+					true);
+			try {
+				if (flock != null) {
+					//close the lock before attempting the remaining
+					IOUtils.close(flock);
+					flock = null;
+					int remainingregioncount = DAEMON_INSTANCE_INDEX_END - i - 1;
+					if (remainingregioncount <= 1) {
+						//don't perform explicit check of the next one, its done as usual in the next loop
+						continue;
+					}
+
+					//locked the region of a daemon
+					//no daemon is running here
+					//test if there are any more in the file
+					//do the test in 2 phases not to lock the whole region at once
+					//as that could prevent concurrent daemons of starting
+					long remlockstart = FILE_LOCK_REGION_START + (i + 1) * FILE_LOCK_DATA_LENGTH;
+					long remlocktotallen = remainingregioncount * FILE_LOCK_DATA_LENGTH;
+					int remregion1count = remainingregioncount / 2;
+					long remlocklen1 = remregion1count * FILE_LOCK_DATA_LENGTH;
+					long remlocklen2 = remlocktotallen - remlocklen1;
+					long remlockpos1 = remlockstart;
+					long remlockpos2 = remlockstart + remlocklen1;
+					//lock the later region first as if we lock in order
+					//then in rare cases a concurrent daemon may fail to start
+					try (FileLock remlock = channel.tryLock(remlockpos2, remlocklen2, true)) {
+						if (remlock == null) {
+							//some region is locked by other
+							continue;
+						}
+					}
+					try (FileLock remlock = channel.tryLock(remlockpos1, remlocklen1, true)) {
+						if (remlock == null) {
+							//some region is locked by other
+							continue;
+						}
+						//no locks in the first region, we can skip over that
+						i += remregion1count;
+					}
+					//both regions succeeded to lock
+					//no more daemons
+					return;
+				}
+			} finally {
+				IOUtils.close(flock);
+			}
+			//lock on the data to wait initialization
+			try (FileLock datalock = channel.lock(FILE_LOCK_DATA_LENGTH * i, FILE_LOCK_DATA_LENGTH, true)) {
+				f.seek(i * FILE_LOCK_DATA_LENGTH);
+				int resport = f.readInt();
+				if (resport > 0) {
+					result.add(resport);
+				}
+			}
 		}
 	}
 
@@ -445,26 +518,9 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 		IOUtils.closePrint(environment);
 
-		FileLock fl = this.fileLock;
-		RandomAccessFile lockfile = this.lockFile;
-		if (fl != null) {
-			try (FileLock portlock = lockfile.getChannel().lock(0, FILE_LOCK_DATA_LENGTH, false)) {
-				try {
-					lockfile.seek(0);
-					lockfile.writeInt(-1);
-				} catch (IOException e) {
-				}
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-			try {
-				fl.release();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-
-		IOUtils.closePrint(fl, lockfile);
+		IOUtils.closePrint(this.fileLock, this.lockFile);
+		this.fileLock = null;
+		this.lockFile = null;
 	}
 
 	@Override

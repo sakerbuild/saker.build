@@ -39,11 +39,17 @@ public interface IDEProjectProperties {
 
 	public Set<String> getScriptModellingExclusions();
 
-	public boolean isRequireTaskIDEConfiguration();
+	/**
+	 * Boolean as string value.
+	 */
+	public String getRequireTaskIDEConfiguration();
 
 	public MountPathIDEProperty getBuildTraceOutput();
 
-	public boolean isBuildTraceEmbedArtifacts();
+	/**
+	 * Boolean as string value.
+	 */
+	public String getBuildTraceEmbedArtifacts();
 
 	@Override
 	public int hashCode();

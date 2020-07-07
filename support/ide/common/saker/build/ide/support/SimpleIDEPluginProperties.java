@@ -33,6 +33,8 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 	private String storageDirectory;
 	private Set<? extends Entry<String, String>> userParameters = Collections.emptySet();
 	private String exceptionFormat;
+	private String port;
+	private String actsAsServer;
 
 	private SimpleIDEPluginProperties() {
 	}
@@ -41,6 +43,8 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 		this.storageDirectory = copy.getStorageDirectory();
 		this.userParameters = SakerIDEPlugin.makeImmutableEntrySet(copy.getUserParameters());
 		this.exceptionFormat = copy.getExceptionFormat();
+		this.port = copy.getPort();
+		this.actsAsServer = copy.getActsAsServer();
 	}
 
 	@Override
@@ -58,6 +62,16 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 		return exceptionFormat;
 	}
 
+	@Override
+	public String getPort() {
+		return port;
+	}
+
+	@Override
+	public String getActsAsServer() {
+		return actsAsServer;
+	}
+
 	public static Builder builder() {
 		return new Builder();
 	}
@@ -70,7 +84,9 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
+		result = prime * result + ((actsAsServer == null) ? 0 : actsAsServer.hashCode());
 		result = prime * result + ((exceptionFormat == null) ? 0 : exceptionFormat.hashCode());
+		result = prime * result + ((port == null) ? 0 : port.hashCode());
 		result = prime * result + ((storageDirectory == null) ? 0 : storageDirectory.hashCode());
 		result = prime * result + ((userParameters == null) ? 0 : userParameters.hashCode());
 		return result;
@@ -85,10 +101,20 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 		if (getClass() != obj.getClass())
 			return false;
 		SimpleIDEPluginProperties other = (SimpleIDEPluginProperties) obj;
+		if (actsAsServer == null) {
+			if (other.actsAsServer != null)
+				return false;
+		} else if (!actsAsServer.equals(other.actsAsServer))
+			return false;
 		if (exceptionFormat == null) {
 			if (other.exceptionFormat != null)
 				return false;
 		} else if (!exceptionFormat.equals(other.exceptionFormat))
+			return false;
+		if (port == null) {
+			if (other.port != null)
+				return false;
+		} else if (!port.equals(other.port))
 			return false;
 		if (storageDirectory == null) {
 			if (other.storageDirectory != null)
@@ -141,6 +167,16 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 
 		public Builder setExceptionFormat(CommonExceptionFormat exceptionFormat) {
 			return this.setExceptionFormat(Objects.toString(exceptionFormat, null));
+		}
+
+		public Builder setPort(Integer port) {
+			result.port = port == null ? null : port.toString();
+			return this;
+		}
+
+		public Builder setActsAsServer(Boolean actsAsServer) {
+			result.actsAsServer = Objects.toString(actsAsServer, null);
+			return this;
 		}
 
 		public IDEPluginProperties build() {

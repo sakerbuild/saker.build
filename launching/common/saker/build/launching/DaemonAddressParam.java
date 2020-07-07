@@ -58,9 +58,17 @@ class DaemonAddressParam {
 	public InetSocketAddress getSocketAddress() {
 		InetSocketAddress adr = this.address;
 		if (adr == null) {
-			return new InetSocketAddress(InetAddress.getLoopbackAddress(), DaemonLaunchParameters.DEFAULT_PORT);
+			return getDefaultLocalDaemonSocketAddress();
 		}
 		return adr;
+	}
+
+	public static InetSocketAddress getDefaultLocalDaemonSocketAddress() {
+		return getDefaultLocalDaemonSocketAddressWithPort(DaemonLaunchParameters.DEFAULT_PORT);
+	}
+
+	public static InetSocketAddress getDefaultLocalDaemonSocketAddressWithPort(int port) {
+		return new InetSocketAddress(InetAddress.getLoopbackAddress(), port);
 	}
 
 	@Override

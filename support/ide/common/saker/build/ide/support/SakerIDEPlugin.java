@@ -317,7 +317,8 @@ public final class SakerIDEPlugin implements Closeable {
 	}
 
 	public void displayException(Throwable e) {
-		int callcount = callListeners(ImmutableUtils.makeImmutableList(exceptionDisplayers), d->d.displayException(e));
+		int callcount = callListeners(ImmutableUtils.makeImmutableList(exceptionDisplayers),
+				d -> d.displayException(e));
 		if (callcount == 0) {
 			e.printStackTrace();
 		}
@@ -454,9 +455,14 @@ public final class SakerIDEPlugin implements Closeable {
 			}
 		}
 
-		DaemonLaunchParameters daemonparams = DaemonLaunchParameters.builder()
-				.setStorageDirectory(daemonstoragedirectory)
-				.setUserParameters(entrySetToMap(pluginproperties.getUserParameters())).build();
+		DaemonLaunchParameters.Builder builder = DaemonLaunchParameters.builder();
+		builder.setStorageDirectory(daemonstoragedirectory);
+		builder.setUserParameters(entrySetToMap(pluginproperties.getUserParameters()));
+		if (SakerIDESupportUtils.getBooleanValueOrDefault(pluginproperties.getActsAsServer(), false)) {
+			builder.setActsAsCluster(true);
+		}
+		builder.setPort(SakerIDESupportUtils.getPortValueOrNull(pluginproperties.getPort()));
+		DaemonLaunchParameters daemonparams = builder.build();
 		return daemonparams;
 	}
 

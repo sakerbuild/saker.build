@@ -142,7 +142,7 @@ public class RMIServer implements AutoCloseable {
 	 * If this instance was constructed with 0 as port number, this will return the actual allocated port nonetheless.
 	 * 
 	 * @return The port number.
-	 * @see ServerSocket#getLocalPort();
+	 * @see ServerSocket#getLocalPort()
 	 */
 	public final int getPort() {
 		return port;

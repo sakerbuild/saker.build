@@ -343,19 +343,11 @@ public class IDEPersistenceUtils {
 		String execonnectionname = props.getExecutionDaemonConnectionName();
 		MountPathIDEProperty buildtraceout = props.getBuildTraceOutput();
 		objout.writeField("version", 1);
-		if (workdir != null) {
-			objout.writeField("working_dir", workdir);
-		}
-		if (builddir != null) {
-			objout.writeField("build_dir", builddir);
-		}
-		if (mirrordir != null) {
-			objout.writeField("mirror_dir", mirrordir);
-		}
-		if (execonnectionname != null) {
-			objout.writeField("execution_daemon", execonnectionname);
-		}
-		objout.writeField("build_trace_embed_artifacts", props.isBuildTraceEmbedArtifacts());
+		writeStringIfNotNull(objout, "working_dir", workdir);
+		writeStringIfNotNull(objout, "build_dir", builddir);
+		writeStringIfNotNull(objout, "mirror_dir", mirrordir);
+		writeStringIfNotNull(objout, "execution_daemon", execonnectionname);
+		writeStringIfNotNull(objout, "build_trace_embed_artifacts", props.getBuildTraceEmbedArtifacts());
 		if (buildtraceout != null) {
 			String btcname = buildtraceout.getMountClientName();
 			String btpath = buildtraceout.getMountPath();
@@ -366,7 +358,7 @@ public class IDEPersistenceUtils {
 				objout.writeField("build_trace_out_path", btpath);
 			}
 		}
-		objout.writeField("require_ide_config", props.isRequireTaskIDEConfiguration());
+		writeStringIfNotNull(objout, "require_ide_config", props.getRequireTaskIDEConfiguration());
 		Set<? extends RepositoryIDEProperty> repositories = props.getRepositories();
 		if (repositories != null) {
 			try (StructuredArrayObjectOutput repoarray = objout.writeArray("repositories")) {
@@ -471,15 +463,11 @@ public class IDEPersistenceUtils {
 		result.setBuildDirectory(input.readString("build_dir"));
 		result.setMirrorDirectory(input.readString("mirror_dir"));
 		result.setExecutionDaemonConnectionName(input.readString("execution_daemon"));
-		try {
-			result.setRequireTaskIDEConfiguration(
-					ObjectUtils.defaultize(input.readBoolean("require_ide_config"), true));
-		} catch (DataFormatException ignored) {
-		}
+		result.setRequireTaskIDEConfiguration(input.readString("require_ide_config"));
+
 		result.setBuildTraceOutput(MountPathIDEProperty.create(input.readString("build_trace_out_client"),
 				input.readString("build_trace_out_path")));
-		result.setBuildTraceEmbedArtifacts(
-				ObjectUtils.defaultize(input.readBoolean("build_trace_embed_artifacts"), false));
+		result.setBuildTraceEmbedArtifacts(input.readString("build_trace_embed_artifacts"));
 
 		try (StructuredArrayObjectInput array = input.readArray("repositories")) {
 			if (array != null) {
@@ -720,6 +708,14 @@ public class IDEPersistenceUtils {
 			}
 		}
 		return map;
+	}
+
+	private static void writeStringIfNotNull(StructuredObjectOutput output, String fieldname, String value)
+			throws DuplicateObjectFieldException, IOException {
+		if (value == null) {
+			return;
+		}
+		output.writeField(fieldname, value);
 	}
 
 	private static final class ServiceEnumeratorObjectStructuredSerializer

@@ -62,6 +62,26 @@ public class SakerIDESupportUtils {
 		return getMountPropertyForPath(path, properties.getMounts());
 	}
 
+	public static Integer getPortValueOrNull(String value) {
+		int val;
+		try {
+			val = Integer.parseInt(value);
+		} catch (NumberFormatException e) {
+			return null;
+		}
+		if (val < 0 || val > 0xFFFF) {
+			return null;
+		}
+		return val;
+	}
+
+	public static boolean getBooleanValueOrDefault(String boolval, boolean def) {
+		if (boolval == null) {
+			return def;
+		}
+		return Boolean.parseBoolean(boolval);
+	}
+
 	public static ProviderMountIDEProperty getMountPropertyForPath(SakerPath path,
 			Iterable<? extends ProviderMountIDEProperty> mounts) {
 		if (path == null) {

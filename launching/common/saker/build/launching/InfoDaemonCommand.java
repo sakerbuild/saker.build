@@ -19,13 +19,20 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import saker.build.daemon.DaemonLaunchParameters;
+import saker.build.daemon.LocalDaemonEnvironment;
 import saker.build.daemon.RemoteDaemonConnection;
 import saker.build.file.path.SakerPath;
+import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
 import sipka.cmdline.api.Parameter;
 
 /**
@@ -41,28 +48,64 @@ public class InfoDaemonCommand {
 	 * The address of the daemon to connect to.
 	 * If the daemon is not running at the given address, or doesn't accept
 	 * client connections then an exception will be thrown.
+	 * 
+	 * If not specified, information about locally running daemons will be printed.
 	 * </pre>
 	 */
 	@Parameter("-address")
-	public DaemonAddressParam address = new DaemonAddressParam();
+	public DaemonAddressParam address;
 
 	public void call() throws IOException {
-		InetSocketAddress sockaddress = this.address.getSocketAddress();
+		ReentrantLock iolock = new ReentrantLock();
+
+		if (address == null) {
+			List<Integer> ports = LocalDaemonEnvironment
+					.getRunningDaemonPorts(SakerEnvironmentImpl.getDefaultStorageDirectory());
+			if (!ports.isEmpty()) {
+				try (ThreadWorkPool pool = ThreadUtils.newDynamicWorkPool()) {
+					for (Integer port : ports) {
+						pool.offer(() -> {
+							printDaemonInformationOfDaemon(
+									DaemonAddressParam.getDefaultLocalDaemonSocketAddressWithPort(port), iolock);
+						});
+					}
+				}
+			} else {
+				System.out.println("No daemon running on the local machine.");
+			}
+		} else {
+			printDaemonInformationOfDaemon(this.address.getSocketAddress(), iolock);
+		}
+	}
+
+	private static void printDaemonInformationOfDaemon(InetSocketAddress sockaddress, Lock lock) {
 		RemoteDaemonConnection connected;
 		try {
 			connected = RemoteDaemonConnection.connect(sockaddress);
 		} catch (IOException e) {
-			System.out.println("No daemon running at address or failed to connect: " + sockaddress + " (" + e + ")");
+			lock.lock();
+			try {
+				System.out
+						.println("No daemon running at address or failed to connect: " + sockaddress + " (" + e + ")");
+			} finally {
+				lock.unlock();
+			}
 			return;
 		}
+		boolean locked = false;
 		try (RemoteDaemonConnection env = connected) {
+			DaemonLaunchParameters launchconfig = env.getDaemonEnvironment().getRuntimeLaunchConfiguration();
+			lock.lock();
+			locked = true;
 			System.out.println("Daemon running at: " + sockaddress);
-			try {
-				System.out.println("Configuration: ");
-				printInformation(env.getDaemonEnvironment().getRuntimeLaunchConfiguration(), System.out);
-			} catch (Exception e) {
-				System.out.println("Operation failed: ");
-				e.printStackTrace();
+			System.out.println("Configuration: ");
+			printInformation(launchconfig, System.out);
+		} catch (Exception e) {
+			System.out.println("Operation failed: ");
+			e.printStackTrace();
+		} finally {
+			if (locked) {
+				lock.unlock();
 			}
 		}
 	}

@@ -16,13 +16,17 @@
 package saker.build.launching;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.regex.Matcher;
 
 import saker.build.daemon.DaemonLaunchParameters;
 import saker.build.daemon.LocalDaemonEnvironment;
@@ -31,6 +35,8 @@ import saker.build.file.path.SakerPath;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
+import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.util.java.JavaTools;
 import sipka.cmdline.api.ParameterContext;
 import sipka.cmdline.runtime.ParseUtil;
@@ -70,17 +76,25 @@ public class StartDaemonCommand {
 
 		InetAddress connectaddress = InetAddress.getLoopbackAddress();
 		try {
-			Integer runningport = LocalDaemonEnvironment.getRunningDaemonPort(storagedirpath);
-			if (runningport != null && runningport.intValue() > 0) {
-				try (RemoteDaemonConnection connected = RemoteDaemonConnection
-						.connect(new InetSocketAddress(connectaddress, runningport))) {
-					DaemonLaunchParameters runninglaunchparams = connected.getDaemonEnvironment().getLaunchParameters();
-					if (!runninglaunchparams.equals(thislaunchparams)) {
-						throw throwDifferentLaunchParameters(thislaunchparams, runninglaunchparams);
+			Collection<Integer> runningports = LocalDaemonEnvironment.getRunningDaemonPorts(storagedirpath);
+			if (!runningports.isEmpty()) {
+				Integer launchparamport = thislaunchparams.getPort();
+				if (launchparamport != null && launchparamport < 0) {
+					launchparamport = DaemonLaunchParameters.DEFAULT_PORT;
+				}
+				if (runningports.contains(launchparamport)) {
+					try (RemoteDaemonConnection connected = RemoteDaemonConnection
+							.connect(new InetSocketAddress(connectaddress, launchparamport))) {
+						DaemonLaunchParameters runninglaunchparams = connected.getDaemonEnvironment()
+								.getLaunchParameters();
+						if (!runninglaunchparams.equals(thislaunchparams)) {
+							throw throwDifferentLaunchParameters(thislaunchparams, runninglaunchparams);
+						}
+						System.out.println(
+								"Daemon is already running with same parameters. (Port " + launchparamport + ")");
+						return;
+					} catch (RMIRuntimeException e) {
 					}
-					System.out.println("Daemon is already running with same parameters.");
-					return;
-				} catch (RMIRuntimeException e) {
 				}
 			}
 		} catch (IOException e) {
@@ -103,25 +117,31 @@ public class StartDaemonCommand {
 
 	public static RemoteDaemonConnection connectOrCreateDaemon(Path javaexe, Path sakerjarpath,
 			DaemonLaunchParameters launchparams, StartDaemonParams startparams) throws IOException {
+		if (launchparams.getPort() == null) {
+			throw new IllegalArgumentException("Cannot connect to daemon without server port.");
+		}
 		SakerPath storagedirpath = launchparams.getStorageDirectory();
-		InetAddress connectaddress = InetAddress.getLoopbackAddress();
-		Integer runningport = null;
+		List<Integer> runningports = Collections.emptyList();
 		try {
-			runningport = LocalDaemonEnvironment.getRunningDaemonPort(storagedirpath);
+			runningports = LocalDaemonEnvironment.getRunningDaemonPorts(storagedirpath);
 		} catch (IOException e) {
 			throw new IOException("Failed to determine daemon state at storage directory: " + storagedirpath, e);
 		}
-		if (runningport != null) {
-			if (runningport.intValue() > 0) {
+		InetAddress connectaddress = InetAddress.getLoopbackAddress();
+		if (!runningports.isEmpty()) {
+			Integer launchparamport = launchparams.getPort();
+			if (launchparamport != null && launchparamport < 0) {
+				launchparamport = DaemonLaunchParameters.DEFAULT_PORT;
+			}
+			if (runningports.contains(launchparamport)) {
 				try {
-					return RemoteDaemonConnection.connect(new InetSocketAddress(connectaddress, runningport));
+					return RemoteDaemonConnection.connect(new InetSocketAddress(connectaddress, launchparamport));
 				} catch (RMIRuntimeException e) {
 					throw new IOException("Failed to communicate with daemon at: " + storagedirpath, e);
 				}
 			}
-			//a daemon is already running at the given storage directory, and we cannot connect to it, as it does not accept connections
-			throw new IOException("Cannot use daemon at storage directory: " + storagedirpath);
 		}
+
 		//no daemon is running at the given path, try to start it
 		List<String> commands = new ArrayList<>();
 		commands.add(javaexe.toString());
@@ -138,30 +158,64 @@ public class StartDaemonCommand {
 		pb.redirectErrorStream(true);
 
 		Process proc = pb.start();
+		//signal that we're not writing anything to the stdin of the daemon
+		proc.getOutputStream().close();
 
-		// 12 * 250 = 3000 ms of waiting for connection
-		for (int i = 0; i < 12; i++) {
-			if (!proc.isAlive()) {
-				StreamUtils.copyStream(proc.getInputStream(), System.err);
-				throw new IOException("Failed to start daemon, exit code: " + proc.exitValue());
-			}
-			runningport = LocalDaemonEnvironment.getRunningDaemonPort(storagedirpath);
-			if (runningport == null) {
-				try {
-					Thread.sleep(250);
-				} catch (InterruptedException e) {
-					Thread.currentThread().interrupt();
-					throw new IOException("Daemon initialization interrupted.", e);
+		UnsyncByteArrayOutputStream linebuf = new UnsyncByteArrayOutputStream();
+		String[] firstline = { null };
+		InputStream procinstream = proc.getInputStream();
+		//read on a different thread so we can properly timeout
+		Thread readthread = ThreadUtils.startDaemonThread(() -> {
+			try {
+				while (true) {
+					//TODO don't read byte by byte, buf more efficiently
+					int r = procinstream.read();
+					if (r < 0) {
+						break;
+					}
+					if (r == '\r' || r == '\n') {
+						firstline[0] = linebuf.toString();
+						linebuf.write(r);
+						break;
+					} else {
+						linebuf.write(r);
+					}
 				}
-				continue;
+			} catch (IOException e) {
+				e.printStackTrace();
 			}
-			if (runningport == 0) {
-				throw new IOException("Failed to determine started daemon port. (read zero)");
+		});
+		try {
+			try {
+				readthread.join(3 * 1000);
+			} catch (InterruptedException e) {
+				throw new IOException("Failed to start daemon, initialization interrupted.", e);
 			}
-			return RemoteDaemonConnection.connect(new InetSocketAddress(connectaddress, runningport));
+			if (readthread.isAlive()) {
+				readthread.interrupt();
+			}
+			if (firstline[0] == null) {
+				throw new IOException("Failed to start daemon, timed out.");
+			}
+			if (RunDaemonCommand.FIRST_LINE_NON_SERVER_DAEMON.equals(firstline[0])) {
+				throw new IllegalArgumentException("Cannot connect to daemon without server port.");
+			}
+			Matcher flmatcher = RunDaemonCommand.FIRST_LINE_PATTERN_WITH_PORT.matcher(firstline[0]);
+			if (!flmatcher.matches()) {
+				throw new IllegalArgumentException("Cannot connect to daemon without server port.");
+			}
+			int daemonport = Integer
+					.parseInt(flmatcher.group(RunDaemonCommand.FIRST_LINE_PATTERN_WITH_PORT_GROUP_PORTNUMBER));
+			return RemoteDaemonConnection.connect(new InetSocketAddress(connectaddress, daemonport));
+		} catch (Throwable e) {
+			try {
+				linebuf.writeTo(System.err);
+				StreamUtils.copyStream(procinstream, System.err);
+			} catch (Exception e2) {
+				e.addSuppressed(e2);
+			}
+			throw e;
 		}
-		StreamUtils.copyStream(proc.getInputStream(), System.err);
-		throw new IOException("Failed to connect to started daemon, timed out.");
 	}
 
 	private static void addDaemonLaunchParametersToCommandLine(List<String> commands,

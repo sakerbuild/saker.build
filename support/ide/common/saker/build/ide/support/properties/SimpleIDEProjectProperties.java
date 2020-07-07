@@ -37,7 +37,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		defaultprops.scriptConfigurations = Collections.singleton(SakerIDEProject.DEFAULT_SCRIPT_IDE_PROPERTY);
 		defaultprops.workingDirectory = SakerIDEProject.DEFAULT_MOUNT_IDE_PROPERTY.getRoot();
 		defaultprops.buildDirectory = SakerIDEProject.DEFAULT_BUILD_DIRECTORY_PATH;
-		defaultprops.requireTaskIDEConfiguration = true;
+		defaultprops.requireTaskIDEConfiguration = "true";
 		DEFAULTS_INSTANCE = defaultprops;
 	}
 
@@ -53,10 +53,10 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 	protected String mirrorDirectory;
 	protected String executionDaemonConnectionName;
 
-	protected boolean requireTaskIDEConfiguration;
+	protected String requireTaskIDEConfiguration;
 
 	protected MountPathIDEProperty buildTraceOutput;
-	protected boolean buildTraceEmbedArtifacts;
+	protected String buildTraceEmbedArtifacts;
 
 	public static IDEProjectProperties empty() {
 		return EMPTY;
@@ -85,9 +85,9 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		this.buildDirectory = copy.getBuildDirectory();
 		this.mirrorDirectory = copy.getMirrorDirectory();
 		this.executionDaemonConnectionName = copy.getExecutionDaemonConnectionName();
-		this.requireTaskIDEConfiguration = copy.isRequireTaskIDEConfiguration();
+		this.requireTaskIDEConfiguration = copy.getRequireTaskIDEConfiguration();
 		this.buildTraceOutput = copy.getBuildTraceOutput();
-		this.buildTraceEmbedArtifacts = copy.isBuildTraceEmbedArtifacts();
+		this.buildTraceEmbedArtifacts = copy.getBuildTraceEmbedArtifacts();
 	}
 
 	@Override
@@ -141,7 +141,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 	}
 
 	@Override
-	public boolean isRequireTaskIDEConfiguration() {
+	public String getRequireTaskIDEConfiguration() {
 		return requireTaskIDEConfiguration;
 	}
 
@@ -151,7 +151,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 	}
 
 	@Override
-	public boolean isBuildTraceEmbedArtifacts() {
+	public String getBuildTraceEmbedArtifacts() {
 		return buildTraceEmbedArtifacts;
 	}
 
@@ -160,7 +160,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		final int prime = 31;
 		int result = 1;
 		result = prime * result + ((buildDirectory == null) ? 0 : buildDirectory.hashCode());
-		result = prime * result + (buildTraceEmbedArtifacts ? 1231 : 1237);
+		result = prime * result + ((buildTraceEmbedArtifacts == null) ? 0 : buildTraceEmbedArtifacts.hashCode());
 		result = prime * result + ((buildTraceOutput == null) ? 0 : buildTraceOutput.hashCode());
 		result = prime * result + ((connections == null) ? 0 : connections.hashCode());
 		result = prime * result
@@ -168,7 +168,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		result = prime * result + ((mirrorDirectory == null) ? 0 : mirrorDirectory.hashCode());
 		result = prime * result + ((mounts == null) ? 0 : mounts.hashCode());
 		result = prime * result + ((repositories == null) ? 0 : repositories.hashCode());
-		result = prime * result + (requireTaskIDEConfiguration ? 1231 : 1237);
+		result = prime * result + ((requireTaskIDEConfiguration == null) ? 0 : requireTaskIDEConfiguration.hashCode());
 		result = prime * result + ((scriptConfigurations == null) ? 0 : scriptConfigurations.hashCode());
 		result = prime * result + ((scriptModellingExclusions == null) ? 0 : scriptModellingExclusions.hashCode());
 		result = prime * result + ((userParameters == null) ? 0 : userParameters.hashCode());
@@ -190,7 +190,10 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 				return false;
 		} else if (!buildDirectory.equals(other.buildDirectory))
 			return false;
-		if (buildTraceEmbedArtifacts != other.buildTraceEmbedArtifacts)
+		if (buildTraceEmbedArtifacts == null) {
+			if (other.buildTraceEmbedArtifacts != null)
+				return false;
+		} else if (!buildTraceEmbedArtifacts.equals(other.buildTraceEmbedArtifacts))
 			return false;
 		if (buildTraceOutput == null) {
 			if (other.buildTraceOutput != null)
@@ -222,7 +225,10 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 				return false;
 		} else if (!repositories.equals(other.repositories))
 			return false;
-		if (requireTaskIDEConfiguration != other.requireTaskIDEConfiguration)
+		if (requireTaskIDEConfiguration == null) {
+			if (other.requireTaskIDEConfiguration != null)
+				return false;
+		} else if (!requireTaskIDEConfiguration.equals(other.requireTaskIDEConfiguration))
 			return false;
 		if (scriptConfigurations == null) {
 			if (other.scriptConfigurations != null)
@@ -322,9 +328,13 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 			return this;
 		}
 
-		public Builder setRequireTaskIDEConfiguration(boolean requireTaskIDEConfiguration) {
+		public Builder setRequireTaskIDEConfiguration(String requireTaskIDEConfiguration) {
 			result.requireTaskIDEConfiguration = requireTaskIDEConfiguration;
 			return this;
+		}
+
+		public Builder setRequireTaskIDEConfiguration(boolean requireTaskIDEConfiguration) {
+			return this.setRequireTaskIDEConfiguration(Boolean.toString(requireTaskIDEConfiguration));
 		}
 
 		public Builder setBuildTraceOutput(MountPathIDEProperty buildTraceOutput) {
@@ -332,9 +342,13 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 			return this;
 		}
 
-		public Builder setBuildTraceEmbedArtifacts(boolean buildTraceEmbedArtifacts) {
+		public Builder setBuildTraceEmbedArtifacts(String buildTraceEmbedArtifacts) {
 			result.buildTraceEmbedArtifacts = buildTraceEmbedArtifacts;
 			return this;
+		}
+
+		public Builder setBuildTraceEmbedArtifacts(boolean buildTraceEmbedArtifacts) {
+			return this.setBuildTraceEmbedArtifacts(Boolean.toString(buildTraceEmbedArtifacts));
 		}
 
 		public IDEProjectProperties build() {

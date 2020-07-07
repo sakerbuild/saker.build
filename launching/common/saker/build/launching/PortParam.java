@@ -42,7 +42,7 @@ class PortParam {
 		return port;
 	}
 
-	public int getPort(int defaultvalue) {
+	public Integer getPort(Integer defaultvalue) {
 		Integer result = this.port;
 		if (result == null) {
 			return defaultvalue;
