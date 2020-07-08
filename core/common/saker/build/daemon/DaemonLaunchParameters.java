@@ -63,8 +63,7 @@ public class DaemonLaunchParameters implements Externalizable, Cloneable {
 	}
 
 	//doc: nullable:
-	//null: should be only local
-	//negative: use the default port
+	//null: should be only local, doesn't accept any connections
 	//0: automatic port selection
 	// > 0: use that port
 	public Integer getPort() {
@@ -193,6 +192,13 @@ public class DaemonLaunchParameters implements Externalizable, Cloneable {
 		return new Builder(copy);
 	}
 
+	protected static void checkPort(int pint) {
+		if (pint < 0 || pint > 0xFFFF) {
+			throw new IllegalArgumentException(
+					"Invalid port number: " + pint + " Must be positive and less than " + 0xFFFF);
+		}
+	}
+
 	public static class Builder {
 		private DaemonLaunchParameters result;
 
@@ -214,7 +220,10 @@ public class DaemonLaunchParameters implements Externalizable, Cloneable {
 			return this;
 		}
 
-		public Builder setPort(Integer port) {
+		public Builder setPort(Integer port) throws IllegalArgumentException {
+			if (port != null) {
+				checkPort(port);
+			}
 			result.port = port;
 			return this;
 		}

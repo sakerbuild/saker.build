@@ -161,60 +161,61 @@ public class StartDaemonCommand {
 		//signal that we're not writing anything to the stdin of the daemon
 		proc.getOutputStream().close();
 
-		UnsyncByteArrayOutputStream linebuf = new UnsyncByteArrayOutputStream();
-		String[] firstline = { null };
-		InputStream procinstream = proc.getInputStream();
-		//read on a different thread so we can properly timeout
-		Thread readthread = ThreadUtils.startDaemonThread(() -> {
-			try {
-				while (true) {
-					//TODO don't read byte by byte, buf more efficiently
-					int r = procinstream.read();
-					if (r < 0) {
-						break;
+		try (UnsyncByteArrayOutputStream linebuf = new UnsyncByteArrayOutputStream()) {
+			String[] firstline = { null };
+			InputStream procinstream = proc.getInputStream();
+			//read on a different thread so we can properly timeout
+			Thread readthread = ThreadUtils.startDaemonThread(() -> {
+				try {
+					while (true) {
+						//TODO don't read byte by byte, buf more efficiently
+						int r = procinstream.read();
+						if (r < 0) {
+							break;
+						}
+						if (r == '\r' || r == '\n') {
+							firstline[0] = linebuf.toString();
+							linebuf.write(r);
+							break;
+						} else {
+							linebuf.write(r);
+						}
 					}
-					if (r == '\r' || r == '\n') {
-						firstline[0] = linebuf.toString();
-						linebuf.write(r);
-						break;
-					} else {
-						linebuf.write(r);
-					}
+				} catch (IOException e) {
+					e.printStackTrace();
 				}
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		});
-		try {
+			});
 			try {
-				readthread.join(3 * 1000);
-			} catch (InterruptedException e) {
-				throw new IOException("Failed to start daemon, initialization interrupted.", e);
+				try {
+					readthread.join(3 * 1000);
+				} catch (InterruptedException e) {
+					throw new IOException("Failed to start daemon, initialization interrupted.", e);
+				}
+				if (readthread.isAlive()) {
+					readthread.interrupt();
+				}
+				if (firstline[0] == null) {
+					throw new IOException("Failed to start daemon, timed out.");
+				}
+				if (RunDaemonCommand.FIRST_LINE_NON_SERVER_DAEMON.equals(firstline[0])) {
+					throw new IllegalArgumentException("Cannot connect to daemon without server port.");
+				}
+				Matcher flmatcher = RunDaemonCommand.FIRST_LINE_PATTERN_WITH_PORT.matcher(firstline[0]);
+				if (!flmatcher.matches()) {
+					throw new IllegalArgumentException("Cannot connect to daemon without server port.");
+				}
+				int daemonport = Integer
+						.parseInt(flmatcher.group(RunDaemonCommand.FIRST_LINE_PATTERN_WITH_PORT_GROUP_PORTNUMBER));
+				return RemoteDaemonConnection.connect(new InetSocketAddress(connectaddress, daemonport));
+			} catch (Throwable e) {
+				try {
+					linebuf.writeTo(System.err);
+					StreamUtils.copyStream(procinstream, System.err);
+				} catch (Exception e2) {
+					e.addSuppressed(e2);
+				}
+				throw e;
 			}
-			if (readthread.isAlive()) {
-				readthread.interrupt();
-			}
-			if (firstline[0] == null) {
-				throw new IOException("Failed to start daemon, timed out.");
-			}
-			if (RunDaemonCommand.FIRST_LINE_NON_SERVER_DAEMON.equals(firstline[0])) {
-				throw new IllegalArgumentException("Cannot connect to daemon without server port.");
-			}
-			Matcher flmatcher = RunDaemonCommand.FIRST_LINE_PATTERN_WITH_PORT.matcher(firstline[0]);
-			if (!flmatcher.matches()) {
-				throw new IllegalArgumentException("Cannot connect to daemon without server port.");
-			}
-			int daemonport = Integer
-					.parseInt(flmatcher.group(RunDaemonCommand.FIRST_LINE_PATTERN_WITH_PORT_GROUP_PORTNUMBER));
-			return RemoteDaemonConnection.connect(new InetSocketAddress(connectaddress, daemonport));
-		} catch (Throwable e) {
-			try {
-				linebuf.writeTo(System.err);
-				StreamUtils.copyStream(procinstream, System.err);
-			} catch (Exception e2) {
-				e.addSuppressed(e2);
-			}
-			throw e;
 		}
 	}
 

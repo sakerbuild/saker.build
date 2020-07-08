@@ -227,7 +227,6 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		LocalFileProvider.getInstance().createDirectories(storagedirectory);
 
 		DaemonLaunchParameters.Builder builder = DaemonLaunchParameters.builder(constructLaunchParameters);
-		builder.setPort(-1);
 
 		Integer serverport = constructLaunchParameters.getPort();
 		if (serverport != null) {

@@ -459,7 +459,7 @@ public final class SakerIDEPlugin implements Closeable {
 		builder.setStorageDirectory(daemonstoragedirectory);
 		builder.setUserParameters(entrySetToMap(pluginproperties.getUserParameters()));
 		if (SakerIDESupportUtils.getBooleanValueOrDefault(pluginproperties.getActsAsServer(), false)) {
-			builder.setActsAsCluster(true);
+			builder.setActsAsServer(true);
 		}
 		builder.setPort(SakerIDESupportUtils.getPortValueOrNull(pluginproperties.getPort()));
 		DaemonLaunchParameters daemonparams = builder.build();
