@@ -119,7 +119,7 @@ public class NetworkUtils {
 	 *             If the argument is not a valid integral number.
 	 * @throws IllegalArgumentException
 	 *             If the port number is out of range.
-	 * @see {@link Integer#parseInt(String)}
+	 * @see Integer#parseInt(String)
 	 */
 	public static int parsePort(String port) throws NumberFormatException, IllegalArgumentException {
 		int result = Integer.parseInt(port);
