@@ -1656,23 +1656,58 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 	private static final LocalFilesKey PROVIDER_KEY;
 
 	static {
-		UUID uuid;
+		PROVIDER_KEY = new LocalFilesKey(readFileProviderKeyUUID());
+	}
+
+	private static UUID readFileProviderKeyUUID() {
+		Path filepath = null;
 		try {
 			Path storagedir = SakerEnvironmentImpl.getDefaultStorageDirectory();
-			Path filepath = storagedir.resolve(UUID_FILE_NAME);
+			filepath = storagedir.resolve(UUID_FILE_NAME);
 			try {
 				byte[] allbytes = Files.readAllBytes(filepath);
-				uuid = UUID.fromString(new String(allbytes));
-			} catch (IllegalArgumentException | IOException e) {
+				return UUID.fromString(new String(allbytes));
+			} catch (IllegalArgumentException | IOException e1) {
+				//invalid contents or failed to read
+				//proceed by generating a new one
+				UUID uuid = UUID.randomUUID();
 				Files.createDirectories(storagedir);
-				uuid = UUID.randomUUID();
-				//TODO protect against concurrent file writes
-				Files.write(filepath, uuid.toString().getBytes(StandardCharsets.UTF_8));
+
+				Path tempfile = filepath.resolveSibling(UUID.randomUUID() + ".temp");
+				try {
+					try {
+						Files.write(tempfile, uuid.toString().getBytes(StandardCharsets.UTF_8));
+						Files.move(tempfile, filepath);
+					} catch (IOException e) {
+						// was concurrently created, or other I/O error. try again anyway
+						try {
+							byte[] allbytes = Files.readAllBytes(filepath);
+							return UUID.fromString(new String(allbytes));
+						} catch (Exception e2) {
+							e2.addSuppressed(e);
+							throw e2;
+						}
+					}
+				} catch (Throwable e) {
+					e.addSuppressed(e1);
+					try {
+						Files.deleteIfExists(tempfile);
+					} catch (Exception e2) {
+						e.addSuppressed(e2);
+					}
+					throw e;
+				}
+				return uuid;
 			}
 		} catch (IOException e) {
-			uuid = UUID.randomUUID();
+			//something failed horribly? use a random
+			//lock to avoid interlaced output
+			synchronized (System.err) {
+				System.err.println("Error: Failed to retrieve local file provider UUID from: " + filepath);
+				e.printStackTrace(System.err);
+			}
+			return UUID.randomUUID();
 		}
-		PROVIDER_KEY = new LocalFilesKey(uuid);
 	}
 
 	static {
