@@ -21,6 +21,7 @@ import java.io.Externalizable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.io.OutputStream;
@@ -44,6 +45,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.function.ToIntBiFunction;
 
@@ -111,7 +114,9 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		public void update() throws IOException {
 			RootFileProviderKey fpkey = pathkey.getFileProviderKey();
 			SakerPath path = pathkey.getPath();
-			synchronized (getPathLock(fpkey, path)) {
+			Lock lock = getPathLock(fpkey, path);
+			acquireLockForIO(lock);
+			try {
 				ContentDescriptor currentcontent = handle.getContent();
 				if (currentcontent == expectContentIdentity || content.isChanged(currentcontent)) {
 					executeSynchronizeLocked(pathkey.getFileProvider(), path, content, updater, handle, fpkey, pathkey,
@@ -123,6 +128,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 					//expect the current one when called next
 					this.expectContentIdentity = currentcontent;
 				}
+			} finally {
+				lock.unlock();
 			}
 		}
 	}
@@ -432,7 +439,7 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 	private final transient RootFileProviderKey localFilesProviderKey = LocalFileProvider.getProviderKeyStatic();
 
 	private final ConcurrentHashMap<RootFileProviderKey, ConcurrentSkipListMap<SakerPath, ContentHandleImpl>> providerKeyPathDependencies = new ConcurrentHashMap<>();
-	private final ConcurrentHashMap<RootFileProviderKey, ConcurrentSkipListMap<SakerPath, Object>> providerKeyPathUpdateLocks = new ConcurrentHashMap<>();
+	private final ConcurrentHashMap<RootFileProviderKey, ConcurrentSkipListMap<SakerPath, Lock>> providerKeyPathUpdateLocks = new ConcurrentHashMap<>();
 
 	private volatile boolean dirty = false;
 
@@ -1098,7 +1105,10 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		SakerPath path = pathkey.getPath();
 		SakerFileProvider fp = pathkey.getFileProvider();
 		ContentHandleImpl handle = getContentHandleImpl(pathkey);
-		synchronized (getPathLock(fpkey, path)) {
+
+		Lock lock = getPathLock(fpkey, path);
+		acquireLockForIO(lock);
+		try {
 			ContentDescriptorSupplier contentsupplier = handle.contentSupplier;
 			ContentDescriptor diskcontent;
 			BasicFileAttributes diskattributes;
@@ -1113,6 +1123,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 				throw new InvalidFileTypeException("File at path: " + path + " is a directory.");
 			}
 			handle.setContent(content, diskcontent, diskattributes, permissions);
+		} finally {
+			lock.unlock();
 		}
 		return handle;
 	}
@@ -1216,16 +1228,18 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		return null;
 	}
 
-	private Object getPathLock(RootFileProviderKey providerkey, SakerPath path) {
-		ConcurrentSkipListMap<SakerPath, Object> coll = providerKeyPathUpdateLocks.computeIfAbsent(providerkey,
+	private Lock getPathLock(RootFileProviderKey providerkey, SakerPath path) {
+		ConcurrentSkipListMap<SakerPath, Lock> coll = providerKeyPathUpdateLocks.computeIfAbsent(providerkey,
 				Functionals.concurrentSkipListMapComputer());
-		return coll.computeIfAbsent(path, Functionals.objectComputer());
+		return coll.computeIfAbsent(path, x -> new ReentrantLock());
 	}
 
 	private void deleteWithContent(RootFileProviderKey providerkey, SakerPath path, ContentDescriptor contentdescriptor,
 			ContentUpdater updater) throws IOException {
 		ConcurrentSkipListMap<SakerPath, ContentHandleImpl> deps = providerKeyPathDependencies.get(providerkey);
-		synchronized (getPathLock(providerkey, path)) {
+		Lock lock = getPathLock(providerkey, path);
+		acquireLockForIO(lock);
+		try {
 			if (deps == null) {
 				return;
 			}
@@ -1239,6 +1253,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 				setDirty();
 				updater.update();
 			}
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -1275,7 +1291,9 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		Objects.requireNonNull(content);
 
 		ContentHandleImpl handle = getContentHandleImpl(pathkey);
-		synchronized (getPathLock(fpkey, path)) {
+		Lock lock = getPathLock(fpkey, path);
+		acquireLockForIO(lock);
+		try {
 			ContentDescriptor pathcontent = handle.getContent();
 			if (!content.isChanged(pathcontent)) {
 				return fp.openInput(path);
@@ -1284,6 +1302,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 					getUpdaterPosixFilePermissions(updater));
 
 			return fp.openInput(path);
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -1293,7 +1313,9 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		Objects.requireNonNull(content);
 
 		ContentHandleImpl handle = getContentHandleImpl(pathkey);
-		synchronized (getPathLock(fpkey, path)) {
+		Lock lock = getPathLock(fpkey, path);
+		acquireLockForIO(lock);
+		try {
 			ContentDescriptor pathcontent = handle.getContent();
 			if (!content.isChanged(pathcontent)) {
 				fp.writeTo(path, os);
@@ -1355,6 +1377,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 				throw e;
 			}
 			IOUtils.throwExc(secondaryioexc);
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -1376,11 +1400,15 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		RootFileProviderKey fpkey = pathkey.getFileProviderKey();
 		SakerPath path = pathkey.getPath();
 		ContentHandleImpl handle = getContentHandleImpl(pathkey);
-		synchronized (getPathLock(fpkey, path)) {
+		Lock lock = getPathLock(fpkey, path);
+		acquireLockForIO(lock);
+		try {
 			if (!Objects.equals(handle.getContent(), content)) {
 				return -1;
 			}
 			return pathkey.getFileProvider().writeTo(path, os);
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -1397,7 +1425,9 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		Objects.requireNonNull(content);
 
 		ContentHandleImpl handle = getContentHandleImpl(pathkey);
-		synchronized (getPathLock(fpkey, path)) {
+		Lock lock = getPathLock(fpkey, path);
+		acquireLockForIO(lock);
+		try {
 			if (!content.isChanged(handle.getContent())) {
 				return fp.getAllBytes(path);
 			}
@@ -1457,6 +1487,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 				handle.invalidate();
 				throw e;
 			}
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -1478,11 +1510,15 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 
 		ContentHandleImpl handle = getContentHandleImpl(pathkey);
 
-		synchronized (getPathLock(fpkey, path)) {
+		Lock lock = getPathLock(fpkey, path);
+		acquireLockForIO(lock);
+		try {
 			if (content.isChanged(handle.getContent())) {
 				executeSynchronizeLocked(fp, path, content, updater, handle, fpkey, pathkey,
 						getUpdaterPosixFilePermissions(updater));
 			}
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -1564,10 +1600,12 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 	@Override
 	public void createDirectoryAtPath(ProviderHolderPathKey pathkey) throws IOException {
 		SakerPath path = pathkey.getPath();
-		RootFileProviderKey providerkey = pathkey.getFileProviderKey();
-		checkWriteEnabled(providerkey, path);
+		RootFileProviderKey fpkey = pathkey.getFileProviderKey();
+		checkWriteEnabled(fpkey, path);
 
-		synchronized (getPathLock(providerkey, path)) {
+		Lock lock = getPathLock(fpkey, path);
+		acquireLockForIO(lock);
+		try {
 			SakerFileProvider fileprovider = pathkey.getFileProvider();
 			int writeres = fileprovider.ensureWriteRequest(path, FileEntry.TYPE_DIRECTORY,
 					SakerFileProvider.OPERATION_FLAG_DELETE_INTERMEDIATE_FILES);
@@ -1575,18 +1613,22 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 					& SakerFileProvider.RESULT_FLAG_FILES_DELETED) == SakerFileProvider.RESULT_FLAG_FILES_DELETED)) {
 				//if there was a file deleted, then invalidate the handle
 				//in any other cases, sub handles are already considered to be part of the directory, and need no invalidation
-				invalidateSingle(providerkey, path);
+				invalidateSingle(fpkey, path);
 			}
+		} finally {
+			lock.unlock();
 		}
 	}
 
 	@Override
 	public void syncronizeDirectory(ProviderHolderPathKey pathkey, IORunnable dirsynchronizer) throws IOException {
 		SakerPath path = pathkey.getPath();
-		RootFileProviderKey providerkey = pathkey.getFileProviderKey();
-		checkWriteEnabled(providerkey, path);
+		RootFileProviderKey fpkey = pathkey.getFileProviderKey();
+		checkWriteEnabled(fpkey, path);
 
-		synchronized (getPathLock(providerkey, path)) {
+		Lock lock = getPathLock(fpkey, path);
+		acquireLockForIO(lock);
+		try {
 			SakerFileProvider fileprovider = pathkey.getFileProvider();
 			int writeres = fileprovider.ensureWriteRequest(path, FileEntry.TYPE_DIRECTORY,
 					SakerFileProvider.OPERATION_FLAG_DELETE_INTERMEDIATE_FILES);
@@ -1594,9 +1636,20 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 					& SakerFileProvider.RESULT_FLAG_FILES_DELETED) == SakerFileProvider.RESULT_FLAG_FILES_DELETED)) {
 				//if there was a file deleted, then invalidate the handle
 				//in any other cases, sub handles are already considered to be part of the directory, and need no invalidation
-				invalidateSingle(providerkey, path);
+				invalidateSingle(fpkey, path);
 			}
 			dirsynchronizer.run();
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	protected static void acquireLockForIO(Lock lock) throws InterruptedIOException {
+		try {
+			lock.lockInterruptibly();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new InterruptedIOException("I/O operation interrupted.");
 		}
 	}
 

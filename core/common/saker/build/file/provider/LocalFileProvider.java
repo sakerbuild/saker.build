@@ -83,8 +83,11 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -249,6 +252,8 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 		private final FileChannel channel;
 		private FileLock lock;
 
+		private Semaphore accessLock = new Semaphore(1);
+
 		private LocalFileSakerLock(FileChannel channel) {
 			this.channel = channel;
 
@@ -258,45 +263,65 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 		}
 
 		@Override
-		public synchronized void close() throws IOException {
-			//to wake up the GC thread
-			if (gcReferences.remove(reference)) {
-				reference.enqueue();
+		public void close() throws IOException {
+			accessLock.acquireUninterruptibly();
+			try {
+				//to wake up the GC thread
+				if (gcReferences.remove(reference)) {
+					reference.enqueue();
+				}
+				FileLock lock = this.lock;
+				if (lock != null) {
+					lock.release();
+					this.lock = null;
+				}
+				channel.close();
+			} finally {
+				accessLock.release();
 			}
-			FileLock lock = this.lock;
-			if (lock != null) {
+		}
+
+		@Override
+		public void lock() throws IOException {
+			accessLock.acquireUninterruptibly();
+			try {
+				if (this.lock != null) {
+					throw new IllegalStateException("Trying to acquire lock more than once.");
+				}
+				lock = channel.lock();
+			} finally {
+				accessLock.release();
+			}
+		}
+
+		@Override
+		public boolean tryLock() throws IOException {
+			accessLock.acquireUninterruptibly();
+			try {
+				if (this.lock != null) {
+					throw new IllegalStateException("Trying to acquire lock more than once.");
+				}
+				FileLock nlock = channel.tryLock();
+				lock = nlock;
+				return nlock != null;
+			} finally {
+				accessLock.release();
+			}
+		}
+
+		@Override
+		public void release() throws IOException {
+			accessLock.acquireUninterruptibly();
+			try {
+				FileLock lock = this.lock;
+				if (lock == null) {
+					throw new IllegalStateException("Lock is not acquired.");
+				}
 				lock.release();
 				this.lock = null;
+			} finally {
+				accessLock.release();
 			}
-			channel.close();
-		}
-
-		@Override
-		public synchronized void lock() throws IOException {
-			if (this.lock != null) {
-				throw new IllegalStateException("Trying to acquire lock more than once.");
-			}
-			lock = channel.lock();
-		}
-
-		@Override
-		public synchronized boolean tryLock() throws IOException {
-			if (this.lock != null) {
-				throw new IllegalStateException("Trying to acquire lock more than once.");
-			}
-			FileLock nlock = channel.tryLock();
-			lock = nlock;
-			return nlock != null;
-		}
-
-		@Override
-		public synchronized void release() throws IOException {
-			FileLock lock = this.lock;
-			if (lock == null) {
-				throw new IllegalStateException("Lock is not acquired.");
-			}
-			lock.release();
-			this.lock = null;
 		}
 	}
 
