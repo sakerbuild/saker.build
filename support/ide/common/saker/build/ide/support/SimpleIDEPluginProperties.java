@@ -174,8 +174,18 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 			return this;
 		}
 
+		public Builder setPort(String port) {
+			result.port = port;
+			return this;
+		}
+
 		public Builder setActsAsServer(Boolean actsAsServer) {
 			result.actsAsServer = Objects.toString(actsAsServer, null);
+			return this;
+		}
+
+		public Builder setActsAsServer(String actsAsServer) {
+			result.actsAsServer = actsAsServer;
 			return this;
 		}
 

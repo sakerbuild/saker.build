@@ -28,7 +28,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-import saker.build.exception.InvalidPathFormatException;
 import saker.build.ide.configuration.IDEConfiguration;
 import saker.build.ide.configuration.SimpleIDEConfiguration;
 import saker.build.ide.support.persist.DataFormatException;
@@ -60,62 +59,100 @@ import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 
 public class IDEPersistenceUtils {
-//XXX make persisting data exception proof
+	private static final String SP_NEST_REPOSITORY_SERVICE = "nest-repository-service";
+	private static final String SP_BUILTIN_SCRIPTING_SERVICE = "builtin-scripting-service";
+	private static final String SP_CLASS_NAME = "class-name";
+	private static final String SP_SERVICELOADER = "serviceloader";
+	private static final String CP_NEST_REPOSITORY_CLASSPATH = "nest-repository-classpath";
+	private static final String CP_BUILTIN_SCRIPTING_CLASSPATH = "builtin-scripting-classpath";
+	private static final String CP_HTTP_URL = "http-url";
+	private static final String CP_JAR = "jar";
+	private static final String F_VAL = "val";
+	private static final String F_KEY = "key";
+	private static final String F_CLASS_NAME = "class_name";
+	private static final String F_SERVICE_CLASS = "service_class";
+	private static final String F_URL = "url";
+	private static final String F_CONNECTION = "connection";
+	private static final String F_SCRIPT_MODELLING_EXCLUSIONS = "script_modelling_exclusions";
+	private static final String F_OPTIONS = "options";
+	private static final String F_WILDCARD = "wildcard";
+	private static final String F_SCRIPT_CONFIGS = "script_configs";
+	private static final String F_PATH = "path";
+	private static final String F_CLIENT = "client";
+	private static final String F_ROOT = "root";
+	private static final String F_MOUNTS = "mounts";
+	private static final String F_USE_AS_CLUSTER = "use_as_cluster";
+	private static final String F_NAME = "name";
+	private static final String F_ADDRESS = "address";
+	private static final String F_CONNECTIONS = "connections";
+	private static final String F_SERVICE = "service";
+	private static final String F_CLASSPATH = "classpath";
+	private static final String F_REPO_ID = "repo_id";
+	private static final String F_REPOSITORIES = "repositories";
+	private static final String F_REQUIRE_IDE_CONFIG = "require_ide_config";
+	private static final String F_BUILD_TRACE_OUT_PATH = "build_trace_out_path";
+	private static final String F_BUILD_TRACE_OUT_CLIENT = "build_trace_out_client";
+	private static final String F_BUILD_TRACE_EMBED_ARTIFACTS = "build_trace_embed_artifacts";
+	private static final String F_EXECUTION_DAEMON = "execution_daemon";
+	private static final String F_MIRROR_DIR = "mirror_dir";
+	private static final String F_BUILD_DIR = "build_dir";
+	private static final String F_WORKING_DIR = "working_dir";
+	private static final String F_FIELDS = "fields";
+	private static final String F_IDENTIFIER = "identifier";
+	private static final String F_TYPE = "type";
+	private static final String F_VERSION = "version";
+	private static final String F_ACTS_AS_SERVER = "acts_as_server";
+	private static final String F_PORT = "port";
+	private static final String F_EXCEPTION_FORMAT = "exception_format";
+	private static final String F_USER_PARAMETERS = "user_parameters";
+	private static final String F_STORAGE_DIRECTORY = "storage_directory";
+
+	//XXX make persisting data exception proof
 	private IDEPersistenceUtils() {
 		throw new UnsupportedOperationException();
 	}
 
 	public static void writeIDEPluginProperties(StructuredObjectOutput out, IDEPluginProperties props)
 			throws IOException {
-		out.writeField("version", 1);
-		String storagedir = props.getStorageDirectory();
-		if (storagedir != null) {
-			out.writeField("storage_directory", storagedir);
-		}
-		Set<? extends Entry<String, String>> userparams = props.getUserParameters();
-		writeStringMap(out, userparams, "user_parameters");
+		out.writeField(F_VERSION, 1);
+		writeStringIfNotNull(out, F_STORAGE_DIRECTORY, props.getStorageDirectory());
 
-		String excformat = props.getExceptionFormat();
-		if (excformat != null) {
-			out.writeField("exception_format", excformat);
-		}
+		Set<? extends Entry<String, String>> userparams = props.getUserParameters();
+		writeStringMap(out, userparams, F_USER_PARAMETERS);
+
+		writeStringIfNotNull(out, F_EXCEPTION_FORMAT, props.getExceptionFormat());
+		writeStringIfNotNull(out, F_PORT, props.getPort());
+		writeStringIfNotNull(out, F_ACTS_AS_SERVER, props.getActsAsServer());
 	}
 
 	public static IDEPluginProperties readIDEPluginProperties(StructuredObjectInput input) throws IOException {
 		SimpleIDEPluginProperties.Builder result = SimpleIDEPluginProperties.builder();
 
-		Integer version = input.readInt("version");
+		Integer version = input.readInt(F_VERSION);
 		//version is unhandled for now, as there's currently only one format. if new formats are introduced, it will
 		// be checked and the values interpreted accordingly
 
-		String strdir = input.readString("storage_directory");
-		if (strdir != null) {
-			try {
-				result.setStorageDirectory(strdir);
-			} catch (InvalidPathFormatException e) {
-				//if the path is invalid
-			}
-		}
-		try (StructuredArrayObjectInput array = input.readArray("user_parameters")) {
+		result.setStorageDirectory(input.readString(F_STORAGE_DIRECTORY));
+
+		try (StructuredArrayObjectInput array = input.readArray(F_USER_PARAMETERS)) {
 			if (array != null) {
 				Set<Entry<String, String>> map = readStringMap(array);
 				result.setUserParameters(map);
 			}
 		}
 
-		String excformat = input.readString("exception_format");
-		if (excformat != null) {
-			result.setExceptionFormat(excformat);
-		}
+		result.setExceptionFormat(input.readString(F_EXCEPTION_FORMAT));
+		result.setPort(input.readString(F_PORT));
+		result.setActsAsServer(input.readString(F_ACTS_AS_SERVER));
 
 		return result.build();
 	}
 
 	public static void writeIDEConfiguration(StructuredObjectOutput out, IDEConfiguration config) throws IOException {
-		out.writeField("type", config.getType());
-		out.writeField("identifier", config.getIdentifier());
+		out.writeField(F_TYPE, config.getType());
+		out.writeField(F_IDENTIFIER, config.getIdentifier());
 
-		try (StructuredObjectOutput fout = out.writeObject("fields")) {
+		try (StructuredObjectOutput fout = out.writeObject(F_FIELDS)) {
 			for (String fn : config.getFieldNames()) {
 				writeIDEConfigurationObject(fout, fn, config.getField(fn));
 			}
@@ -204,10 +241,10 @@ public class IDEPersistenceUtils {
 	}
 
 	public static SimpleIDEConfiguration readIDEConfiguration(StructuredObjectInput in) throws IOException {
-		String type = in.readString("type");
-		String id = in.readString("identifier");
+		String type = in.readString(F_TYPE);
+		String id = in.readString(F_IDENTIFIER);
 		NavigableMap<String, Object> fields = new TreeMap<>();
-		try (StructuredObjectInput fin = in.readObject("fields")) {
+		try (StructuredObjectInput fin = in.readObject(F_FIELDS)) {
 			if (fin != null) {
 				readIDEConfigurationMap(fin, fields);
 			}
@@ -342,78 +379,78 @@ public class IDEPersistenceUtils {
 		String mirrordir = props.getMirrorDirectory();
 		String execonnectionname = props.getExecutionDaemonConnectionName();
 		MountPathIDEProperty buildtraceout = props.getBuildTraceOutput();
-		objout.writeField("version", 1);
-		writeStringIfNotNull(objout, "working_dir", workdir);
-		writeStringIfNotNull(objout, "build_dir", builddir);
-		writeStringIfNotNull(objout, "mirror_dir", mirrordir);
-		writeStringIfNotNull(objout, "execution_daemon", execonnectionname);
-		writeStringIfNotNull(objout, "build_trace_embed_artifacts", props.getBuildTraceEmbedArtifacts());
+		objout.writeField(F_VERSION, 1);
+		writeStringIfNotNull(objout, F_WORKING_DIR, workdir);
+		writeStringIfNotNull(objout, F_BUILD_DIR, builddir);
+		writeStringIfNotNull(objout, F_MIRROR_DIR, mirrordir);
+		writeStringIfNotNull(objout, F_EXECUTION_DAEMON, execonnectionname);
+		writeStringIfNotNull(objout, F_BUILD_TRACE_EMBED_ARTIFACTS, props.getBuildTraceEmbedArtifacts());
 		if (buildtraceout != null) {
 			String btcname = buildtraceout.getMountClientName();
 			String btpath = buildtraceout.getMountPath();
 			if (!ObjectUtils.isNullOrEmpty(btcname)) {
-				objout.writeField("build_trace_out_client", btcname);
+				objout.writeField(F_BUILD_TRACE_OUT_CLIENT, btcname);
 			}
 			if (!ObjectUtils.isNullOrEmpty(btpath)) {
-				objout.writeField("build_trace_out_path", btpath);
+				objout.writeField(F_BUILD_TRACE_OUT_PATH, btpath);
 			}
 		}
-		writeStringIfNotNull(objout, "require_ide_config", props.getRequireTaskIDEConfiguration());
+		writeStringIfNotNull(objout, F_REQUIRE_IDE_CONFIG, props.getRequireTaskIDEConfiguration());
 		Set<? extends RepositoryIDEProperty> repositories = props.getRepositories();
 		if (repositories != null) {
-			try (StructuredArrayObjectOutput repoarray = objout.writeArray("repositories")) {
+			try (StructuredArrayObjectOutput repoarray = objout.writeArray(F_REPOSITORIES)) {
 				for (RepositoryIDEProperty repo : repositories) {
 					try (StructuredObjectOutput repoobj = repoarray.writeObject()) {
 						String repoid = repo.getRepositoryIdentifier();
 						ClassPathLocationIDEProperty location = repo.getClassPathLocation();
 						ClassPathServiceEnumeratorIDEProperty enumerator = repo.getServiceEnumerator();
 						if (repoid != null) {
-							repoobj.writeField("repo_id", repoid);
+							repoobj.writeField(F_REPO_ID, repoid);
 						}
-						writeClassPathProperty(repoobj, location, "classpath");
-						writeServiceEnumeratorProperty(repoobj, enumerator, "service");
+						writeClassPathProperty(repoobj, location, F_CLASSPATH);
+						writeServiceEnumeratorProperty(repoobj, enumerator, F_SERVICE);
 					}
 				}
 			}
 		}
 		Set<? extends Entry<String, String>> userparams = props.getUserParameters();
-		writeStringMap(objout, userparams, "user_parameters");
+		writeStringMap(objout, userparams, F_USER_PARAMETERS);
 		Set<? extends DaemonConnectionIDEProperty> connections = props.getConnections();
 		if (connections != null) {
-			try (StructuredArrayObjectOutput arraywriter = objout.writeArray("connections")) {
+			try (StructuredArrayObjectOutput arraywriter = objout.writeArray(F_CONNECTIONS)) {
 				for (DaemonConnectionIDEProperty conn : connections) {
 					try (StructuredObjectOutput entryobj = arraywriter.writeObject()) {
 						String address = conn.getNetAddress();
 						String connectionname = conn.getConnectionName();
 						if (address != null) {
-							entryobj.writeField("address", address);
+							entryobj.writeField(F_ADDRESS, address);
 						}
 						if (connectionname != null) {
-							entryobj.writeField("name", connectionname);
+							entryobj.writeField(F_NAME, connectionname);
 						}
-						entryobj.writeField("use_as_cluster", conn.isUseAsCluster());
+						entryobj.writeField(F_USE_AS_CLUSTER, conn.isUseAsCluster());
 					}
 				}
 			}
 		}
 		Set<? extends ProviderMountIDEProperty> mounts = props.getMounts();
 		if (mounts != null) {
-			try (StructuredArrayObjectOutput arraywriter = objout.writeArray("mounts")) {
+			try (StructuredArrayObjectOutput arraywriter = objout.writeArray(F_MOUNTS)) {
 				for (ProviderMountIDEProperty mount : mounts) {
 					try (StructuredObjectOutput entryobj = arraywriter.writeObject()) {
 						String root = mount.getRoot();
 						MountPathIDEProperty mountpath = mount.getMountPathProperty();
 						if (root != null) {
-							entryobj.writeField("root", root);
+							entryobj.writeField(F_ROOT, root);
 						}
 						if (mountpath != null) {
 							String clientname = mountpath.getMountClientName();
 							String mountpathstr = mountpath.getMountPath();
 							if (clientname != null) {
-								entryobj.writeField("client", clientname);
+								entryobj.writeField(F_CLIENT, clientname);
 							}
 							if (mountpathstr != null) {
-								entryobj.writeField("path", mountpathstr);
+								entryobj.writeField(F_PATH, mountpathstr);
 							}
 						}
 					}
@@ -422,7 +459,7 @@ public class IDEPersistenceUtils {
 		}
 		Set<? extends ScriptConfigurationIDEProperty> scriptconfigs = props.getScriptConfigurations();
 		if (scriptconfigs != null) {
-			try (StructuredArrayObjectOutput arraywriter = objout.writeArray("script_configs")) {
+			try (StructuredArrayObjectOutput arraywriter = objout.writeArray(F_SCRIPT_CONFIGS)) {
 				for (ScriptConfigurationIDEProperty sc : scriptconfigs) {
 					try (StructuredObjectOutput scobj = arraywriter.writeObject()) {
 						ClassPathLocationIDEProperty cplocation = sc.getClassPathLocation();
@@ -430,18 +467,18 @@ public class IDEPersistenceUtils {
 						String scriptwildcard = sc.getScriptsWildcard();
 						ClassPathServiceEnumeratorIDEProperty scriptserviceenumerator = sc.getServiceEnumerator();
 						if (scriptwildcard != null) {
-							scobj.writeField("wildcard", scriptwildcard);
+							scobj.writeField(F_WILDCARD, scriptwildcard);
 						}
-						writeStringMap(scobj, scriptoptions, "options");
-						writeClassPathProperty(scobj, cplocation, "classpath");
-						writeServiceEnumeratorProperty(scobj, scriptserviceenumerator, "service");
+						writeStringMap(scobj, scriptoptions, F_OPTIONS);
+						writeClassPathProperty(scobj, cplocation, F_CLASSPATH);
+						writeServiceEnumeratorProperty(scobj, scriptserviceenumerator, F_SERVICE);
 					}
 				}
 			}
 		}
 		Set<String> scriptmodellingexclusions = props.getScriptModellingExclusions();
 		if (scriptmodellingexclusions != null) {
-			try (StructuredArrayObjectOutput arraywriter = objout.writeArray("script_modelling_exclusions")) {
+			try (StructuredArrayObjectOutput arraywriter = objout.writeArray(F_SCRIPT_MODELLING_EXCLUSIONS)) {
 				for (String wildcard : scriptmodellingexclusions) {
 					arraywriter.write(wildcard);
 				}
@@ -452,33 +489,33 @@ public class IDEPersistenceUtils {
 	public static IDEProjectProperties readIDEProjectProperties(StructuredObjectInput input) throws IOException {
 		SimpleIDEProjectProperties.Builder result = SimpleIDEProjectProperties.builder();
 
-		Integer version = input.readInt("version");
+		Integer version = input.readInt(F_VERSION);
 		//version is unhandled for now, as there's currently only one format. if new formats are introduced, it will
 		// be checked and the values interpreted accordingly
 
-		String workdirstr = input.readString("working_dir");
+		String workdirstr = input.readString(F_WORKING_DIR);
 		if (workdirstr != null) {
 			result.setWorkingDirectory(workdirstr);
 		}
-		result.setBuildDirectory(input.readString("build_dir"));
-		result.setMirrorDirectory(input.readString("mirror_dir"));
-		result.setExecutionDaemonConnectionName(input.readString("execution_daemon"));
-		result.setRequireTaskIDEConfiguration(input.readString("require_ide_config"));
+		result.setBuildDirectory(input.readString(F_BUILD_DIR));
+		result.setMirrorDirectory(input.readString(F_MIRROR_DIR));
+		result.setExecutionDaemonConnectionName(input.readString(F_EXECUTION_DAEMON));
+		result.setRequireTaskIDEConfiguration(input.readString(F_REQUIRE_IDE_CONFIG));
 
-		result.setBuildTraceOutput(MountPathIDEProperty.create(input.readString("build_trace_out_client"),
-				input.readString("build_trace_out_path")));
-		result.setBuildTraceEmbedArtifacts(input.readString("build_trace_embed_artifacts"));
+		result.setBuildTraceOutput(MountPathIDEProperty.create(input.readString(F_BUILD_TRACE_OUT_CLIENT),
+				input.readString(F_BUILD_TRACE_OUT_PATH)));
+		result.setBuildTraceEmbedArtifacts(input.readString(F_BUILD_TRACE_EMBED_ARTIFACTS));
 
-		try (StructuredArrayObjectInput array = input.readArray("repositories")) {
+		try (StructuredArrayObjectInput array = input.readArray(F_REPOSITORIES)) {
 			if (array != null) {
 				int len = array.length();
 				Set<RepositoryIDEProperty> repositories = new LinkedHashSet<>();
 				for (int i = 0; i < len; i++) {
 					try (StructuredObjectInput obj = array.readObject()) {
-						String repoid = obj.readString("repo_id");
-						ClassPathLocationIDEProperty cplocation = readClassPathProperty(obj, "classpath");
+						String repoid = obj.readString(F_REPO_ID);
+						ClassPathLocationIDEProperty cplocation = readClassPathProperty(obj, F_CLASSPATH);
 						ClassPathServiceEnumeratorIDEProperty serviceenumerator = readServiceEnumeratorProperty(obj,
-								"service");
+								F_SERVICE);
 						if (serviceenumerator == null && cplocation == null && ObjectUtils.isNullOrEmpty(repoid)) {
 							continue;
 						}
@@ -488,24 +525,24 @@ public class IDEPersistenceUtils {
 				result.setRepositories(repositories);
 			}
 		}
-		try (StructuredArrayObjectInput array = input.readArray("user_parameters")) {
+		try (StructuredArrayObjectInput array = input.readArray(F_USER_PARAMETERS)) {
 			if (array != null) {
 				Set<Entry<String, String>> map = readStringMap(array);
 				result.setUserParameters(map);
 			}
 		}
-		try (StructuredArrayObjectInput array = input.readArray("connections")) {
+		try (StructuredArrayObjectInput array = input.readArray(F_CONNECTIONS)) {
 			if (array != null) {
 				Set<DaemonConnectionIDEProperty> connections = new LinkedHashSet<>();
 				int len = array.length();
 				for (int i = 0; i < len; i++) {
 					try (StructuredObjectInput obj = array.readObject()) {
-						String address = obj.readString("address");
-						String name = obj.readString("name");
+						String address = obj.readString(F_ADDRESS);
+						String name = obj.readString(F_NAME);
 						if (address == null && name == null) {
 							continue;
 						}
-						Boolean userascluster = obj.readBoolean("use_as_cluster");
+						Boolean userascluster = obj.readBoolean(F_USE_AS_CLUSTER);
 						connections.add(new DaemonConnectionIDEProperty(address, name,
 								ObjectUtils.defaultize(userascluster, false)));
 					}
@@ -513,15 +550,15 @@ public class IDEPersistenceUtils {
 				result.setConnections(connections);
 			}
 		}
-		try (StructuredArrayObjectInput array = input.readArray("mounts")) {
+		try (StructuredArrayObjectInput array = input.readArray(F_MOUNTS)) {
 			if (array != null) {
 				Set<ProviderMountIDEProperty> mounts = new LinkedHashSet<>();
 				int len = array.length();
 				for (int i = 0; i < len; i++) {
 					try (StructuredObjectInput obj = array.readObject()) {
-						String root = obj.readString("root");
-						String client = obj.readString("client");
-						String path = obj.readString("path");
+						String root = obj.readString(F_ROOT);
+						String client = obj.readString(F_CLIENT);
+						String path = obj.readString(F_PATH);
 						if (root == null && client == null && path == null) {
 							continue;
 						}
@@ -531,22 +568,22 @@ public class IDEPersistenceUtils {
 				result.setMounts(mounts);
 			}
 		}
-		try (StructuredArrayObjectInput array = input.readArray("script_configs")) {
+		try (StructuredArrayObjectInput array = input.readArray(F_SCRIPT_CONFIGS)) {
 			if (array != null) {
 				Set<ScriptConfigurationIDEProperty> scriptconfigs = new LinkedHashSet<>();
 				int len = array.length();
 				for (int i = 0; i < len; i++) {
 					try (StructuredObjectInput optobj = array.readObject()) {
 						Set<Entry<String, String>> options = Collections.emptySet();
-						ClassPathLocationIDEProperty classpath = readClassPathProperty(optobj, "classpath");
-						try (StructuredArrayObjectInput optionsarray = optobj.readArray("options")) {
+						ClassPathLocationIDEProperty classpath = readClassPathProperty(optobj, F_CLASSPATH);
+						try (StructuredArrayObjectInput optionsarray = optobj.readArray(F_OPTIONS)) {
 							if (optionsarray != null) {
 								options = readStringMap(optionsarray);
 							}
 						}
-						String wildcard = optobj.readString("wildcard");
+						String wildcard = optobj.readString(F_WILDCARD);
 						ClassPathServiceEnumeratorIDEProperty serviceenumerator = readServiceEnumeratorProperty(optobj,
-								"service");
+								F_SERVICE);
 						if (options.isEmpty() && classpath == null && wildcard == null && serviceenumerator == null) {
 							continue;
 						}
@@ -557,7 +594,7 @@ public class IDEPersistenceUtils {
 				result.setScriptConfigurations(scriptconfigs);
 			}
 		}
-		try (StructuredArrayObjectInput array = input.readArray("script_modelling_exclusions")) {
+		try (StructuredArrayObjectInput array = input.readArray(F_SCRIPT_MODELLING_EXCLUSIONS)) {
 			if (array != null) {
 				Set<String> scriptmodellingexclusions = new TreeSet<>();
 				int len = array.length();
@@ -592,26 +629,26 @@ public class IDEPersistenceUtils {
 		ClassPathLocationIDEProperty cplocation = null;
 		try (StructuredObjectInput cp = obj.readObject(name)) {
 			if (cp != null) {
-				String type = cp.readString("type");
+				String type = cp.readString(F_TYPE);
 				if (type != null) {
 					switch (type) {
-						case "jar": {
-							String path = cp.readString("path");
-							String client = cp.readString("connection");
+						case CP_JAR: {
+							String path = cp.readString(F_PATH);
+							String client = cp.readString(F_CONNECTION);
 							cplocation = new JarClassPathLocationIDEProperty(client, path);
 							break;
 						}
-						case "http-url": {
-							String urlstr = cp.readString("url");
+						case CP_HTTP_URL: {
+							String urlstr = cp.readString(F_URL);
 							cplocation = new HttpUrlJarClassPathLocationIDEProperty(urlstr);
 							break;
 						}
-						case "builtin-scripting-classpath": {
+						case CP_BUILTIN_SCRIPTING_CLASSPATH: {
 							cplocation = BuiltinScriptingLanguageClassPathLocationIDEProperty.INSTANCE;
 							break;
 						}
-						case "nest-repository-classpath": {
-							String version = cp.readString("version");
+						case CP_NEST_REPOSITORY_CLASSPATH: {
+							String version = cp.readString(F_VERSION);
 							if (version != null) {
 								cplocation = new NestRepositoryClassPathLocationIDEProperty(version);
 							} else {
@@ -644,23 +681,23 @@ public class IDEPersistenceUtils {
 		ClassPathServiceEnumeratorIDEProperty serviceenumerator = null;
 		try (StructuredObjectInput c = obj.readObject(name)) {
 			if (c != null) {
-				String type = c.readString("type");
+				String type = c.readString(F_TYPE);
 				if (type != null) {
 					switch (type) {
-						case "serviceloader": {
-							String serviceclassname = c.readString("service_class");
+						case SP_SERVICELOADER: {
+							String serviceclassname = c.readString(F_SERVICE_CLASS);
 							serviceenumerator = new ServiceLoaderClassPathEnumeratorIDEProperty(serviceclassname);
 							break;
 						}
-						case "class-name": {
-							String serviceclassname = c.readString("class_name");
+						case SP_CLASS_NAME: {
+							String serviceclassname = c.readString(F_CLASS_NAME);
 							serviceenumerator = new NamedClassClassPathServiceEnumeratorIDEProperty(serviceclassname);
 							break;
 						}
-						case "builtin-scripting-service": {
+						case SP_BUILTIN_SCRIPTING_SERVICE: {
 							return BuiltinScriptingLanguageServiceEnumeratorIDEProperty.INSTANCE;
 						}
-						case "nest-repository-service": {
+						case SP_NEST_REPOSITORY_SERVICE: {
 							return new NestRepositoryFactoryServiceEnumeratorIDEProperty();
 						}
 						default: {
@@ -684,10 +721,10 @@ public class IDEPersistenceUtils {
 					String key = entry.getKey();
 					String val = entry.getValue();
 					if (key != null) {
-						entryobj.writeField("key", key);
+						entryobj.writeField(F_KEY, key);
 					}
 					if (val != null) {
-						entryobj.writeField("val", val);
+						entryobj.writeField(F_VAL, val);
 					}
 				}
 			}
@@ -699,8 +736,8 @@ public class IDEPersistenceUtils {
 		Set<Entry<String, String>> map = new LinkedHashSet<>();
 		for (int i = 0; i < len; i++) {
 			try (StructuredObjectInput obj = array.readObject()) {
-				String key = obj.readString("key");
-				String value = obj.readString("val");
+				String key = obj.readString(F_KEY);
+				String value = obj.readString(F_VAL);
 				if (key == null && value == null) {
 					continue;
 				}
@@ -729,10 +766,10 @@ public class IDEPersistenceUtils {
 		@Override
 		public Void visit(ServiceLoaderClassPathEnumeratorIDEProperty property, Void param) {
 			try {
-				cpobj.writeField("type", "serviceloader");
+				cpobj.writeField(F_TYPE, SP_SERVICELOADER);
 				String serviceclass = property.getServiceClass();
 				if (!ObjectUtils.isNullOrEmpty(serviceclass)) {
-					cpobj.writeField("service_class", serviceclass);
+					cpobj.writeField(F_SERVICE_CLASS, serviceclass);
 				}
 			} catch (IOException e) {
 				throw ObjectUtils.sneakyThrow(e);
@@ -743,10 +780,10 @@ public class IDEPersistenceUtils {
 		@Override
 		public Void visit(NamedClassClassPathServiceEnumeratorIDEProperty property, Void param) {
 			try {
-				cpobj.writeField("type", "class-name");
+				cpobj.writeField(F_TYPE, SP_CLASS_NAME);
 				String classname = property.getClassName();
 				if (!ObjectUtils.isNullOrEmpty(classname)) {
-					cpobj.writeField("class_name", classname);
+					cpobj.writeField(F_CLASS_NAME, classname);
 				}
 			} catch (IOException e) {
 				throw ObjectUtils.sneakyThrow(e);
@@ -757,7 +794,7 @@ public class IDEPersistenceUtils {
 		@Override
 		public Void visit(BuiltinScriptingLanguageServiceEnumeratorIDEProperty property, Void param) {
 			try {
-				cpobj.writeField("type", "builtin-scripting-service");
+				cpobj.writeField(F_TYPE, SP_BUILTIN_SCRIPTING_SERVICE);
 			} catch (IOException e) {
 				throw ObjectUtils.sneakyThrow(e);
 			}
@@ -767,7 +804,7 @@ public class IDEPersistenceUtils {
 		@Override
 		public Void visit(NestRepositoryFactoryServiceEnumeratorIDEProperty property, Void param) {
 			try {
-				cpobj.writeField("type", "nest-repository-service");
+				cpobj.writeField(F_TYPE, SP_NEST_REPOSITORY_SERVICE);
 			} catch (IOException e) {
 				throw ObjectUtils.sneakyThrow(e);
 			}
@@ -786,14 +823,14 @@ public class IDEPersistenceUtils {
 		@Override
 		public Void visit(JarClassPathLocationIDEProperty property, Void param) {
 			try {
-				cpobj.writeField("type", "jar");
+				cpobj.writeField(F_TYPE, CP_JAR);
 				String jarpath = property.getJarPath();
 				if (!ObjectUtils.isNullOrEmpty(jarpath)) {
-					cpobj.writeField("path", jarpath);
+					cpobj.writeField(F_PATH, jarpath);
 				}
 				String connname = property.getConnectionName();
 				if (!ObjectUtils.isNullOrEmpty(connname)) {
-					cpobj.writeField("connection", connname);
+					cpobj.writeField(F_CONNECTION, connname);
 				}
 			} catch (IOException e) {
 				throw ObjectUtils.sneakyThrow(e);
@@ -804,10 +841,10 @@ public class IDEPersistenceUtils {
 		@Override
 		public Void visit(HttpUrlJarClassPathLocationIDEProperty property, Void param) {
 			try {
-				cpobj.writeField("type", "http-url");
+				cpobj.writeField(F_TYPE, CP_HTTP_URL);
 				String url = property.getUrl();
 				if (!ObjectUtils.isNullOrEmpty(url)) {
-					cpobj.writeField("url", url);
+					cpobj.writeField(F_URL, url);
 				}
 			} catch (IOException e) {
 				throw ObjectUtils.sneakyThrow(e);
@@ -818,7 +855,7 @@ public class IDEPersistenceUtils {
 		@Override
 		public Void visit(BuiltinScriptingLanguageClassPathLocationIDEProperty property, Void param) {
 			try {
-				cpobj.writeField("type", "builtin-scripting-classpath");
+				cpobj.writeField(F_TYPE, CP_BUILTIN_SCRIPTING_CLASSPATH);
 			} catch (DuplicateObjectFieldException | IOException e) {
 				throw ObjectUtils.sneakyThrow(e);
 			}
@@ -828,10 +865,10 @@ public class IDEPersistenceUtils {
 		@Override
 		public Void visit(NestRepositoryClassPathLocationIDEProperty property, Void param) {
 			try {
-				cpobj.writeField("type", "nest-repository-classpath");
+				cpobj.writeField(F_TYPE, CP_NEST_REPOSITORY_CLASSPATH);
 				String ver = property.getVersion();
 				if (ver != null) {
-					cpobj.writeField("version", ver);
+					cpobj.writeField(F_VERSION, ver);
 				}
 			} catch (DuplicateObjectFieldException | IOException e) {
 				throw ObjectUtils.sneakyThrow(e);
