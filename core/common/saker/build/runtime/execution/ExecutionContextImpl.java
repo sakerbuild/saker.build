@@ -90,6 +90,7 @@ import saker.build.task.cluster.TaskInvokerFactory;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ConcurrentAppendAccumulator;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.io.ByteSink;
@@ -169,6 +170,18 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 		parameters = new ExecutionParametersImpl(parameters);
 		parameters.defaultize();
+
+		Collection<? extends TaskInvokerFactory> taskinvokerfactories = parameters.getTaskInvokerFactories();
+		if (!ObjectUtils.isNullOrEmpty(taskinvokerfactories)) {
+			for (TaskInvokerFactory tif : taskinvokerfactories) {
+				if (environment.getEnvironmentIdentifier().equals(tif.getEnvironmentIdentifier())) {
+					throw new InvalidBuildConfigurationException(
+							"The build environment that is used to execute the build is configured as a cluster too. "
+									+ "Hint: Don't connect the build daemon to itself as a build cluster.");
+				}
+			}
+		}
+
 		this.executionParameters = parameters;
 
 		ProviderHolderPathKey buildtraceoutputpath = parameters.getBuildTraceOutputPathKey();

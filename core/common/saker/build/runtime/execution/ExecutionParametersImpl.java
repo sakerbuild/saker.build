@@ -136,6 +136,9 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		if (userParameters == null) {
 			userParameters = Collections.emptyNavigableMap();
 		}
+		if (taskInvokerFactories == null) {
+			taskInvokerFactories = Collections.emptyList();
+		}
 	}
 
 	public Collection<? extends TaskInvokerFactory> getTaskInvokerFactories() {
