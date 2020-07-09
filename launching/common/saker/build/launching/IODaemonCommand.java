@@ -44,22 +44,23 @@ public class IODaemonCommand {
 	public DaemonAddressParam addressParams = new DaemonAddressParam();
 
 	public void call() throws IOException {
-		RemoteDaemonConnection connected = RemoteDaemonConnection.connect(addressParams.getSocketAddress());
-		DaemonOutputController controller = connected.getDaemonEnvironment().getOutputController();
-		if (controller == null) {
-			throw new IOException("Failed to attach to remote daemon I/O.");
-		}
-		connected.addConnectionIOErrorListener(new ConnectionIOErrorListener() {
-			@SuppressWarnings("unused")
-			private StreamToken errtoken = controller.addStandardError(ByteSink.valueOf(System.err));
-			@SuppressWarnings("unused")
-			private StreamToken outtoken = controller.addStandardOutput(ByteSink.valueOf(System.out));
-
-			@Override
-			public void onConnectionError(Throwable exc) {
-				System.out.println("Connection lost: " + exc);
-				exc.printStackTrace();
+		try (RemoteDaemonConnection connected = RemoteDaemonConnection.connect(addressParams.getSocketAddress())) {
+			DaemonOutputController controller = connected.getDaemonEnvironment().getOutputController();
+			if (controller == null) {
+				throw new IOException("Failed to attach to remote daemon I/O. (Not available)");
 			}
-		});
+			connected.addConnectionIOErrorListener(new ConnectionIOErrorListener() {
+				@SuppressWarnings("unused")
+				private StreamToken errtoken = controller.addStandardError(ByteSink.valueOf(System.err));
+				@SuppressWarnings("unused")
+				private StreamToken outtoken = controller.addStandardOutput(ByteSink.valueOf(System.out));
+
+				@Override
+				public void onConnectionError(Throwable exc) {
+					System.out.println("Connection lost: " + exc);
+					exc.printStackTrace();
+				}
+			});
+		}
 	}
 }
