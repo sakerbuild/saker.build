@@ -63,9 +63,12 @@ public class SakerIDESupportUtils {
 	}
 
 	public static Integer getPortValueOrNull(String value) {
+		if (value == null) {
+			return null;
+		}
 		int val;
 		try {
-			val = Integer.parseInt(value);
+			val = Integer.parseInt(value.trim());
 		} catch (NumberFormatException e) {
 			return null;
 		}
@@ -79,7 +82,7 @@ public class SakerIDESupportUtils {
 		if (boolval == null) {
 			return def;
 		}
-		return Boolean.parseBoolean(boolval);
+		return Boolean.parseBoolean(boolval.trim());
 	}
 
 	public static ProviderMountIDEProperty getMountPropertyForPath(SakerPath path,
