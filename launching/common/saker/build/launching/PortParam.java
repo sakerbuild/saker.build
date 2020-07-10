@@ -17,15 +17,16 @@ package saker.build.launching;
 
 import java.util.Iterator;
 
+import saker.build.daemon.DaemonLaunchParameters;
 import sipka.cmdline.api.Converter;
 
 @Converter(method = "parse")
 class PortParam {
-	public static final PortParam DEFAULT = new PortParam(null);
+	public static final PortParam DEFAULT = new PortParam(DaemonLaunchParameters.DEFAULT_PORT);
 
-	private final Integer port;
+	private final int port;
 
-	public PortParam(Integer port) {
+	public PortParam(int port) {
 		this.port = port;
 	}
 
@@ -38,15 +39,7 @@ class PortParam {
 		return new PortParam(LaunchingUtils.parsePort(it.next()));
 	}
 
-	public Integer getPort() {
-		return port;
-	}
-
-	public Integer getPort(Integer defaultvalue) {
-		Integer result = this.port;
-		if (result == null) {
-			return defaultvalue;
-		}
-		return result;
+	public int getPort() {
+		return this.port;
 	}
 }

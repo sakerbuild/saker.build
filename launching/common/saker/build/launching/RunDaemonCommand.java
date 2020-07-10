@@ -64,7 +64,7 @@ public class RunDaemonCommand {
 	}
 
 	@ParameterContext
-	public GeneralDaemonParams daemonParams = new GeneralDaemonParams();
+	public RunGeneralDaemonParams daemonParams = new RunGeneralDaemonParams();
 	@ParameterContext
 	public EnvironmentParams envParams = new EnvironmentParams();
 	@ParameterContext
@@ -100,7 +100,8 @@ public class RunDaemonCommand {
 			if (!ObjectUtils.isNullOrEmpty(startParams.connectClientParam)) {
 				if (!launchparams.isActsAsCluster()) {
 					throw new IllegalArgumentException(
-							"Cannot connect to daemon as client without acting as cluster. (Use -cluster-enable)");
+							"Cannot connect to daemon as client without acting as cluster. (Use "
+									+ GeneralDaemonParams.PARAM_NAME_CLUSTER_ENABLE + ")");
 				}
 				Set<SocketAddress> serveraddresses = new LinkedHashSet<>();
 				for (DaemonAddressParam addr : startParams.connectClientParam) {

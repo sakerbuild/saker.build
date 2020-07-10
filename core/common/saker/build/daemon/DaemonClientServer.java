@@ -15,10 +15,18 @@
  */
 package saker.build.daemon;
 
+import saker.build.runtime.params.InvalidBuildConfigurationException;
 import saker.build.task.cluster.TaskInvokerFactory;
 
 public interface DaemonClientServer {
 
-	public default void addClientClusterTaskInvokerFactory(TaskInvokerFactory factory) {
+	/**
+	 * @param factory
+	 * @throws InvalidBuildConfigurationException
+	 *             Thrown if the argument has the same {@linkplain TaskInvokerFactory#getEnvironmentIdentifier()} as the
+	 *             coordinator daemon.
+	 */
+	public default void addClientClusterTaskInvokerFactory(TaskInvokerFactory factory)
+			throws InvalidBuildConfigurationException {
 	}
 }

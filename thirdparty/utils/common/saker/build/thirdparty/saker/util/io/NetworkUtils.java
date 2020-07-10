@@ -85,8 +85,8 @@ public class NetworkUtils {
 				return new InetSocketAddress(InetAddress.getByName(address), defaultport);
 			}
 			if (colonidx == endbracketidx + 1) {
-				return new InetSocketAddress(InetAddress.getByName(address.substring(0, endbracketidx + 1)),
-						parsePort(address.substring(colonidx + 1)));
+				int portval = parsePort(address.substring(colonidx + 1));
+				return new InetSocketAddress(InetAddress.getByName(address.substring(0, endbracketidx + 1)), portval);
 			}
 			//has port
 			throw new UnknownHostException(address + ": invalid format");
@@ -103,7 +103,8 @@ public class NetworkUtils {
 		//there is port, and the address might be ipv6
 		String host = address.substring(0, lidx);
 		String port = address.substring(lidx + 1);
-		return new InetSocketAddress(InetAddress.getByName(host), parsePort(port));
+		int portval = parsePort(port);
+		return new InetSocketAddress(InetAddress.getByName(host), portval);
 	}
 
 	/**

@@ -52,6 +52,7 @@ import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.FileMirrorHandler;
 import saker.build.runtime.execution.InternalExecutionContext;
 import saker.build.runtime.params.ExecutionPathConfiguration;
+import saker.build.runtime.params.InvalidBuildConfigurationException;
 import saker.build.runtime.project.ProjectCacheHandle;
 import saker.build.runtime.project.SakerExecutionCache;
 import saker.build.runtime.project.SakerProjectCache;
@@ -352,9 +353,11 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 			} else {
 				clusterClientConnectingThreadGroup = new ThreadGroup("Daemon client connector");
 			}
+			//the thread group is daemon, but the thread tool threads are not
+			//this is not to exit the process if we don't accept connections
 			clusterClientConnectingThreadGroup.setDaemon(true);
 			clusterClientConnectingWorkPool = ThreadUtils.newDynamicWorkPool(clusterClientConnectingThreadGroup,
-					"cluster-client-", null, true);
+					"cluster-client-");
 			for (SocketAddress addr : connectToAsClusterAddresses) {
 				clusterClientConnectingWorkPool.offer(new ClusterClientConnectingRunnable(addr));
 			}
@@ -565,26 +568,40 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 							ClassLoaderResolverRegistry connectionclresolver = (ClassLoaderResolverRegistry) rmiconn
 									.getClassLoaderResolver();
-							clientserver.addClientClusterTaskInvokerFactory(new LocalDaemonClusterInvokerFactory(
-									connectionclresolver, constructLaunchParameters.getClusterMirrorDirectory()));
-							final RMIConnection frmiconn = rmiconn;
-							rmiconn.addCloseListener(new RMIConnection.CloseListener() {
-								@Override
-								public void onConnectionClosed() {
-									SakerRMIHelper.dumpRMIStatistics(frmiconn);
-									if (state != STATE_STARTED) {
-										return;
-									}
-									//restart connection
-									try {
-										clusterClientConnectingWorkPool.offer(ClusterClientConnectingRunnable.this);
-									} catch (Exception e) {
-										//the pool may've been closed already
-										e.printStackTrace();
-									}
+							LocalDaemonClusterInvokerFactory clusterinvokerfactory = new LocalDaemonClusterInvokerFactory(
+									connectionclresolver, constructLaunchParameters.getClusterMirrorDirectory());
+							boolean selfconnection = false;
+							try {
+								clientserver.addClientClusterTaskInvokerFactory(clusterinvokerfactory);
+							} catch (InvalidBuildConfigurationException e) {
+								synchronized (System.err) {
+									System.err.println(
+											"Invalid cluster configuration error detected while connecting to daemon:");
+									System.err.println(e);
+									System.err.println("Dropping client connection attempts for: " + addr);
 								}
-							});
-							rmiconn = null;
+								selfconnection = true;
+							}
+							if (!selfconnection) {
+								final RMIConnection frmiconn = rmiconn;
+								rmiconn.addCloseListener(new RMIConnection.CloseListener() {
+									@Override
+									public void onConnectionClosed() {
+										SakerRMIHelper.dumpRMIStatistics(frmiconn);
+										if (state != STATE_STARTED) {
+											return;
+										}
+										//restart connection
+										try {
+											clusterClientConnectingWorkPool.offer(ClusterClientConnectingRunnable.this);
+										} catch (Exception e) {
+											//the pool may've been closed already
+											e.printStackTrace();
+										}
+									}
+								});
+								rmiconn = null;
+							}
 							break;
 						} catch (Exception e) {
 							e.printStackTrace(System.out);
@@ -623,6 +640,9 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 		@Override
 		public void addClientClusterTaskInvokerFactory(TaskInvokerFactory factory) {
+			if (LocalDaemonEnvironment.this.getEnvironmentIdentifier().equals(factory.getEnvironmentIdentifier())) {
+				throw new InvalidBuildConfigurationException("Attempt to add self as build cluster.");
+			}
 			UUID id = UUID.randomUUID();
 			System.out.println("New cluster client connection: " + id);
 			//TODO handle if the connection is gracefully closed by the client (that is not caused by IO error)
