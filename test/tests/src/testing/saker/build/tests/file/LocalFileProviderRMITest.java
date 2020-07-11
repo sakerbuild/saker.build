@@ -28,6 +28,8 @@ import saker.build.thirdparty.saker.rmi.connection.RMIOptions;
 import saker.build.thirdparty.saker.rmi.connection.RMIServer;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.util.ReflectUtils;
+import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
+import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayInputStream;
@@ -57,8 +59,9 @@ public class LocalFileProviderRMITest extends SakerTestCase {
 		};
 		TestFlag.set(metric);
 
-		Class<?> bufferingclass = Class.forName(LocalFileProviderImpl.class.getName() + "$RMIBufferedFileInputByteSource",
-				false, LocalFileProvider.class.getClassLoader());
+		Class<?> bufferingclass = Class.forName(
+				LocalFileProviderImpl.class.getName() + "$RMIBufferedFileInputByteSource", false,
+				LocalFileProvider.class.getClassLoader());
 
 		SakerPath workingdir = SakerPath.valueOf(
 				EnvironmentTestCase.getTestingBaseWorkingDirectory().resolve(getClass().getName().replace('.', '/')));
@@ -73,7 +76,11 @@ public class LocalFileProviderRMITest extends SakerTestCase {
 		}
 
 		SakerPath longcontentpath = builddir.resolve("longcontent.txt");
+		SakerPath out1path = builddir.resolve("out1.txt");
+		SakerPath out2path = builddir.resolve("out2.txt");
 		getLocalFileProvider().createDirectories(longcontentpath.getParent());
+		//remove any previous outputs
+		getLocalFileProvider().clearDirectoryRecursively(longcontentpath.getParent());
 		getLocalFileProvider().writeToFile(new UnsyncByteArrayInputStream(longcontent), longcontentpath);
 
 		RMIOptions opt = SakerRMIHelper.createBaseRMIOptions();
@@ -125,6 +132,15 @@ public class LocalFileProviderRMITest extends SakerTestCase {
 					assertEquals(bout.toByteArray(), longcontent);
 					assertTrue((boolean) ReflectUtils.getFieldValue(bufferingclass.getDeclaredField("closed"), in));
 				}
+
+				try (ByteSink out = fp.openOutput(out1path)) {
+					out.write(ByteArrayRegion.wrap("abc".getBytes()));
+				}
+				assertEquals(fp.getAllBytes(out1path).toString(), "abc");
+				try (ByteSink out = fp.openOutput(out2path)) {
+					out.write(ByteArrayRegion.wrap(longcontent));
+				}
+				assertEquals(fp.getAllBytes(out2path).copyOptionally(), longcontent);
 
 				connection.getStatistics().dumpSummary(System.out, null);
 			}

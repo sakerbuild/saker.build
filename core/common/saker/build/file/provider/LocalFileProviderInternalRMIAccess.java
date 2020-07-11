@@ -125,6 +125,7 @@ public interface LocalFileProviderInternalRMIAccess {
 			int len = in.readInt();
 			byte[] array = new byte[len];
 			in.readFully(array);
+			this.arrays = new ByteArrayRegion[] { ByteArrayRegion.wrap(array) };
 		}
 	}
 
