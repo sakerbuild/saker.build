@@ -29,6 +29,7 @@ import saker.build.daemon.LocalDaemonEnvironment;
 import saker.build.daemon.WeakRefDaemonOutputController;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.IOUtils;
+import saker.build.util.config.JVMSynchronizationObjects;
 import sipka.cmdline.api.Flag;
 import sipka.cmdline.api.Parameter;
 import sipka.cmdline.api.ParameterContext;
@@ -85,6 +86,7 @@ public class RunDaemonCommand {
 	@SuppressWarnings("resource")
 	public void call() throws FileNotFoundException, IOException {
 		PrintStream err = System.err;
+		PrintStream out = System.out;
 		LocalDaemonEnvironment daemonenv = null;
 		try {
 			DaemonLaunchParameters launchparams = daemonParams.toLaunchParameters(envParams);
@@ -141,12 +143,12 @@ public class RunDaemonCommand {
 			if (daemonenv != null) {
 				IOUtils.addExc(e, IOUtils.closeExc(daemonenv));
 			}
-			//print the stacktrace to the original error stream
-			e.printStackTrace(err);
-			//exit the JVM
-			//we perform an exit as this command is not to be called programatically
-			//if we didn't exit, then the exception would be printed twice. Once by us, and once by the caller
-			System.exit(1);
+			//restore the streams so the caller can print the exception appropriately
+			synchronized (JVMSynchronizationObjects.getStandardIOLock()) {
+				System.setOut(out);
+				System.setErr(err);
+			}
+			throw e;
 		}
 	}
 }
