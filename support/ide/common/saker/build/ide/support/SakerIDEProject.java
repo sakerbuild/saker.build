@@ -1191,6 +1191,7 @@ public final class SakerIDEProject {
 		Map<String, RemoteDaemonConnection> daemonconnections;
 		String execdaemonnameprop = properties.getExecutionDaemonConnectionName();
 		Set<? extends DaemonConnectionIDEProperty> daemonconnectionproperties = properties.getConnections();
+		DaemonEnvironment execdaemonenv;
 		if (!ObjectUtils.isNullOrEmpty(execdaemonnameprop)) {
 			//the execution daemon is not the same as the plugin daemon
 			DaemonConnectionIDEProperty execdaemonconnprop = getDaemonConnectionPropertyForConnectionName(
@@ -1205,8 +1206,8 @@ public final class SakerIDEProject {
 				throw new IOException("Failed to connect to execution daemon: " + execdaemonnameprop + " at "
 						+ execdaemonconnprop.getNetAddress());
 			}
-			daemonconnections = plugin.connectToDaemonsFromDaemonEnvironment(daemonconnectionproperties,
-					execdaemonconnection.values().iterator().next().getDaemonEnvironment());
+			execdaemonenv = execdaemonconnection.values().iterator().next().getDaemonEnvironment();
+			daemonconnections = plugin.connectToDaemonsFromDaemonEnvironment(daemonconnectionproperties, execdaemonenv);
 
 			buildinfo = new BuildInformation();
 			NavigableMap<String, ConnectionInformation> connectioninfos = new TreeMap<>();
@@ -1228,6 +1229,7 @@ public final class SakerIDEProject {
 			buildinfo.setConnectionInformations(connectioninfos);
 		} else {
 			daemonconnections = plugin.connectToDaemonsFromPluginEnvironment(daemonconnectionproperties);
+			execdaemonenv = plugin.getPluginDaemonEnvironment();
 		}
 
 		MountPathIDEProperty buildtraceoutprop = properties.getBuildTraceOutput();
@@ -1262,6 +1264,9 @@ public final class SakerIDEProject {
 					taskinvokerfactories.add(taskinvokerfactory);
 				}
 			}
+		}
+		if (SakerIDESupportUtils.getBooleanValueOrDefault(properties.getUseClientsAsClusters(), false)) {
+			ObjectUtils.addAll(taskinvokerfactories, execdaemonenv.getClientClusterTaskInvokerFactories());
 		}
 
 		ExecutionParametersImpl parameters = new ExecutionParametersImpl();

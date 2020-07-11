@@ -54,6 +54,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 	protected String executionDaemonConnectionName;
 
 	protected String requireTaskIDEConfiguration;
+	protected String useClientsAsClusters;
 
 	protected MountPathIDEProperty buildTraceOutput;
 	protected String buildTraceEmbedArtifacts;
@@ -80,6 +81,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		this.mounts = ImmutableUtils.makeImmutableLinkedHashSet(copy.getMounts());
 		this.scriptConfigurations = ImmutableUtils.makeImmutableLinkedHashSet(copy.getScriptConfigurations());
 		this.scriptModellingExclusions = ImmutableUtils.makeImmutableNavigableSet(copy.getScriptModellingExclusions());
+		this.useClientsAsClusters = copy.getUseClientsAsClusters();
 
 		this.workingDirectory = copy.getWorkingDirectory();
 		this.buildDirectory = copy.getBuildDirectory();
@@ -156,6 +158,11 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 	}
 
 	@Override
+	public String getUseClientsAsClusters() {
+		return useClientsAsClusters;
+	}
+
+	@Override
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
@@ -171,6 +178,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		result = prime * result + ((requireTaskIDEConfiguration == null) ? 0 : requireTaskIDEConfiguration.hashCode());
 		result = prime * result + ((scriptConfigurations == null) ? 0 : scriptConfigurations.hashCode());
 		result = prime * result + ((scriptModellingExclusions == null) ? 0 : scriptModellingExclusions.hashCode());
+		result = prime * result + ((useClientsAsClusters == null) ? 0 : useClientsAsClusters.hashCode());
 		result = prime * result + ((userParameters == null) ? 0 : userParameters.hashCode());
 		result = prime * result + ((workingDirectory == null) ? 0 : workingDirectory.hashCode());
 		return result;
@@ -239,6 +247,11 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 			if (other.scriptModellingExclusions != null)
 				return false;
 		} else if (!scriptModellingExclusions.equals(other.scriptModellingExclusions))
+			return false;
+		if (useClientsAsClusters == null) {
+			if (other.useClientsAsClusters != null)
+				return false;
+		} else if (!useClientsAsClusters.equals(other.useClientsAsClusters))
 			return false;
 		if (userParameters == null) {
 			if (other.userParameters != null)
@@ -349,6 +362,15 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 
 		public Builder setBuildTraceEmbedArtifacts(boolean buildTraceEmbedArtifacts) {
 			return this.setBuildTraceEmbedArtifacts(Boolean.toString(buildTraceEmbedArtifacts));
+		}
+
+		public Builder setUseClientsAsClusters(String useClientsAsClusters) {
+			result.useClientsAsClusters = useClientsAsClusters;
+			return this;
+		}
+
+		public Builder setUseClientsAsClusters(boolean useClientsAsClusters) {
+			return this.setUseClientsAsClusters(Boolean.toString(useClientsAsClusters));
 		}
 
 		public IDEProjectProperties build() {

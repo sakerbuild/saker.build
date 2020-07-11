@@ -51,6 +51,11 @@ public interface IDEProjectProperties {
 	 */
 	public String getBuildTraceEmbedArtifacts();
 
+	/**
+	 * Boolean as string value.
+	 */
+	public String getUseClientsAsClusters();
+
 	@Override
 	public int hashCode();
 

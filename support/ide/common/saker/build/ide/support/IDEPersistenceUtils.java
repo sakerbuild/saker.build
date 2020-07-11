@@ -106,6 +106,7 @@ public class IDEPersistenceUtils {
 	private static final String F_EXCEPTION_FORMAT = "exception_format";
 	private static final String F_USER_PARAMETERS = "user_parameters";
 	private static final String F_STORAGE_DIRECTORY = "storage_directory";
+	private static final String F_USE_CLIENTS_AS_CLUSTERS = "use_clients_as_clusters";
 
 	//XXX make persisting data exception proof
 	private IDEPersistenceUtils() {
@@ -396,6 +397,7 @@ public class IDEPersistenceUtils {
 			}
 		}
 		writeStringIfNotNull(objout, F_REQUIRE_IDE_CONFIG, props.getRequireTaskIDEConfiguration());
+		writeStringIfNotNull(objout, F_USE_CLIENTS_AS_CLUSTERS, props.getUseClientsAsClusters());
 		Set<? extends RepositoryIDEProperty> repositories = props.getRepositories();
 		if (repositories != null) {
 			try (StructuredArrayObjectOutput repoarray = objout.writeArray(F_REPOSITORIES)) {
@@ -501,6 +503,7 @@ public class IDEPersistenceUtils {
 		result.setMirrorDirectory(input.readString(F_MIRROR_DIR));
 		result.setExecutionDaemonConnectionName(input.readString(F_EXECUTION_DAEMON));
 		result.setRequireTaskIDEConfiguration(input.readString(F_REQUIRE_IDE_CONFIG));
+		result.setUseClientsAsClusters(input.readString(F_USE_CLIENTS_AS_CLUSTERS));
 
 		result.setBuildTraceOutput(MountPathIDEProperty.create(input.readString(F_BUILD_TRACE_OUT_CLIENT),
 				input.readString(F_BUILD_TRACE_OUT_PATH)));
