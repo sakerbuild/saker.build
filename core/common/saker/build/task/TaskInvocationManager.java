@@ -139,7 +139,7 @@ public class TaskInvocationManager implements Closeable {
 	private volatile boolean closed = false;
 	private Collection<? extends TaskInvokerFactory> invokerFactories;
 
-	private InnerTaskInvokerInvocationManager innerTaskInvoker;
+	private InnerTaskInvocationManager innerTaskInvoker;
 
 	public TaskInvocationManager(ExecutionContextImpl executioncontext,
 			Collection<? extends TaskInvokerFactory> taskinvokerfactories, ThreadGroup clusterInteractionThreadGroup) {
@@ -152,7 +152,7 @@ public class TaskInvocationManager implements Closeable {
 			return null;
 		});
 
-		this.innerTaskInvoker = new InnerTaskInvokerInvocationManager(executionContext);
+		this.innerTaskInvoker = new InnerTaskInvocationManager(executionContext);
 	}
 
 	//TODO the invoker selection results should be cached during the execution

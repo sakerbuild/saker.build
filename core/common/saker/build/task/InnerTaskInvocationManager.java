@@ -33,7 +33,7 @@ import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 
-public class InnerTaskInvokerInvocationManager implements Closeable {
+public class InnerTaskInvocationManager implements Closeable {
 	private static final int NO_COMPUTATION_TOKEN_FIXED_THREAD_POOL_SIZE = ComputationToken.getMaxTokenCount() * 3 / 2;
 	//TODO there is a race condition after checking the task duplication predicate and notify the manager about execution start
 	//     if the connection for the cluster breaks after shouldInvokeOnceMore() call, inner tasks may be left uninvoked, as
@@ -42,7 +42,7 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 	private ExecutionContext executionContext;
 	private Set<Reference<Thread>> weakInnerThreads = ConcurrentHashMap.newKeySet();
 
-	public InnerTaskInvokerInvocationManager(ExecutionContext executionContext) {
+	public InnerTaskInvocationManager(ExecutionContext executionContext) {
 		this.executionContext = executionContext;
 	}
 
@@ -60,6 +60,7 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 		private final TaskDuplicationPredicate duplicationPredicate;
 
 		private volatile boolean duplicationCancelled;
+		private volatile boolean shouldntInvokeOnceMore;
 
 		public LocalInnerTaskInvocationHandle(InnerTaskInvocationListener listener, TaskFactory<R> taskfactory,
 				TaskContext taskcontext, Object computationtokenallocator, int computationtokencount,
@@ -153,6 +154,7 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 				}
 				try {
 					if (!duplicationPredicate.shouldInvokeOnceMore()) {
+						setShouldntInvokeOnceMore();
 						return;
 					}
 				} catch (RuntimeException e) {
@@ -163,7 +165,7 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 				ComputationToken ct;
 				try {
 					ct = ComputationToken.requestAdditionalAbortable(computationTokenAllocator, computationTokenCount,
-							() -> duplicationCancelled);
+							() -> duplicationCancelled || shouldntInvokeOnceMore);
 				} catch (InterruptedException e) {
 					this.putFailureResult(e);
 					return;
@@ -195,7 +197,8 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 								token = null;
 								try {
 									token = ComputationToken.requestAdditionalAbortable(computationTokenAllocator,
-											computationTokenCount, () -> duplicationCancelled);
+											computationTokenCount,
+											() -> duplicationCancelled || shouldntInvokeOnceMore);
 								} catch (InterruptedException e) {
 									this.putFailureResult(e);
 									return;
@@ -243,6 +246,7 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 						}
 						try {
 							if (!duplicationPredicate.shouldInvokeOnceMore()) {
+								setShouldntInvokeOnceMore();
 								break;
 							}
 						} catch (RuntimeException e) {
@@ -258,6 +262,16 @@ public class InnerTaskInvokerInvocationManager implements Closeable {
 				if (token != null) {
 					token.close();
 				}
+			}
+		}
+
+		private void setShouldntInvokeOnceMore() {
+			shouldntInvokeOnceMore = true;
+			if (computationTokenCount > 0) {
+				//wake up the computation token waiters
+				//as if their tokens were reallocated to other tasks, then they need to
+				//be woken up to quit else they would wait for a new token with lower priority, therefore stalling
+				ComputationToken.wakeUpWaiters(computationTokenAllocator);
 			}
 		}
 

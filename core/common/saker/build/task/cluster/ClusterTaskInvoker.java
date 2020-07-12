@@ -28,7 +28,7 @@ import saker.build.runtime.repository.BuildRepository;
 import saker.build.task.ComputationToken;
 import saker.build.task.EnvironmentSelectionResult;
 import saker.build.task.IdentifierAccessDisablerSakerEnvironment;
-import saker.build.task.InnerTaskInvokerInvocationManager;
+import saker.build.task.InnerTaskInvocationManager;
 import saker.build.task.Task;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskContextReference;
@@ -56,7 +56,7 @@ public class ClusterTaskInvoker implements TaskInvoker {
 	private ClusterExecutionContext clusterExecutionContext;
 	private ContentDatabaseImpl clusterContentDatabase;
 
-	private InnerTaskInvokerInvocationManager innerTaskInvoker;
+	private InnerTaskInvocationManager innerTaskInvoker;
 
 	public ClusterTaskInvoker(SakerEnvironmentImpl environment, SakerEnvironment executionenvironment,
 			ExecutionContext executioncontext, FileMirrorHandler mirrorhandler,
@@ -70,7 +70,7 @@ public class ClusterTaskInvoker implements TaskInvoker {
 
 		this.suitableTesterSakerEnvironment = new IdentifierAccessDisablerSakerEnvironment(executionenvironment);
 
-		this.innerTaskInvoker = new InnerTaskInvokerInvocationManager(clusterExecutionContext);
+		this.innerTaskInvoker = new InnerTaskInvocationManager(clusterExecutionContext);
 	}
 
 	@Override
