@@ -19,7 +19,12 @@ import java.util.Map;
 
 import saker.build.file.provider.SakerFileProvider;
 import saker.build.runtime.environment.SakerEnvironment;
+import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.params.ExecutionPathConfiguration;
+import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
+import saker.build.thirdparty.saker.rmi.annot.invoke.RMIDefaultOnFailure;
+import saker.build.thirdparty.saker.rmi.annot.invoke.RMIForbidden;
+import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
 
 /**
@@ -92,6 +97,97 @@ public interface RepositoryBuildEnvironment {
 	 * @return The path configuration.
 	 */
 	public ExecutionPathConfiguration getPathConfiguration();
+
+	/**
+	 * Gets the local file provider of the build execution.
+	 * <p>
+	 * The method returns the file provider for the build execution machine. That is the one that coordinates the build
+	 * and runs it.
+	 * <p>
+	 * This method can be useful for repositories that were initialized on build clusters and need to access files on
+	 * the coordinator machine.
+	 * 
+	 * @return The coordinator file provider.
+	 * @since saker.build 0.8.15
+	 * @see ExecutionContext#getLocalFileProvider()
+	 */
+	public SakerFileProvider getLocalFileProvider();
+
+	/**
+	 * Modifies a shared object for the build repository.
+	 * <p>
+	 * Sets the shared object for the given key, or removes it if the value is <code>null</code>. This method can be
+	 * called on the coordinator machine.
+	 * <p>
+	 * See {@link #getSharedObject(Object)} for detailed explanation.
+	 * 
+	 * @param key
+	 *            The key of the shared object.
+	 * @param value
+	 *            The value of the shared object.
+	 * @throws NullPointerException
+	 *             If the key is <code>null</code>.
+	 * @throws UnsupportedOperationException
+	 *             If this method is called on a remote build cluster. ({@link #isRemoteCluster()} returns
+	 *             <code>true</code>.)
+	 * @since saker.build 0.8.15
+	 * @see #isRemoteCluster()
+	 */
+	@RMIForbidden
+	@RMIDefaultOnFailure
+	public default void setSharedObject(Object key, Object value)
+			throws NullPointerException, UnsupportedOperationException {
+		//not supported on clusters
+		throw new UnsupportedOperationException();
+	}
+
+	/**
+	 * Gets a shared object for the build repository.
+	 * <p>
+	 * Shared objects are used to convey some build repository specific information to the remote build clusters. Shared
+	 * objects can be set on the coordinator machine and they can be retrieved on all build machines that take part of
+	 * the build execution.
+	 * <p>
+	 * When a shared object is set, the build repositories that are initialized on remote build clusters can retrieve
+	 * these objects and modify their behaviour based on them. They can also be used to communicate with the build
+	 * repository on the coordinator machine.
+	 * <p>
+	 * Generally shared objects are used to ensure that build repositories are properly loaded on the build clusters in
+	 * the same way as on the coordinator.
+	 * <p>
+	 * Shared objects are private to each loaded repository. Shared objects cannot be retrieved for other repositories
+	 * of the build execution.
+	 * <p>
+	 * If a shared object is transferred as a remote object, then callers should take care when calling remote methods.
+	 * The connection may be lost between the build cluster and the coordinator at any time. Remote methods shouldn't be
+	 * called when the {@linkplain BuildRepository#close() build repository is closing} as the RMI connection may've
+	 * been broken up by then.
+	 * 
+	 * @param key
+	 *            The key of the shared object.
+	 * @return The value of for the shared object or <code>null</code> if not set.
+	 * @throws NullPointerException
+	 *             If the key is <code>null</code>.
+	 * @since saker.build 0.8.15
+	 * @see #isRemoteCluster()
+	 */
+	@RMISerialize
+	public Object getSharedObject(@RMISerialize Object key) throws NullPointerException;
+
+	/**
+	 * Gets if the build repository was initialized to be act as part of a build cluster.
+	 * <p>
+	 * This method returns <code>true</code> if and only if this build repository was intialized in order to take part
+	 * of a build cluster execution.
+	 * <p>
+	 * If a build repository is initialized as a cluster, {@link #setSharedObject(Object, Object) setSharedObject} will
+	 * always throw an {@link UnsupportedOperationException}.
+	 * 
+	 * @return <code>true</code> if the environment is part of a build cluster.
+	 * @since saker.build 0.8.15
+	 */
+	@RMICacheResult
+	public boolean isRemoteCluster();
 
 	/**
 	 * Gets the identifier which was used for this repository.

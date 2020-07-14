@@ -127,6 +127,7 @@ import saker.build.task.cluster.TaskInvokerFactory;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
 import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.function.LazySupplier;
 import saker.build.thirdparty.saker.util.io.IOUtils;
@@ -1407,8 +1408,10 @@ public final class SakerIDEProject {
 					//can be if closed
 					return Collections.emptyMap();
 				}
-				executioncache.set(pathconfig, repoconfig, scriptconfig, userparammap,
-						LocalFileProvider.getProviderKeyStatic());
+				ClassLoaderResolverRegistry resolverregistry = new ClassLoaderResolverRegistry(
+						plugin.getPluginEnvironment().getClassLoaderResolverRegistry());
+				executioncache.set(pathconfig, repoconfig, scriptconfig, userparammap, LocalFileProvider.getInstance(),
+						resolverregistry, false, null);
 				return executioncache.getLoadedBuildRepositories();
 			}, loadedbuildrepos -> {
 				for (Entry<String, ? extends BuildRepository> entry : loadedbuildrepos.entrySet()) {

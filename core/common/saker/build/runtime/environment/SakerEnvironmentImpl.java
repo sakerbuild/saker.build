@@ -421,6 +421,15 @@ public final class SakerEnvironmentImpl implements Closeable {
 		invalidateCachedDatasWaitExecutions((Predicate<? super CacheKey<?, ?>>) cachekeys::contains);
 	}
 
+	public void invalidateCachedDataWaitExecutions(CacheKey<?, ?> cachekey) throws InterruptedException {
+		synchronized (runningExecutionsLock) {
+			while (!runningExecutions.isEmpty()) {
+				runningExecutionsLock.wait();
+			}
+			dataCache.invalidate(cachekey);
+		}
+	}
+
 	public void invalidateCachedDatasWaitExecutions(Predicate<? super CacheKey<?, ?>> predicate)
 			throws InterruptedException {
 		synchronized (runningExecutionsLock) {

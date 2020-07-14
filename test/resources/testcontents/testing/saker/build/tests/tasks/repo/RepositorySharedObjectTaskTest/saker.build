@@ -1,0 +1,13 @@
+build(
+	out result
+	
+	out f
+	out s
+) {
+	$result = test.remote.task(Input: in)
+	
+	$f = test.remote.task@firstid(Input: f)
+	$s = test.remote.task@secondid(Input: s)
+	
+	test.task()
+}

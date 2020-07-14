@@ -24,7 +24,6 @@ import java.util.Set;
 import java.util.TreeSet;
 
 import saker.build.file.path.ProviderHolderPathKey;
-import saker.build.file.path.SakerPath;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 

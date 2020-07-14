@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.WeakHashMap;
 
 import javax.net.ServerSocketFactory;
 import javax.net.SocketFactory;
@@ -68,6 +69,7 @@ import saker.build.thirdparty.saker.rmi.connection.RMIOptions;
 import saker.build.thirdparty.saker.rmi.connection.RMIServer;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.util.DateUtils;
+import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.StringUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
@@ -131,6 +133,10 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	private Set<SocketAddress> connectToAsClusterAddresses;
 	private ThreadWorkPool clusterClientConnectingWorkPool;
 	private ThreadGroup clusterClientConnectingThreadGroup;
+
+	//may be a weak set as the keys stay referenced by the cache 
+	//synchronize on the set when accessed
+	private Set<ProjectCacheKey> loadedProjectCacheKeys = Collections.newSetFromMap(new WeakHashMap<>());
 
 	public LocalDaemonEnvironment(Path sakerJarPath, DaemonLaunchParameters launchParameters,
 			DaemonOutputController outputController, SocketFactory connectionsocketfactory) {
@@ -504,25 +510,44 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		if (state != STATE_STARTED) {
 			return;
 		}
-		state = STATE_CLOSED;
+		boolean interrupted = false;
+		try {
+			state = STATE_CLOSED;
 
-		if (clusterClientConnectingThreadGroup != null) {
-			clusterClientConnectingThreadGroup.interrupt();
-			try {
-				clusterClientConnectingWorkPool.close();
-			} catch (Exception e) {
-				//shouldn't happen but print anyway
-				e.printStackTrace();
+			if (clusterClientConnectingThreadGroup != null) {
+				clusterClientConnectingThreadGroup.interrupt();
+				try {
+					clusterClientConnectingWorkPool.close();
+				} catch (Exception e) {
+					//shouldn't happen but print anyway
+					e.printStackTrace();
+				}
+			}
+			synchronized (loadedProjectCacheKeys) {
+				List<ProjectCacheKey> keys = ImmutableUtils.makeImmutableList(loadedProjectCacheKeys);
+				loadedProjectCacheKeys.clear();
+				for (ProjectCacheKey pck : keys) {
+					try {
+						environment.invalidateCachedDataWaitExecutions(pck);
+					} catch (InterruptedException e) {
+						//reinterrupt at end
+						interrupted = true;
+					}
+				}
+			}
+
+			IOUtils.closePrint(server);
+
+			IOUtils.closePrint(environment);
+
+			IOUtils.closePrint(this.fileLock, this.lockFile);
+			this.fileLock = null;
+			this.lockFile = null;
+		} finally {
+			if (interrupted) {
+				Thread.currentThread().interrupt();
 			}
 		}
-
-		IOUtils.closePrint(server);
-
-		IOUtils.closePrint(environment);
-
-		IOUtils.closePrint(this.fileLock, this.lockFile);
-		this.fileLock = null;
-		this.lockFile = null;
 	}
 
 	@Override
@@ -533,7 +558,12 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	private DaemonProjectHandle getProjectImpl(PathKey workingdir) throws IOException {
 		checkStarted();
 		try {
-			return environment.getCachedData(new ProjectCacheKey(environment, workingdir));
+			ProjectCacheKey cachekey = new ProjectCacheKey(environment, workingdir);
+			DaemonProjectHandle result = environment.getCachedData(cachekey);
+			synchronized (loadedProjectCacheKeys) {
+				loadedProjectCacheKeys.add(cachekey);
+			}
+			return result;
 		} catch (IOException e) {
 			throw e;
 		} catch (Exception e) {
@@ -871,35 +901,39 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 					public void run(TaskInvocationContext context) throws Exception {
 						((InternalExecutionContext) executioncontext).internalGetBuildTrace()
 								.startBuildCluster(environment, modifiedmirrordir);
-						try {
-							project.clusterStarting(realpathconfig, executioncontext.getRepositoryConfiguration(),
-									executioncontext.getScriptConfiguration(), executioncontext.getUserParameters(),
-									modifiedmirrordir, invokerinformation.getCoordinatorProviderKey(),
-									invokerinformation.getDatabaseConfiguration(), executioncontext);
-						} catch (Exception e) {
-							//XXX reify exception
-							throw new IOException(e);
-						}
-
-						SakerExecutionCache execcache = project.getExecutionCache();
-
+						ClassLoaderResolverRegistry executionclregistry = new ClassLoaderResolverRegistry(
+								environment.getClassLoaderResolverRegistry());
 						String resolverid = createClusterTaskInvokerRMIRegistryClassResolverId(realpathconfig);
-						ClassLoaderResolver execresolver = execcache.getExecutionClassLoaderResolver();
-
-						FileMirrorHandler mirrorhandler = project.getClusterMirrorHandler();
-						SakerEnvironment executionenvironment = project.getExecutionCache().getRecordingEnvironment();
-
-						Object execkey = environment.getStartExecutionKey();
+						connectionClassLoaderRegistry.register(resolverid, executionclregistry);
 						try {
-							connectionClassLoaderRegistry.register(resolverid, execresolver);
-							ClusterTaskInvoker clusterinvoker = new ClusterTaskInvoker(environment,
-									executionenvironment, executioncontext, mirrorhandler,
-									execcache.getLoadedBuildRepositories(), project.getClusterContentDatabase(),
-									execcache.getLoadedScriptProviderLocators());
-							clusterinvoker.run(context);
+							try {
+								project.clusterStarting(realpathconfig, executioncontext.getRepositoryConfiguration(),
+										executioncontext.getScriptConfiguration(), executioncontext.getUserParameters(),
+										modifiedmirrordir, invokerinformation.getDatabaseConfiguration(),
+										executioncontext, executionclregistry);
+							} catch (Exception e) {
+								//XXX reify exception
+								throw new IOException(e);
+							}
+
+							SakerExecutionCache execcache = project.getExecutionCache();
+
+							FileMirrorHandler mirrorhandler = project.getClusterMirrorHandler();
+							SakerEnvironment executionenvironment = project.getExecutionCache()
+									.getRecordingEnvironment();
+
+							Object execkey = environment.getStartExecutionKey();
+							try {
+								ClusterTaskInvoker clusterinvoker = new ClusterTaskInvoker(environment,
+										executionenvironment, executioncontext, mirrorhandler,
+										execcache.getLoadedBuildRepositories(), project.getClusterContentDatabase(),
+										execcache.getLoadedScriptProviderLocators());
+								clusterinvoker.run(context);
+							} finally {
+								project.clusterFinished(execkey);
+							}
 						} finally {
-							connectionClassLoaderRegistry.unregister(resolverid, execresolver);
-							project.clusterFinished(execkey);
+							connectionClassLoaderRegistry.unregister(resolverid, executionclregistry);
 						}
 					}
 				};

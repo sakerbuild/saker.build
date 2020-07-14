@@ -26,8 +26,11 @@ import saker.build.task.TaskDuplicationPredicate;
  * <p>
  * An instance of this class is constructed by specifying the number of times the associated task can be duplicated. The
  * {@link #shouldInvokeOnceMore()} method will return <code>true</code> excatly the specified number amount of times.
+ * 
+ * @deprecated This class is unreliable, don't use it.
  */
 @PublicApi
+@Deprecated
 public class FixedTaskDuplicationPredicate implements TaskDuplicationPredicate {
 	private static final AtomicIntegerFieldUpdater<FixedTaskDuplicationPredicate> AIFU_count = AtomicIntegerFieldUpdater
 			.newUpdater(FixedTaskDuplicationPredicate.class, "count");

@@ -41,18 +41,22 @@ import saker.build.runtime.execution.ExecutionParameters;
 import saker.build.runtime.execution.ExecutionProgressMonitor;
 import saker.build.runtime.execution.FileContentDataComputeHandler;
 import saker.build.runtime.execution.FileMirrorHandler;
+import saker.build.runtime.execution.InternalExecutionContext;
 import saker.build.runtime.execution.SakerLog;
 import saker.build.runtime.params.DatabaseConfiguration;
 import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.runtime.params.ExecutionRepositoryConfiguration;
 import saker.build.runtime.params.ExecutionScriptConfiguration;
+import saker.build.runtime.repository.RepositoryBuildEnvironment;
 import saker.build.task.TaskExecutionResult;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.trace.InternalBuildTrace;
 import saker.build.util.cache.MemoryTrimmer;
+import testing.saker.build.flag.TestFlag;
 
 public class SakerProjectCache implements ProjectCacheHandle {
 	private static final String LOCK_FILE_NAME = ".saker.project.lock";
@@ -239,8 +243,8 @@ public class SakerProjectCache implements ProjectCacheHandle {
 
 	public void clusterStarting(ExecutionPathConfiguration pathconfig, ExecutionRepositoryConfiguration repoconfig,
 			ExecutionScriptConfiguration scriptconfig, Map<String, String> userparams, Path clustermirrordirectory,
-			RootFileProviderKey coordinatorproviderkey, DatabaseConfiguration databaseconfig,
-			ExecutionContext executioncontext) throws Exception {
+			DatabaseConfiguration databaseconfig, ExecutionContext executioncontext,
+			ClassLoaderResolverRegistry executionclregistry) throws Exception {
 		startingRequested = true;
 
 		SakerPath workingdir = pathconfig.getWorkingDirectory();
@@ -263,7 +267,9 @@ public class SakerProjectCache implements ProjectCacheHandle {
 			}
 			//TODO handle the exception from the following .set call
 			boolean executioncachechanged = executionCache.set(pathconfig, repoconfig, scriptconfig, userparams,
-					coordinatorproviderkey);
+					executioncontext.getLocalFileProvider(), executionclregistry, true, repoid -> {
+						return ((InternalExecutionContext) executioncontext).internalGetSharedObjectProvider(repoid);
+					});
 			if (executioncachechanged) {
 				clearExecutionCacheChangeRelatedResources();
 			}
@@ -290,7 +296,7 @@ public class SakerProjectCache implements ProjectCacheHandle {
 					//close if configuration change
 					IOUtils.closePrint(this.clusterDatabase);
 					clusterDatabase = new ContentDatabaseImpl(databaseconfig, clustermodifiedpathconfig,
-							executionCache.getExecutionClassLoaderResolver(), clusterdbpathkey);
+							executionclregistry, clusterdbpathkey);
 					clusterDatabase.setTrackHandleAttributes(true);
 				}
 				if (clusterMirrorHandler == null) {
@@ -359,7 +365,7 @@ public class SakerProjectCache implements ProjectCacheHandle {
 	}
 
 	public void executionStarting(ExecutionProgressMonitor monitor, SakerPath builddirectory,
-			ExecutionParameters parameters) throws Exception {
+			ExecutionParameters parameters, ClassLoaderResolverRegistry executionclregistry) throws Exception {
 		startingRequested = true;
 		ExecutionPathConfiguration pathconfig = parameters.getPathConfiguration();
 		SakerPath workingdir = pathconfig.getWorkingDirectory();
@@ -399,7 +405,7 @@ public class SakerProjectCache implements ProjectCacheHandle {
 
 			//TODO handle the exception from the following .set call
 			boolean executioncachechanged = executionCache.set(pathconfig, repoconfig, scriptconfiguration, userparams,
-					LocalFileProvider.getProviderKeyStatic());
+					LocalFileProvider.getInstance(), executionclregistry, false, null);
 
 			if (executioncachechanged) {
 				clearExecutionCacheChangeRelatedResources();
@@ -414,8 +420,8 @@ public class SakerProjectCache implements ProjectCacheHandle {
 				if (dbfilepath == null) {
 					this.executionDatabase = new ContentDatabaseImpl(dbconfig, pathconfig);
 				} else {
-					this.executionDatabase = new ContentDatabaseImpl(dbconfig, pathconfig,
-							executionCache.getExecutionClassLoaderResolver(), dbfilepath);
+					this.executionDatabase = new ContentDatabaseImpl(dbconfig, pathconfig, executionclregistry,
+							dbfilepath);
 				}
 				this.executionDatabase.setTrackHandleAttributes(true);
 			} else {
@@ -423,8 +429,8 @@ public class SakerProjectCache implements ProjectCacheHandle {
 						|| !executionDatabase.isDatabaseFileExists()) {
 					//close the current database, and reopen
 					IOUtils.closePrint(this.executionDatabase);
-					this.executionDatabase = new ContentDatabaseImpl(dbconfig, pathconfig,
-							executionCache.getExecutionClassLoaderResolver(), dbfilepath);
+					this.executionDatabase = new ContentDatabaseImpl(dbconfig, pathconfig, executionclregistry,
+							dbfilepath);
 					this.executionDatabase.setTrackHandleAttributes(true);
 					//clear the cached repositories, as they are bound to the old content database
 				}

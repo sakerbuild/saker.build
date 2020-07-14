@@ -5583,8 +5583,13 @@ public class TaskExecutionManager {
 			result.addNonFileDelta(OutputLoadFailedDeltaImpl.INSTANCE);
 		}
 
-		Set<? extends EnvironmentProperty<?>> modifiedenvpropertydeps = guidedinvokerselectionsupplier.get()
-				.getModifiedEnvironmentProperties();
+		Set<? extends EnvironmentProperty<?>> modifiedenvpropertydeps;
+		try {
+			modifiedenvpropertydeps = guidedinvokerselectionsupplier.get().getModifiedEnvironmentProperties();
+		} catch (TaskEnvironmentSelectionFailedException e) {
+			result.addNonFileDelta(TaskChangeDeltaImpl.INSTANCE);
+			return;
+		}
 		if (!ObjectUtils.isNullOrEmpty(modifiedenvpropertydeps)) {
 			for (EnvironmentProperty<?> property : modifiedenvpropertydeps) {
 				result.addNonFileDelta(new EnvironmentDependencyDeltaImpl<>(property));

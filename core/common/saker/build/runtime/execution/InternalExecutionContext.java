@@ -23,6 +23,7 @@ import java.io.ObjectOutput;
 import saker.build.file.SakerFile;
 import saker.build.file.content.ContentDescriptor;
 import saker.build.file.path.SakerPath;
+import saker.build.runtime.project.SakerExecutionCache;
 import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.trace.InternalBuildTrace;
@@ -34,6 +35,8 @@ public interface InternalExecutionContext {
 
 	@RMICacheResult
 	public InternalBuildTrace internalGetBuildTrace();
+
+	public SakerExecutionCache.RepositoryBuildSharedObjectLookup internalGetSharedObjectProvider(String repoid);
 
 	public static class FilePathContents implements Externalizable {
 		private static final long serialVersionUID = 1L;

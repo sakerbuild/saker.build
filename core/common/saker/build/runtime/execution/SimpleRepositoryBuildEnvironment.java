@@ -16,7 +16,11 @@
 package saker.build.runtime.execution;
 
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
+import saker.build.file.provider.SakerFileProvider;
 import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.runtime.repository.RepositoryBuildEnvironment;
@@ -27,16 +31,21 @@ public class SimpleRepositoryBuildEnvironment implements RepositoryBuildEnvironm
 	private final ClassLoaderResolverRegistry classLoaderRegistry;
 	private final Map<String, String> userParameters;
 	private final String identifier;
-	private ExecutionPathConfiguration pathConfiguration;
+	private final ExecutionPathConfiguration pathConfiguration;
+	private final SakerFileProvider localFileProvider;
+
+	private final ConcurrentMap<Object, Object> sharedObjects = new ConcurrentHashMap<>();
+	private boolean remoteCluster;
 
 	public SimpleRepositoryBuildEnvironment(SakerEnvironment sakerEnvironment,
 			ClassLoaderResolverRegistry classLoaderRegistry, Map<String, String> userParameters,
-			ExecutionPathConfiguration pathConfiguration, String identifier) {
+			ExecutionPathConfiguration pathConfiguration, String identifier, SakerFileProvider localFileProvider) {
 		this.sakerEnvironment = sakerEnvironment;
 		this.classLoaderRegistry = classLoaderRegistry;
 		this.userParameters = userParameters;
 		this.pathConfiguration = pathConfiguration;
 		this.identifier = identifier;
+		this.localFileProvider = localFileProvider;
 	}
 
 	@Override
@@ -60,11 +69,37 @@ public class SimpleRepositoryBuildEnvironment implements RepositoryBuildEnvironm
 	}
 
 	@Override
+	public SakerFileProvider getLocalFileProvider() {
+		return localFileProvider;
+	}
+
+	@Override
+	public void setSharedObject(Object key, Object value) throws NullPointerException, UnsupportedOperationException {
+		Objects.requireNonNull(key, "key");
+		if (value == null) {
+			sharedObjects.remove(key);
+		} else {
+			sharedObjects.put(key, value);
+		}
+	}
+
+	@Override
+	public Object getSharedObject(Object key) throws NullPointerException {
+		Objects.requireNonNull(key, "key");
+		return sharedObjects.get(key);
+	}
+
+	@Override
+	public boolean isRemoteCluster() {
+		return remoteCluster;
+	}
+
+	@Override
 	public String getIdentifier() {
 		return identifier;
 	}
 
-	public void setPathConfiguration(ExecutionPathConfiguration pathConfiguration) {
-		this.pathConfiguration = pathConfiguration;
+	public void setRemoteCluster(boolean remoteCluster) {
+		this.remoteCluster = remoteCluster;
 	}
 }

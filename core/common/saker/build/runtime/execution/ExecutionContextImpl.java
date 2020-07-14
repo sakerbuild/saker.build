@@ -70,7 +70,9 @@ import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptProviderLoc
 import saker.build.runtime.params.InvalidBuildConfigurationException;
 import saker.build.runtime.project.SakerExecutionCache;
 import saker.build.runtime.project.SakerProjectCache;
+import saker.build.runtime.project.SakerExecutionCache.RepositoryBuildSharedObjectLookup;
 import saker.build.runtime.repository.BuildRepository;
+import saker.build.runtime.repository.RepositoryBuildEnvironment;
 import saker.build.runtime.repository.RepositoryOperationException;
 import saker.build.scripting.ScriptAccessProvider;
 import saker.build.scripting.ScriptInformationProvider;
@@ -92,6 +94,7 @@ import saker.build.thirdparty.saker.util.ConcurrentAppendAccumulator;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
+import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
 import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
@@ -104,6 +107,7 @@ import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
 import saker.build.trace.InternalBuildTraceImpl;
 import saker.build.util.exc.ExceptionView;
 import saker.build.util.property.ScriptParsingConfigurationExecutionProperty;
+import testing.saker.build.flag.TestFlag;
 
 public final class ExecutionContextImpl implements ExecutionContext, InternalExecutionContext, AutoCloseable {
 	private final SakerEnvironmentImpl environment;
@@ -132,6 +136,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	private ExecutionProgressMonitor progressMonitor;
 
 	private Map<String, ? extends BuildRepository> loadedBuildRepositories;
+	private Map<String, RepositoryBuildEnvironment> loadedBuildRepositoryEnvironments;
 
 	private final Semaphore stdIOLockSemaphore = new Semaphore(1);
 
@@ -233,19 +238,22 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		}
 
 		SakerExecutionCache useexecutioncache;
-		ClassLoaderResolver dbclregistry = null;
+		ClassLoaderResolverRegistry dbclregistry = new ClassLoaderResolverRegistry(
+				environment.getClassLoaderResolverRegistry());
 		this.project = project;
 		if (project != null) {
-			project.executionStarting(this.progressMonitor, builddirectoryabssakerpath, executionParameters);
+			project.executionStarting(this.progressMonitor, builddirectoryabssakerpath, executionParameters,
+					dbclregistry);
 			useexecutioncache = project.getExecutionCache();
 		} else {
 			ownedExecutionCache = new SakerExecutionCache(environment);
 			ownedExecutionCache.set(pathConfiguration, repositoryConfiguration, scriptConfiguration,
-					executionParameters.getUserParameters(), LocalFileProvider.getProviderKeyStatic());
+					executionParameters.getUserParameters(), LocalFileProvider.getInstance(), dbclregistry, false,
+					null);
 			useexecutioncache = ownedExecutionCache;
-			dbclregistry = ownedExecutionCache.getExecutionClassLoaderResolver();
 		}
 		this.loadedBuildRepositories = useexecutioncache.getLoadedBuildRepositories();
+		this.loadedBuildRepositoryEnvironments = useexecutioncache.getLoadedRepositoryBuildEnvironments();
 		this.loadedScriptProviderLocators = useexecutioncache.getLoadedScriptProviderLocators();
 		this.executionEnvironment = useexecutioncache.getRecordingEnvironment();
 
@@ -437,6 +445,19 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	@Override
 	public Map<String, ? extends BuildRepository> getLoadedRepositories() {
 		return loadedBuildRepositories;
+	}
+
+	@Override
+	public RepositoryBuildSharedObjectLookup internalGetSharedObjectProvider(String repoid) {
+		RepositoryBuildEnvironment buildenv = loadedBuildRepositoryEnvironments.get(repoid);
+		if (TestFlag.ENABLED && buildenv == null) {
+			throw new AssertionError("build environment is null for: " + repoid);
+		}
+		if (buildenv == null) {
+			//it shouldn't be null, but check just in case
+			return k -> null;
+		}
+		return buildenv::getSharedObject;
 	}
 
 	public SecretInputReader getSecretInputReader() {

@@ -42,6 +42,7 @@ import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.runtime.params.ExecutionRepositoryConfiguration;
 import saker.build.runtime.params.ExecutionScriptConfiguration;
 import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptProviderLocation;
+import saker.build.runtime.project.SakerExecutionCache.RepositoryBuildSharedObjectLookup;
 import saker.build.runtime.repository.BuildRepository;
 import saker.build.scripting.ScriptAccessProvider;
 import saker.build.scripting.ScriptParsingFailedException;
@@ -222,6 +223,11 @@ class ClusterExecutionContext implements ExecutionContext, InternalExecutionCont
 	@Override
 	public InternalBuildTrace internalGetBuildTrace() {
 		return ((InternalExecutionContext) realExecutionContext).internalGetBuildTrace();
+	}
+
+	@Override
+	public RepositoryBuildSharedObjectLookup internalGetSharedObjectProvider(String repoid) {
+		return ((InternalExecutionContext) realExecutionContext).internalGetSharedObjectProvider(repoid);
 	}
 
 	private FileMirrorHandler getMirrorHandlerThrow() throws FileMirroringUnavailableException {

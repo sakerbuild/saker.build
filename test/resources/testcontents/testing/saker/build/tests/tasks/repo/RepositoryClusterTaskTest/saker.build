@@ -1,0 +1,5 @@
+build(
+	out result
+) {
+	$result = test.remote.task(Input: in)
+}

@@ -36,6 +36,7 @@ import testing.saker.build.tests.tasks.repo.testrepo.TestTask;
 
 public class RepositoryTestUtils {
 	public static void copyClassEntry(Class<?> clazz, JarOutputStream jos) throws IOException {
+		System.out.println("RepositoryTestUtils.copyClassEntry() " + clazz);
 		String entryname = clazz.getName().replace('.', '/') + ".class";
 		ZipEntry entry = new ZipEntry(entryname);
 		entry.setLastModifiedTime(FileTime.fromMillis(0));

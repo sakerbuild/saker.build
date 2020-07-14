@@ -232,8 +232,7 @@ public final class ExecutionRepositoryConfiguration {
 		 */
 		public Builder add(ClassPathLocation location,
 				ClassPathServiceEnumerator<? extends SakerRepositoryFactory> enumerator) throws IllegalStateException {
-			getRepositoriesStateCheck().add(new RepositoryConfig(location, null, enumerator));
-			return this;
+			return add(new RepositoryConfig(location, null, enumerator));
 		}
 
 		/**
@@ -252,8 +251,7 @@ public final class ExecutionRepositoryConfiguration {
 		public Builder add(ClassPathLocation location,
 				ClassPathServiceEnumerator<? extends SakerRepositoryFactory> enumerator, String repositoryidentifier)
 				throws IllegalStateException {
-			RepositoryConfig repoconfig = new RepositoryConfig(location, repositoryidentifier, enumerator);
-			return add(repoconfig);
+			return add(new RepositoryConfig(location, repositoryidentifier, enumerator));
 		}
 
 		/**
@@ -266,8 +264,7 @@ public final class ExecutionRepositoryConfiguration {
 		 *             If the builder was already consumed.
 		 */
 		public Builder add(RepositoryConfig repoconfig) throws IllegalStateException {
-			Set<RepositoryConfig> repos = getRepositoriesStateCheck();
-			repos.add(repoconfig);
+			getRepositoriesStateCheck().add(repoconfig);
 			return this;
 		}
 
