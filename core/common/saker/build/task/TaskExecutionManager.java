@@ -4625,7 +4625,13 @@ public class TaskExecutionManager {
 				//    it can only be invoked on the coordinator
 				//get the environment selection result to have any environment errors thrown
 				invokerselectionresult.get();
-				Task<? extends R> task = factory.createTask(taskcontext.executionContext);
+				Task<? extends R> task;
+				try {
+					task = factory.createTask(taskcontext.executionContext);
+				} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+						| StackOverflowError e) {
+					return new CompletedInnerTaskResults<>(new FailedInnerTaskOptionalResult<>(e));
+				}
 				if (task == null) {
 					throw new NullPointerException(
 							"Inner task factory created null task: " + factory.getClass().getName());

@@ -21,10 +21,6 @@ import saker.build.file.provider.SakerFileProvider;
 import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.params.ExecutionPathConfiguration;
-import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
-import saker.build.thirdparty.saker.rmi.annot.invoke.RMIDefaultOnFailure;
-import saker.build.thirdparty.saker.rmi.annot.invoke.RMIForbidden;
-import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
 
 /**
@@ -133,8 +129,6 @@ public interface RepositoryBuildEnvironment {
 	 * @since saker.build 0.8.15
 	 * @see #isRemoteCluster()
 	 */
-	@RMIForbidden
-	@RMIDefaultOnFailure
 	public default void setSharedObject(Object key, Object value)
 			throws NullPointerException, UnsupportedOperationException {
 		//not supported on clusters
@@ -171,8 +165,7 @@ public interface RepositoryBuildEnvironment {
 	 * @since saker.build 0.8.15
 	 * @see #isRemoteCluster()
 	 */
-	@RMISerialize
-	public Object getSharedObject(@RMISerialize Object key) throws NullPointerException;
+	public Object getSharedObject(Object key) throws NullPointerException;
 
 	/**
 	 * Gets if the build repository was initialized to be act as part of a build cluster.
@@ -186,7 +179,6 @@ public interface RepositoryBuildEnvironment {
 	 * @return <code>true</code> if the environment is part of a build cluster.
 	 * @since saker.build 0.8.15
 	 */
-	@RMICacheResult
 	public boolean isRemoteCluster();
 
 	/**

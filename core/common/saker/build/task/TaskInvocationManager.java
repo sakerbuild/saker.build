@@ -282,7 +282,13 @@ public class TaskInvocationManager implements Closeable {
 		}
 		int tokencount = capabilities.getRequestedComputationTokenCount();
 		try (ComputationToken ctoken = ComputationToken.request(taskcontext, tokencount)) {
-			Task<? extends R> task = factory.createTask(executionContext);
+			Task<? extends R> task;
+			try {
+				task = factory.createTask(executionContext);
+			} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+					| StackOverflowError e) {
+				return new TaskInvocationResult<>(null, e);
+			}
 			if (task == null) {
 				return new TaskInvocationResult<>(null, new NullPointerException(
 						"TaskFactory " + factory.getClass().getName() + " created null Task."));

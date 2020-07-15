@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
 import java.util.Iterator;
+import java.util.ServiceConfigurationError;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -27,6 +28,7 @@ import saker.build.runtime.execution.ExecutionContext;
 import saker.build.task.TaskInvocationManager.InnerTaskInstanceInvocationHandle;
 import saker.build.task.TaskInvocationManager.InnerTaskInvocationHandle;
 import saker.build.task.TaskInvocationManager.InnerTaskInvocationListener;
+import saker.build.task.TaskInvocationManager.TaskInvocationResult;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
@@ -208,7 +210,14 @@ public class InnerTaskInvocationManager implements Closeable {
 								}
 							}
 						}
-						Task<? extends R> task = taskFactory.createTask(executionContext);
+						Task<? extends R> task;
+						try {
+							task = taskFactory.createTask(executionContext);
+						} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError
+								| AssertionError | StackOverflowError e) {
+							this.putFailureResult(e);
+							return;
+						}
 						if (task == null) {
 							this.putFailureResult(new NullPointerException(
 									"Task factory created null task: " + taskFactory.getClass().getName()));
@@ -232,7 +241,8 @@ public class InnerTaskInvocationManager implements Closeable {
 							} finally {
 								btrace.endInnerTask();
 							}
-						} catch (Exception e) {
+						} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError
+								| AssertionError | StackOverflowError e) {
 							this.putExceptionResult(e);
 						} catch (Throwable e) {
 							try {
@@ -320,7 +330,14 @@ public class InnerTaskInvocationManager implements Closeable {
 						listener.notifyNoMoreResults();
 					}
 				} else {
-					Task<? extends R> task = taskFactory.createTask(executionContext);
+					Task<? extends R> task;
+					try {
+						task = taskFactory.createTask(executionContext);
+					} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+							| StackOverflowError e) {
+						this.putFailureLastResult(e);
+						return;
+					}
 					if (task == null) {
 						this.putFailureLastResult(new NullPointerException(
 								"Task factory created null task: " + taskFactory.getClass().getName()));

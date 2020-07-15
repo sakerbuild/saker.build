@@ -76,6 +76,7 @@ public class SakerExecutionCache implements Closeable {
 	private ExecutionRepositoryConfiguration currentRepositoryConfiguration;
 	private ExecutionScriptConfiguration currentScriptConfiguration;
 	private Map<String, String> currentUserParameters;
+	private boolean currentForCluster;
 
 	private Map<ExecutionScriptConfiguration.ScriptProviderLocation, ScriptAccessorClassPathData> loadedScriptProviderLocators = Collections
 			.emptyMap();
@@ -128,7 +129,7 @@ public class SakerExecutionCache implements Closeable {
 			//some runtime exception can happen if the configurations still hold reference to RMI objects which have their connections closed
 			//they won't equal in this case, consider the configuration changed.
 			if (isConfigurationsEqual(pathconfig, repositoryconfig, scriptconfig, userparameters,
-					coordinatorproviderkey)) {
+					coordinatorproviderkey, forcluster)) {
 				//nothing changed
 				//XXX parallelize this?
 				ConcurrentPrependEntryAccumulator<BuildRepository, Object> changesaccumulator = new ConcurrentPrependEntryAccumulator<>();
@@ -276,8 +277,6 @@ public class SakerExecutionCache implements Closeable {
 
 			closer.clearWithoutClosing();
 
-			regclresolvers.forEach(executionclregistry::register);
-
 			//assign everything at the end, so if any loading exception happens, the class doesn't stay in an inconsistent state
 			currentCoordinatorProviderKey = coordinatorproviderkey;
 			currentPathConfiguration = pathconfig;
@@ -285,6 +284,7 @@ public class SakerExecutionCache implements Closeable {
 			currentRepositoryConfiguration = repositoryconfig;
 			currentScriptConfiguration = scriptconfig;
 			currentUserParameters = userparameters;
+			currentForCluster = forcluster;
 			registeredClassLoaderResolvers = regclresolvers;
 			trackedClassLoaderResolvers.addAll(trackedclresolvers);
 
@@ -378,8 +378,8 @@ public class SakerExecutionCache implements Closeable {
 
 	private boolean isConfigurationsEqual(ExecutionPathConfiguration pathconfig,
 			ExecutionRepositoryConfiguration repositoryconfig, ExecutionScriptConfiguration scriptconfig,
-			Map<String, String> userparameters, FileProviderKey coordinatorproviderkey) {
-		return Objects.equals(currentCoordinatorProviderKey, coordinatorproviderkey)
+			Map<String, String> userparameters, FileProviderKey coordinatorproviderkey, boolean forcluster) {
+		return currentForCluster == forcluster && Objects.equals(currentCoordinatorProviderKey, coordinatorproviderkey)
 				&& ObjectUtils.equalsExcCheck(pathconfig, currentPathConfiguration)
 				&& ObjectUtils.equalsExcCheck(repositoryconfig, currentRepositoryConfiguration)
 				&& ObjectUtils.equalsExcCheck(scriptconfig, currentScriptConfiguration)

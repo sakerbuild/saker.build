@@ -198,6 +198,10 @@ public class RepositoryManager implements Closeable {
 	}
 
 	private static class LoadedClassPath implements Closeable {
+		private static final AtomicIntegerFieldUpdater<RepositoryManager.LoadedClassPath> AIFU_closed = AtomicIntegerFieldUpdater
+				.newUpdater(RepositoryManager.LoadedClassPath.class, "closed");
+		private volatile int closed = 0;
+
 		private RepositoryManager manager;
 		protected ClassPathLock classPathLock;
 		protected StrongWeakReference<MultiDataClassLoader> classLoader;
@@ -205,8 +209,6 @@ public class RepositoryManager implements Closeable {
 
 		protected ConcurrentHashMap<ClassPathServiceEnumerator<? extends SakerRepositoryFactory>, RepositoryEnumeratorState> enumeratorStates = new ConcurrentHashMap<>();
 		protected ConcurrentHashMap<ClassPathServiceEnumerator<? extends SakerRepositoryFactory>, Object> enumeratorStateLocks = new ConcurrentHashMap<>();
-
-		private volatile boolean closed = false;
 
 		private final Object loadCountLock = new Object();
 		private int allLoadCount = 0;
@@ -235,13 +237,17 @@ public class RepositoryManager implements Closeable {
 
 		@Override
 		public void close() throws IOException {
-			closed = true;
+			if (!AIFU_closed.compareAndSet(this, 0, 1)) {
+				return;
+			}
 			IOException exc = null;
 			for (Entry<ClassPathServiceEnumerator<? extends SakerRepositoryFactory>, Object> entry : enumeratorStateLocks
 					.entrySet()) {
+				RepositoryEnumeratorState state;
 				synchronized (entry.getValue()) {
-					exc = IOUtils.closeExc(exc, enumeratorStates.remove(entry.getKey()));
+					state = enumeratorStates.remove(entry.getKey());
 				}
+				exc = IOUtils.closeExc(exc, state);
 			}
 			synchronized (loadCountLock) {
 				MultiDataClassLoader clref = ObjectUtils.getReference(this.classLoader);
@@ -257,7 +263,7 @@ public class RepositoryManager implements Closeable {
 		}
 
 		private void checkClosed() {
-			if (closed) {
+			if (closed != 0) {
 				throw new IllegalStateException("closed");
 			}
 		}
@@ -303,9 +309,11 @@ public class RepositoryManager implements Closeable {
 				if (allLoadCount == 0) {
 					for (Entry<ClassPathServiceEnumerator<? extends SakerRepositoryFactory>, Object> entry : enumeratorStateLocks
 							.entrySet()) {
+						RepositoryEnumeratorState state;
 						synchronized (entry.getValue()) {
-							IOUtils.closePrint(enumeratorStates.remove(entry.getKey()));
+							state = enumeratorStates.remove(entry.getKey());
 						}
+						IOUtils.closePrint(state);
 					}
 					MultiDataClassLoader clref = ObjectUtils.getReference(this.classLoader);
 					if (clref != null) {

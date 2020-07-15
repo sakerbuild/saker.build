@@ -16,6 +16,7 @@
 package saker.build.task.cluster;
 
 import java.util.Map;
+import java.util.ServiceConfigurationError;
 
 import saker.build.file.content.ContentDatabaseImpl;
 import saker.build.runtime.environment.SakerEnvironment;
@@ -42,6 +43,7 @@ import saker.build.task.TaskInvocationManager.SelectionResult;
 import saker.build.task.TaskInvocationManager.TaskInvocationContext;
 import saker.build.task.TaskInvocationManager.TaskInvocationEvent;
 import saker.build.task.TaskInvocationManager.TaskInvocationEventVisitor;
+import saker.build.task.TaskInvocationManager.TaskInvocationResult;
 import saker.build.task.TaskInvoker;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
@@ -171,7 +173,14 @@ public class ClusterTaskInvoker implements TaskInvoker {
 			return;
 		}
 		TaskFactory<R> factory = event.getTaskFactory();
-		Task<? extends R> task = factory.createTask(clusterExecutionContext);
+		Task<? extends R> task;
+		try {
+			task = factory.createTask(clusterExecutionContext);
+		} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+				| StackOverflowError e) {
+			event.fail(e);
+			return;
+		}
 		if (task == null) {
 			event.fail(new NullPointerException("TaskFactory " + factory.getClass().getName() + " created null Task."));
 			return;
@@ -202,8 +211,16 @@ public class ClusterTaskInvoker implements TaskInvoker {
 					ctoken.closeAll();
 				}
 				event.executionSuccessful(taskres);
-			} catch (Exception e) {
+			} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+					| StackOverflowError e) {
 				event.executionException(e);
+			} catch (Throwable e) {
+				try {
+					event.executionException(e);
+				} catch (Throwable e2) {
+					e.addSuppressed(e2);
+				}
+				throw e;
 			}
 		} catch (InterruptedException e) {
 			//failed to request computation tokens
