@@ -35,8 +35,8 @@ import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.TaskUtils;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import testing.saker.build.tests.EnvironmentTestCase;
+import testing.saker.build.tests.TestClusterNameExecutionEnvironmentSelector;
 import testing.saker.build.tests.tasks.cluster.ClusterBuildTestCase;
-import testing.saker.build.tests.tasks.cluster.TestClusterNameExecutionEnvironmentSelector;
 import testing.saker.build.tests.tasks.factories.StringTaskFactory;
 
 public final class CustomBuildTargetTaskFactory implements BuildTargetTaskFactory, BuildTargetTask, Externalizable {

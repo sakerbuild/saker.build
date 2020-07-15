@@ -28,6 +28,7 @@ import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptProviderLoc
 import saker.build.task.identifier.TaskIdentifier;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.EnvironmentTestCaseConfiguration;
+import testing.saker.build.tests.TestClusterNameExecutionEnvironmentSelector;
 import testing.saker.build.tests.tasks.factories.StringTaskFactory;
 import testing.saker.build.tests.tasks.repo.RepositoryTestUtils;
 import testing.saker.build.tests.tasks.script.customlang.CustomBuildTargetTaskFactory;

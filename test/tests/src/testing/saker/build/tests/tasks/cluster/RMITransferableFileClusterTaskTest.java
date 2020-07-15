@@ -41,6 +41,7 @@ import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.EnvironmentTestCase;
+import testing.saker.build.tests.TestClusterNameExecutionEnvironmentSelector;
 
 @SakerTest
 public class RMITransferableFileClusterTaskTest extends ClusterBuildTestCase {

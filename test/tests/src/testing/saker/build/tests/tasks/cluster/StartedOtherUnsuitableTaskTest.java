@@ -8,6 +8,7 @@ import saker.build.task.TaskExecutionEnvironmentSelector;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.EnvironmentTestCaseConfiguration;
+import testing.saker.build.tests.TestClusterNameExecutionEnvironmentSelector;
 import testing.saker.build.tests.EnvironmentTestCaseConfiguration.MultiBuilder;
 import testing.saker.build.tests.tasks.SelfStatelessTaskFactory;
 

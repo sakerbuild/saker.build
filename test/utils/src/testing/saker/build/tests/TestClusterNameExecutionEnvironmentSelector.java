@@ -13,7 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-package testing.saker.build.tests.tasks.cluster;
+package testing.saker.build.tests;
 
 import java.io.Externalizable;
 import java.io.IOException;
@@ -26,7 +26,6 @@ import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.task.EnvironmentSelectionResult;
 import saker.build.task.TaskExecutionEnvironmentSelector;
 import saker.build.util.property.UserParameterEnvironmentProperty;
-import testing.saker.build.tests.EnvironmentTestCase;
 
 public class TestClusterNameExecutionEnvironmentSelector implements TaskExecutionEnvironmentSelector, Externalizable {
 	private static final long serialVersionUID = 1L;

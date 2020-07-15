@@ -30,8 +30,8 @@ import saker.build.task.TaskFactory;
 import saker.build.task.utils.annot.SakerInput;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import testing.saker.build.tests.EnvironmentTestCase;
+import testing.saker.build.tests.TestClusterNameExecutionEnvironmentSelector;
 import testing.saker.build.tests.tasks.cluster.ClusterBuildTestCase;
-import testing.saker.build.tests.tasks.cluster.TestClusterNameExecutionEnvironmentSelector;
 
 public class RemoteDispatchableTestTask implements TaskFactory<String>, Externalizable {
 	private static final long serialVersionUID = 1L;

@@ -30,6 +30,7 @@ import saker.build.task.TaskFactory;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.EnvironmentTestCase;
+import testing.saker.build.tests.TestClusterNameExecutionEnvironmentSelector;
 import testing.saker.build.tests.tasks.SelfStatelessTaskFactory;
 
 @SakerTest
