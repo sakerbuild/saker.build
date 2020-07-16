@@ -155,7 +155,9 @@ public interface RepositoryBuildEnvironment {
 	 * If a shared object is transferred as a remote object, then callers should take care when calling remote methods.
 	 * The connection may be lost between the build cluster and the coordinator at any time. Remote methods shouldn't be
 	 * called when the {@linkplain BuildRepository#close() build repository is closing} as the RMI connection may've
-	 * been broken up by then.
+	 * been broken up by then. <br>
+	 * You may also need to requery the remote shared objects in {@link BuildRepository#detectChanges()} as if the
+	 * remote repository is reloaded, RMI calls may fail with incompatible class errors.
 	 * 
 	 * @param key
 	 *            The key of the shared object.

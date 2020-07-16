@@ -136,7 +136,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	private ExecutionProgressMonitor progressMonitor;
 
 	private Map<String, ? extends BuildRepository> loadedBuildRepositories;
-	private Map<String, RepositoryBuildEnvironment> loadedBuildRepositoryEnvironments;
+	private Map<String, ? extends RepositoryBuildEnvironment> loadedBuildRepositoryEnvironments;
 
 	private final Semaphore stdIOLockSemaphore = new Semaphore(1);
 

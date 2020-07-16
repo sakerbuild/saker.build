@@ -82,7 +82,8 @@ public class SakerExecutionCache implements Closeable {
 			.emptyMap();
 	private Map<String, ? extends SakerRepository> loadedRepositories = Collections.emptyNavigableMap();
 	private Map<String, BuildRepository> loadedBuildRepositories = Collections.emptyNavigableMap();
-	private Map<String, RepositoryBuildEnvironment> loadedRepositoryBuildEnvironments = Collections.emptyNavigableMap();
+	private Map<String, ExecutionCacheRepositoryBuildEnvironmentBase> loadedRepositoryBuildEnvironments = Collections
+			.emptyNavigableMap();
 
 	private final ConcurrentPrependAccumulator<ClassLoaderResolver> trackedClassLoaderResolvers = new ConcurrentPrependAccumulator<>();
 	private Map<String, ClassLoaderResolver> registeredClassLoaderResolvers = Collections.emptyNavigableMap();
@@ -130,6 +131,11 @@ public class SakerExecutionCache implements Closeable {
 			//they won't equal in this case, consider the configuration changed.
 			if (isConfigurationsEqual(pathconfig, repositoryconfig, scriptconfig, userparameters,
 					coordinatorproviderkey, forcluster)) {
+				registeredClassLoaderResolvers.forEach(executionclregistry::register);
+				for (ExecutionCacheRepositoryBuildEnvironmentBase buildenv : loadedRepositoryBuildEnvironments
+						.values()) {
+					buildenv.resetSharedObjectLookup(sharedObjectProvider);
+				}
 				//nothing changed
 				//XXX parallelize this?
 				ConcurrentPrependEntryAccumulator<BuildRepository, Object> changesaccumulator = new ConcurrentPrependEntryAccumulator<>();
@@ -161,7 +167,6 @@ public class SakerExecutionCache implements Closeable {
 				}
 				if (changesaccumulator.isEmpty()) {
 					//no changes detected
-					registeredClassLoaderResolvers.forEach(executionclregistry::register);
 					return false;
 				}
 				clearCachedDatas();
@@ -189,7 +194,6 @@ public class SakerExecutionCache implements Closeable {
 								"Failed to handle changes in build repository. (" + buildrepostr + ")", e);
 					}
 				}
-				registeredClassLoaderResolvers.forEach(executionclregistry::register);
 				return true;
 			}
 			//XXX only clear parts of the configuration if applicable
@@ -209,7 +213,7 @@ public class SakerExecutionCache implements Closeable {
 			Map<String, ? extends SakerRepository> loadedrepositories = loadRepositoriesForConfiguration(
 					repositoryconfig, closer);
 			Map<String, BuildRepository> loadedbuildrepositories = new TreeMap<>();
-			Map<String, RepositoryBuildEnvironment> loadedrepositorybuildenvironments = new TreeMap<>();
+			Map<String, ExecutionCacheRepositoryBuildEnvironmentBase> loadedrepositorybuildenvironments = new TreeMap<>();
 			Collection<ClassLoaderResolver> trackedclresolvers = new ArrayList<>();
 
 			if (!loadedrepositories.isEmpty()) {
@@ -224,7 +228,7 @@ public class SakerExecutionCache implements Closeable {
 					regclresolvers.put(clresid, reporegistry);
 					executionclregistry.register(clresid, reporegistry);
 
-					RepositoryBuildEnvironment buildenv;
+					ExecutionCacheRepositoryBuildEnvironmentBase buildenv;
 					if (forcluster) {
 						Objects.requireNonNull(sharedObjectProvider, "shared object provider");
 						buildenv = new ClusterExecutionCacheRepositoryBuildEnvironment(recordingEnvironment,
@@ -350,7 +354,7 @@ public class SakerExecutionCache implements Closeable {
 		return loadedBuildRepositories;
 	}
 
-	public synchronized Map<String, RepositoryBuildEnvironment> getLoadedRepositoryBuildEnvironments() {
+	public synchronized Map<String, ? extends RepositoryBuildEnvironment> getLoadedRepositoryBuildEnvironments() {
 		return loadedRepositoryBuildEnvironments;
 	}
 
@@ -470,7 +474,7 @@ public class SakerExecutionCache implements Closeable {
 
 	private static class ClusterExecutionCacheRepositoryBuildEnvironment
 			extends ExecutionCacheRepositoryBuildEnvironmentBase {
-		private final Supplier<RepositoryBuildSharedObjectLookup> sharedObjectProvider;
+		private Supplier<RepositoryBuildSharedObjectLookup> sharedObjectProvider;
 
 		public ClusterExecutionCacheRepositoryBuildEnvironment(SakerEnvironment sakerEnvironment,
 				ClassLoaderResolverRegistry classLoaderRegistry, Map<String, String> userParameters,
@@ -497,15 +501,20 @@ public class SakerExecutionCache implements Closeable {
 		public boolean isRemoteCluster() {
 			return true;
 		}
+
+		@Override
+		public void resetSharedObjectLookup(RepositoryBuildSharedObjectProvider sharedObjectProvider) {
+			this.sharedObjectProvider = LazySupplier.of(() -> sharedObjectProvider.getLookup(identifier));
+		}
 	}
 
 	private static abstract class ExecutionCacheRepositoryBuildEnvironmentBase implements RepositoryBuildEnvironment {
-		private final SakerEnvironment sakerEnvironment;
-		private final ClassLoaderResolverRegistry classLoaderRegistry;
-		private final Map<String, String> userParameters;
-		private final String identifier;
-		private ExecutionPathConfiguration[] pathConfigurationReference;
-		private SakerFileProvider localFileProvider;
+		protected final SakerEnvironment sakerEnvironment;
+		protected final ClassLoaderResolverRegistry classLoaderRegistry;
+		protected final Map<String, String> userParameters;
+		protected final String identifier;
+		protected ExecutionPathConfiguration[] pathConfigurationReference;
+		protected SakerFileProvider localFileProvider;
 
 		public ExecutionCacheRepositoryBuildEnvironmentBase(SakerEnvironment sakerEnvironment,
 				ClassLoaderResolverRegistry classLoaderRegistry, Map<String, String> userParameters,
@@ -517,6 +526,9 @@ public class SakerExecutionCache implements Closeable {
 			this.pathConfigurationReference = pathConfigurationReference;
 			this.identifier = identifier;
 			this.localFileProvider = localFileProvider;
+		}
+
+		public void resetSharedObjectLookup(RepositoryBuildSharedObjectProvider sharedObjectProvider) {
 		}
 
 		@Override

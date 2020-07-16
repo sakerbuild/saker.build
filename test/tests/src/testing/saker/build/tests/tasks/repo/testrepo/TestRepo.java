@@ -37,6 +37,8 @@ public class TestRepo implements SakerRepository {
 	private final class BuildRepositoryImpl implements BuildRepository {
 		private final RepositoryBuildEnvironment environment;
 
+		private SharedStub shared;
+
 		public BuildRepositoryImpl(RepositoryBuildEnvironment environment) {
 			this.environment = environment;
 			environment.getClassLoaderResolverRegistry().register(CLASS_RESOLVER_ID, classLoaderResolver);
@@ -71,16 +73,30 @@ public class TestRepo implements SakerRepository {
 					throw new AssertionError(so);
 				}
 				System.out.println("TestRepo.BuildRepositoryImpl.BuildRepositoryImpl() " + so);
-				SharedStub s = (SharedStub) environment.getSharedObject("shared-stub");
-				if (RMIConnection.isRemoteObject(s) != environment.isRemoteCluster()) {
-					throw new AssertionError("Invalid remote state: " + s + " for " + environment.isRemoteCluster());
+				this.shared = (SharedStub) environment.getSharedObject("shared-stub");
+				if (RMIConnection.isRemoteObject(shared) != environment.isRemoteCluster()) {
+					throw new AssertionError(
+							"Invalid remote state: " + shared + " for " + environment.isRemoteCluster());
 				}
-				String stubid = s.getId();
+				String stubid = shared.getId();
 				if (!environment.getIdentifier().equals(stubid)) {
 					throw new AssertionError("Not eq: " + stubid);
 				}
+				shared.duplicate(new TestSharedObject("abc"));
 			}
+		}
 
+		@Override
+		public Object detectChanges() {
+			if (this.shared != null) {
+				//requery the object to check that they still RMI transfer properly
+				environment.getSharedObject("shared-key");
+				this.shared = (SharedStub) this.environment.getSharedObject("shared-stub");
+
+				//test that its callable
+				shared.duplicate(new TestSharedObject("abc"));
+			}
+			return BuildRepository.super.detectChanges();
 		}
 
 		@Override
@@ -243,6 +259,10 @@ public class TestRepo implements SakerRepository {
 
 	public interface SharedStub {
 		public String getId();
+
+		public default TestSharedObject duplicate(TestSharedObject in) {
+			return new TestSharedObject(in.value + in.value);
+		}
 	}
 
 }
