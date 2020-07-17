@@ -50,6 +50,10 @@ public interface InternalBuildTrace extends Closeable {
 		return InternalBuildTraceImpl.current();
 	}
 
+	public static InternalBuildTrace currentOrNull() {
+		return InternalBuildTraceImpl.currentOrNull();
+	}
+
 	@Override
 	public default void close() throws IOException {
 	}

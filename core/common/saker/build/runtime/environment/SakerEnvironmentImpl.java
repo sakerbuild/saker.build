@@ -80,6 +80,7 @@ import saker.build.trace.InternalBuildTrace;
 import saker.build.util.cache.CacheKey;
 import saker.build.util.cache.SakerDataCache;
 import saker.build.util.config.JVMSynchronizationObjects;
+import saker.build.util.exc.ExceptionView;
 import saker.build.util.java.JavaTools;
 
 public final class SakerEnvironmentImpl implements Closeable {
@@ -124,7 +125,7 @@ public final class SakerEnvironmentImpl implements Closeable {
 
 	private ClassLoaderResolverRegistry classLoaderRegistry;
 
-	private final Map<EnvironmentProperty<?>, Supplier<?>> checkedEnvironmentProperties = new ConcurrentHashMap<>();
+	private final Map<EnvironmentProperty<?>, PropertyComputationResultSupplier> checkedEnvironmentProperties = new ConcurrentHashMap<>();
 	private final ConcurrentHashMap<EnvironmentProperty<?>, StrongWeakReference<ReentrantLock>> environmentPropertyCalculateLocks = new ConcurrentHashMap<>();
 
 	private ClassPathLoadManager classPathManager;
@@ -293,37 +294,95 @@ public final class SakerEnvironmentImpl implements Closeable {
 	public <T> T getEnvironmentPropertyCurrentValue(SakerEnvironment useenvironment,
 			EnvironmentProperty<T> environmentproperty) {
 		Objects.requireNonNull(environmentproperty, "property");
-		Supplier<?> result = checkedEnvironmentProperties.get(environmentproperty);
+		PropertyComputationResultSupplier result = checkedEnvironmentProperties.get(environmentproperty);
 		if (result == null) {
 			ReentrantLock lock = getEnvironmentPropertyCalculateLock(environmentproperty);
 			lock.lock();
 			try {
 				result = checkedEnvironmentProperties.get(environmentproperty);
 				if (result == null) {
+					TransitivePropertyDependencyCollectionForwardingSakerEnvironment collectingenvironment = new TransitivePropertyDependencyCollectionForwardingSakerEnvironment(
+							useenvironment);
 					try {
-						T cval = environmentproperty.getCurrentValue(useenvironment);
-						result = Functionals.valSupplier(cval);
+						T cval = environmentproperty.getCurrentValue(collectingenvironment);
+						result = new PropertyComputationSuccessfulSupplier(cval);
 					} catch (Exception e) {
 						result = new PropertyComputationFailedThrowingSupplier(e);
 					}
+					result.transitiveDependentProperties = collectingenvironment.transitiveDependentProperties;
 					checkedEnvironmentProperties.putIfAbsent(environmentproperty, result);
 				}
 			} finally {
 				lock.unlock();
 			}
 		}
+		InternalBuildTrace btrace = InternalBuildTrace.currentOrNull();
+		if (btrace == null) {
+			@SuppressWarnings("unchecked")
+			T resultval = (T) result.get();
+			return resultval;
+		}
+		return getComputedPropertyValueReportBuildTrace(result, environmentproperty, btrace);
+	}
+
+	private <T> void reportComputedPropertyTransitiveBuildTrace(PropertyComputationResultSupplier result,
+			EnvironmentProperty<T> environmentproperty, InternalBuildTrace btrace,
+			Set<EnvironmentProperty<?>> collectedproperties) {
+		if (!collectedproperties.add(environmentproperty)) {
+			return;
+		}
+		if (result == null) {
+			btrace.ignoredException(null,
+					ExceptionView.create(new AssertionError(
+							"Computed environment property result not found for build trace reporting: "
+									+ environmentproperty)));
+			return;
+		}
+
 		try {
 			@SuppressWarnings("unchecked")
 			T resultval = (T) result.get();
 			try {
-				InternalBuildTrace.current().environmentPropertyAccessed(this, environmentproperty, resultval, null);
+				btrace.environmentPropertyAccessed(this, environmentproperty, resultval, null);
+			} catch (Exception e) {
+				//no exceptions!
+			}
+		} catch (PropertyComputationFailedException e) {
+			try {
+				btrace.environmentPropertyAccessed(this, environmentproperty, null, e);
+			} catch (Exception e2) {
+				//no exceptions!
+			}
+		}
+		Set<EnvironmentProperty<?>> props = result.transitiveDependentProperties;
+		if (props != null) {
+			for (EnvironmentProperty<?> ep : props) {
+				PropertyComputationResultSupplier epres = checkedEnvironmentProperties.get(ep);
+				try {
+					reportComputedPropertyTransitiveBuildTrace(epres, ep, btrace, collectedproperties);
+				} catch (Exception e) {
+					//no exceptions!
+				}
+			}
+		}
+	}
+
+	private <T> T getComputedPropertyValueReportBuildTrace(PropertyComputationResultSupplier result,
+			EnvironmentProperty<T> environmentproperty, InternalBuildTrace btrace) {
+		try {
+			@SuppressWarnings("unchecked")
+			T resultval = (T) result.get();
+			try {
+				btrace.environmentPropertyAccessed(this, environmentproperty, resultval, null);
+				reportComputedPropertyTransitiveBuildTrace(result, environmentproperty, btrace, new HashSet<>());
 			} catch (Exception e) {
 				//no exceptions!
 			}
 			return resultval;
 		} catch (PropertyComputationFailedException e) {
 			try {
-				InternalBuildTrace.current().environmentPropertyAccessed(this, environmentproperty, null, e);
+				btrace.environmentPropertyAccessed(this, environmentproperty, null, e);
+				reportComputedPropertyTransitiveBuildTrace(result, environmentproperty, btrace, new HashSet<>());
 			} catch (Exception e2) {
 				//no exceptions!
 			}
@@ -531,6 +590,21 @@ public final class SakerEnvironmentImpl implements Closeable {
 		IOUtils.throwExc(exc);
 	}
 
+	private static final class TransitivePropertyDependencyCollectionForwardingSakerEnvironment
+			extends ForwardingSakerEnvironment {
+		protected final Set<EnvironmentProperty<?>> transitiveDependentProperties = ConcurrentHashMap.newKeySet();
+
+		private TransitivePropertyDependencyCollectionForwardingSakerEnvironment(SakerEnvironment environment) {
+			super(environment);
+		}
+
+		@Override
+		public <T> T getEnvironmentPropertyCurrentValue(EnvironmentProperty<T> environmentproperty) {
+			transitiveDependentProperties.add(environmentproperty);
+			return super.getEnvironmentPropertyCurrentValue(environmentproperty);
+		}
+	}
+
 	private static final class EnvironmentPropertyDifferenceMap extends AbstractMap<EnvironmentProperty<?>, Object>
 			implements Serializable {
 		private static final long serialVersionUID = 1L;
@@ -663,7 +737,78 @@ public final class SakerEnvironmentImpl implements Closeable {
 		}
 	}
 
-	private static final class PropertyComputationFailedThrowingSupplier implements Supplier<Object>, Externalizable {
+	private static abstract class PropertyComputationResultSupplier implements Supplier<Object>, Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		protected transient Set<EnvironmentProperty<?>> transitiveDependentProperties;
+
+		public PropertyComputationResultSupplier() {
+		}
+	}
+
+	private static final class PropertyComputationSuccessfulSupplier extends PropertyComputationResultSupplier {
+		private static final long serialVersionUID = 1L;
+
+		private Object value;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public PropertyComputationSuccessfulSupplier() {
+		}
+
+		public PropertyComputationSuccessfulSupplier(Object value) {
+			this.value = value;
+		}
+
+		@Override
+		public Object get() {
+			return value;
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			out.writeObject(value);
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			value = in.readObject();
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((value == null) ? 0 : value.hashCode());
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			PropertyComputationSuccessfulSupplier other = (PropertyComputationSuccessfulSupplier) obj;
+			if (value == null) {
+				if (other.value != null)
+					return false;
+			} else if (!value.equals(other.value))
+				return false;
+			return true;
+		}
+
+		@Override
+		public String toString() {
+			return getClass().getSimpleName() + "[" + value + "]";
+		}
+
+	}
+
+	private static final class PropertyComputationFailedThrowingSupplier extends PropertyComputationResultSupplier {
 		private static final long serialVersionUID = 1L;
 
 		private Throwable e;
@@ -722,7 +867,6 @@ public final class SakerEnvironmentImpl implements Closeable {
 		public String toString() {
 			return getClass().getSimpleName() + "[" + e + "]";
 		}
-
 	}
 
 	private static class ExecutionKey {

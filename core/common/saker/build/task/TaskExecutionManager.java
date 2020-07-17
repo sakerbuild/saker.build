@@ -4775,10 +4775,13 @@ public class TaskExecutionManager {
 						currenttaskdirectorycontext);
 				if (prevexecresult != null) {
 					TaskDependencies prevexecdependencies = prevexecresult.getDependencies();
-					//TODO we should handle when a task factory changes it might return different qualifier system properties
+					//check the factory change before the invoker selection to avoid unnecessary computing some environment properties
+					boolean taskfactorychanged = !factory.equals(prevexecresult.getFactory());
 					Supplier<? extends TaskInvocationManager.SelectionResult> invokerselectionresult = invocationManager
 							.selectInvoker(taskid, capabilities,
-									prevexecdependencies.getEnvironmentPropertyDependenciesWithQualifiers(), null);
+									taskfactorychanged ? null
+											: prevexecdependencies.getEnvironmentPropertyDependenciesWithQualifiers(),
+									null);
 
 					TaskIdDependencyCollector collector = new TaskIdDependencyCollector(taskid, future,
 							prevexecdependencies, taskdircontext, context);
@@ -4788,7 +4791,7 @@ public class TaskExecutionManager {
 					} else {
 						try {
 							deltas = collectDependencyDeltasImpl(prevexecresult, context, taskdircontext,
-									invokerselectionresult, factory, taskid, collector);
+									invokerselectionresult, taskfactorychanged, taskid, collector);
 							collector.finishDependencyCollection(deltas);
 						} catch (TaskExecutionDeadlockedException e) {
 							TaskExecutionDeadlockedException te = ExceptionAccessInternal
@@ -5380,9 +5383,12 @@ public class TaskExecutionManager {
 				TaskDependencies prevexecdependencies = prevexecresult.getDependencies();
 				try {
 					TaskInvocationConfiguration configuration = getTaskInvocationConfiguration(factory);
+					boolean taskfactorychanged = !factory.equals(prevexecresult.getFactory());
 					Supplier<? extends TaskInvocationManager.SelectionResult> invokerselectionresult = invocationManager
 							.selectInvoker(taskid, configuration,
-									prevexecdependencies.getEnvironmentPropertyDependenciesWithQualifiers(), null);
+									taskfactorychanged ? null
+											: prevexecdependencies.getEnvironmentPropertyDependenciesWithQualifiers(),
+									null);
 
 					if (!ObjectUtils.isNullOrEmpty(invokerselectionresult.get().getModifiedEnvironmentProperties())) {
 						gothasdelta = true;
@@ -5390,7 +5396,7 @@ public class TaskExecutionManager {
 						try {
 							collectDependencyDeltasImpl(new AnyDependencyFinderDependencyDelta(), prevexecresult,
 									context, transitivecreatedtask.getDirectoryPathContext(), this,
-									invokerselectionresult, taskid, factory);
+									invokerselectionresult, taskid, taskfactorychanged);
 							gothasdelta = false;
 						} catch (FoundDependencyDeltaException e) {
 							gothasdelta = true;
@@ -5567,12 +5573,10 @@ public class TaskExecutionManager {
 			ExecutionContextImpl executioncontext, SimpleTaskDirectoryPathContext taskdircontext,
 			TaskIdDependencyCollector depcollector,
 			Supplier<? extends TaskInvocationManager.SelectionResult> guidedinvokerselectionsupplier,
-			TaskIdentifier taskid, TaskFactory<?> factory) {
+			TaskIdentifier taskid, boolean factorychanged) {
 		TaskDependencies dependencies = prevexecresult.getDependencies();
 
-		boolean factorychanged = !factory.equals(prevexecresult.getFactory());
 		if (factorychanged) {
-			//TODO the factory change detection should be done before the guided invoker selection to avoid unnecessary computations
 			result.addNonFileDelta(TaskChangeDeltaImpl.INSTANCE);
 			return;
 		}
@@ -5954,11 +5958,11 @@ public class TaskExecutionManager {
 
 	private DependencyDelta collectDependencyDeltasImpl(TaskExecutionResult<?> prevexecresult,
 			ExecutionContextImpl context, SimpleTaskDirectoryPathContext taskdircontext,
-			Supplier<? extends TaskInvocationManager.SelectionResult> guidedinvokerselection, TaskFactory<?> factory,
+			Supplier<? extends TaskInvocationManager.SelectionResult> guidedinvokerselection, boolean factorychanged,
 			TaskIdentifier taskid, TaskIdDependencyCollector depcollector) {
 		DependencyDelta result = new DependencyDelta();
 		collectDependencyDeltasImpl(result, prevexecresult, context, taskdircontext, depcollector,
-				guidedinvokerselection, taskid, factory);
+				guidedinvokerselection, taskid, factorychanged);
 		return result;
 	}
 
