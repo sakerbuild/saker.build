@@ -30,7 +30,6 @@ import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.DirectoryMountFileProvider;
 import saker.build.file.provider.LocalFileProvider;
-import saker.build.file.provider.RootFileProviderKey;
 import saker.build.file.provider.SakerFileLock;
 import saker.build.file.provider.SakerFileProvider;
 import saker.build.file.provider.SakerPathFiles;
@@ -47,7 +46,6 @@ import saker.build.runtime.params.DatabaseConfiguration;
 import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.runtime.params.ExecutionRepositoryConfiguration;
 import saker.build.runtime.params.ExecutionScriptConfiguration;
-import saker.build.runtime.repository.RepositoryBuildEnvironment;
 import saker.build.task.TaskExecutionResult;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
@@ -56,7 +54,6 @@ import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.trace.InternalBuildTrace;
 import saker.build.util.cache.MemoryTrimmer;
-import testing.saker.build.flag.TestFlag;
 
 public class SakerProjectCache implements ProjectCacheHandle {
 	private static final String LOCK_FILE_NAME = ".saker.project.lock";
