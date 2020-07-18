@@ -28,7 +28,6 @@ import saker.build.runtime.execution.ExecutionContext;
 import saker.build.task.TaskInvocationManager.InnerTaskInstanceInvocationHandle;
 import saker.build.task.TaskInvocationManager.InnerTaskInvocationHandle;
 import saker.build.task.TaskInvocationManager.InnerTaskInvocationListener;
-import saker.build.task.TaskInvocationManager.TaskInvocationResult;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;

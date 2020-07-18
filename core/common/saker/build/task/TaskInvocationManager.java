@@ -521,6 +521,8 @@ public class TaskInvocationManager implements Closeable {
 
 		public void fail(@RMISerialize Throwable cause);
 
+		public void close(@RMISerialize Throwable cause);
+
 		public void accept(TaskInvocationEventVisitor visitor);
 	}
 
@@ -601,7 +603,7 @@ public class TaskInvocationManager implements Closeable {
 
 		public void setInvocationHandle(InnerTaskInvocationHandle<R> resulthandle);
 
-		public void failInvocationStart(@RMISerialize Exception e);
+		public void failInvocationStart(@RMISerialize Throwable e);
 
 		@RMISerialize
 		@RMICacheResult
@@ -628,6 +630,8 @@ public class TaskInvocationManager implements Closeable {
 				allClustersFailed();
 			}
 		}
+
+		public abstract void close(TaskInvocationContext invocationcontext, Throwable cause);
 
 		protected abstract void allClustersFailed();
 
@@ -673,6 +677,11 @@ public class TaskInvocationManager implements Closeable {
 			supplierResult.setResult(Functionals.valSupplier(result));
 		}
 
+		@Override
+		public void close(TaskInvocationContext invocationcontext, Throwable cause) {
+			super.fail(invocationcontext, cause);
+		}
+
 	}
 
 	private static class InnerTaskExecutionRequestImpl<R> extends BaseInvocationRequest {
@@ -709,6 +718,11 @@ public class TaskInvocationManager implements Closeable {
 
 		public void failInit(TaskInvocationContext invocationcontext, Throwable e) {
 			super.fail(invocationcontext, e);
+		}
+
+		@Override
+		public void close(TaskInvocationContext invocationcontext, Throwable cause) {
+			super.fail(invocationcontext, cause);
 		}
 
 		@Override
@@ -827,6 +841,20 @@ public class TaskInvocationManager implements Closeable {
 			} else {
 				super.fail(invocationcontext, cause);
 			}
+		}
+
+		@Override
+		public void close(TaskInvocationContext invocationcontext, Throwable cause) {
+			if (finished) {
+				//already finished, closing is okay
+				return;
+			}
+			finished = true;
+			resultException = new IllegalStateException("Task execution request closed.", cause);
+			synchronized (this) {
+				this.notifyAll();
+			}
+			super.fail(invocationcontext, cause);
 		}
 
 		private void failWithStartedExecution(TaskInvocationContext invocationContext, Throwable cause) {
@@ -972,6 +1000,11 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
+		public void close(Throwable cause) {
+			event.close(cause);
+		}
+
+		@Override
 		public void accept(TaskInvocationEventVisitor visitor) {
 			visitor.visit(this);
 		}
@@ -1022,6 +1055,11 @@ public class TaskInvocationManager implements Closeable {
 		@Override
 		public void fail(Throwable cause) {
 			request.fail(invocationContext, cause);
+		}
+
+		@Override
+		public void close(Throwable cause) {
+			request.close(invocationContext, cause);
 		}
 
 		@Override
@@ -1114,6 +1152,12 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
+		public void close(Throwable cause) {
+			//XXX async?
+			event.close(cause);
+		}
+
+		@Override
 		public void accept(TaskInvocationEventVisitor visitor) {
 			visitor.visit(this);
 		}
@@ -1165,7 +1209,7 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public void failInvocationStart(Exception e) {
+		public void failInvocationStart(Throwable e) {
 			//XXX async?
 			event.failInvocationStart(e);
 		}
@@ -1192,6 +1236,7 @@ public class TaskInvocationManager implements Closeable {
 		public static final int FLAG_HAD_RESPONSE = 1 << 1;
 		public static final int FLAG_CANCEL_DUPLICATION = 1 << 2;
 		public static final int FLAG_INTERRUPT = 1 << 3;
+		public static final int FLAG_CLOSED = 1 << 4;
 
 		@SuppressWarnings("rawtypes")
 		private static final AtomicIntegerFieldUpdater<TaskInvocationManager.InnerClusterExecutionEventImpl> AIFU_flags = AtomicIntegerFieldUpdater
@@ -1278,7 +1323,7 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public void failInvocationStart(Exception e) {
+		public void failInvocationStart(Throwable e) {
 			invocationListener.notifyNoMoreResults();
 			request.failInit(invocationContext, e);
 			AIFU_flags.updateAndGet(this, c -> c | FLAG_HAD_RESPONSE);
@@ -1292,6 +1337,16 @@ public class TaskInvocationManager implements Closeable {
 			invocationListener.hardFailed(cause);
 			request.fail(invocationContext, cause);
 			AIFU_flags.updateAndGet(this, c -> c | FLAG_HAD_RESPONSE);
+			synchronized (responseLock) {
+				responseLock.notifyAll();
+			}
+		}
+
+		@Override
+		public void close(Throwable cause) {
+			invocationListener.closed(cause);
+			request.close(invocationContext, cause);
+			AIFU_flags.updateAndGet(this, c -> c | (FLAG_HAD_RESPONSE | FLAG_CLOSED | FLAG_CANCEL_DUPLICATION));
 			synchronized (responseLock) {
 				responseLock.notifyAll();
 			}
@@ -1411,6 +1466,9 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		public InnerTaskInstanceInvocationHandle notifyTaskInvocationStart() {
+			if (((this.flags & FLAG_CLOSED) == FLAG_CLOSED)) {
+				return null;
+			}
 			return invocationListener.notifyTaskInvocationStart();
 		}
 	}
@@ -1442,6 +1500,11 @@ public class TaskInvocationManager implements Closeable {
 		@Override
 		public void fail(Throwable cause) {
 			request.fail(invocationContext, cause);
+		}
+
+		@Override
+		public void close(Throwable cause) {
+			request.close(invocationContext, cause);
 		}
 
 		@Override
@@ -1558,6 +1621,11 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
+		public void close(Throwable cause) {
+			event.close(cause);
+		}
+
+		@Override
 		public void accept(TaskInvocationEventVisitor visitor) {
 			visitor.visit(this);
 		}
@@ -1613,7 +1681,7 @@ public class TaskInvocationManager implements Closeable {
 		private int pollEndIndex = 0;
 		private final Object eventLock = new Object();
 		private volatile boolean closed = false;
-		private Throwable failException;
+		private Throwable closeException;
 		private final UUID environmentIdentifier;
 
 		public TaskInvocationContextImpl(UUID environmentIdentifier) {
@@ -1643,20 +1711,34 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		public void close(Throwable e) {
-			closed = true;
+			List<TaskInvocationEvent> evlist;
+			IllegalStateException failexc;
 			synchronized (eventLock) {
-				failException = IOUtils.addExc(failException, e);
+				evlist = this.events;
+
+				closed = true;
+				closeException = IOUtils.addExc(closeException, e);
+				events = Collections.emptyList();
+				pollEndIndex = 0;
+
 				eventLock.notifyAll();
-				for (TaskInvocationEvent ev : events) {
-					ev.fail(e);
-				}
-				events.clear();
+
+				failexc = createClosedException(closeException);
+			}
+			for (TaskInvocationEvent ev : evlist) {
+				ev.close(failexc);
 			}
 		}
 
+		private static IllegalStateException createClosedException(Throwable cexc) {
+			return new IllegalStateException("Task invocation context closed.", cexc);
+		}
+
 		public void addEvent(TaskInvocationEvent event) {
+			Throwable closeex;
 			event_add_block:
 			synchronized (eventLock) {
+				closeex = closeException;
 				if (closed) {
 					break event_add_block;
 				}
@@ -1664,18 +1746,15 @@ public class TaskInvocationManager implements Closeable {
 				eventLock.notify();
 				return;
 			}
-			event.fail(failException);
+			event.close(createClosedException(closeex));
 		}
 
 		@Override
 		public Iterable<TaskInvocationEvent> poll() throws InterruptedException {
 			synchronized (eventLock) {
 				while (!closed) {
-//					if (events.isEmpty()) {
-//						eventLock.wait();
-//						continue;
-//					}
-					int eventcount = events.size();
+					List<TaskInvocationEvent> evlist = events;
+					int eventcount = evlist.size();
 					if (pollEndIndex >= eventcount) {
 						eventLock.wait();
 						continue;
@@ -1683,18 +1762,12 @@ public class TaskInvocationManager implements Closeable {
 
 					List<TaskInvocationEvent> result = new ArrayList<>();
 					do {
-						TaskInvocationEvent ev = events.get(pollEndIndex++);
+						TaskInvocationEvent ev = evlist.get(pollEndIndex++);
 						if (!ev.isActive()) {
 							continue;
 						}
 						result.add(ev);
 					} while (pollEndIndex < eventcount);
-//					for (Iterator<TaskInvocationEvent> it = result.iterator(); it.hasNext();) {
-//						TaskInvocationEvent ev = it.next();
-//						if (!ev.isActive()) {
-//							it.remove();
-//						}
-//					}
 					if (result.isEmpty()) {
 						continue;
 					}
@@ -1902,11 +1975,7 @@ public class TaskInvocationManager implements Closeable {
 				}
 			}
 			for (ListenerInnerTaskInvocationHandler<R> ih : invocationHandles) {
-				try {
-					ih.waitFinish();
-				} catch (InterruptedException e) {
-					throw e;
-				}
+				ih.waitFinish();
 			}
 		}
 
@@ -2139,6 +2208,16 @@ public class TaskInvocationManager implements Closeable {
 					return result;
 				}
 			}
+		}
+
+		public void closed(Throwable cause) {
+			TaskResultReadyCountState s = readyState;
+			if (s.invokingCount == 0) {
+				//its okay to close
+				ended = true;
+				return;
+			}
+			hardFailed(cause);
 		}
 
 		public void hardFailed(Throwable cause) {
