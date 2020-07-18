@@ -398,7 +398,8 @@ public final class SakerIDEPlugin implements Closeable {
 				callListeners(pluginlisteners, l -> l.environmentClosing(closingenv));
 				currentdaemonenv.close();
 			} finally {
-				this.pluginDaemonEnvironment = null;
+				this.pluginDaemonEnvironment = new PluginEnvironmentState(
+						new IllegalStateException("Plugin build environment closed."));
 			}
 		}
 
@@ -408,8 +409,9 @@ public final class SakerIDEPlugin implements Closeable {
 			ndaemonenv.start();
 			this.pluginDaemonEnvironment = new PluginEnvironmentState(ndaemonenv);
 			localdaemonenvtoclose = null;
-		} catch (Exception e) {
+		} catch (Exception | StackOverflowError | AssertionError | LinkageError | ServiceConfigurationError e) {
 			this.pluginDaemonEnvironment = new PluginEnvironmentState(e);
+			ndaemonenv = null;
 			displayException(e);
 			return;
 		} finally {
@@ -419,8 +421,10 @@ public final class SakerIDEPlugin implements Closeable {
 				displayException(e);
 			}
 		}
-		SakerEnvironmentImpl openedenv = ndaemonenv.getSakerEnvironment();
-		callListeners(pluginlisteners, l -> l.environmentCreated(openedenv));
+		if (ndaemonenv != null) {
+			SakerEnvironmentImpl openedenv = ndaemonenv.getSakerEnvironment();
+			callListeners(pluginlisteners, l -> l.environmentCreated(openedenv));
+		}
 	}
 
 	public static Map<String, String> entrySetToMap(Set<? extends Entry<String, String>> entries) {
