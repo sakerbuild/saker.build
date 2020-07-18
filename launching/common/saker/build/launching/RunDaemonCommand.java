@@ -133,7 +133,10 @@ public class RunDaemonCommand {
 
 			daemonenv.start();
 
-			System.out.println("Daemon listening at address: " + daemonenv.getServerSocketAddress());
+			SocketAddress serveraddr = daemonenv.getServerSocketAddress();
+			if (serveraddr != null) {
+				System.out.println("Daemon listening at address: " + serveraddr);
+			}
 
 			if (!noOutput) {
 				System.out.println("Running daemon with configuration: ");
