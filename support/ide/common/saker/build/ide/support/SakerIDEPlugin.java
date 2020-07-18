@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.ServiceConfigurationError;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -64,6 +65,9 @@ import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
 import saker.osnative.NativeLibs;
 
 public final class SakerIDEPlugin implements Closeable {
+	private static final PluginEnvironmentState PLUGIN_ENVIRONMENT_STATE_NOT_INITIALIZED = new PluginEnvironmentState(
+			new IllegalStateException("Saker.build plugin not initialized."));
+
 	public interface PluginResourceListener {
 		/**
 		 * @param environment
@@ -90,7 +94,7 @@ public final class SakerIDEPlugin implements Closeable {
 
 	private final Object configurationChangeLock = new Object();
 
-	private LocalDaemonEnvironment pluginDaemonEnvironment;
+	private PluginEnvironmentState pluginDaemonEnvironment = PLUGIN_ENVIRONMENT_STATE_NOT_INITIALIZED;
 
 	private final Object projectsLock = new Object();
 	private final ConcurrentHashMap<Object, SakerIDEProject> projects = new ConcurrentHashMap<>();
@@ -171,7 +175,7 @@ public final class SakerIDEPlugin implements Closeable {
 			if (closed) {
 				return;
 			}
-			if (this.pluginDaemonEnvironment != null) {
+			if (this.pluginDaemonEnvironment != PLUGIN_ENVIRONMENT_STATE_NOT_INITIALIZED) {
 				throw new IllegalStateException("Already started.");
 			}
 			LocalDaemonEnvironment ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, daemonparams, null);
@@ -179,17 +183,21 @@ public final class SakerIDEPlugin implements Closeable {
 			try {
 				ndaemonenv.setServerSocketFactory(ServerSocketFactory.getDefault());
 				ndaemonenv.start();
-				this.pluginDaemonEnvironment = ndaemonenv;
+				this.pluginDaemonEnvironment = new PluginEnvironmentState(ndaemonenv);
 				localdaemonenvtoclose = null;
-			} catch (IOException e) {
+			} catch (Exception | StackOverflowError | AssertionError | LinkageError | ServiceConfigurationError e) {
+				ndaemonenv = null;
+				this.pluginDaemonEnvironment = new PluginEnvironmentState(e);
 				displayException(e);
 				throw e;
 			} finally {
 				IOUtils.close(localdaemonenvtoclose);
 			}
-			SakerEnvironmentImpl openedenv = this.pluginDaemonEnvironment.getSakerEnvironment();
-			callListeners(ImmutableUtils.makeImmutableList(pluginResourceListeners),
-					l -> l.environmentCreated(openedenv));
+			if (ndaemonenv != null) {
+				SakerEnvironmentImpl openedenv = ndaemonenv.getSakerEnvironment();
+				callListeners(ImmutableUtils.makeImmutableList(pluginResourceListeners),
+						l -> l.environmentCreated(openedenv));
+			}
 		}
 	}
 
@@ -254,15 +262,24 @@ public final class SakerIDEPlugin implements Closeable {
 		return result;
 	}
 
-	public final DaemonEnvironment getPluginDaemonEnvironment() {
+	public final DaemonEnvironment getPluginDaemonEnvironment() throws IOException {
 		synchronized (configurationChangeLock) {
-			return this.pluginDaemonEnvironment;
+			return getPluginDaemonEnvironmentLocked();
 		}
 	}
 
-	public final SakerEnvironmentImpl getPluginEnvironment() {
+	private LocalDaemonEnvironment getPluginDaemonEnvironmentLocked() throws IOException {
+		PluginEnvironmentState envstate = this.pluginDaemonEnvironment;
+		LocalDaemonEnvironment env = envstate.environment;
+		if (env != null) {
+			return env;
+		}
+		throw new IOException("Plugin daemon environment not available.", envstate.initializationException);
+	}
+
+	public final SakerEnvironmentImpl getPluginEnvironment() throws IOException {
 		synchronized (configurationChangeLock) {
-			return this.pluginDaemonEnvironment.getSakerEnvironment();
+			return getPluginDaemonEnvironmentLocked().getSakerEnvironment();
 		}
 	}
 
@@ -302,7 +319,7 @@ public final class SakerIDEPlugin implements Closeable {
 			} catch (IOException e) {
 				exc = IOUtils.addExc(exc, e);
 			}
-			exc = IOUtils.closeExc(exc, pluginDaemonEnvironment);
+			exc = IOUtils.closeExc(exc, pluginDaemonEnvironment.environment);
 		}
 		try {
 			workPool.closeInterruptible();
@@ -345,7 +362,7 @@ public final class SakerIDEPlugin implements Closeable {
 				: SimpleIDEPluginProperties.builder(properties).build();
 		synchronized (configurationChangeLock) {
 			DaemonLaunchParameters newlaunchparams = createDaemonLaunchParameters(properties);
-			LocalDaemonEnvironment plugindaemonenv = this.pluginDaemonEnvironment;
+			LocalDaemonEnvironment plugindaemonenv = this.pluginDaemonEnvironment.environment;
 			if (plugindaemonenv == null || !newlaunchparams.equals(plugindaemonenv.getLaunchParameters())) {
 				reloadPluginDaemonLocked(newlaunchparams);
 			}
@@ -374,7 +391,7 @@ public final class SakerIDEPlugin implements Closeable {
 	private void reloadPluginDaemonLocked(DaemonLaunchParameters newlaunchparams) {
 		List<PluginResourceListener> pluginlisteners = ImmutableUtils.makeImmutableList(pluginResourceListeners);
 
-		LocalDaemonEnvironment currentdaemonenv = this.pluginDaemonEnvironment;
+		LocalDaemonEnvironment currentdaemonenv = this.pluginDaemonEnvironment.environment;
 		if (currentdaemonenv != null) {
 			SakerEnvironmentImpl closingenv = currentdaemonenv.getSakerEnvironment();
 			try {
@@ -389,10 +406,12 @@ public final class SakerIDEPlugin implements Closeable {
 		LocalDaemonEnvironment localdaemonenvtoclose = ndaemonenv;
 		try {
 			ndaemonenv.start();
-			this.pluginDaemonEnvironment = ndaemonenv;
+			this.pluginDaemonEnvironment = new PluginEnvironmentState(ndaemonenv);
 			localdaemonenvtoclose = null;
-		} catch (IOException e) {
+		} catch (Exception e) {
+			this.pluginDaemonEnvironment = new PluginEnvironmentState(e);
 			displayException(e);
+			return;
 		} finally {
 			try {
 				IOUtils.close(localdaemonenvtoclose);
@@ -517,6 +536,21 @@ public final class SakerIDEPlugin implements Closeable {
 
 		public boolean isCalled() {
 			return called;
+		}
+	}
+
+	private static final class PluginEnvironmentState {
+		protected final LocalDaemonEnvironment environment;
+		protected final Throwable initializationException;
+
+		public PluginEnvironmentState(LocalDaemonEnvironment environment) {
+			this.environment = environment;
+			this.initializationException = null;
+		}
+
+		public PluginEnvironmentState(Throwable initializationException) {
+			this.environment = null;
+			this.initializationException = initializationException;
 		}
 	}
 }

@@ -263,7 +263,12 @@ public class ScriptEditorModel implements Closeable {
 		if (project == null) {
 			return;
 		}
-		ScriptModellingEnvironment scriptingEnvironment = project.getScriptingEnvironment();
+		ScriptModellingEnvironment scriptingEnvironment;
+		try {
+			scriptingEnvironment = project.getScriptingEnvironment();
+		} catch (IOException e) {
+			return;
+		}
 		if (scriptingEnvironment == null) {
 			return;
 		}

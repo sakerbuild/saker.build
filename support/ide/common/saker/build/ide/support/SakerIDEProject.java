@@ -273,7 +273,12 @@ public final class SakerIDEProject {
 
 	private LazySupplier<SakerExecutionCache> createScriptingEnvironmentExecutionCacheSupplier() {
 		return LazySupplier.of(() -> {
-			SakerEnvironmentImpl pluginenv = plugin.getPluginEnvironment();
+			SakerEnvironmentImpl pluginenv;
+			try {
+				pluginenv = plugin.getPluginEnvironment();
+			} catch (IOException e) {
+				return null;
+			}
 			if (pluginenv == null) {
 				return null;
 			}
@@ -966,7 +971,12 @@ public final class SakerIDEProject {
 	}
 
 	public final NavigableSet<SakerPath> getTrackedScriptPaths() {
-		ScriptModellingEnvironment scriptenv = getScriptingEnvironment();
+		ScriptModellingEnvironment scriptenv;
+		try {
+			scriptenv = getScriptingEnvironment();
+		} catch (IOException e) {
+			return Collections.emptyNavigableSet();
+		}
 		if (scriptenv == null) {
 			return Collections.emptyNavigableSet();
 		}
@@ -1023,7 +1033,7 @@ public final class SakerIDEProject {
 		}
 	}
 
-	public final ScriptModellingEnvironment getScriptingEnvironment() {
+	public final ScriptModellingEnvironment getScriptingEnvironment() throws IOException {
 		SakerEnvironmentImpl pluginenv = plugin.getPluginEnvironment();
 		synchronized (scriptEnvironmentAccessLock) {
 			return getScriptingEnvironmentLocked(pluginenv);
@@ -1112,6 +1122,9 @@ public final class SakerIDEProject {
 
 	public final BuildTaskExecutionResult build(SakerPath scriptfile, String targetname, DaemonEnvironment daemonenv,
 			ExecutionParametersImpl parameters) {
+		if (daemonenv == null) {
+			throw new NullPointerException("Daemon environment is not available.");
+		}
 		ProjectCacheHandle project;
 		try {
 			ExecutionPathConfiguration pathconfig = parameters.getPathConfiguration();
@@ -1266,7 +1279,8 @@ public final class SakerIDEProject {
 				}
 			}
 		}
-		if (SakerIDESupportUtils.getBooleanValueOrDefault(properties.getUseClientsAsClusters(), false)) {
+		if (execdaemonenv != null
+				&& SakerIDESupportUtils.getBooleanValueOrDefault(properties.getUseClientsAsClusters(), false)) {
 			ObjectUtils.addAll(taskinvokerfactories, execdaemonenv.getClientClusterTaskInvokerFactories());
 		}
 
