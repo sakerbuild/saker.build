@@ -638,8 +638,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		noException(() -> {
 			TraceContributorEnvironmentProperty<? super T> contributor = (TraceContributorEnvironmentProperty<? super T>) property;
 			if (contributedEnvironmentProperties.add(contributor)) {
-				System.out.println("InternalBuildTraceImpl.environmentPropertyAccessed() " + property + "=" + value);
-				new RuntimeException(property + "=" + value).printStackTrace();
 				contributor.contributeBuildTraceInformation(value, e);
 			}
 		});
