@@ -258,30 +258,42 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 				Set<PosixFilePermission> ucpermissions = usercontent.getExpectedPosixFilePermissions();
 				if (Objects.equals(ucpermissions, permissions)) {
 					ContentDescriptor diskcontents = dcsupplier.get();
-					if (!Objects.equals(diskcontents, usercontent.userExpectedDiskContent)) {
-						if (permissions != null) {
-							this.userContent = UserContentState.create(
-									new PosixFilePermissionsDelegateContentDescriptor(diskcontents, permissions),
-									diskcontents, permissions);
+					if (diskcontents == null) {
+						this.userContent = null;
+					} else {
+						if (!Objects.equals(diskcontents, usercontent.userExpectedDiskContent)) {
+							if (permissions != null) {
+								this.userContent = UserContentState.create(
+										new PosixFilePermissionsDelegateContentDescriptor(diskcontents, permissions),
+										diskcontents, permissions);
+							}
+							//null permissions, we can keep the user contents
 						}
-						//null permissions, we can keep the user contents
+						//else the disk contents and posix permissions equal. we can keep the user contents
 					}
-					//else the disk contents and posix permissions equal. we can keep the user contents
 				} else {
 					if (permissions == null) {
 						this.userContent = null;
 					} else {
 						ContentDescriptor diskcontents = dcsupplier.get();
-						this.userContent = UserContentState.create(
-								new PosixFilePermissionsDelegateContentDescriptor(diskcontents, permissions),
-								diskcontents, permissions);
+						if (diskcontents == null) {
+							this.userContent = null;
+						} else {
+							this.userContent = UserContentState.create(
+									new PosixFilePermissionsDelegateContentDescriptor(diskcontents, permissions),
+									diskcontents, permissions);
+						}
 					}
 				}
 			} else if (permissions != null) {
 				ContentDescriptor diskcontents = dcsupplier.get();
-				this.userContent = UserContentState.create(
-						new PosixFilePermissionsDelegateContentDescriptor(diskcontents, permissions), diskcontents,
-						permissions);
+				if (diskcontents == null) {
+					this.userContent = null;
+				} else {
+					this.userContent = UserContentState.create(
+							new PosixFilePermissionsDelegateContentDescriptor(diskcontents, permissions), diskcontents,
+							permissions);
+				}
 			}
 		}
 
