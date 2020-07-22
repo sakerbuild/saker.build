@@ -106,14 +106,14 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 		TaskUtils.initParametersOfTask(taskcontext, data, metaparametertaskids);
 		data.targetInvocationParameters = parametertaskids;
 
-		SakerPath buildfilepath = data.Path;
+		SakerPath buildfilepath = data.path;
 		if (!metaparametertaskids.containsKey(PARAMETER_PATH)) {
 			buildfilepath = taskScriptPath;
 		}
 
-		SakerPath workdir = data.WorkingDirectory;
+		SakerPath workdir = data.workingDirectory;
 		TaskIdentifier includetaskid = BuildTargetBootstrapperTaskFactory.runBootstrapping(taskcontext, buildfilepath,
-				data.Target, data.targetInvocationParameters, workdir, SakerPath.EMPTY);
+				data.target, data.targetInvocationParameters, workdir, SakerPath.EMPTY);
 		SakerTaskResult result = new TaskInvocationOutputSakerTaskResult(includetaskid);
 		taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
 		return result;
@@ -197,13 +197,13 @@ public class IncludeTaskFactory extends SelfSakerTaskFactory {
 
 	private static class IncludeTaskData {
 		@SakerInput({ "", PARAMETER_TARGET })
-		public String Target;
+		public String target;
 
-		@SakerInput
-		public SakerPath Path;
+		@SakerInput("Path")
+		public SakerPath path;
 
-		@SakerInput
-		public SakerPath WorkingDirectory;
+		@SakerInput("WorkingDirectory")
+		public SakerPath workingDirectory;
 
 		public NavigableMap<String, TaskIdentifier> targetInvocationParameters = Collections.emptyNavigableMap();
 	}
