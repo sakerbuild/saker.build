@@ -536,6 +536,22 @@ public class SakerLog {
 				return false;
 			}
 		},
+		/**
+		 * Exception format that doesn't include any trace information only the exception headers.
+		 * 
+		 * @since saker.build 0.8.16
+		 */
+		NO_TRACE(false) {
+			@Override
+			public boolean includeStackTraceElement(StackTraceElement elem) {
+				return false;
+			}
+
+			@Override
+			public boolean isIncludeScriptTrace() {
+				return false;
+			}
+		}
 
 		;
 
