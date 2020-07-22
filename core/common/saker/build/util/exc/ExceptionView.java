@@ -59,6 +59,14 @@ public class ExceptionView implements Externalizable {
 	 * The message of the exception.
 	 */
 	protected String message;
+
+	/**
+	 * The result of {@link Throwable#toString()}.
+	 *
+	 * @since saker.build 0.8.16
+	 */
+	protected String stringRepresentation;
+
 	/**
 	 * The stack trace of the exception.
 	 */
@@ -94,6 +102,7 @@ public class ExceptionView implements Externalizable {
 		this.exceptionClassName = e.getClass().getName();
 		this.message = e.getMessage();
 		this.stackTrace = e.getStackTrace();
+		this.stringRepresentation = e.toString();
 	}
 
 	/**
@@ -113,6 +122,7 @@ public class ExceptionView implements Externalizable {
 		this.stackTrace = copy.stackTrace;
 		this.cause = copy.cause;
 		this.suppressed = copy.suppressed;
+		this.stringRepresentation = copy.stringRepresentation;
 	}
 
 	/**
@@ -242,6 +252,7 @@ public class ExceptionView implements Externalizable {
 		SerialUtils.writeExternalArray(out, stackTrace, SerialUtils::writeExternalStackTraceElement);
 		out.writeObject(cause);
 		out.writeObject(suppressed);
+		out.writeObject(stringRepresentation);
 	}
 
 	@Override
@@ -252,16 +263,12 @@ public class ExceptionView implements Externalizable {
 				SerialUtils::readExternalStackTraceElement);
 		cause = (ExceptionView) in.readObject();
 		suppressed = (ExceptionView[]) in.readObject();
+		stringRepresentation = (String) in.readObject();
 	}
 
 	@Override
 	public String toString() {
-		String exccname = getExceptionClassName();
-		String message = getMessage();
-		if (message == null) {
-			return exccname;
-		}
-		return exccname + ": " + message;
+		return stringRepresentation;
 	}
 
 	/**
