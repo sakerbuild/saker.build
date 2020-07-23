@@ -15,8 +15,8 @@
  */
 package saker.build.launching;
 
-import java.util.LinkedHashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.Collection;
 
 import sipka.cmdline.api.MultiParameter;
 import sipka.cmdline.api.Parameter;
@@ -37,5 +37,5 @@ class StartDaemonParams {
 	 */
 	@Parameter("-connect-client")
 	@MultiParameter(DaemonAddressParam.class)
-	public Set<DaemonAddressParam> connectClientParam = new LinkedHashSet<>();
+	public Collection<DaemonAddressParam> connectClientParam = new ArrayList<>();
 }

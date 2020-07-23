@@ -60,12 +60,12 @@ class RunGeneralDaemonParams extends GeneralDaemonParamsBase {
 		 * @return
 		 * @cmd-format &lt;int[0-65535]|->
 		 */
-		public static RunDaemonPortParam parse(Iterator<? extends String> it) {
+		public static RunDaemonPortParam parse(String argname, Iterator<? extends String> it) {
 			String n = it.next();
 			if ("-".equals(n)) {
 				return INSTANCE_NONE;
 			}
-			return new RunDaemonPortParam(LaunchingUtils.parsePort(n));
+			return new RunDaemonPortParam(LaunchingUtils.parsePort(argname, n));
 		}
 
 		public Integer getPort() {

@@ -38,6 +38,8 @@ import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.StringUtils;
 import saker.build.thirdparty.saker.util.io.FileUtils;
 import saker.build.thirdparty.saker.util.io.NetworkUtils;
+import sipka.cmdline.runtime.InvalidArgumentFormatException;
+import sipka.cmdline.runtime.InvalidArgumentValueException;
 
 public class LaunchingUtils {
 	private static Manifest findManifestInClassPathEntry(String cpentry) {
@@ -102,11 +104,21 @@ public class LaunchingUtils {
 		return SakerPath.valueOf(System.getProperty("user.dir")).resolve(path);
 	}
 
-	public static int parsePort(String port) {
-		return NetworkUtils.parsePort(port);
+	public static int parsePort(String argname, String portstr) {
+		int port;
+		try {
+			port = Integer.parseInt(portstr);
+		} catch (NumberFormatException e) {
+			throw new InvalidArgumentFormatException("Invalid port integer format: " + portstr, e, argname);
+		}
+		if (port < 0 || port > 0xFFFF) {
+			throw new InvalidArgumentValueException("Port value is out of range: [0, " + 0xFFFF + "]: " + port,
+					argname);
+		}
+		return port;
 	}
 
-	public static List<String> parseRemainingCommand(Iterator<String> it) {
+	public static List<String> parseRemainingCommand(String argname, Iterator<String> it) {
 		List<String> result = new ArrayList<>();
 		ObjectUtils.addAll(result, it);
 		return result;

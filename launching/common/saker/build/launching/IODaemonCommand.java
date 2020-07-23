@@ -16,12 +16,14 @@
 package saker.build.launching;
 
 import java.io.IOException;
+import java.util.concurrent.Semaphore;
 
 import saker.build.daemon.DaemonOutputController;
 import saker.build.daemon.DaemonOutputController.StreamToken;
 import saker.build.daemon.RemoteDaemonConnection;
 import saker.build.daemon.RemoteDaemonConnection.ConnectionIOErrorListener;
 import saker.build.thirdparty.saker.util.io.ByteSink;
+import saker.build.thirdparty.saker.util.io.IOUtils;
 import sipka.cmdline.api.Parameter;
 
 /**
@@ -29,7 +31,7 @@ import sipka.cmdline.api.Parameter;
  * Attach to a daemon and forward the standard out and standard error to this process.
  * 
  * This command can be used to connect to a daemon and view the output of it.
- * This is mainly for debugging purposes.
+ * This is mainly for debugging or diagnostic purposes.
  * </pre>
  */
 public class IODaemonCommand {
@@ -44,11 +46,13 @@ public class IODaemonCommand {
 	public DaemonAddressParam addressParams = new DaemonAddressParam();
 
 	public void call() throws IOException {
-		try (RemoteDaemonConnection connected = RemoteDaemonConnection.connect(addressParams.getSocketAddress())) {
+		try (RemoteDaemonConnection connected = RemoteDaemonConnection
+				.connect(addressParams.getSocketAddressThrowArgumentException())) {
 			DaemonOutputController controller = connected.getDaemonEnvironment().getOutputController();
 			if (controller == null) {
 				throw new IOException("Failed to attach to remote daemon I/O. (Not available)");
 			}
+			Semaphore sem = new Semaphore(0);
 			connected.addConnectionIOErrorListener(new ConnectionIOErrorListener() {
 				@SuppressWarnings("unused")
 				private StreamToken errtoken = controller.addStandardError(ByteSink.valueOf(System.err));
@@ -57,10 +61,23 @@ public class IODaemonCommand {
 
 				@Override
 				public void onConnectionError(Throwable exc) {
-					System.out.println("Connection lost: " + exc);
-					exc.printStackTrace();
+					try {
+						if (exc == null) {
+							System.out.println("Daemon stopped.");
+						} else {
+							System.out.println("Connection lost: " + exc);
+							IOUtils.printExc(exc);
+						}
+					} finally {
+						sem.release();
+					}
 				}
 			});
+			try {
+				sem.acquire();
+			} catch (InterruptedException e) {
+				System.out.println("IO display interrupted.");
+			}
 		}
 	}
 }

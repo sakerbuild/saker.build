@@ -29,6 +29,7 @@ import saker.build.daemon.LocalDaemonEnvironment;
 import saker.build.daemon.WeakRefDaemonOutputController;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.IOUtils;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.util.config.JVMSynchronizationObjects;
 import sipka.cmdline.api.Flag;
 import sipka.cmdline.api.Parameter;
@@ -106,9 +107,9 @@ public class RunDaemonCommand {
 									+ GeneralDaemonParams.PARAM_NAME_CLUSTER_ENABLE + ")");
 				}
 				Set<SocketAddress> serveraddresses = new LinkedHashSet<>();
-				for (DaemonAddressParam addr : startParams.connectClientParam) {
-					serveraddresses.add(addr.getSocketAddress());
-				}
+				ThreadUtils.runParallelItems(startParams.connectClientParam, addr -> {
+					serveraddresses.add(addr.getSocketAddressThrowArgumentException());
+				});
 				daemonenv.setConnectToAsClusterAddresses(serveraddresses);
 			}
 

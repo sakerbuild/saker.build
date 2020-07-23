@@ -16,8 +16,10 @@
 package saker.build.launching;
 
 import java.util.Iterator;
+import java.util.Objects;
 
 import sipka.cmdline.api.Converter;
+import sipka.cmdline.runtime.MissingArgumentException;
 
 @Converter(method = "parse")
 public class DaemonConnectParam {
@@ -34,8 +36,14 @@ public class DaemonConnectParam {
 	 * @return
 	 * @cmd-format &lt;address> &lt;name>
 	 */
-	public static DaemonConnectParam parse(Iterator<? extends String> args) {
-		return new DaemonConnectParam(DaemonAddressParam.parse(args), args.next());
+	public static DaemonConnectParam parse(String argname, Iterator<? extends String> args) {
+		Objects.requireNonNull(args, "iterator");
+		DaemonAddressParam addressparam = DaemonAddressParam.parse(argname, args);
+		if (!args.hasNext()) {
+			throw new MissingArgumentException("Name argument is missing.", argname);
+		}
+		String name = args.next();
+		return new DaemonConnectParam(addressparam, name);
 	}
 
 	@Override

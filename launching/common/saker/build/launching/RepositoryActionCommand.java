@@ -16,6 +16,7 @@
 package saker.build.launching;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -40,6 +41,7 @@ import sipka.cmdline.api.Converter;
 import sipka.cmdline.api.Parameter;
 import sipka.cmdline.api.ParameterContext;
 import sipka.cmdline.api.PositionalParameter;
+import sipka.cmdline.runtime.InvalidArgumentFormatException;
 
 /**
  * <pre>
@@ -54,6 +56,8 @@ import sipka.cmdline.api.PositionalParameter;
  * </pre>
  */
 public class RepositoryActionCommand {
+	private static final String PARAM_NAME_REPOSITORY = "-repository";
+
 	/**
 	 * <pre>
 	 * Specifies the storage directory that the environment can use
@@ -87,7 +91,7 @@ public class RepositoryActionCommand {
 	 * 
 	 * @param repoclasspath
 	 */
-	@Parameter({ "-repository", "-repo" })
+	@Parameter({ PARAM_NAME_REPOSITORY, "-repo" })
 	public void repository(ClassPathParam repoclasspath) {
 		if (repositoryClassPath != null) {
 			throw new IllegalArgumentException("Repository class path specified multiple times.");
@@ -170,7 +174,7 @@ public class RepositoryActionCommand {
 			if (repositoryClassPath == null) {
 				if (serviceEnumerator != null) {
 					throw new IllegalArgumentException(
-							"Repository classpath is not specified, but repository class name is.");
+							"Repository classpath was not specified, but repository class name is present.");
 				}
 				RepositoryConfig defaultrepoconfig = ExecutionRepositoryConfiguration.RepositoryConfig.getDefault();
 				repoloc = defaultrepoconfig.getClassPathLocation();
@@ -206,11 +210,16 @@ public class RepositoryActionCommand {
 	private ClassPathLocation getClassPathLocation() throws IOException {
 		String repostr = repositoryClassPath.getPath();
 		if (repostr.startsWith("http://") || repostr.startsWith("https://")) {
-			URL url = new URL(repostr);
+			URL url;
+			try {
+				url = new URL(repostr);
+			} catch (MalformedURLException e) {
+				throw new InvalidArgumentFormatException(e, PARAM_NAME_REPOSITORY);
+			}
 			return new HttpUrlJarFileClassPathLocation(url);
 		}
 		if (repostr.startsWith("nest:/")) {
-			return BuildCommand.getNestRepositoryClassPathForNestVersionPath(repostr);
+			return BuildCommand.getNestRepositoryClassPathForNestVersionPath(PARAM_NAME_REPOSITORY, repostr);
 		}
 		return new JarFileClassPathLocation(
 				LocalFileProvider.getInstance().getPathKey(LaunchingUtils.absolutize(SakerPath.valueOf(repostr))));

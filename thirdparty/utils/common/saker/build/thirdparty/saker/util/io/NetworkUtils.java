@@ -67,13 +67,13 @@ public class NetworkUtils {
 		//               hostname
 		Objects.requireNonNull(address, "address");
 		if (address.isEmpty()) {
-			throw new UnknownHostException("Empty address.");
+			throw new IllegalArgumentException("Empty address.");
 		}
 		if (address.charAt(0) == '[') {
 			//the address is ipv6
 			int endbracketidx = address.lastIndexOf(']');
 			if (endbracketidx < 0) {
-				throw new UnknownHostException(address + ": invalid IPv6 format");
+				throw new IllegalArgumentException("Invalid IPv6 format: " + address);
 			}
 			int colonidx = address.lastIndexOf(':');
 			if (colonidx < endbracketidx) {
@@ -84,12 +84,12 @@ public class NetworkUtils {
 				}
 				return new InetSocketAddress(InetAddress.getByName(address), defaultport);
 			}
+			//has port
 			if (colonidx == endbracketidx + 1) {
 				int portval = parsePort(address.substring(colonidx + 1));
 				return new InetSocketAddress(InetAddress.getByName(address.substring(0, endbracketidx + 1)), portval);
 			}
-			//has port
-			throw new UnknownHostException(address + ": invalid format");
+			throw new IllegalArgumentException("Invalid IPv6 format: " + address);
 		}
 		int lidx = address.lastIndexOf(':');
 		if (lidx < 0) {

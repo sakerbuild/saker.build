@@ -74,7 +74,7 @@ public class InfoDaemonCommand {
 				System.out.println("No daemon running on the local machine.");
 			}
 		} else {
-			printDaemonInformationOfDaemon(this.address.getSocketAddress(), iolock);
+			printDaemonInformationOfDaemon(this.address.getSocketAddressThrowArgumentException(), iolock);
 		}
 	}
 

@@ -17,14 +17,18 @@ package saker.build.launching;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Iterator;
 
+import saker.build.exception.InvalidPathFormatException;
 import saker.build.file.path.SakerPath;
 import sipka.cmdline.api.Command;
 import sipka.cmdline.api.CommonConverter;
 import sipka.cmdline.api.SubCommand;
+import sipka.cmdline.runtime.InvalidArgumentFormatException;
+import sipka.cmdline.runtime.ParseUtil;
 
 /**
  * <pre>
@@ -48,9 +52,7 @@ import sipka.cmdline.api.SubCommand;
  * for the given setting will be used.
  * </pre>
  */
-@Command(className = "saker.build.launching.Launcher",
-		main = true,
-		helpCommand = { "-h", "help", "-help", "--help", "?", "/?" })
+@Command(className = "saker.build.launching.Launcher", helpCommand = { "-h", "help", "-help", "--help", "?", "/?" })
 @CommonConverter(type = SakerPath.class, converter = MainCommand.class, method = "toSakerPath")
 @CommonConverter(type = InetAddress.class, converter = MainCommand.class, method = "toInetAddress")
 @CommonConverter(type = Path.class, converter = MainCommand.class, method = "toLocalPath")
@@ -59,28 +61,38 @@ import sipka.cmdline.api.SubCommand;
 @SubCommand(name = "action", type = RepositoryActionCommand.class)
 @SubCommand(name = "licenses", type = LicensesCommand.class)
 @SubCommand(name = { "version", "-version", "--version" }, type = VersionCommand.class)
-public class MainCommand {
+public abstract class MainCommand {
 
 	/**
 	 * @cmd-format &lt;path&gt;
 	 */
-	public static SakerPath toSakerPath(Iterator<? extends String> it) {
-		return SakerPath.valueOf(it.next());
+	public static SakerPath toSakerPath(String argname, Iterator<? extends String> it) {
+		String pathstr = ParseUtil.requireNextArgument(argname, it);
+		try {
+			return SakerPath.valueOf(pathstr);
+		} catch (InvalidPathFormatException e) {
+			throw new InvalidArgumentFormatException("Invalid path format for: " + pathstr, e, argname);
+		}
 	}
 
 	/**
 	 * @cmd-format &lt;local-path&gt;
 	 */
-	public static Path toLocalPath(Iterator<? extends String> it) {
-		Path result = Paths.get(it.next());
-		return result;
+	public static Path toLocalPath(String argname, Iterator<? extends String> it) {
+		String pathstr = ParseUtil.requireNextArgument(argname, it);
+		try {
+			Path result = Paths.get(pathstr);
+			return result;
+		} catch (InvalidPathException e) {
+			throw new InvalidArgumentFormatException("Invalid local path format for: " + pathstr, e, argname);
+		}
 	}
 
 	/**
 	 * @cmd-format &lt;net-address&gt;
 	 */
-	public static InetAddress toInetAddress(Iterator<? extends String> it) {
-		String address = it.next();
+	public static InetAddress toInetAddress(String argname, Iterator<? extends String> it) {
+		String address = ParseUtil.requireNextArgument(argname, it);
 		try {
 			InetAddress result = InetAddress.getByName(address);
 			if (result != null) {
@@ -91,4 +103,10 @@ public class MainCommand {
 		}
 		throw new IllegalArgumentException("Failed to resolve address: " + address);
 	}
+
+	public static void main(String... args) throws Exception {
+		Launcher.parse(java.util.Arrays.asList(args).iterator()).callCommand();
+	}
+
+	protected abstract void callCommand() throws Exception;
 }

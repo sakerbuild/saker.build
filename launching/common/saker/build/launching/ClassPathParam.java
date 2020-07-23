@@ -18,6 +18,7 @@ package saker.build.launching;
 import java.util.Iterator;
 
 import sipka.cmdline.api.Converter;
+import sipka.cmdline.runtime.ParseUtil;
 
 @Converter(method = "parse")
 public class ClassPathParam {
@@ -30,8 +31,8 @@ public class ClassPathParam {
 	/**
 	 * @cmd-format &lt;classpath&gt;
 	 */
-	public static ClassPathParam parse(Iterator<? extends String> args) {
-		return new ClassPathParam(args.next());
+	public static ClassPathParam parse(String argname, Iterator<? extends String> args) {
+		return new ClassPathParam(ParseUtil.requireNextArgument(argname, args));
 	}
 
 	public String getPath() {

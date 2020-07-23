@@ -31,6 +31,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -39,6 +40,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -74,6 +76,7 @@ import saker.build.runtime.classpath.JarFileClassPathLocation;
 import saker.build.runtime.classpath.NamedCheckingClassPathServiceEnumerator;
 import saker.build.runtime.classpath.ServiceLoaderClassPathServiceEnumerator;
 import saker.build.runtime.environment.BuildTaskExecutionResult;
+import saker.build.runtime.environment.BuildTaskExecutionResult.ResultKind;
 import saker.build.runtime.environment.EnvironmentParameters;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionParametersImpl;
@@ -87,6 +90,7 @@ import saker.build.runtime.params.DatabaseConfiguration;
 import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.runtime.params.ExecutionRepositoryConfiguration;
 import saker.build.runtime.params.ExecutionScriptConfiguration;
+import saker.build.runtime.params.InvalidBuildConfigurationException;
 import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptOptionsConfig;
 import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptProviderLocation;
 import saker.build.runtime.params.NestRepositoryClassPathLocation;
@@ -98,6 +102,7 @@ import saker.build.task.utils.TaskUtils;
 import saker.build.thirdparty.saker.util.DateUtils;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.StringUtils;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.IOUtils;
@@ -114,6 +119,10 @@ import sipka.cmdline.api.NameSubstitution;
 import sipka.cmdline.api.Parameter;
 import sipka.cmdline.api.ParameterContext;
 import sipka.cmdline.api.PositionalParameter;
+import sipka.cmdline.runtime.ArgumentResolutionException;
+import sipka.cmdline.runtime.InvalidArgumentFormatException;
+import sipka.cmdline.runtime.InvalidArgumentValueException;
+import sipka.cmdline.runtime.MissingArgumentException;
 import sipka.cmdline.runtime.ParseUtil;
 import sipka.cmdline.runtime.ParsingIterator;
 
@@ -139,9 +148,34 @@ public class BuildCommand {
 					DAEMON_CLIENT_NAME_PROC_WORK_DIR, "build", "http", "https", "ftp", "sftp", "file", "data", "jar",
 					"zip", "url", "uri", "tcp", "udp", "mem", "memory", "ide", "project", "null", "storage", "nest" });
 
+	private static final String PARAM_NAME_DAEMON_ADDRESS = "-daemon-address";
+	private static final String PARAM_NAME_U = "-U";
+	private static final String PARAM_NAME_DBCONFIG_PATH = "-dbconfig-path";
+	private static final String PARAM_NAME_TRACE = "-trace";
+	private static final String PARAM_NAME_MOUNT = "-mount";
+	private static final String PARAM_NAME_CONNECT = "-connect";
+	private static final String PARAM_NAME_CLUSTER = "-cluster";
 	private static final String PARAM_NAME_CLUSTER_USE_CLIENTS = "-cluster-use-clients";
 
+	private static final String PARAM_NAME_REPOSITORY_CLASS = "-repository-class";
+	private static final String PARAM_NAME_REPOSITORY_ID = "-repository-id";
+	private static final String PARAM_NAME_REPOSITORY = "-repository";
+
+	private static final String PARAM_NAME_SCRIPT_CLASSPATH = "-script-classpath";
+	private static final String PARAM_NAME_SCRIPT_CLASS = "-script-class";
+	private static final String PARAM_NAME_SO = "-SO";
+	private static final String PARAM_NAME_SCRIPT_FILES = "-script-files";
+
 	private static final String DEFAULT_BUILD_FILE_NAME = "saker.build";
+
+	private static final Map<BuildTaskExecutionResult.ResultKind, String> BUILD_RESULT_KIND_INFO_MAP = new EnumMap<>(
+			BuildTaskExecutionResult.ResultKind.class);
+	static {
+		BUILD_RESULT_KIND_INFO_MAP.put(ResultKind.SUCCESSFUL, "Build successful");
+		BUILD_RESULT_KIND_INFO_MAP.put(ResultKind.FAILURE, "Build failed");
+		BUILD_RESULT_KIND_INFO_MAP.put(ResultKind.INITIALIZATION_ERROR, "Build initialization error");
+	}
+
 	/**
 	 * <pre>
 	 * Specifies the working directory for the build execution.
@@ -222,7 +256,7 @@ public class BuildCommand {
 	 * Can be used multiple times to mount multiple directories.
 	 * </pre>
 	 */
-	@Parameter
+	@Parameter({ PARAM_NAME_MOUNT })
 	@MultiParameter(DirectoryMountParam.class)
 	public Collection<DirectoryMountParam> mount = new LinkedHashSet<>();
 
@@ -239,10 +273,10 @@ public class BuildCommand {
 	 * Can be used multiple times to define multiple entries.
 	 * </pre>
 	 */
-	@Parameter("-U")
+	@Parameter(PARAM_NAME_U)
 	public void userParameter(String key, String value) {
 		if (userParameters.containsKey(key)) {
-			throw new IllegalArgumentException("User parameter specified multiple times: " + key);
+			throw new InvalidArgumentValueException("User parameter specified multiple times: " + key, PARAM_NAME_U);
 		}
 		userParameters.put(key, value);
 	}
@@ -276,7 +310,7 @@ public class BuildCommand {
 	 * 
 	 * @cmd-format &lt;connection-name>
 	 */
-	@Parameter({ "-cluster" })
+	@Parameter({ PARAM_NAME_CLUSTER })
 	@MultiParameter(String.class)
 	public Set<String> clusters = new LinkedHashSet<>();
 
@@ -320,7 +354,7 @@ public class BuildCommand {
 	 * The default port for the addresses is 3500.
 	 * </pre>
 	 */
-	@Parameter
+	@Parameter({ PARAM_NAME_CONNECT })
 	@MultiParameter(DaemonConnectParam.class)
 	public Collection<DaemonConnectParam> connect = new LinkedHashSet<>();
 
@@ -361,7 +395,7 @@ public class BuildCommand {
 	 * See -daemon parameter flag.
 	 * </pre>
 	 */
-	@Parameter("-daemon-address")
+	@Parameter(PARAM_NAME_DAEMON_ADDRESS)
 	public DaemonAddressParam daemonAddress;
 
 	@ParameterContext(substitutions = { @NameSubstitution(pattern = "-(.*)", replacement = "-daemon-$1") })
@@ -447,7 +481,7 @@ public class BuildCommand {
 	 * 
 	 * @cmd-format &lt;mount-path>
 	 */
-	@Parameter("-trace")
+	@Parameter(PARAM_NAME_TRACE)
 	public String buildTracePath;
 
 	/**
@@ -519,7 +553,7 @@ public class BuildCommand {
 			if (daemonAddress != null) {
 				//there is an address specified, only create a local daemon if necessary, and -daemon is specified
 
-				InetSocketAddress remoteaddress = daemonAddress.getSocketAddress();
+				InetSocketAddress remoteaddress = daemonAddress.getSocketAddressThrowArgumentException();
 				if (this.daemon) {
 					//we're allowed to create a local daemon if necessary
 					if (isLocalAddress(remoteaddress.getAddress())) {
@@ -649,19 +683,22 @@ public class BuildCommand {
 				if (builddaemonenv == null) {
 					//XXX make this socket factory configureable
 					SocketFactory socketfactory = SocketFactory.getDefault();
-					connector = c -> RemoteDaemonConnection.connect(socketfactory, c.address.getSocketAddress());
+					connector = c -> RemoteDaemonConnection.connect(socketfactory,
+							c.address.getSocketAddressThrowArgumentException());
 				} else {
-					connector = c -> builddaemonenv.connectTo(c.address.getSocketAddress());
+					connector = c -> builddaemonenv.connectTo(c.address.getSocketAddressThrowArgumentException());
 				}
 				ThreadUtils.runParallelItems(connect, c -> {
 					if (RESERVED_CONNECTION_NAMES.contains(c.name)) {
-						throw new IllegalArgumentException(c.name + " is a reserved connection name.");
+						throw new InvalidArgumentValueException(c.name + " is a reserved connection name.",
+								PARAM_NAME_CONNECT);
 					}
 					RemoteDaemonConnection connection = connector.apply(c);
 					rescloser.add(connection);
 					RemoteDaemonConnection prevc = connections.put(c.name, connection);
 					if (prevc != null) {
-						throw new IllegalArgumentException("Multiple connections specified with name: " + c.name);
+						throw new InvalidArgumentValueException("Multiple connections specified with name: " + c.name,
+								PARAM_NAME_CONNECT);
 					}
 					//XXX the following probably implies too many RMI requests, which can delay the start of the build
 					ConnectionInformation conninfo = new ConnectionInformation();
@@ -669,7 +706,7 @@ public class BuildCommand {
 							.getRootFileProviderKey(connection.getDaemonEnvironment().getFileProvider()).getUUID());
 					conninfo.setConnectionBuildEnvironmentUUID(
 							connection.getDaemonEnvironment().getEnvironmentIdentifier());
-					conninfo.setConnectionAddress(c.address.argument);
+					conninfo.setConnectionAddress(c.address.getArgumentString());
 					machinesinfo.put(c.name, conninfo);
 				});
 				buildinfo.setConnectionInformations(machinesinfo);
@@ -699,7 +736,8 @@ public class BuildCommand {
 					this.buildScriptFile = defaultbuildfilepath;
 				} else {
 					if (buildfiles.size() != 1) {
-						throw new BuildTargetNotFoundException("Failed to determine build file to use: " + buildfiles);
+						throw new BuildTargetNotFoundException(
+								"Failed to determine build file to use: " + StringUtils.toStringJoin(", ", buildfiles));
 					}
 					this.buildScriptFile = buildfiles.first();
 				}
@@ -707,16 +745,22 @@ public class BuildCommand {
 			long nanos = System.nanoTime();
 			BuildTaskExecutionResult execres = envcontroller.run(this.buildScriptFile, this.target, params, project);
 			long endnanos = System.nanoTime();
+
+			ResultKind executionresultkind = execres.getResultKind();
+			String stateinfo = BUILD_RESULT_KIND_INFO_MAP.getOrDefault(executionresultkind, "Build finished");
+			System.out.println(stateinfo + ". (" + DateUtils.durationToString((endnanos - nanos) / 1_000_000) + ")");
+
 			ExceptionView excview = execres.getPositionedExceptionView();
 			if (excview != null) {
 				//XXX option for not omitting transitives?
 				TaskUtils.printTaskExceptionsOmitTransitive(excview, System.err, workingdir, getStackTraceFormat());
 				//do not retrieve the real exception, as that may not be RMI transferrable.
 				String msg = excview.getMessage();
-				throw new BuildExecutionFailedException(
-						excview.getExceptionClassName() + (ObjectUtils.isNullOrEmpty(msg) ? "" : ": " + msg));
+				if (executionresultkind != ResultKind.SUCCESSFUL) {
+					throw new BuildExecutionFailedException(
+							excview.getExceptionClassName() + (ObjectUtils.isNullOrEmpty(msg) ? "" : ": " + msg));
+				}
 			}
-			System.out.println("Build finished. (" + DateUtils.durationToString((endnanos - nanos) / 1_000_000) + ")");
 
 			return execres;
 		}
@@ -730,7 +774,7 @@ public class BuildCommand {
 		} else if (localenv != null) {
 			envcontroller = localenv.getExecutionInvoker();
 		} else {
-			throw new AssertionError("No remote and no local daemon for build.");
+			throw new AssertionError("Internal consistency error: no remote and no local daemon for build.");
 		}
 		return runBuild(remoteenv, localenv, envcontroller);
 	}
@@ -746,8 +790,8 @@ public class BuildCommand {
 			params.setMirrorDirectory(mirrorDirectory);
 		}
 		if (buildTracePath != null) {
-			ProviderHolderPathKey buildtraceoutpathkey = mountPathToPathKey(DaemonPath.valueOf(buildTracePath),
-					remoteenv, localenv, connections);
+			ProviderHolderPathKey buildtraceoutpathkey = mountPathToPathKey(PARAM_NAME_TRACE,
+					DaemonPath.valueOf(buildTracePath), remoteenv, localenv, connections);
 			params.setBuildTraceOutputPathKey(buildtraceoutpathkey);
 			params.setBuildTraceEmbedArtifacts(buildTraceEmbedArtifacts);
 		}
@@ -771,9 +815,8 @@ public class BuildCommand {
 			DatabaseConfiguration.Builder builder = DatabaseConfiguration
 					.builder(databaseConfigCollector.getFallbackContentDescriptorSupplier());
 			for (DatabaseConfigParam confparam : databaseConfigCollector.getConfigParams()) {
-				builder.add(
-						getRootFileProvideKeyOfConnection(confparam.connectionName, remoteenv, localenv, connections),
-						confparam.wildcard, confparam.descriptorSupplier);
+				builder.add(getRootFileProvideKeyOfConnection(PARAM_NAME_DBCONFIG_PATH, confparam.connectionName,
+						remoteenv, localenv, connections), confparam.wildcard, confparam.descriptorSupplier);
 			}
 			databaseconfiguration = builder.build();
 		}
@@ -797,8 +840,8 @@ public class BuildCommand {
 						scriptserviceenumerator = new ServiceLoaderClassPathServiceEnumerator<>(
 								ScriptAccessProvider.class);
 					}
-					ClassPathLocation scriptclasspath = createClassPathLocation(scentry.classPath, remoteenv, localenv,
-							connections, pathconfiguration, false);
+					ClassPathLocation scriptclasspath = createClassPathLocation(PARAM_NAME_SCRIPT_CLASSPATH,
+							scentry.classPath, remoteenv, localenv, connections, pathconfiguration, false);
 					scproviderlocation = new ScriptProviderLocation(scriptclasspath, scriptserviceenumerator);
 				}
 				ScriptOptionsConfig scoptionsconfig = new ScriptOptionsConfig(scentry.options, scproviderlocation);
@@ -822,8 +865,8 @@ public class BuildCommand {
 			}
 			for (RepositoryParam repoparam : repositoryCollector.getRepositories()) {
 				ClassPathParam cp = repoparam.getClassPath();
-				ClassPathLocation cplocation = createClassPathLocation(cp, remoteenv, localenv, connections,
-						pathconfiguration, true);
+				ClassPathLocation cplocation = createClassPathLocation(PARAM_NAME_REPOSITORY, cp, remoteenv, localenv,
+						connections, pathconfiguration, true);
 				String repoid = repoparam.getRepositoryIdentifier();
 				ClassPathServiceEnumerator<? extends SakerRepositoryFactory> serviceenumerator = repoparam
 						.getServiceEnumerator();
@@ -839,17 +882,18 @@ public class BuildCommand {
 		if (!clusters.isEmpty()) {
 			for (String clusterconnectionname : clusters) {
 				if (RESERVED_CONNECTION_NAMES.contains(clusterconnectionname)) {
-					throw new IllegalArgumentException("Invalid cluster connection name: " + clusterconnectionname);
+					throw new InvalidArgumentValueException(
+							"Reserved cluster connection name: " + clusterconnectionname, PARAM_NAME_CLUSTER);
 				}
 				RemoteDaemonConnection clusterconn = connections.get(clusterconnectionname);
 				if (clusterconn == null) {
-					throw new IllegalArgumentException(
-							"Daemon connection for cluster use not found: " + clusterconnectionname);
+					throw new InvalidArgumentValueException(
+							"Daemon connection not found for cluster: " + clusterconnectionname, PARAM_NAME_CLUSTER);
 				}
 				TaskInvokerFactory clustertaskinvokerfactory = clusterconn.getClusterTaskInvokerFactory();
 				if (clustertaskinvokerfactory == null) {
-					throw new IllegalArgumentException(
-							"Daemon doesn't support cluster usage: " + clusterconnectionname);
+					throw new InvalidBuildConfigurationException(
+							"Daemon doesn't support using it as build cluster: " + clusterconnectionname);
 				}
 				taskinvokerfactories.add(clustertaskinvokerfactory);
 			}
@@ -894,7 +938,8 @@ public class BuildCommand {
 		for (DirectoryMountParam dm : mount) {
 			DaemonPath path = dm.path;
 			String root = dm.root;
-			ProviderHolderPathKey mountpathkey = mountPathToPathKey(path, remoteenv, localenv, connections);
+			ProviderHolderPathKey mountpathkey = mountPathToPathKey(PARAM_NAME_MOUNT, path, remoteenv, localenv,
+					connections);
 
 			pathconfigbuilder.addRootProvider(root,
 					DirectoryMountFileProvider.create(mountpathkey.getFileProvider(), mountpathkey.getPath(), root));
@@ -902,7 +947,7 @@ public class BuildCommand {
 		return pathconfigbuilder.build();
 	}
 
-	private ProviderHolderPathKey mountPathToPathKey(DaemonPath path, DaemonEnvironment remoteenv,
+	private ProviderHolderPathKey mountPathToPathKey(String argname, DaemonPath path, DaemonEnvironment remoteenv,
 			DaemonEnvironment localenv, NavigableMap<String, ? extends RemoteDaemonConnection> connections) {
 		String clientname = path.getClientName();
 		SakerFileProvider mountfp;
@@ -933,7 +978,8 @@ public class BuildCommand {
 				default: {
 					RemoteDaemonConnection connection = connections.get(clientname);
 					if (connection == null) {
-						throw new IllegalArgumentException("Connection not found with name: " + clientname);
+						throw new InvalidArgumentValueException("Connection not found with name: " + clientname,
+								argname);
 					}
 					mountfp = connection.getDaemonEnvironment().getFileProvider();
 					break;
@@ -947,7 +993,7 @@ public class BuildCommand {
 		return localenv == null ? LocalFileProvider.getInstance() : localenv.getFileProvider();
 	}
 
-	private static RootFileProviderKey getRootFileProvideKeyOfConnection(String connectionname,
+	private static RootFileProviderKey getRootFileProvideKeyOfConnection(String argname, String connectionname,
 			DaemonEnvironment remoteenv, DaemonEnvironment localenv,
 			NavigableMap<String, ? extends RemoteDaemonConnection> connections) {
 		switch (connectionname) {
@@ -965,7 +1011,8 @@ public class BuildCommand {
 			default: {
 				RemoteDaemonConnection connection = connections.get(connectionname);
 				if (connection == null) {
-					throw new IllegalArgumentException("Connection not found with name: " + connectionname);
+					throw new InvalidArgumentValueException("Connection not found with name: " + connectionname,
+							argname);
 				}
 				return SakerPathFiles.getRootFileProviderKey(connection.getDaemonEnvironment().getFileProvider());
 			}
@@ -1017,28 +1064,33 @@ public class BuildCommand {
 		return true;
 	}
 
-	private ClassPathLocation createClassPathLocation(ClassPathParam cp, DaemonEnvironment remoteenv,
+	private ClassPathLocation createClassPathLocation(String argname, ClassPathParam cp, DaemonEnvironment remoteenv,
 			DaemonEnvironment localenv, NavigableMap<String, ? extends RemoteDaemonConnection> connections,
 			ExecutionPathConfiguration pathconfiguration, boolean allownest) throws IOException {
-		String repostr = cp.getPath();
-		if (repostr.startsWith("http://") || repostr.startsWith("https://")) {
-			URL url = new URL(repostr);
+		String cpstr = cp.getPath();
+		if (cpstr.startsWith("http://") || cpstr.startsWith("https://")) {
+			URL url = new URL(cpstr);
 			return new HttpUrlJarFileClassPathLocation(url);
 		}
-		if (allownest && repostr.startsWith("nest:/")) {
-			return getNestRepositoryClassPathForNestVersionPath(repostr);
+		if (allownest && cpstr.startsWith("nest:/")) {
+			return getNestRepositoryClassPathForNestVersionPath(argname, cpstr);
 		}
-		DaemonPath repodaemonpath = DaemonPath.valueOf(repostr);
-		String repoclientname = repodaemonpath.getClientName();
+		DaemonPath cpdaemonpath;
+		try {
+			cpdaemonpath = DaemonPath.valueOf(cpstr);
+		} catch (IllegalArgumentException e) {
+			throw new InvalidArgumentFormatException(e, argname);
+		}
+		String cpclientname = cpdaemonpath.getClientName();
 		ProviderHolderPathKey repopathkey;
-		if (repoclientname == null) {
-			repopathkey = pathconfiguration.getPathKey(repodaemonpath.getPath());
+		if (cpclientname == null) {
+			repopathkey = pathconfiguration.getPathKey(cpdaemonpath.getPath());
 		} else {
 			SakerFileProvider fp;
-			switch (repoclientname) {
+			switch (cpclientname) {
 				case DAEMON_CLIENT_NAME_LOCAL: {
 					fp = getLocalFileProviderFromLocalDaemon(localenv);
-					repopathkey = SakerPathFiles.getPathKey(fp, repodaemonpath.getPath());
+					repopathkey = SakerPathFiles.getPathKey(fp, cpdaemonpath.getPath());
 					break;
 				}
 				case DAEMON_CLIENT_NAME_REMOTE: {
@@ -1049,22 +1101,23 @@ public class BuildCommand {
 					} else {
 						fp = remoteenv.getFileProvider();
 					}
-					repopathkey = SakerPathFiles.getPathKey(fp, repodaemonpath.getPath());
+					repopathkey = SakerPathFiles.getPathKey(fp, cpdaemonpath.getPath());
 					break;
 				}
 				case DAEMON_CLIENT_NAME_PROC_WORK_DIR: {
 					fp = getLocalFileProviderFromLocalDaemon(localenv);
 					repopathkey = SakerPathFiles.getPathKey(fp,
-							getUserDir().resolve(repodaemonpath.getPath().forcedRelative()));
+							getUserDir().resolve(cpdaemonpath.getPath().forcedRelative()));
 					break;
 				}
 				default: {
-					RemoteDaemonConnection connection = connections.get(repoclientname);
+					RemoteDaemonConnection connection = connections.get(cpclientname);
 					if (connection == null) {
-						throw new IllegalArgumentException("Connection not found with name: " + repoclientname);
+						throw new InvalidArgumentValueException("Connection not found with name: " + cpclientname,
+								argname);
 					}
 					fp = connection.getDaemonEnvironment().getFileProvider();
-					repopathkey = SakerPathFiles.getPathKey(fp, repodaemonpath.getPath());
+					repopathkey = SakerPathFiles.getPathKey(fp, cpdaemonpath.getPath());
 					break;
 				}
 			}
@@ -1072,18 +1125,19 @@ public class BuildCommand {
 		return new JarFileClassPathLocation(repopathkey);
 	}
 
-	public static ClassPathLocation getNestRepositoryClassPathForNestVersionPath(String repostr) throws IOException {
+	public static ClassPathLocation getNestRepositoryClassPathForNestVersionPath(String argname, String repostr)
+			throws IOException {
 		SakerPath path;
 		try {
 			path = SakerPath.valueOf(repostr);
 		} catch (IllegalArgumentException e) {
-			throw new InvalidPathFormatException("Failed to parse nest:/ repository classpath path. (" + repostr + ")",
-					e);
+			throw new InvalidArgumentValueException("Failed to parse nest:/ repository classpath path: " + repostr, e,
+					argname);
 		}
 		if (path.getNameCount() != 2 || !path.getName(0).equals("version")) {
-			throw new InvalidPathFormatException(
-					"Invalid nest:/ repository classpath path. It must be nest:/version/<version-number> or nest:/version/latest ("
-							+ repostr + ")");
+			throw new InvalidArgumentValueException("Invalid nest:/ repository classpath path. "
+					+ "It should have the format nest:/version/<version-number> or be nest:/version/latest: " + repostr,
+					argname);
 		}
 		String versionname = path.getName(1);
 		if ("latest".equals(versionname)) {
@@ -1092,28 +1146,32 @@ public class BuildCommand {
 			connection.setDoOutput(false);
 			int rc = connection.getResponseCode();
 			if (rc != HttpURLConnection.HTTP_OK) {
-				throw new IOException(
-						"Failed to determine latest saker.nest repository version. Server responded with code: " + rc);
+				throw new ArgumentResolutionException(
+						"Failed to determine latest saker.nest repository version. Server responded with code: " + rc,
+						argname);
 			}
 			String version;
 			try (InputStream is = connection.getInputStream()) {
 				version = StreamUtils.readStreamStringFully(is, StandardCharsets.UTF_8);
 			} catch (IOException e) {
-				throw new IOException(
-						"Failed to determine latest saker.nest repository version. Failed to read server response.", e);
+				throw new ArgumentResolutionException(
+						"Failed to determine latest saker.nest repository version. Failed to read server response.", e,
+						argname);
 			}
 			try {
 				return NestRepositoryClassPathLocation.getInstance(version);
 			} catch (IllegalArgumentException e) {
-				throw new IllegalArgumentException("Server returned invalid version number: " + version, e);
+				throw new ArgumentResolutionException(
+						"Saker.nest repository server returned invalid version number: " + version, e, argname);
 			}
 		}
 		try {
 			return NestRepositoryClassPathLocation.getInstance(versionname);
 		} catch (IllegalArgumentException e) {
-			throw new InvalidPathFormatException(
-					"Invalid nest:/version/<version-number> repository classpath path. Invalid version number. ("
-							+ repostr + ")");
+			throw new InvalidArgumentValueException(
+					"Invalid nest:/version/<version-number> repository classpath path. Invalid version number: "
+							+ repostr,
+					e, argname);
 		}
 	}
 
@@ -1145,11 +1203,11 @@ public class BuildCommand {
 	/**
 	 * @cmd-format &lt;type>
 	 */
-	public static ContentDescriptorSupplier getContentDescriptorSupplier(ParsingIterator it) {
-		return getContentDescriptorSupplier(it.next());
+	public static ContentDescriptorSupplier getContentDescriptorSupplier(String argname, ParsingIterator it) {
+		return getContentDescriptorSupplier(argname, ParseUtil.requireNextArgument(argname, it));
 	}
 
-	public static ContentDescriptorSupplier getContentDescriptorSupplier(String type) {
+	public static ContentDescriptorSupplier getContentDescriptorSupplier(String argname, String type) {
 		switch (type.toLowerCase(Locale.ENGLISH)) {
 			case "attr": {
 				return CommonContentDescriptorSupplier.FILE_ATTRIBUTES;
@@ -1158,7 +1216,8 @@ public class BuildCommand {
 				return CommonContentDescriptorSupplier.HASH_MD5;
 			}
 			default: {
-				throw new IllegalArgumentException("Invalid content type: " + type);
+				throw new InvalidArgumentValueException("Invalid content type: " + type + " Expected attr or md5.",
+						argname);
 			}
 		}
 	}
@@ -1192,6 +1251,7 @@ public class BuildCommand {
 	}
 
 	public static class RepositoryCollector {
+
 		private Collection<RepositoryParam> repositories = new ArrayList<>();
 		private RepositoryParam lastRepository;
 		/**
@@ -1234,7 +1294,7 @@ public class BuildCommand {
 		 * 
 		 * @cmd-help-meta [repository]
 		 */
-		@Parameter({ "-repository", "-repo" })
+		@Parameter({ PARAM_NAME_REPOSITORY, "-repo" })
 		public void repository(RepositoryParam repoparam) {
 			repositories.add(repoparam);
 			lastRepository = repoparam;
@@ -1256,12 +1316,12 @@ public class BuildCommand {
 		 * @cmd-format &lt;class name>
 		 * @cmd-help-meta [repository]
 		 */
-		@Parameter({ "-repository-class", "-repo-class" })
+		@Parameter({ PARAM_NAME_REPOSITORY_CLASS, "-repo-class" })
 		public void repositoryClass(String classname) {
-			requireLastRepository();
+			requireLastRepository(PARAM_NAME_REPOSITORY_CLASS);
 			if (lastRepository.getServiceEnumerator() != null) {
-				throw new IllegalArgumentException("Repository class name specified multiple times for: "
-						+ lastRepository.getClassPath().getPath());
+				throw new InvalidArgumentValueException("Repository class name specified multiple times for: "
+						+ lastRepository.getClassPath().getPath(), PARAM_NAME_REPOSITORY_CLASS);
 			}
 			lastRepository.setServiceEnumerator(
 					new NamedCheckingClassPathServiceEnumerator<>(classname, SakerRepositoryFactory.class));
@@ -1281,19 +1341,22 @@ public class BuildCommand {
 		 * 
 		 * @cmd-help-meta [repository]
 		 */
-		@Parameter({ "-repository-id", "-repo-id" })
+		@Parameter({ PARAM_NAME_REPOSITORY_ID, "-repo-id" })
 		public void repositoryId(String id) {
-			requireLastRepository();
+			requireLastRepository(PARAM_NAME_REPOSITORY_ID);
 			if (lastRepository.getRepositoryIdentifier() != null) {
-				throw new IllegalArgumentException("Repository identifier specified multiple times for: "
-						+ lastRepository.getClassPath().getPath());
+				throw new InvalidArgumentValueException("Repository identifier specified multiple times for: "
+						+ lastRepository.getClassPath().getPath(), PARAM_NAME_REPOSITORY_ID);
 			}
 			lastRepository.setRepositoryIdentifier(id);
 		}
 
-		private void requireLastRepository() {
+		private void requireLastRepository(String currentarg) {
 			if (lastRepository == null) {
-				throw new IllegalArgumentException("No applicable repository configuration.");
+				throw new MissingArgumentException(
+						currentarg + " requires a repository configuration to be applied to. Specify "
+								+ PARAM_NAME_REPOSITORY + " before using " + currentarg + ".",
+						currentarg);
 			}
 		}
 	}
@@ -1310,16 +1373,30 @@ public class BuildCommand {
 			this.descriptorSupplier = descriptorSupplier;
 		}
 
-		public static DatabaseConfigParam parse(ParsingIterator it) {
-			String connectionname = ParseUtil.requireNextArgument("-dbconfig-path", it);
-			String wildcard = ParseUtil.requireNextArgument("-dbconfig-path", it);
-			ContentDescriptorSupplier type = getContentDescriptorSupplier(
-					ParseUtil.requireNextArgument("-dbconfig-path", it));
+		public static DatabaseConfigParam parse(String argname, ParsingIterator it) {
+			Objects.requireNonNull(it, "iterator");
+
+			String connectionname;
+			String wildcard;
+			ContentDescriptorSupplier type;
+
+			if (!it.hasNext()) {
+				throw new MissingArgumentException("Connection name argument is missing.", argname);
+			}
+			connectionname = it.next();
+			if (!it.hasNext()) {
+				throw new MissingArgumentException("Wildcard argument is missing.", argname);
+			}
+			wildcard = it.next();
+			if (!it.hasNext()) {
+				throw new MissingArgumentException("Type argument is missing.", argname);
+			}
+			type = getContentDescriptorSupplier(argname, it.next());
 			WildcardPath wildcardpath;
 			try {
 				wildcardpath = WildcardPath.valueOf(wildcard);
 			} catch (IllegalArgumentException e) {
-				throw new IllegalArgumentException("Failed to parse wildcard for -dbconfig-path: " + wildcard, e);
+				throw new InvalidArgumentFormatException("Invalid wildcard format for: " + wildcard, e, argname);
 			}
 			return new DatabaseConfigParam(connectionname, wildcardpath, type);
 		}
@@ -1327,6 +1404,7 @@ public class BuildCommand {
 	}
 
 	public static class DatabaseConfigurationCollection {
+
 		/**
 		 * <pre>
 		 * Specifies the file content change detection mechanism for the
@@ -1386,7 +1464,7 @@ public class BuildCommand {
 		 * 
 		 * @cmd-format &lt;connection-name> &lt;wildcard> &lt;type>
 		 */
-		@Parameter("-dbconfig-path")
+		@Parameter(PARAM_NAME_DBCONFIG_PATH)
 		@Converter(method = "parse", converter = DatabaseConfigParam.class)
 		public void databaseConfig(DatabaseConfigParam param) {
 			configParams.add(param);
@@ -1395,6 +1473,7 @@ public class BuildCommand {
 	}
 
 	public static class ScriptConfigCollector {
+
 		public static class ConfigEntry {
 			public final WildcardPath files;
 			public Map<String, String> options = new LinkedHashMap<>();
@@ -1436,7 +1515,7 @@ public class BuildCommand {
 		 * @cmd-format &lt;wildcard>
 		 * @cmd-help-meta [script]
 		 */
-		@Parameter("-script-files")
+		@Parameter(PARAM_NAME_SCRIPT_FILES)
 		public void scriptFiles(String filespattern) {
 			ConfigEntry config = new ConfigEntry(WildcardPath.valueOf(filespattern));
 			configs.add(config);
@@ -1453,12 +1532,13 @@ public class BuildCommand {
 		 * 
 		 * @cmd-help-meta [script]
 		 */
-		@Parameter({ "-script-classpath", "-script-cp" })
+		@Parameter({ PARAM_NAME_SCRIPT_CLASSPATH, "-script-cp" })
 		public void scriptClassPath(ClassPathParam classpath) {
-			requireLastConfig();
+			requireLastConfig(PARAM_NAME_SCRIPT_CLASSPATH);
 			if (lastConfig.classPath != null) {
-				throw new IllegalArgumentException(
-						"Script configuration classpath specified multiple times for: " + lastConfig.files);
+				throw new InvalidArgumentValueException(
+						"Script configuration classpath specified multiple times for: " + lastConfig.files,
+						PARAM_NAME_SCRIPT_CLASSPATH);
 			}
 			lastConfig.classPath = classpath;
 		}
@@ -1479,12 +1559,13 @@ public class BuildCommand {
 		 * @cmd-format &lt;class name>
 		 * @cmd-help-meta [script]
 		 */
-		@Parameter("-script-class")
+		@Parameter(PARAM_NAME_SCRIPT_CLASS)
 		public void scriptAccessorClassName(String classname) {
-			requireLastConfig();
+			requireLastConfig(PARAM_NAME_SCRIPT_CLASS);
 			if (lastConfig.serviceEnumerator != null) {
-				throw new IllegalArgumentException(
-						"Script configuration class name specified multiple times for: " + lastConfig.files);
+				throw new InvalidArgumentValueException(
+						"Script configuration class name specified multiple times for: " + lastConfig.files,
+						PARAM_NAME_SCRIPT_CLASS);
 			}
 			lastConfig.serviceEnumerator = new NamedCheckingClassPathServiceEnumerator<>(classname,
 					ScriptAccessProvider.class);
@@ -1503,19 +1584,22 @@ public class BuildCommand {
 		 * 
 		 * @cmd-help-meta [script]
 		 */
-		@Parameter("-SO")
+		@Parameter(PARAM_NAME_SO)
 		public void scriptOption(String key, String value) {
-			requireLastConfig();
+			requireLastConfig(PARAM_NAME_SO);
 			if (lastConfig.options.containsKey(key)) {
-				throw new IllegalArgumentException(
-						"Script option defined multiple times: " + key + " for " + lastConfig.files);
+				throw new InvalidArgumentValueException(
+						"Script option defined multiple times: " + key + " for " + lastConfig.files, PARAM_NAME_SO);
 			}
 			lastConfig.options.put(key, value);
 		}
 
-		private void requireLastConfig() {
+		private void requireLastConfig(String currentarg) {
 			if (lastConfig == null) {
-				throw new IllegalArgumentException("No applicable script configuration, arguments out of order.");
+				throw new MissingArgumentException(
+						currentarg + " requires a script configuration to be applied to. Specify "
+								+ PARAM_NAME_SCRIPT_FILES + " before using " + currentarg + ".",
+						currentarg);
 			}
 		}
 	}

@@ -38,7 +38,7 @@ public class StopDaemonCommand {
 	public DaemonAddressParam address = new DaemonAddressParam();
 
 	public void call() throws IOException {
-		InetSocketAddress sockaddr = address.getSocketAddress();
+		InetSocketAddress sockaddr = address.getSocketAddressThrowArgumentException();
 		try (RemoteDaemonConnection env = RemoteDaemonConnection.connect(sockaddr)) {
 			env.getDaemonEnvironment().close();
 		}

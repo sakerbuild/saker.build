@@ -37,8 +37,8 @@ public class RepositoryParam {
 	/**
 	 * @cmd-format &lt;classpath&gt;
 	 */
-	public static RepositoryParam parse(Iterator<? extends String> args) {
-		return new RepositoryParam(ClassPathParam.parse(args));
+	public static RepositoryParam parse(String argname, Iterator<? extends String> args) {
+		return new RepositoryParam(ClassPathParam.parse(argname, args));
 	}
 
 	public ClassPathParam getClassPath() {

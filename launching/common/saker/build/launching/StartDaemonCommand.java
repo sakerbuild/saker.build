@@ -256,7 +256,7 @@ public class StartDaemonCommand {
 		if (startparams != null) {
 			for (DaemonAddressParam addr : startparams.connectClientParam) {
 				commands.add("-connect-client");
-				commands.add(addr.argument);
+				commands.add(addr.getArgumentString());
 			}
 		}
 	}

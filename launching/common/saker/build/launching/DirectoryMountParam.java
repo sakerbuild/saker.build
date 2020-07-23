@@ -18,8 +18,12 @@ package saker.build.launching;
 import java.util.Iterator;
 
 import saker.build.daemon.files.DaemonPath;
+import saker.build.exception.InvalidPathFormatException;
 import saker.build.file.path.SakerPath;
 import sipka.cmdline.api.Converter;
+import sipka.cmdline.runtime.InvalidArgumentFormatException;
+import sipka.cmdline.runtime.MissingArgumentException;
+import sipka.cmdline.runtime.ParseUtil;
 
 @Converter(method = "parse")
 class DirectoryMountParam {
@@ -34,8 +38,25 @@ class DirectoryMountParam {
 	/**
 	 * @cmd-format &lt;mount-path> &lt;root-name>
 	 */
-	public static DirectoryMountParam parse(Iterator<? extends String> args) {
-		return new DirectoryMountParam(DaemonPath.valueOf(args.next()), SakerPath.normalizeRoot(args.next()));
+	public static DirectoryMountParam parse(String argname, Iterator<? extends String> args) {
+		String narg = ParseUtil.requireNextArgument(argname, args);
+		DaemonPath path;
+		try {
+			path = DaemonPath.valueOf(narg);
+		} catch (IllegalArgumentException e) {
+			throw new InvalidArgumentFormatException(e, argname);
+		}
+		if (!args.hasNext()) {
+			throw new MissingArgumentException("Root name argument is missing.", argname);
+		}
+		String rootstr = args.next();
+		String root;
+		try {
+			root = SakerPath.normalizeRoot(rootstr);
+		} catch (InvalidPathFormatException e) {
+			throw new InvalidArgumentFormatException("Invalid root format: " + rootstr, e, argname);
+		}
+		return new DirectoryMountParam(path, root);
 	}
 
 	@Override

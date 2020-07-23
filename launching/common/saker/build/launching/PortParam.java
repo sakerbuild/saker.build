@@ -19,6 +19,7 @@ import java.util.Iterator;
 
 import saker.build.daemon.DaemonLaunchParameters;
 import sipka.cmdline.api.Converter;
+import sipka.cmdline.runtime.ParseUtil;
 
 @Converter(method = "parse")
 class PortParam {
@@ -35,8 +36,9 @@ class PortParam {
 	 * @return
 	 * @cmd-format &lt;int[0-65535]>
 	 */
-	public static PortParam parse(Iterator<? extends String> it) {
-		return new PortParam(LaunchingUtils.parsePort(it.next()));
+	public static PortParam parse(String argname, Iterator<? extends String> it) {
+		String portstr = ParseUtil.requireNextArgument(argname, it);
+		return new PortParam(LaunchingUtils.parsePort(argname, portstr));
 	}
 
 	public int getPort() {

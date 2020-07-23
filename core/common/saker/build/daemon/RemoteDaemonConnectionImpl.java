@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.function.Supplier;
@@ -73,7 +74,7 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 
 	private final SocketAddress address;
 
-	private Throwable connectionErrorException = null;
+	private Optional<Throwable> connectionErrorException = null;
 	private final Collection<ConnectionIOErrorListener> errorListeners = new HashSet<>();
 
 	RemoteDaemonConnectionImpl(SocketAddress address, RMIConnection rmiConnection, DaemonEnvironment remoteEnvironment,
@@ -81,6 +82,7 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 		this.address = address;
 		this.connection = new ConnectionImpl(rmiConnection, remoteEnvironment, vars);
 		rmiConnection.addErrorListener(this::onConnectionIOError);
+		rmiConnection.addCloseListener(this::onConnectionClose);
 	}
 
 	@Override
@@ -90,23 +92,33 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 
 	@Override
 	public void addConnectionIOErrorListener(ConnectionIOErrorListener listener) {
+		Optional<Throwable> excoptional;
 		synchronized (errorListeners) {
-			if (connectionErrorException == null) {
+			excoptional = connectionErrorException;
+			if (excoptional == null) {
 				errorListeners.add(listener);
 				return;
 			}
 		}
 		//call this outside of the lock
-		listener.onConnectionError(connectionErrorException);
+		listener.onConnectionError(excoptional.orElse(null));
+	}
+
+	private void onConnectionClose() {
+		onConnectionIOError(null);
 	}
 
 	private void onConnectionIOError(Throwable exc) {
 		Collection<ConnectionIOErrorListener> copy;
 		synchronized (errorListeners) {
-			if (connectionErrorException == null) {
-				connectionErrorException = exc;
+			if (connectionErrorException == null || !connectionErrorException.isPresent()) {
+				connectionErrorException = Optional.ofNullable(exc);
 			} else {
-				connectionErrorException.addSuppressed(exc);
+				Throwable heldexc = connectionErrorException.get();
+				if (exc != null) {
+					heldexc.addSuppressed(exc);
+				}
+				exc = heldexc;
 			}
 			if (errorListeners.isEmpty()) {
 				return;

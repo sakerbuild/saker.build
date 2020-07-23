@@ -35,6 +35,10 @@ import saker.build.util.rmi.SakerRMIHelper;
 
 public interface RemoteDaemonConnection extends Closeable {
 	public interface ConnectionIOErrorListener {
+		/**
+		 * @param exc
+		 *            May be <code>null</code> if the connection closed properly.
+		 */
 		public void onConnectionError(Throwable exc);
 	}
 
