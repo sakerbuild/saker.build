@@ -201,6 +201,16 @@ public interface TaskFactory<R> {
 	public static final String CAPABILITY_INNER_TASKS_COMPUTATIONAL = "saker.task.inner.tasks.computational";
 
 	/**
+	 * Capability for specifying that the task prefers to run on the local build environment.
+	 * 
+	 * @since saker.build 0.8.16
+	 * @deprecated Use {@link #getInvocationConfiguration()} and
+	 *                 {@link TaskInvocationConfiguration#isPrefersLocalEnvironment() isPrefersLocalEnvironment()}.
+	 */
+	@Deprecated
+	public static final String CAPABILITY_PREFERS_LOCAL_ENVIRONMENT = "saker.task.prefer.local";
+
+	/**
 	 * Creates a task instance.
 	 * <p>
 	 * Every task instance is used for only one invocation.
@@ -311,6 +321,7 @@ public interface TaskFactory<R> {
 		boolean remotedispatch = capabilities.contains(TaskFactory.CAPABILITY_REMOTE_DISPATCHABLE);
 		boolean cacheable = capabilities.contains(TaskFactory.CAPABILITY_CACHEABLE);
 		boolean innertaskcomputational = capabilities.contains(TaskFactory.CAPABILITY_INNER_TASKS_COMPUTATIONAL);
+		boolean preferslocalenv = capabilities.contains(TaskFactory.CAPABILITY_PREFERS_LOCAL_ENVIRONMENT);
 
 		TaskInvocationConfiguration.Builder builder = TaskInvocationConfiguration.builder();
 		builder.setExecutionEnvironmentSelector(getExecutionEnvironmentSelector());
@@ -319,6 +330,7 @@ public interface TaskFactory<R> {
 		builder.setCacheable(cacheable);
 		builder.setInnerTasksComputationals(innertaskcomputational);
 		builder.setRequestedComputationTokenCount(cptokencount);
+		builder.setPrefersLocalEnvironment(preferslocalenv);
 		return builder.build();
 	}
 

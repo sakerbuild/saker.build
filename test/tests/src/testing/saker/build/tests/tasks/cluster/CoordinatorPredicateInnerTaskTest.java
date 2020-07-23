@@ -33,6 +33,7 @@ import testing.saker.SakerTest;
 import testing.saker.build.tests.EnvironmentTestCase;
 import testing.saker.build.tests.EnvironmentTestCaseConfiguration;
 import testing.saker.build.tests.tasks.SelfStatelessTaskFactory;
+import testing.saker.build.tests.tasks.factories.ClusterNameReturningTaskFactory;
 
 @SakerTest
 public class CoordinatorPredicateInnerTaskTest extends ClusterBuildTestCase {
@@ -101,22 +102,6 @@ public class CoordinatorPredicateInnerTaskTest extends ClusterBuildTestCase {
 			}
 			assertEquals(invokednames.size(), duplicatecount);
 			return StringUtils.toStringJoin(null, invokednames);
-		}
-	}
-
-	public static class ClusterNameReturningTaskFactory extends SelfStatelessTaskFactory<String> {
-		private static final long serialVersionUID = 1L;
-
-		@Override
-		public NavigableSet<String> getCapabilities() {
-			return ObjectUtils.newTreeSet(CAPABILITY_REMOTE_DISPATCHABLE);
-		}
-
-		@Override
-		public String run(TaskContext taskcontext) throws Exception {
-			String result = taskcontext.getExecutionContext().getEnvironment().getUserParameters()
-					.get(EnvironmentTestCase.TEST_CLUSTER_NAME_ENV_PARAM);
-			return result;
 		}
 	}
 

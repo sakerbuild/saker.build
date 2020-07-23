@@ -64,6 +64,7 @@ public final class TaskInvocationConfiguration implements Externalizable {
 	protected boolean remoteDispatchable;
 	protected boolean cacheable;
 	protected boolean innerTasksComputationals;
+	protected boolean prefersLocalEnvironment;
 
 	/**
 	 * For {@link Externalizable}.
@@ -79,6 +80,7 @@ public final class TaskInvocationConfiguration implements Externalizable {
 		this.remoteDispatchable = config.remoteDispatchable;
 		this.cacheable = config.cacheable;
 		this.innerTasksComputationals = config.innerTasksComputationals;
+		this.prefersLocalEnvironment = config.prefersLocalEnvironment;
 	}
 
 	protected TaskInvocationConfiguration(TaskExecutionEnvironmentSelector environmentSelector) {
@@ -250,6 +252,36 @@ public final class TaskInvocationConfiguration implements Externalizable {
 	}
 
 	/**
+	 * Gets if the task prefers to be run on the local build environment.
+	 * <p>
+	 * If a task prefers the local environment, then it will be run on the build environment that is used to execute the
+	 * build. (Also known as the coordinator.)
+	 * <p>
+	 * This only matters if the task is {@linkplain #isRemoteDispatchable() remote dispatchable} and the
+	 * {@linkplain #getExecutionEnvironmentSelector() environment selector} deems both the local environment and build
+	 * clusters to be suitable for execution. In that case the task will only be run on the local environment. <br>
+	 * This applies to inner tasks as well.
+	 * <p>
+	 * In general, if this property is <code>true</code>, and the local build environment is suitable for execution,
+	 * then the remote dispatchability is not taken into account, and the task is run on the local environment. <br>
+	 * If the local environment is not suitable, the remote dispatching will proceed.
+	 * <p>
+	 * Setting this property can be useful if the operation to be executed can be performed faster on the local
+	 * environment, while network communication may induce unnecessary latency. This property is recommended to be used
+	 * when the number of operations to be done is limited and generally fast to execute.
+	 * <p>
+	 * If the network communication time outweights the execution time, then the given operation is a good candidate to
+	 * prefer the local environment. However, if the network communication time less in comparison to the execution
+	 * time, we recommend against using this property.
+	 * 
+	 * @return <code>true</code> if the local environment is preferred.
+	 * @since saker.build 0.8.16
+	 */
+	public boolean isPrefersLocalEnvironment() {
+		return prefersLocalEnvironment;
+	}
+
+	/**
 	 * Gets the computation token count consumed by this task during execution.
 	 * <p>
 	 * Computation tokens are used to prevent thrashing of the execution machine when too many concurrent operations are
@@ -307,6 +339,7 @@ public final class TaskInvocationConfiguration implements Externalizable {
 		out.writeBoolean(remoteDispatchable);
 		out.writeBoolean(cacheable);
 		out.writeBoolean(innerTasksComputationals);
+		out.writeBoolean(prefersLocalEnvironment);
 	}
 
 	@Override
@@ -317,6 +350,7 @@ public final class TaskInvocationConfiguration implements Externalizable {
 		remoteDispatchable = in.readBoolean();
 		cacheable = in.readBoolean();
 		innerTasksComputationals = in.readBoolean();
+		prefersLocalEnvironment = in.readBoolean();
 	}
 
 	@Override
@@ -327,6 +361,7 @@ public final class TaskInvocationConfiguration implements Externalizable {
 		result = prime * result + computationTokenCount;
 		result = prime * result + ((environmentSelector == null) ? 0 : environmentSelector.hashCode());
 		result = prime * result + (innerTasksComputationals ? 1231 : 1237);
+		result = prime * result + (prefersLocalEnvironment ? 1231 : 1237);
 		result = prime * result + (remoteDispatchable ? 1231 : 1237);
 		result = prime * result + (shortTask ? 1231 : 1237);
 		return result;
@@ -352,6 +387,8 @@ public final class TaskInvocationConfiguration implements Externalizable {
 			return false;
 		if (innerTasksComputationals != other.innerTasksComputationals)
 			return false;
+		if (prefersLocalEnvironment != other.prefersLocalEnvironment)
+			return false;
 		if (remoteDispatchable != other.remoteDispatchable)
 			return false;
 		if (shortTask != other.shortTask)
@@ -361,9 +398,10 @@ public final class TaskInvocationConfiguration implements Externalizable {
 
 	@Override
 	public String toString() {
-		return getClass().getSimpleName() + "[environmentSelector=" + environmentSelector + ", computationTokenCount="
+		return "TaskInvocationConfiguration[environmentSelector=" + environmentSelector + ", computationTokenCount="
 				+ computationTokenCount + ", shortTask=" + shortTask + ", remoteDispatchable=" + remoteDispatchable
-				+ ", cacheable=" + cacheable + ", innerTasksComputationals=" + innerTasksComputationals + "]";
+				+ ", cacheable=" + cacheable + ", innerTasksComputationals=" + innerTasksComputationals
+				+ ", prefersLocalEnvironment=" + prefersLocalEnvironment + "]";
 	}
 
 	/**
@@ -470,6 +508,21 @@ public final class TaskInvocationConfiguration implements Externalizable {
 		}
 
 		/**
+		 * Sets if the task {@linkplain TaskInvocationConfiguration#isPrefersLocalEnvironment() prefers the local build
+		 * environment}.
+		 * 
+		 * @param prefersLocalEnvironment
+		 *            <code>true</code> if the local environment is preferred.
+		 * @return <code>this</code>
+		 * @since saker.build 0.8.16
+		 * @see TaskInvocationConfiguration#isPrefersLocalEnvironment()
+		 */
+		public Builder setPrefersLocalEnvironment(boolean prefersLocalEnvironment) {
+			result.prefersLocalEnvironment = prefersLocalEnvironment;
+			return this;
+		}
+
+		/**
 		 * Builds the task invocation configuration.
 		 * <p>
 		 * The builder <b>cannot</b> be reused after this call.
@@ -497,6 +550,7 @@ public final class TaskInvocationConfiguration implements Externalizable {
 		 * 
 		 * @return <code>true</code> if the task is short.
 		 * @since saker.build 0.8.14
+		 * @see TaskInvocationConfiguration#isShort()
 		 */
 		public boolean isShort() {
 			return result.shortTask;
@@ -507,6 +561,7 @@ public final class TaskInvocationConfiguration implements Externalizable {
 		 * 
 		 * @return <code>true</code> if the task is remote dispatchable.
 		 * @since saker.build 0.8.14
+		 * @see TaskInvocationConfiguration#isRemoteDispatchable()
 		 */
 		public boolean isRemoteDispatchable() {
 			return result.remoteDispatchable;
@@ -517,6 +572,7 @@ public final class TaskInvocationConfiguration implements Externalizable {
 		 * 
 		 * @return <code>true</code> if the task is cacheable.
 		 * @since saker.build 0.8.14
+		 * @see TaskInvocationConfiguration#isCacheable()
 		 */
 		public boolean isCacheable() {
 			return result.cacheable;
@@ -527,6 +583,7 @@ public final class TaskInvocationConfiguration implements Externalizable {
 		 * 
 		 * @return <code>true</code> if the inner tasks are computationals.
 		 * @since saker.build 0.8.14
+		 * @see TaskInvocationConfiguration#isInnerTasksComputationals()
 		 */
 		public boolean isInnerTasksComputationals() {
 			return result.innerTasksComputationals;
@@ -537,6 +594,7 @@ public final class TaskInvocationConfiguration implements Externalizable {
 		 * 
 		 * @return The number of requested computation tokens.
 		 * @since saker.build 0.8.14
+		 * @see TaskInvocationConfiguration#getRequestedComputationTokenCount()
 		 */
 		public int getRequestedComputationTokenCount() {
 			return result.computationTokenCount;
@@ -547,10 +605,23 @@ public final class TaskInvocationConfiguration implements Externalizable {
 		 * 
 		 * @return The environment selector.
 		 * @since saker.build 0.8.14
+		 * @see TaskInvocationConfiguration#getExecutionEnvironmentSelector()
 		 */
 		public TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
 			return result.environmentSelector;
 		}
+
+		/**
+		 * Gets if the task prefers to be run on the local build environment.
+		 * 
+		 * @return <code>true</code> if the local environment is preferred.
+		 * @since saker.build 0.8.16
+		 * @see TaskInvocationConfiguration#isPrefersLocalEnvironment()
+		 */
+		public boolean isPrefersLocalEnvironment() {
+			return result.prefersLocalEnvironment;
+		}
+
 	}
 
 }

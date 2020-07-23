@@ -246,40 +246,52 @@ public class TaskInvocationManager implements Closeable {
 		}
 	}
 
-	//suppress unused TaskContextReference
-	@SuppressWarnings("try")
 	public <R> TaskInvocationResult<R> invokeTaskRunning(TaskFactory<R> factory,
 			TaskInvocationConfiguration capabilities, SelectionResult selectionresult,
 			TaskExecutorContext<R> taskcontext) throws InterruptedException, ClusterTaskExecutionFailedException {
 		//TODO if the given number of tokens are available from the start, try request it and run on the local
 		//     machine if available
-		if (capabilities.isRemoteDispatchable() && !ObjectUtils.isNullOrEmpty(invokerFactories)) {
-			ensureClustersStarted();
-
-			TaskExecutionRequestImpl<R> request = new TaskExecutionRequestImpl<>(invocationContexts, factory,
-					capabilities, selectionresult, taskcontext);
-			for (TaskInvocationContextImpl invocationcontext : invocationContexts) {
-				invocationcontext.addEvent(new TaskClusterExecutionEventImpl<>(invocationcontext, request));
+		boolean preferslocalenv = capabilities.isPrefersLocalEnvironment();
+		boolean localhasdiffs = true;
+		if (preferslocalenv) {
+			localhasdiffs = hasAnyEnvironmentPropertyDifferenceWithLocalEnvironment(selectionresult);
+			if (!localhasdiffs) {
+				return invokeTaskRunningOnLocalEnvironment(factory, capabilities, taskcontext);
 			}
-			//XXX we shouldn't wait for all clusters to respond, as if we can invoke the task locally, 
-			//    it will be bottlenecked by the slowest cluster
-			request.waitForResult();
-			TaskInvocationResult<R> invocationresult = request.toTaskInvocationResult();
+			//proceed with cluster invocation
+		}
+		if (capabilities.isRemoteDispatchable() && !ObjectUtils.isNullOrEmpty(invokerFactories)) {
+			TaskInvocationResult<R> invocationresult = invokeTaskRunningOnClustersAndWaitForResult(factory,
+					capabilities, selectionresult, taskcontext);
 			if (invocationresult != null) {
 				return invocationresult;
 			}
 			//all clusters failed to invoke
 			//proceed with invoking on the local if possible
 		}
-		boolean hasdiffs = SakerEnvironmentImpl.hasAnyEnvironmentPropertyDifference(localTesterEnvironment,
-				selectionresult.getQualifierEnvironmentProperties());
-		if (hasdiffs) {
+		if (!preferslocalenv) {
+			//don't check twice. if local env is preferred, then we already checked differences 
+			localhasdiffs = hasAnyEnvironmentPropertyDifferenceWithLocalEnvironment(selectionresult);
+		}
+		if (localhasdiffs) {
 			//either at least one of the cluster is suitable
 			//or the local is
 			//if we reach here, either the suitable cluster hasn't responded
 			//or the local environment is not suitable
 			throw new ClusterTaskExecutionFailedException("Suitable execution environment is no longer accessible.");
 		}
+		return invokeTaskRunningOnLocalEnvironment(factory, capabilities, taskcontext);
+	}
+
+	private boolean hasAnyEnvironmentPropertyDifferenceWithLocalEnvironment(SelectionResult selectionresult) {
+		return SakerEnvironmentImpl.hasAnyEnvironmentPropertyDifference(localTesterEnvironment,
+				selectionresult.getQualifierEnvironmentProperties());
+	}
+
+	//suppress unused TaskContextReference
+	@SuppressWarnings("try")
+	private <R> TaskInvocationResult<R> invokeTaskRunningOnLocalEnvironment(TaskFactory<R> factory,
+			TaskInvocationConfiguration capabilities, TaskExecutorContext<R> taskcontext) throws InterruptedException {
 		int tokencount = capabilities.getRequestedComputationTokenCount();
 		try (ComputationToken ctoken = ComputationToken.request(taskcontext, tokencount)) {
 			Task<? extends R> task;
@@ -312,6 +324,23 @@ public class TaskInvocationManager implements Closeable {
 		}
 	}
 
+	private <R> TaskInvocationResult<R> invokeTaskRunningOnClustersAndWaitForResult(TaskFactory<R> factory,
+			TaskInvocationConfiguration capabilities, SelectionResult selectionresult,
+			TaskExecutorContext<R> taskcontext) throws InterruptedException {
+		ensureClustersStarted();
+
+		TaskExecutionRequestImpl<R> request = new TaskExecutionRequestImpl<>(invocationContexts, factory, capabilities,
+				selectionresult, taskcontext);
+		for (TaskInvocationContextImpl invocationcontext : invocationContexts) {
+			invocationcontext.addEvent(new TaskClusterExecutionEventImpl<>(invocationcontext, request));
+		}
+		//XXX we shouldn't wait for all clusters to respond, as if we can invoke the task locally, 
+		//    it will be bottlenecked by the slowest cluster
+		request.waitForResult();
+		TaskInvocationResult<R> invocationresult = request.toTaskInvocationResult();
+		return invocationresult;
+	}
+
 	public <R> ManagerInnerTaskResults<R> invokeInnerTaskRunning(TaskFactory<R> taskfactory,
 			SelectionResult selectionresult, int duplicationfactor, boolean duplicationcancellable,
 			TaskExecutorContext<?> taskcontext, TaskDuplicationPredicate duplicationPredicate,
@@ -320,6 +349,7 @@ public class TaskInvocationManager implements Closeable {
 		final Object resultwaiterlock = new Object();
 		Exception invokerexceptions = null;
 		int computationtokencount = configuration.getRequestedComputationTokenCount();
+		boolean postedtolocalenv = false;
 
 		Predicate<UUID> posttoenvironmentpredicate = selectionresult.environmentId::equals;
 		if (duplicationfactor < 0 || duplicationfactor > 1) {
@@ -354,8 +384,7 @@ public class TaskInvocationManager implements Closeable {
 				duplicationcancellable, taskcontext);
 
 		if (posttoenvironmentpredicate.test(environment.getEnvironmentIdentifier())) {
-			boolean hasdiffs = SakerEnvironmentImpl.hasAnyEnvironmentPropertyDifference(localTesterEnvironment,
-					selectionresult.getQualifierEnvironmentProperties());
+			boolean hasdiffs = hasAnyEnvironmentPropertyDifferenceWithLocalEnvironment(selectionresult);
 			if (!hasdiffs) {
 				ListenerInnerTaskInvocationHandler<R> listener = new ListenerInnerTaskInvocationHandler<>(
 						resultwaiterlock, taskcontext);
@@ -364,6 +393,7 @@ public class TaskInvocationManager implements Closeable {
 							listener, taskcontext, computationtokencount, duplicationPredicate,
 							maximumenvironmentfactor);
 					listener.handle = handle;
+					postedtolocalenv = true;
 					invocationhandles.add(listener);
 					fut.setLocallyRunnable(true);
 				} catch (Exception e) {
@@ -372,7 +402,8 @@ public class TaskInvocationManager implements Closeable {
 			}
 		}
 
-		if (configuration.isRemoteDispatchable()) {
+		if (configuration.isRemoteDispatchable() && !(postedtolocalenv && configuration.isPrefersLocalEnvironment())) {
+			//don't post to build clusters if prefers the local environment and is being run on it
 			ensureClustersStarted();
 			InnerTaskExecutionRequestImpl<R> request = new InnerTaskExecutionRequestImpl<>(invocationContexts, fut,
 					computationtokencount, taskfactory, taskcontext, duplicationPredicate, selectionresult,

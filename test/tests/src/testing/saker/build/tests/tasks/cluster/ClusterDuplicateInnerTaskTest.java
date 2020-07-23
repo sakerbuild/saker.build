@@ -16,7 +16,6 @@
 package testing.saker.build.tests.tasks.cluster;
 
 import java.util.HashSet;
-import java.util.NavigableSet;
 import java.util.Set;
 
 import saker.build.task.InnerTaskExecutionParameters;
@@ -29,6 +28,7 @@ import testing.saker.SakerTest;
 import testing.saker.build.tests.EnvironmentTestCase;
 import testing.saker.build.tests.EnvironmentTestCaseConfiguration;
 import testing.saker.build.tests.tasks.SelfStatelessTaskFactory;
+import testing.saker.build.tests.tasks.factories.ClusterNameReturningTaskFactory;
 
 @SakerTest
 public class ClusterDuplicateInnerTaskTest extends ClusterBuildTestCase {
@@ -61,22 +61,6 @@ public class ClusterDuplicateInnerTaskTest extends ClusterBuildTestCase {
 			assertEquals(invokednames, setOf("cluster1", "cluster2", "cluster3", null));
 			return StringUtils.toStringJoin(null, invokednames);
 		}
-	}
-
-	public static class ClusterNameReturningTaskFactory extends SelfStatelessTaskFactory<String> {
-		private static final long serialVersionUID = 1L;
-
-		@Override
-		public NavigableSet<String> getCapabilities() {
-			return ObjectUtils.newTreeSet(CAPABILITY_REMOTE_DISPATCHABLE);
-		}
-
-		@Override
-		public String run(TaskContext taskcontext) throws Exception {
-			return taskcontext.getExecutionContext().getEnvironment().getUserParameters()
-					.get(EnvironmentTestCase.TEST_CLUSTER_NAME_ENV_PARAM);
-		}
-
 	}
 
 	@Override
