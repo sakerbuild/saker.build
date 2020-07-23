@@ -1131,7 +1131,7 @@ public class BuildCommand {
 		try {
 			path = SakerPath.valueOf(repostr);
 		} catch (IllegalArgumentException e) {
-			throw new InvalidArgumentValueException("Failed to parse nest:/ repository classpath path: " + repostr, e,
+			throw new InvalidArgumentFormatException("Failed to parse nest:/ repository classpath path: " + repostr, e,
 					argname);
 		}
 		if (path.getNameCount() != 2 || !path.getName(0).equals("version")) {
@@ -1168,7 +1168,7 @@ public class BuildCommand {
 		try {
 			return NestRepositoryClassPathLocation.getInstance(versionname);
 		} catch (IllegalArgumentException e) {
-			throw new InvalidArgumentValueException(
+			throw new InvalidArgumentFormatException(
 					"Invalid nest:/version/<version-number> repository classpath path. Invalid version number: "
 							+ repostr,
 					e, argname);

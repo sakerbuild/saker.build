@@ -23,6 +23,7 @@ import saker.build.exception.BuildExecutionFailedException;
 import saker.build.exception.BuildTargetNotFoundException;
 import saker.build.runtime.execution.SakerLog;
 import saker.build.runtime.execution.SakerLog.CommonExceptionFormat;
+import saker.build.runtime.params.InvalidBuildConfigurationException;
 import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.classloader.MultiDataClassLoader;
 import saker.build.thirdparty.saker.util.classloader.SubDirectoryClassLoaderDataFinder;
@@ -75,7 +76,7 @@ public final class Main {
 		} catch (BuildExecutionFailedException e) {
 			//failure info is printed by the build command
 			System.exit(1);
-		} catch (BuildTargetNotFoundException e) {
+		} catch (BuildTargetNotFoundException | InvalidBuildConfigurationException e) {
 			SakerLog.printFormatException(ExceptionView.create(e), CommonExceptionFormat.NO_TRACE);
 			System.exit(1);
 		} catch (IllegalArgumentException e) {

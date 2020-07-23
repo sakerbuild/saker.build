@@ -23,8 +23,8 @@ import java.util.Iterator;
 
 import saker.build.daemon.DaemonLaunchParameters;
 import sipka.cmdline.api.Converter;
+import sipka.cmdline.runtime.ArgumentResolutionException;
 import sipka.cmdline.runtime.InvalidArgumentFormatException;
-import sipka.cmdline.runtime.InvalidArgumentValueException;
 import sipka.cmdline.runtime.ParseUtil;
 
 @Converter(method = "parse")
@@ -68,7 +68,7 @@ class DaemonAddressParam {
 		try {
 			return parseInetSocketAddress(this.argument);
 		} catch (IOException e) {
-			throw new InvalidArgumentValueException("Failed to resolve network address: " + this.argument, e,
+			throw new ArgumentResolutionException("Failed to resolve network address: " + this.argument, e,
 					this.argumentName);
 		} catch (IllegalArgumentException e) {
 			throw new InvalidArgumentFormatException("Invalid network address format: " + this.argument, e,
