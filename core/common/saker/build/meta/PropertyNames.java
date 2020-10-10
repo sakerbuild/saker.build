@@ -27,6 +27,7 @@ import saker.build.util.config.ReferencePolicy;
  * For environment and build execution specific configuration, refer to the appropriate parameter classes.
  * 
  * @see System#getProperties()
+ * @see System#getenv(String)
  */
 public class PropertyNames {
 	/**

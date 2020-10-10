@@ -1033,7 +1033,7 @@ public class StreamUtils {
 				break;
 			}
 			builder.append(buffer, 0, read);
-			cbuffer.reset();
+			cbuffer.clear();
 		}
 		return builder;
 	}

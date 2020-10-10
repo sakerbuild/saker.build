@@ -186,106 +186,108 @@ public class DerivedData {
 	}
 
 	private synchronized void ensureScriptIdentifiers() {
-		if (simpleLiteralContents == null) {
-			long nanos = System.nanoTime();
-			NavigableSet<String> litcontents = new TreeSet<>();
-			Map<Statement, TaskName> tasknamecontents = new LinkedHashMap<>();
-			Map<VariableTaskUsage, Map<Statement, Set<StatementLocation>>> varusages = new TreeMap<>();
-			Set<StatementLocation> includetasks = new LinkedHashSet<>();
-			Set<Statement> includetasksstatements = new LinkedHashSet<>();
-			Map<Statement, Set<StatementLocation>> targetinputparams = new LinkedHashMap<>();
-			Map<Statement, Set<StatementLocation>> targetoutputparams = new LinkedHashMap<>();
-			Map<Statement, StatementLocation> foreachvarlocations = new LinkedHashMap<>();
-			Map<Statement, NavigableSet<String>> targetvarnames = new LinkedHashMap<>();
-
-			Statement rootstm = getStatement();
-
-			NavigableSet<String> declaredbuildtargetnames = SakerScriptTargetConfigurationReader
-					.getDeclaredBuildTargetNames(rootstm);
-
-			SakerParsedModel.visitAllStatements(rootstm.getScopes(), new ArrayDeque<>(), (stm, stmparents) -> {
-				switch (stm.getName()) {
-					case "dereference": {
-						String derefvarname = SakerParsedModel.getDereferenceStatementLiteralVariableName(stm);
-						if (SakerParsedModel.hasEnclosingForeachLocalVariable(derefvarname, stmparents)) {
-							foreachvarlocations.put(stm,
-									new StatementLocation(this, stm, ImmutableUtils.makeImmutableList(stmparents)));
-							break;
-						}
-						if (derefvarname != null) {
-							StatementLocation stmloc = new StatementLocation(this, stm,
-									ImmutableUtils.makeImmutableList(stmparents));
-							addCachedVarUsage(varusages, stmparents, stmloc, VariableTaskUsage.var(derefvarname),
-									targetvarnames);
-						}
-						break;
-					}
-					case "in_parameter": {
-						ensureTargetParameterScriptIdentifiers(varusages, targetinputparams, stm, stmparents,
-								targetvarnames);
-						break;
-					}
-					case "out_parameter": {
-						ensureTargetParameterScriptIdentifiers(varusages, targetoutputparams, stm, stmparents,
-								targetvarnames);
-						break;
-					}
-					case "task": {
-						VariableTaskUsage vartask = SakerParsedModel.getVariableTaskUsageFromTaskStatement(stm);
-						if (vartask != null) {
-							StatementLocation stmloc = new StatementLocation(this, stm,
-									ImmutableUtils.makeImmutableList(stmparents));
-							addCachedVarUsage(varusages, stmparents, stmloc, vartask, targetvarnames);
-						}
-
-						Statement taskidstm = stm.firstScope("task_identifier");
-						try {
-							String taskidstmval = taskidstm.getValue();
-							TaskName tn = TaskName.valueOf(taskidstmval,
-									SakerParsedModel.getTaskIdentifierQualifierLiterals(taskidstm));
-							if (TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE.equals(tn.getName())
-									|| (!BuiltinExternalScriptInformationProvider.isBuiltinTaskName(taskidstmval)
-											&& declaredbuildtargetnames.contains(taskidstmval))) {
-								//  include task
-								//or
-								//  simplified target inclusion
-								StatementLocation stmloc = new StatementLocation(this, stm,
-										ImmutableUtils.makeImmutableList(stmparents));
-								includetasks.add(stmloc);
-								includetasksstatements.add(stm);
-							}
-							tasknamecontents.put(stm, tn);
-						} catch (IllegalArgumentException e) {
-							//if fails to parse the task
-						}
-						break;
-					}
-					case "literal": {
-						String litval = SakerParsedModel.getLiteralValue(stm);
-						if (litval != null) {
-							litcontents.add(litval);
-						}
-						break;
-					}
-					default: {
-						break;
-					}
-				}
-			});
-
-			includeTasksLocations = includetasks;
-			includeTasksStatements = includetasksstatements;
-			variableUsages = varusages;
-			simpleLiteralContents = litcontents;
-			presentTaskNamecontents = tasknamecontents;
-			targetInputParameterNames = targetinputparams;
-			targetOutputParameterNames = targetoutputparams;
-			foreachVariableLocations = foreachvarlocations;
-			targetVariableNames = targetvarnames;
-			declaredBuildTargetNames = declaredbuildtargetnames;
-			System.out.println(
-					"DerivedData.ensureScriptIdentifiers() " + (System.nanoTime() - nanos) / 1_000_000 + " ms");
+		//test one of the fields to see if we already computed it
+		if (simpleLiteralContents != null) {
+			return;
 		}
+
+		long nanos = System.nanoTime();
+		NavigableSet<String> litcontents = new TreeSet<>();
+		Map<Statement, TaskName> tasknamecontents = new LinkedHashMap<>();
+		Map<VariableTaskUsage, Map<Statement, Set<StatementLocation>>> varusages = new TreeMap<>();
+		Set<StatementLocation> includetasks = new LinkedHashSet<>();
+		Set<Statement> includetasksstatements = new LinkedHashSet<>();
+		Map<Statement, Set<StatementLocation>> targetinputparams = new LinkedHashMap<>();
+		Map<Statement, Set<StatementLocation>> targetoutputparams = new LinkedHashMap<>();
+		Map<Statement, StatementLocation> foreachvarlocations = new LinkedHashMap<>();
+		Map<Statement, NavigableSet<String>> targetvarnames = new LinkedHashMap<>();
+
+		Statement rootstm = getStatement();
+
+		NavigableSet<String> declaredbuildtargetnames = SakerScriptTargetConfigurationReader
+				.getDeclaredBuildTargetNames(rootstm);
+
+		SakerParsedModel.visitAllStatements(rootstm.getScopes(), new ArrayDeque<>(), (stm, stmparents) -> {
+			switch (stm.getName()) {
+				case "dereference": {
+					String derefvarname = SakerParsedModel.getDereferenceStatementLiteralVariableName(stm);
+					if (SakerParsedModel.hasEnclosingForeachLocalVariable(derefvarname, stmparents)) {
+						foreachvarlocations.put(stm,
+								new StatementLocation(this, stm, ImmutableUtils.makeImmutableList(stmparents)));
+						break;
+					}
+					if (derefvarname != null) {
+						StatementLocation stmloc = new StatementLocation(this, stm,
+								ImmutableUtils.makeImmutableList(stmparents));
+						addCachedVarUsage(varusages, stmparents, stmloc, VariableTaskUsage.var(derefvarname),
+								targetvarnames);
+					}
+					break;
+				}
+				case "in_parameter": {
+					ensureTargetParameterScriptIdentifiers(varusages, targetinputparams, stm, stmparents,
+							targetvarnames);
+					break;
+				}
+				case "out_parameter": {
+					ensureTargetParameterScriptIdentifiers(varusages, targetoutputparams, stm, stmparents,
+							targetvarnames);
+					break;
+				}
+				case "task": {
+					VariableTaskUsage vartask = SakerParsedModel.getVariableTaskUsageFromTaskStatement(stm);
+					if (vartask != null) {
+						StatementLocation stmloc = new StatementLocation(this, stm,
+								ImmutableUtils.makeImmutableList(stmparents));
+						addCachedVarUsage(varusages, stmparents, stmloc, vartask, targetvarnames);
+					}
+
+					Statement taskidstm = stm.firstScope("task_identifier");
+					try {
+						String taskidstmval = taskidstm.getValue();
+						TaskName tn = TaskName.valueOf(taskidstmval,
+								SakerParsedModel.getTaskIdentifierQualifierLiterals(taskidstm));
+						if (TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE.equals(tn.getName())
+								|| (!BuiltinExternalScriptInformationProvider.isBuiltinTaskName(taskidstmval)
+										&& declaredbuildtargetnames.contains(taskidstmval))) {
+							//  include task
+							//or
+							//  simplified target inclusion
+							StatementLocation stmloc = new StatementLocation(this, stm,
+									ImmutableUtils.makeImmutableList(stmparents));
+							includetasks.add(stmloc);
+							includetasksstatements.add(stm);
+						}
+						tasknamecontents.put(stm, tn);
+					} catch (IllegalArgumentException e) {
+						//if fails to parse the task
+					}
+					break;
+				}
+				case "literal": {
+					String litval = SakerParsedModel.getLiteralValue(stm);
+					if (litval != null) {
+						litcontents.add(litval);
+					}
+					break;
+				}
+				default: {
+					break;
+				}
+			}
+		});
+
+		includeTasksLocations = includetasks;
+		includeTasksStatements = includetasksstatements;
+		variableUsages = varusages;
+		simpleLiteralContents = litcontents;
+		presentTaskNamecontents = tasknamecontents;
+		targetInputParameterNames = targetinputparams;
+		targetOutputParameterNames = targetoutputparams;
+		foreachVariableLocations = foreachvarlocations;
+		targetVariableNames = targetvarnames;
+		declaredBuildTargetNames = declaredbuildtargetnames;
+		System.out.println("DerivedData.ensureScriptIdentifiers() " + (System.nanoTime() - nanos) / 1_000_000 + " ms");
 	}
 
 	private void ensureTargetParameterScriptIdentifiers(

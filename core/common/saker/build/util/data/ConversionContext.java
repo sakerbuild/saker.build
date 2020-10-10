@@ -76,10 +76,7 @@ public final class ConversionContext {
 				if (prev != null) {
 					String msg = "Multiple converter configurations defined: " + converterconfigurations
 							+ " with same generic argument location: " + genericloc;
-					SakerLog.warning().out(System.err).println(msg);
-					if (TestFlag.ENABLED) {
-						throw new AssertionError(msg);
-					}
+					throw new ConversionFailedException(msg);
 				}
 			} while (confit.hasNext());
 		} else {

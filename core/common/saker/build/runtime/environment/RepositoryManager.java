@@ -48,6 +48,7 @@ import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.function.IOSupplier;
 import saker.build.thirdparty.saker.util.ref.StrongWeakReference;
+import saker.build.trace.BuildTrace;
 
 public class RepositoryManager implements Closeable {
 	private static final String STORAGE_SUBDIRECTORY_NAME = "repository";
@@ -79,13 +80,15 @@ public class RepositoryManager implements Closeable {
 	}
 
 	public SakerRepository loadRepository(ClassPathLocation repolocation,
-			ClassPathServiceEnumerator<? extends SakerRepositoryFactory> enumerator) throws IOException {
+			ClassPathServiceEnumerator<? extends SakerRepositoryFactory> enumerator)
+			throws IOException, ClassPathEnumerationError {
 		LoadedClassPath loadedcp = loadClassPath(repolocation);
 		return loadedcp.getRepository(enumerator, () -> classPathManager.loadClassPath(repolocation));
 	}
 
 	public SakerRepository loadDirectRepository(Path repositoryclasspathloaddirectory,
-			ClassPathServiceEnumerator<? extends SakerRepositoryFactory> enumerator) throws IOException {
+			ClassPathServiceEnumerator<? extends SakerRepositoryFactory> enumerator)
+			throws IOException, ClassPathEnumerationError {
 		LoadedClassPath loadedcp = loadDirectClassPath(repositoryclasspathloaddirectory);
 		return loadedcp.getRepository(enumerator,
 				() -> classPathManager.loadDirectClassPath(repositoryclasspathloaddirectory));
@@ -218,7 +221,7 @@ public class RepositoryManager implements Closeable {
 		}
 
 		public ReturnedRepository getRepository(ClassPathServiceEnumerator<? extends SakerRepositoryFactory> enumerator,
-				IOSupplier<ClassPathLock> classPathLockSupplier) throws IOException {
+				IOSupplier<ClassPathLock> classPathLockSupplier) throws IOException, ClassPathEnumerationError {
 			return getEnumeratorState(enumerator).loadRepository(classPathLockSupplier);
 		}
 
@@ -300,31 +303,35 @@ public class RepositoryManager implements Closeable {
 
 		public void removeLoadCount(int c) {
 			synchronized (loadCountLock) {
-				//XXX we don't need to check closed here do we? if the manager is closed, unloading should still succeed
+				removeLoadCountLocked(c);
+			}
+		}
+
+		protected void removeLoadCountLocked(int c) {
+			//XXX we don't need to check closed here do we? if the manager is closed, unloading should still succeed
 //				checkClosed();
-				if (allLoadCount < c) {
-					throw new AssertionError(allLoadCount + " - " + c);
+			if (allLoadCount < c) {
+				throw new AssertionError(allLoadCount + " - " + c);
+			}
+			allLoadCount -= c;
+			if (allLoadCount == 0) {
+				for (Entry<ClassPathServiceEnumerator<? extends SakerRepositoryFactory>, Object> entry : enumeratorStateLocks
+						.entrySet()) {
+					RepositoryEnumeratorState state;
+					synchronized (entry.getValue()) {
+						state = enumeratorStates.remove(entry.getKey());
+					}
+					IOUtils.closePrint(state);
 				}
-				allLoadCount -= c;
-				if (allLoadCount == 0) {
-					for (Entry<ClassPathServiceEnumerator<? extends SakerRepositoryFactory>, Object> entry : enumeratorStateLocks
-							.entrySet()) {
-						RepositoryEnumeratorState state;
-						synchronized (entry.getValue()) {
-							state = enumeratorStates.remove(entry.getKey());
-						}
-						IOUtils.closePrint(state);
-					}
-					MultiDataClassLoader clref = ObjectUtils.getReference(this.classLoader);
-					if (clref != null) {
-						IOUtils.closePrint(clref.getDatasFinders());
-					}
-					IOUtils.closePrint(this.classPathLock);
-					if (this.classLoader != null) {
-						this.classLoader.makeWeak();
-					}
-					classPathLock = null;
+				MultiDataClassLoader clref = ObjectUtils.getReference(this.classLoader);
+				if (clref != null) {
+					IOUtils.closePrint(clref.getDatasFinders());
 				}
+				IOUtils.closePrint(this.classPathLock);
+				if (this.classLoader != null) {
+					this.classLoader.makeWeak();
+				}
+				classPathLock = null;
 			}
 		}
 	}
@@ -474,42 +481,44 @@ public class RepositoryManager implements Closeable {
 			}
 		}
 
-		private SakerRepositoryFactory loadFactoriesImpl(ClassLoader classLoader) {
-			try {
-				Iterable<? extends SakerRepositoryFactory> serviceiterable = enumerator.getServices(classLoader);
-				Iterator<? extends SakerRepositoryFactory> it = serviceiterable.iterator();
-				if (it.hasNext()) {
-					SakerRepositoryFactory res = it.next();
-					try {
-						if (it.hasNext()) {
-							System.err.println("Warning: Multiple repositories found in classloader: " + classLoader);
-						}
-					} catch (ClassPathEnumerationError e) {
-						e.printStackTrace();
+		private SakerRepositoryFactory loadFactoriesImpl(ClassLoader classLoader) throws ClassPathEnumerationError {
+			Iterable<? extends SakerRepositoryFactory> serviceiterable = enumerator.getServices(classLoader);
+			Iterator<? extends SakerRepositoryFactory> it = serviceiterable.iterator();
+			if (it.hasNext()) {
+				SakerRepositoryFactory res = it.next();
+				try {
+					if (it.hasNext()) {
+						BuildTrace.ignoredException(new IllegalArgumentException(
+								"Multiple repositories found in classloader: " + classLoader));
 					}
-					return res;
+				} catch (ClassPathEnumerationError e) {
+					BuildTrace.ignoredException(e);
 				}
-			} catch (ClassPathEnumerationError e) {
-				//print for info
-				e.printStackTrace();
+				return res;
 			}
 			return null;
 		}
 
 		public SakerRepositoryFactory getFactoriesAddLoadCount(IOSupplier<ClassPathLock> classPathLockSupplier)
-				throws IOException {
+				throws IOException, ClassPathEnumerationError {
 			synchronized (loadedClassPath.loadCountLock) {
 				loadedClassPath.addLoadCountLocked(classPathLockSupplier);
 				if (loadedClassPath.classPathVersion.equals(factoriesClassLoaderVersion)) {
 					return factory;
 				}
-				this.factory = loadFactoriesImpl(loadedClassPath.classLoader.get());
-				this.factoriesClassLoaderVersion = loadedClassPath.classPathVersion;
+				try {
+					this.factory = loadFactoriesImpl(loadedClassPath.classLoader.get());
+					this.factoriesClassLoaderVersion = loadedClassPath.classPathVersion;
+				} catch (Throwable e) {
+					loadedClassPath.removeLoadCountLocked(1);
+					throw e;
+				}
 			}
 			return factory;
 		}
 
-		public ReturnedRepository loadRepository(IOSupplier<ClassPathLock> classPathLockSupplier) throws IOException {
+		public ReturnedRepository loadRepository(IOSupplier<ClassPathLock> classPathLockSupplier)
+				throws IOException, ClassPathEnumerationError {
 			SakerRepositoryFactory factory = getFactoriesAddLoadCount(classPathLockSupplier);
 			try {
 				if (factory == null) {

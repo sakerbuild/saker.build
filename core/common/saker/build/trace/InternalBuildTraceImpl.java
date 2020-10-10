@@ -22,9 +22,12 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.io.UnsupportedEncodingException;
+import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -37,13 +40,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
+import java.util.NavigableSet;
 import java.util.Objects;
+import java.util.ServiceConfigurationError;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import saker.build.exception.PropertyComputationFailedException;
@@ -104,8 +110,6 @@ import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
-import saker.build.thirdparty.saker.util.ConcurrentAppendAccumulator;
-import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
@@ -122,6 +126,8 @@ import testing.saker.build.flag.TestFlag;
 
 @RMIWrap(InternalBuildTraceImplRMIWrapper.class)
 public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
+	private static final String PROPERTY_NAME_INFO_ENVIRONMENT_NAME = "saker.build.info.environment.name";
+
 	private static final int BUILDTRACE_ARTIFACT_EMBED_FLAGS = BuildTrace.ARTIFACT_EMBED_FLAG_CONFIDENTAL;
 
 	protected static final Method METHOD_IGNOREDEXCEPTION = ReflectUtils.getMethodAssert(
@@ -132,6 +138,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			.getMethodAssert(ClusterInternalBuildTrace.class, "setClusterValues", UUID.class, Map.class, String.class);
 	protected static final Method METHOD_ADDCLUSTERVALUES = ReflectUtils
 			.getMethodAssert(ClusterInternalBuildTrace.class, "addClusterValues", UUID.class, Map.class, String.class);
+	protected static final Method METHOD_IGNOREDCLUSTERSTATICEXCEPTION = ReflectUtils.getMethodAssert(
+			ClusterInternalBuildTrace.class, "ignoredClusterStaticException", UUID.class, String.class);
+	protected static final Method METHOD_CLUSTERSERIALIZATIONEXCEPTION = ReflectUtils.getMethodAssert(
+			ClusterInternalBuildTrace.class, "clusterSerializationException", UUID.class, String.class);
+	protected static final Method METHOD_CLUSTERSERIALIZATIONWARNING = ReflectUtils
+			.getMethodAssert(ClusterInternalBuildTrace.class, "clusterSerializationWarning", UUID.class, String.class);
 
 	protected static final Method METHOD_STARTCLUSTERTASKEXECUTION = ReflectUtils
 			.getMethodAssert(ClusterTaskBuildTrace.class, "startClusterTaskExecution", long.class, UUID.class);
@@ -188,6 +200,17 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 	private static final InheritableThreadLocal<WeakReference<? extends InternalBuildTrace>> baseReferenceThreadLocal = new InheritableThreadLocal<>();
 
+	/**
+	 * Internally collected exceptions produced by the build system.
+	 */
+	private static final ConcurrentSkipListSet<String> staticIgnoredExceptions = new ConcurrentSkipListSet<>();
+	private static final Collection<WeakReference<? extends IgnoredStaticExceptionListener>> staticIgnoredExceptionListeners = ConcurrentHashMap
+			.newKeySet();
+
+	private interface IgnoredStaticExceptionListener {
+		public void ignoredStaticException(String stacktrace);
+	}
+
 	private static final AtomicIntegerFieldUpdater<InternalBuildTraceImpl> AIFU_eventCounter = AtomicIntegerFieldUpdater
 			.newUpdater(InternalBuildTraceImpl.class, "eventCounter");
 	@SuppressWarnings("unused")
@@ -222,7 +245,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	private final NavigableMap<UUID, EnvironmentReference> environmentInformations = new ConcurrentSkipListMap<>();
 	private final NavigableMap<UUID, Long> clusterInitializationTimeNanos = new ConcurrentSkipListMap<>();
 
-	private ConcurrentPrependAccumulator<ExceptionView> ignoredExceptions = new ConcurrentPrependAccumulator<>();
+	private ConcurrentSkipListSet<String> ignoredExceptions = new ConcurrentSkipListSet<>();
 	private BuildInformation buildInformation;
 	private boolean ideConfigurationRequired;
 	private ExecutionScriptConfiguration scriptConfiguration;
@@ -310,6 +333,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 		Map<String, Object> valmap = this.values.computeIfAbsent(category, Functionals.linkedHashMapComputer());
 		addNormalizedValuesToMap(normvalues, valmap);
+	}
+
+	@Override
+	public void ignoredClusterStaticException(UUID environmentid, String stacktrace) {
+		this.environmentInformations.computeIfAbsent(environmentid,
+				x -> new EnvironmentReference()).staticIgnoredExceptions.add(stacktrace);
 	}
 
 	@Override
@@ -545,12 +574,115 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	}
 
 	@Override
+	public void clusterSerializationException(UUID environmentid, String stacktrace) {
+		this.environmentInformations.computeIfAbsent(environmentid,
+				x -> new EnvironmentReference()).serializationExceptions.add(stacktrace);
+	}
+
+	@Override
+	public void clusterSerializationWarning(UUID environmentid, String message) {
+		this.environmentInformations.computeIfAbsent(environmentid,
+				x -> new EnvironmentReference()).serializationWarnings.add(message);
+	}
+
+	@Override
+	public void serializationException(String stacktrace) {
+		if (stacktrace == null) {
+			return;
+		}
+		localEnvironmentReference.serializationExceptions.add(stacktrace);
+	}
+
+	@Override
+	public void serializationWarning(String message) {
+		if (message == null) {
+			return;
+		}
+		localEnvironmentReference.serializationWarnings.add(message);
+	}
+
+	public static void serializationException(Throwable e) {
+		if (e == null) {
+			return;
+		}
+		InternalBuildTrace bt = currentOrNull();
+		if (bt == null) {
+			return;
+		}
+		noException(() -> {
+			String stacktrace = printExceptionToString(ExceptionView.create(e));
+			bt.serializationException(stacktrace);
+		});
+	}
+
+	public static void serializationWarningMessage(String message) {
+		if (message == null) {
+			return;
+		}
+		InternalBuildTrace bt = currentOrNull();
+		if (bt == null) {
+			return;
+		}
+		noException(() -> {
+			bt.serializationWarning(message);
+		});
+	}
+
+	public static void ignoredStaticException(Throwable e) {
+		if (e == null) {
+			return;
+		}
+		ignoredStaticException(ExceptionView.create(e));
+	}
+
+	public static void ignoredStaticException(ExceptionView e) {
+		if (e == null) {
+			return;
+		}
+		String str = printExceptionToString(e);
+		staticIgnoredExceptions.add(str);
+		for (Iterator<? extends Reference<? extends IgnoredStaticExceptionListener>> it = staticIgnoredExceptionListeners
+				.iterator(); it.hasNext();) {
+			Reference<? extends IgnoredStaticExceptionListener> ref = it.next();
+			IgnoredStaticExceptionListener listener = ref.get();
+			if (listener == null) {
+				it.remove();
+				continue;
+			}
+			noException(() -> {
+				listener.ignoredStaticException(str);
+			});
+		}
+	}
+
+	protected static void addIgnoredStaticExceptionListener(IgnoredStaticExceptionListener listener) {
+		addIgnoredStaticExceptionListener(new WeakReference<>(listener));
+	}
+
+	protected static void addIgnoredStaticExceptionListener(
+			WeakReference<? extends IgnoredStaticExceptionListener> ref) {
+		//purge no longer referenced entities
+		for (Iterator<? extends Reference<? extends IgnoredStaticExceptionListener>> it = staticIgnoredExceptionListeners
+				.iterator(); it.hasNext();) {
+			if (it.next().get() == null) {
+				it.remove();
+			}
+		}
+		staticIgnoredExceptionListeners.add(ref);
+	}
+
+	protected static void removeIgnoredStaticExceptionListener(
+			WeakReference<? extends IgnoredStaticExceptionListener> ref) {
+		staticIgnoredExceptionListeners.remove(ref);
+	}
+
+	@Override
 	public void ignoredException(TaskIdentifier taskid, ExceptionView e) {
 		if (e == null) {
 			return;
 		}
 		if (taskid == null) {
-			ignoredExceptions.add(e);
+			ignoredExceptions.add(printExceptionToString(e));
 			return;
 		}
 		TaskBuildTraceImpl trace = getTaskTraceForTaskId(taskid);
@@ -566,6 +698,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			this.buildTimeDateMillis = executioncontext.getBuildTimeMillis();
 
 			EnvironmentInformation localenvinfo = new EnvironmentInformation(environment);
+			localenvinfo.staticIgnoredExceptions = InternalBuildTraceImpl.staticIgnoredExceptions;
 			this.localEnvironmentReference = environmentInformations.computeIfAbsent(localenvinfo.buildEnvironmentUUID,
 					x -> new EnvironmentReference());
 			this.localEnvironmentReference.environmentInfo = localenvinfo;
@@ -606,7 +739,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			readScriptContents.computeIfAbsent(parsingoptions.getScriptPath(), p -> {
 				try {
 					return file.getBytesImpl();
-				} catch (Exception | StackOverflowError e) {
+				} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError
+						| AssertionError | Exception e) {
+					if (TestFlag.ENABLED) {
+						e.printStackTrace();
+					}
 					return null;
 				}
 			});
@@ -699,47 +836,56 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
 
-				writeFieldName(os, "machine_uuid");
-				writeString(os, envinfo.machineFileProviderUUID.toString());
+				if (envinfo != null) {
+					//the environment info may have not yet been initialized.
+					//may be due to some concurrency issues, acceptable, but not expected
 
-				writeFieldName(os, "env_uuid");
-				writeString(os, envinfo.buildEnvironmentUUID.toString());
+					writeFieldName(os, "machine_uuid");
+					writeString(os, envinfo.machineFileProviderUUID.toString());
 
-				writeFieldName(os, "user_params");
-				writeObject(os, envinfo.environmentUserParameters);
+					writeFieldName(os, "env_uuid");
+					writeString(os, envinfo.buildEnvironmentUUID.toString());
 
-				writeFieldName(os, "thread_factor");
-				writeInt(os, envinfo.threadFactor);
+					writeFieldName(os, "user_params");
+					writeObject(os, envinfo.environmentUserParameters);
 
-				writeFieldName(os, "os_name");
-				writeString(os, envinfo.osName);
-				writeFieldName(os, "os_version");
-				writeString(os, envinfo.osVersion);
-				writeFieldName(os, "os_arch");
-				writeString(os, envinfo.osArch);
-				writeFieldName(os, "java_version");
-				writeString(os, envinfo.javaVersion);
-				writeFieldName(os, "java_vm_vendor");
-				writeString(os, envinfo.javaVmVendor);
-				writeFieldName(os, "java_vm_name");
-				writeString(os, envinfo.javaVmName);
-				writeFieldName(os, "java_home");
-				writeString(os, envinfo.javaHome);
-				writeFieldName(os, "environment_name_info");
-				writeString(os, envinfo.environmentNameInfo);
-				writeFieldName(os, "processors");
-				writeInt(os, envinfo.availableProcessors);
+					writeFieldName(os, "thread_factor");
+					writeInt(os, envinfo.threadFactor);
 
-				if (!ObjectUtils.isNullOrEmpty(envinfo.computerName)) {
-					writeFieldName(os, "computer_name");
-					writeString(os, envinfo.computerName);
-				}
-				writeFieldName(os, "saker_build_version");
-				writeString(os, envinfo.sakerBuildVersion);
+					writeFieldName(os, "os_name");
+					writeString(os, envinfo.osName);
+					writeFieldName(os, "os_version");
+					writeString(os, envinfo.osVersion);
+					writeFieldName(os, "os_arch");
+					writeString(os, envinfo.osArch);
+					writeFieldName(os, "java_version");
+					writeString(os, envinfo.javaVersion);
+					writeFieldName(os, "java_vm_vendor");
+					writeString(os, envinfo.javaVmVendor);
+					writeFieldName(os, "java_vm_name");
+					writeString(os, envinfo.javaVmName);
+					writeFieldName(os, "java_home");
+					writeString(os, envinfo.javaHome);
+					writeFieldName(os, "environment_name_info");
+					writeString(os, envinfo.environmentNameInfo);
+					writeFieldName(os, "processors");
+					writeInt(os, envinfo.availableProcessors);
 
-				if (envinfo.clusterMirrorDirectory != null) {
-					writeFieldName(os, "cluster_mirror_dir");
-					writeString(os, envinfo.clusterMirrorDirectory.toString());
+					if (!ObjectUtils.isNullOrEmpty(envinfo.computerName)) {
+						writeFieldName(os, "computer_name");
+						writeString(os, envinfo.computerName);
+					}
+					writeFieldName(os, "saker_build_version");
+					writeString(os, envinfo.sakerBuildVersion);
+
+					if (envinfo.clusterMirrorDirectory != null) {
+						writeFieldName(os, "cluster_mirror_dir");
+						writeString(os, envinfo.clusterMirrorDirectory.toString());
+					}
+					if (!ObjectUtils.isNullOrEmpty(envinfo.staticIgnoredExceptions)) {
+						writeFieldName(os, "ignored_static_exceptions");
+						writeArrayNullBounded(os, envinfo.staticIgnoredExceptions);
+					}
 				}
 
 				Long inittime = clusterInitializationTimeNanos.get(entry.getKey());
@@ -751,6 +897,18 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				if (!envref.values.isEmpty()) {
 					writeFieldName(os, "values");
 					writeObject(os, envref.values);
+				}
+				if (!ObjectUtils.isNullOrEmpty(envref.staticIgnoredExceptions)) {
+					writeFieldName(os, "static_ignored_exceptions");
+					writeArrayNullBounded(os, envref.staticIgnoredExceptions);
+				}
+				if (!ObjectUtils.isNullOrEmpty(envref.serializationExceptions)) {
+					writeFieldName(os, "serialization_exceptions");
+					writeArrayNullBounded(os, envref.serializationExceptions);
+				}
+				if (!ObjectUtils.isNullOrEmpty(envref.serializationWarnings)) {
+					writeFieldName(os, "serialization_warnings");
+					writeArrayNullBounded(os, envref.serializationWarnings);
 				}
 
 				writeFieldName(os, "");
@@ -931,9 +1089,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			if (!ignoredExceptions.isEmpty()) {
 				writeFieldName(os, "ignored_exceptions");
 				os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
-				Iterator<ExceptionView> it = ignoredExceptions.clearAndIterator();
-				while (it.hasNext()) {
-					writeByteArray(os, printExceptionToBytes(it.next()));
+				for (String e : ignoredExceptions) {
+					writeByteArray(os, e.getBytes(StandardCharsets.UTF_8));
 				}
 				writeNull(os);
 			}
@@ -1085,9 +1242,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				if (!ttrace.ignoredExceptions.isEmpty()) {
 					writeFieldName(os, "ignored_exceptions");
 					os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
-					Iterator<ExceptionView> it = ttrace.ignoredExceptions.clearAndIterator();
-					while (it.hasNext()) {
-						writeByteArray(os, printExceptionToBytes(it.next()));
+					for (String e : ttrace.ignoredExceptions) {
+						writeByteArray(os, e.getBytes(StandardCharsets.UTF_8));
 					}
 					writeNull(os);
 				}
@@ -1410,10 +1566,18 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		return;
 	}
 
+	private static String printExceptionToString(ExceptionView ev) {
+		StringBuilder sb = new StringBuilder();
+		ev.printStackTrace(sb);
+		return sb.toString();
+	}
+
 	private static ByteArrayRegion printExceptionToBytes(ExceptionView ev) {
 		try (UnsyncByteArrayOutputStream baos = new UnsyncByteArrayOutputStream()) {
-			try (PrintStream ps = new PrintStream(baos)) {
+			try (PrintStream ps = new PrintStream(baos, false, "UTF-8")) {
 				ev.printStackTrace(ps);
+			} catch (UnsupportedEncodingException e) {
+				throw new AssertionError("UTF-8 not supported", e);
 			}
 			return baos.toByteArrayRegion();
 		}
@@ -1421,6 +1585,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 	private static void writeNull(DataOutputStream os) throws IOException {
 		os.writeByte(TYPE_NULL);
+	}
+
+	private static void writeByteArray(DataOutputStream os, byte[] bytes) throws IOException {
+		os.writeByte(TYPE_BYTE_ARRAY);
+		os.writeInt(bytes.length);
+		os.write(bytes);
 	}
 
 	private static void writeByteArray(DataOutputStream os, ByteArrayRegion bytes) throws IOException {
@@ -1670,7 +1840,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	private static void noException(ThrowingRunnable run) {
 		try {
 			run.run();
-		} catch (Exception | StackOverflowError e) {
+		} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError | AssertionError
+				| Exception e) {
 			//ignore
 			if (TestFlag.ENABLED) {
 				e.printStackTrace();
@@ -1708,7 +1879,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		protected Map<Object, InnerTaskBuildTraceImpl> innerBuildTraces = Collections
 				.synchronizedMap(new IdentityHashMap<>());
 
-		protected ConcurrentAppendAccumulator<ExceptionView> ignoredExceptions = new ConcurrentAppendAccumulator<>();
+		protected ConcurrentSkipListSet<String> ignoredExceptions = new ConcurrentSkipListSet<>();
 
 		public TaskBuildTraceImpl(InternalBuildTraceImpl trace) {
 			this.trace = trace;
@@ -1734,7 +1905,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		public void ignoredException(ExceptionView e) {
-			ignoredExceptions.add(e);
+			ignoredExceptions.add(printExceptionToString(e));
 		}
 
 		@Override
@@ -2299,6 +2470,10 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		 */
 		protected LinkedHashMap<String, Object> values = new LinkedHashMap<>();
 
+		protected NavigableSet<String> staticIgnoredExceptions = new ConcurrentSkipListSet<>();
+		protected NavigableSet<String> serializationExceptions = new ConcurrentSkipListSet<>();
+		protected NavigableSet<String> serializationWarnings = new ConcurrentSkipListSet<>();
+
 		public EnvironmentReference() {
 		}
 
@@ -2332,6 +2507,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		protected String sakerBuildVersion;
 		protected SakerPath clusterMirrorDirectory;
 
+		protected NavigableSet<String> staticIgnoredExceptions;
+
 		/**
 		 * For {@link Externalizable}.
 		 */
@@ -2351,7 +2528,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			this.javaVmVendor = System.getProperty("java.vm.vendor");
 			this.javaVmName = System.getProperty("java.vm.name");
 			this.javaHome = System.getProperty("java.home");
-			this.environmentNameInfo = System.getProperty("saker.build.info.environment.name");
+			this.environmentNameInfo = System.getProperty(PROPERTY_NAME_INFO_ENVIRONMENT_NAME);
 			//it is present in windows
 			this.computerName = System.getenv("COMPUTERNAME");
 			this.sakerBuildVersion = Versions.VERSION_STRING_FULL;
@@ -2375,6 +2552,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			out.writeObject(computerName);
 			out.writeObject(sakerBuildVersion);
 			out.writeObject(clusterMirrorDirectory);
+			SerialUtils.writeExternalCollection(out, staticIgnoredExceptions);
 		}
 
 		@Override
@@ -2395,6 +2573,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			computerName = (String) in.readObject();
 			sakerBuildVersion = (String) in.readObject();
 			clusterMirrorDirectory = (SakerPath) in.readObject();
+			staticIgnoredExceptions = SerialUtils.readExternalImmutableNavigableSet(in);
 		}
 
 		public void setClusterMirrorDirectory(SakerPath mirrordir) {
@@ -2402,7 +2581,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 	}
 
-	protected static class InternalBuildTraceImplRMIWrapper implements RMIWrapper, ClusterInternalBuildTrace {
+	protected static class InternalBuildTraceImplRMIWrapper
+			implements RMIWrapper, ClusterInternalBuildTrace, IgnoredStaticExceptionListener {
 		private ClusterInternalBuildTrace trace;
 		private long writeNanos;
 		private long readNanos;
@@ -2411,6 +2591,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		private final Set<TraceContributorEnvironmentProperty<?>> contributedEnvironmentProperties = ConcurrentHashMap
 				.newKeySet();
+		private WeakReference<InternalBuildTraceImplRMIWrapper> thisReference;
 
 		public InternalBuildTraceImplRMIWrapper() {
 			this.readNanos = System.nanoTime();
@@ -2451,16 +2632,31 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		@Override
 		public void startBuildCluster(SakerEnvironmentImpl environment, Path mirrordir) {
-			baseReferenceThreadLocal.set(new WeakReference<>(this));
+			thisReference = new WeakReference<>(this);
+			addIgnoredStaticExceptionListener(thisReference);
+			baseReferenceThreadLocal.set(thisReference);
 			long currentbuildnanos = System.nanoTime() - readNanos + writeNanos;
 			environmentUUID = environment.getEnvironmentIdentifier();
 			noException(() -> {
 				EnvironmentInformation envinfo = new EnvironmentInformation(environment);
+				envinfo.staticIgnoredExceptions = new TreeSet<>();
+				for (String ex : InternalBuildTraceImpl.staticIgnoredExceptions) {
+					envinfo.staticIgnoredExceptions.add(ex);
+				}
 				if (mirrordir != null) {
 					envinfo.setClusterMirrorDirectory(SakerPath.valueOf(mirrordir));
 				}
 				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_STARTBUILDCLUSTER, envinfo, currentbuildnanos);
 			});
+		}
+
+		@Override
+		public void endBuildCluster() {
+			WeakReference<InternalBuildTraceImplRMIWrapper> thisref = thisReference;
+			if (thisref != null) {
+				thisref.clear();
+				removeIgnoredStaticExceptionListener(thisref);
+			}
 		}
 
 		@Override
@@ -2500,5 +2696,30 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				}
 			});
 		}
+
+		@Override
+		public void ignoredStaticException(String stacktrace) {
+			noException(() -> {
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_IGNOREDCLUSTERSTATICEXCEPTION, environmentUUID,
+						stacktrace);
+			});
+		}
+
+		@Override
+		public void serializationException(String stacktrace) {
+			noException(() -> {
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_CLUSTERSERIALIZATIONEXCEPTION, environmentUUID,
+						stacktrace);
+			});
+		}
+
+		@Override
+		public void serializationWarning(String message) {
+			noException(() -> {
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_CLUSTERSERIALIZATIONWARNING, environmentUUID,
+						message);
+			});
+		}
 	}
+
 }

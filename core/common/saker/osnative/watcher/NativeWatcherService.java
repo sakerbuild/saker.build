@@ -17,9 +17,11 @@ package saker.osnative.watcher;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Path;
 
-import saker.build.runtime.execution.SakerLog;
 import saker.build.thirdparty.saker.util.ReflectUtils;
+import saker.build.trace.BuildTrace;
+import saker.build.trace.InternalBuildTraceImpl;
 import saker.osnative.NativeLibs;
 import testing.saker.build.flag.TestFlag;
 
@@ -41,14 +43,27 @@ public class NativeWatcherService {
 				if (loaded == null) {
 					String cname = NativeWatcherService.class.getName();
 					try {
-						System.load(NativeLibs.extractLibrary(cname).toString());
-						loaded = true;
-					} catch (IOException | UnsatisfiedLinkError e) {
-						SakerLog.warning().out(System.err)
-								.println("Failed to load native library for: " + cname + " (" + e + ")");
+						try {
+							Path libpath = NativeLibs.extractLibrary(cname);
+							if (libpath != null) {
+								System.load(libpath.toString());
+								loaded = true;
+							} else {
+								// native lib is not present for this platform
+								loaded = false;
+							}
+						} catch (IOException e) {
+							UnsatisfiedLinkError ule = new UnsatisfiedLinkError(
+									"Failed to load native watcher library for: " + cname);
+							ule.initCause(e);
+							throw ule;
+						}
+						// UnsatisfiedLinkError caught below
+					} catch (Exception | StackOverflowError | OutOfMemoryError | AssertionError | LinkageError e) {
 						if (TestFlag.ENABLED) {
 							e.printStackTrace();
 						}
+						InternalBuildTraceImpl.ignoredStaticException(e);
 						loaded = false;
 					}
 				}

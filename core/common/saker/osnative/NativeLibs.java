@@ -18,50 +18,51 @@ package saker.osnative;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import saker.build.meta.PropertyNames;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.FileUtils;
+import saker.build.trace.InternalBuildTraceImpl;
 
 public class NativeLibs {
+	private static final Lock INIT_LOCK = new ReentrantLock();
 	private static volatile Path libraryPath = null;
 
 	public static void init(Path librarypath) throws IOException {
 		if (NativeLibs.libraryPath != null) {
 			return;
 		}
-		synchronized (NativeLibs.class) {
+		INIT_LOCK.lock();
+		try {
 			if (NativeLibs.libraryPath != null) {
 				return;
 			}
 			Path lp = librarypath.toAbsolutePath().normalize();
 			Files.createDirectories(lp);
 			NativeLibs.libraryPath = lp;
+		} finally {
+			INIT_LOCK.unlock();
 		}
 	}
 
 	public static Path extractLibrary(String libname) throws UnsatisfiedLinkError, IOException {
 		String libresname = libname + "." + System.getProperty("os.arch");
 		String fulllibname = System.mapLibraryName(libresname);
-		Path libpath = getLibraryPath();
-		exportLib(fulllibname, libpath);
-		return libpath.resolve(fulllibname);
-	}
 
-	private static void exportLib(String libname, Path libpath) throws IOException {
-		Path outpath = libpath.resolve(libname);
-		String resname = "nativelib/" + libname;
 		ClassLoader cl = NativeLibs.class.getClassLoader();
-
+		String resname = "nativelib/" + fulllibname;
 		try (InputStream is = cl.getResourceAsStream(resname)) {
 			if (is == null) {
-				throw new NoSuchFileException(libname, null,
-						"ClassLoader resource not found for libname: " + libname + " with resource name: " + resname);
+				//the library is not present for the given platform
+				return null;
 			}
+			Path outpath = getLibraryPath().resolve(fulllibname);
 			FileUtils.writeStreamEqualityCheckTo(is, outpath);
+			return outpath;
 		}
 	}
 
@@ -70,7 +71,8 @@ public class NativeLibs {
 		if (libpath != null) {
 			return libpath;
 		}
-		synchronized (NativeLibs.class) {
+		INIT_LOCK.lock();
+		try {
 			libpath = NativeLibs.libraryPath;
 			if (libpath != null) {
 				return libpath;
@@ -78,16 +80,16 @@ public class NativeLibs {
 			String property = PropertyNames.getProperty(PropertyNames.PROPERTY_SAKER_OSNATIVE_LIBRARYPATH);
 			if (property != null) {
 				libpath = Paths.get(property).toAbsolutePath().normalize();
-				NativeLibs.libraryPath = libpath;
-				return libpath;
+			} else {
+				String tmpdir = System.getProperty("java.io.tmpdir");
+				if (!ObjectUtils.isNullOrEmpty(tmpdir)) {
+					libpath = Paths.get(tmpdir).resolve(".sakerlibs").toAbsolutePath().normalize();
+				}
 			}
-			String tmpdir = System.getProperty("java.io.tmpdir");
-			if (!ObjectUtils.isNullOrEmpty(tmpdir)) {
-				libpath = Paths.get(tmpdir).resolve(".sakerlibs").toAbsolutePath().normalize();
-				NativeLibs.libraryPath = libpath;
+			if (libpath != null) {
 				try {
 					Files.createDirectories(libpath);
-					System.err.println("No library path defined, using: " + libpath);
+					NativeLibs.libraryPath = libpath;
 					return libpath;
 				} catch (IOException e) {
 					UnsatisfiedLinkError texc = new UnsatisfiedLinkError(
@@ -96,7 +98,18 @@ public class NativeLibs {
 					throw texc;
 				}
 			}
-			throw new UnsatisfiedLinkError("Library path couldn't be determined.");
+			throw new UnsatisfiedLinkError("Library path couldn't be determined. No java.io.tmpdir or "
+					+ PropertyNames.PROPERTY_SAKER_OSNATIVE_LIBRARYPATH + " specified.");
+		} catch (Throwable e) {
+			try {
+				InternalBuildTraceImpl.ignoredStaticException(e);
+			} catch (Throwable e2) {
+				//shouldn't really happen but just in case
+				e.addSuppressed(e2);
+			}
+			throw e;
+		} finally {
+			INIT_LOCK.unlock();
 		}
 	}
 }

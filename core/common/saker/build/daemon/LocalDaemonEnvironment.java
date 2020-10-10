@@ -79,6 +79,7 @@ import saker.build.thirdparty.saker.util.io.FileUtils;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
+import saker.build.trace.InternalBuildTrace;
 import saker.build.util.cache.CacheKey;
 import saker.build.util.rmi.SakerRMIHelper;
 
@@ -899,8 +900,9 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 				return new TaskInvoker() {
 					@Override
 					public void run(TaskInvocationContext context) throws Exception {
-						((InternalExecutionContext) executioncontext).internalGetBuildTrace()
-								.startBuildCluster(environment, modifiedmirrordir);
+						InternalBuildTrace internalbuildtrace = ((InternalExecutionContext) executioncontext)
+								.internalGetBuildTrace();
+						internalbuildtrace.startBuildCluster(environment, modifiedmirrordir);
 						ClassLoaderResolverRegistry executionclregistry = new ClassLoaderResolverRegistry(
 								environment.getClassLoaderResolverRegistry());
 						String resolverid = createClusterTaskInvokerRMIRegistryClassResolverId(realpathconfig);
@@ -933,6 +935,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 								project.clusterFinished(execkey);
 							}
 						} finally {
+							internalbuildtrace.endBuildCluster();
 							connectionClassLoaderRegistry.unregister(resolverid, executionclregistry);
 						}
 					}

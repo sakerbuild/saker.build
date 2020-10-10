@@ -76,7 +76,7 @@ public class GenericArgumentLocation {
 
 	@Override
 	public String toString() {
-		return getClass().getSimpleName() + "[" + Arrays.toString(location) + "]";
+		return getClass().getSimpleName() + Arrays.toString(location);
 	}
 
 }

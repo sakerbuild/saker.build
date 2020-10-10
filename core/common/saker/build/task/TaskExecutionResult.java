@@ -50,11 +50,10 @@ import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
+import saker.build.trace.InternalBuildTraceImpl;
 import testing.saker.build.flag.TestFlag;
 
 public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizable {
-	//XXX the class contains System.err.println(e); statements in serialization methods
-	//    those should be handled differently, without polluting the output
 	private static final long serialVersionUID = 1L;
 
 	public static final class FileDependencies implements Externalizable {
@@ -319,10 +318,9 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 				outputChangeDetector = (TaskOutputChangeDetector) in.readObject();
 			} catch (IOException | ClassNotFoundException e) {
 				if (TestFlag.ENABLED) {
-					e.printStackTrace();
-				} else {
-					System.err.println(e);
+					System.err.println(getClass().getSimpleName() + " readExternal: " + e);
 				}
+				InternalBuildTraceImpl.serializationException(e);
 				//if we fail to load the output change detector, then always assume it as changed
 				outputChangeDetector = CommonTaskOutputChangeDetector.ALWAYS;
 			}
@@ -518,10 +516,9 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 				selfOutputChangeDetector = (TaskOutputChangeDetector) in.readObject();
 			} catch (IOException | ClassNotFoundException e) {
 				if (TestFlag.ENABLED) {
-					e.printStackTrace();
-				} else {
-					System.err.println(e);
+					System.err.println(getClass().getSimpleName() + " readExternal: " + e);
 				}
+				InternalBuildTraceImpl.serializationException(e);
 				selfOutputChangeDetector = CommonTaskOutputChangeDetector.ALWAYS;
 			}
 
@@ -767,28 +764,25 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 			out.writeObject(output);
 		} catch (Exception e) {
 			if (TestFlag.ENABLED) {
-				e.printStackTrace();
-			} else {
-				System.err.println(e);
+				System.err.println(getClass().getSimpleName() + " writeExternal output: " + e);
 			}
+			InternalBuildTraceImpl.serializationException(e);
 		}
 		try {
 			SerialUtils.writeExternalCollection(out, abortExceptions);
 		} catch (Exception e) {
 			if (TestFlag.ENABLED) {
-				e.printStackTrace();
-			} else {
-				System.err.println(e);
+				System.err.println(getClass().getSimpleName() + " writeExternal abortExceptions: " + e);
 			}
+			InternalBuildTraceImpl.serializationException(e);
 		}
 		try {
 			out.writeObject(failCauseException);
 		} catch (Exception e) {
 			if (TestFlag.ENABLED) {
-				e.printStackTrace();
-			} else {
-				System.err.println(e);
+				System.err.println(getClass().getSimpleName() + " writeExternal failCauseException: " + e);
 			}
+			InternalBuildTraceImpl.serializationException(e);
 		}
 		writeTaggedOutputsMap(out, taggedOutputs);
 		SerialUtils.writeExternalMap(out, reportedMetaDatas);
@@ -803,8 +797,9 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 			out.writeObject(buildTraceInfo);
 		} catch (Exception e) {
 			if (TestFlag.ENABLED) {
-				e.printStackTrace();
+				System.err.println(getClass().getSimpleName() + " writeExternal buildTraceInfo: " + e);
 			}
+			InternalBuildTraceImpl.serializationException(e);
 		}
 	}
 
@@ -823,30 +818,27 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 			output = (R) in.readObject();
 		} catch (IOException | ClassNotFoundException e) {
 			if (TestFlag.ENABLED) {
-				e.printStackTrace();
-			} else {
-				System.err.println(e);
+				System.err.println(getClass().getSimpleName() + " readExternal output: " + e);
 			}
+			InternalBuildTraceImpl.serializationException(e);
 			outputLoadFailed = true;
 		}
 		try {
 			abortExceptions = SerialUtils.readExternalImmutableList(in);
 		} catch (IOException | ClassNotFoundException e) {
 			if (TestFlag.ENABLED) {
-				e.printStackTrace();
-			} else {
-				System.err.println(e);
+				System.err.println(getClass().getSimpleName() + " readExternal abortExceptions: " + e);
 			}
+			InternalBuildTraceImpl.serializationException(e);
 			outputLoadFailed = true;
 		}
 		try {
 			failCauseException = (Throwable) in.readObject();
 		} catch (IOException | ClassNotFoundException e) {
 			if (TestFlag.ENABLED) {
-				e.printStackTrace();
-			} else {
-				System.err.println(e);
+				System.err.println(getClass().getSimpleName() + " readExternal failCauseException: " + e);
 			}
+			InternalBuildTraceImpl.serializationException(e);
 			outputLoadFailed = true;
 		}
 		taggedOutputs = readTaggedOutputsMap(in);
@@ -863,8 +855,9 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 			this.buildTraceInfo = in.readObject();
 		} catch (Exception e) {
 			if (TestFlag.ENABLED) {
-				e.printStackTrace();
+				System.err.println(getClass().getSimpleName() + " readExternal buildTraceInfo: " + e);
 			}
+			InternalBuildTraceImpl.serializationException(e);
 		}
 	}
 
@@ -875,10 +868,9 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 				o.writeObject(entry.getValue());
 			} catch (Exception e) {
 				if (TestFlag.ENABLED) {
-					e.printStackTrace();
-				} else {
-					System.err.println(e);
+					System.err.println(TaskExecutionResult.class.getSimpleName() + " writeTaggedOutputsMap: " + e);
 				}
+				InternalBuildTraceImpl.serializationException(e);
 			}
 		});
 	}
@@ -904,10 +896,9 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 				content = (ContentDescriptor) in.readObject();
 			} catch (IOException | ClassNotFoundException | ClassCastException e) {
 				if (TestFlag.ENABLED) {
-					e.printStackTrace();
-				} else {
-					System.err.println(e);
+					System.err.println(TaskExecutionResult.class.getSimpleName() + " readContentDescriptorMap: " + e);
 				}
+				InternalBuildTraceImpl.serializationException(e);
 				content = NullContentDescriptor.getInstance();
 			}
 			return content;
@@ -921,10 +912,9 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 				o.writeObject(v);
 			} catch (IOException e) {
 				if (TestFlag.ENABLED) {
-					e.printStackTrace();
-				} else {
-					System.err.println(e);
+					System.err.println(TaskExecutionResult.class.getSimpleName() + " writeContentDescriptorMap: " + e);
 				}
+				InternalBuildTraceImpl.serializationException(e);
 			}
 		});
 	}

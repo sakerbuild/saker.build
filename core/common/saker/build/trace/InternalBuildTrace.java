@@ -81,6 +81,12 @@ public interface InternalBuildTrace extends Closeable {
 	public default void ignoredException(TaskIdentifier taskid, ExceptionView e) {
 	}
 
+	public default void serializationException(String stacktrace) {
+	}
+
+	public default void serializationWarning(String message) {
+	}
+
 	public default void taskUpToDate(TaskExecutionResult<?> prevexecresult, TaskInvocationConfiguration capabilities) {
 	}
 
@@ -89,6 +95,9 @@ public interface InternalBuildTrace extends Closeable {
 	}
 
 	public default void startBuildCluster(SakerEnvironmentImpl environment, Path mirrordir) {
+	}
+
+	public default void endBuildCluster() {
 	}
 
 	public default void setValues(@RMISerialize Map<?, ?> values, String category) {

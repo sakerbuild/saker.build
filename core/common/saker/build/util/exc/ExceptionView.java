@@ -135,6 +135,7 @@ public class ExceptionView implements Externalizable {
 	 *             If the exception is <code>null</code>.
 	 */
 	public static ExceptionView create(Throwable e) throws NullPointerException {
+		Objects.requireNonNull(e, "exception");
 		return createImpl(e, ExceptionView::new, new IdentityHashMap<>());
 	}
 
@@ -311,8 +312,8 @@ public class ExceptionView implements Externalizable {
 		} else {
 			cause = null;
 		}
-		((ExceptionView) result).cause = cause;
-		((ExceptionView) result).suppressed = supressed;
+		result.cause = cause;
+		result.suppressed = supressed;
 		return result;
 	}
 

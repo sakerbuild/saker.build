@@ -56,7 +56,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 import saker.build.file.path.SakerPath;
-import saker.build.runtime.execution.SakerLog;
+import saker.build.meta.PropertyNames;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
@@ -66,6 +66,7 @@ import saker.build.thirdparty.saker.util.io.DataOutputUnsyncByteArrayOutputStrea
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 import saker.build.thirdparty.saker.util.io.function.IOBiConsumer;
 import saker.build.thirdparty.saker.util.io.function.ObjectReaderFunction;
+import saker.build.trace.InternalBuildTraceImpl;
 import testing.saker.build.flag.TestFlag;
 
 public class ContentWriterObjectOutput implements ObjectOutput {
@@ -1268,7 +1269,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			if (TestFlag.ENABLED) {
 				TestFlag.metric().serializationWarning(objclass.getName());
 			}
-			SakerLog.info().out(System.err).println(
+			InternalBuildTraceImpl.serializationWarningMessage(
 					"Object with class: " + objclass.getName() + " is not Externalizable. Serializing instead.");
 		}
 

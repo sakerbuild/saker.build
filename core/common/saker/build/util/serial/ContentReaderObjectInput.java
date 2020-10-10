@@ -36,7 +36,6 @@ import java.util.Map;
 import java.util.NavigableSet;
 import java.util.Set;
 
-import saker.build.runtime.execution.SakerLog;
 import saker.build.thirdparty.saker.util.ArrayUtils;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -48,6 +47,7 @@ import saker.build.thirdparty.saker.util.io.LimitInputStream;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.io.function.IOFunction;
 import saker.build.thirdparty.saker.util.io.function.ObjectReaderFunction;
+import saker.build.trace.InternalBuildTraceImpl;
 import testing.saker.build.flag.TestFlag;
 
 public class ContentReaderObjectInput implements ObjectInput {
@@ -981,8 +981,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 					if (TestFlag.ENABLED) {
 						TestFlag.metric().serializationWarning(type.getName());
 					}
-					SakerLog.warning().out(System.err)
-							.println("Failed to fully read all serialized data from stream: " + type.getName());
+					InternalBuildTraceImpl.serializationWarningMessage(
+							"Failed to fully read all serialized data from stream: " + type.getName());
 				}
 			}
 			return result;
@@ -1018,8 +1018,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 			return serializedobj.get();
 		}
 		if (limit.getRemainingLimit() > 0) {
-			SakerLog.warning().out(System.err)
-					.println("Serializable object failed to read all data. (" + ObjectUtils.classOf(result) + ")");
+			InternalBuildTraceImpl.serializationWarningMessage(
+					"Serializable object failed to read all data. (" + ObjectUtils.classOf(result) + ")");
 		}
 		addSerializedObject(new PresentSerializedObject<>(result));
 		return result;
@@ -1111,7 +1111,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 					if (TestFlag.ENABLED) {
 						TestFlag.metric().serializationWarning(type.getName());
 					}
-					SakerLog.warning().out(System.err).println(
+					InternalBuildTraceImpl.serializationWarningMessage(
 							"Externalizable failed to fully read all serialized data from stream: " + type.getName());
 				}
 			}

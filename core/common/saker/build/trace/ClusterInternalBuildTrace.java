@@ -11,6 +11,15 @@ public interface ClusterInternalBuildTrace extends InternalBuildTrace {
 	public default void startBuildCluster(@RMISerialize EnvironmentInformation envinfo, long nanos) {
 	}
 
+	public default void ignoredClusterStaticException(@RMISerialize UUID environmentid, String stacktrace) {
+	}
+
+	public default void clusterSerializationException(@RMISerialize UUID environmentid, String stacktrace) {
+	}
+
+	public default void clusterSerializationWarning(@RMISerialize UUID environmentid, String message) {
+	}
+
 	public default void setClusterValues(@RMISerialize UUID environmentid, @RMISerialize Map<String, ?> values,
 			String category) {
 	}

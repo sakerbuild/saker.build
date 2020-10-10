@@ -32,11 +32,14 @@ import java.util.Set;
 import saker.build.file.path.SakerPath;
 import saker.build.ide.configuration.IDEConfiguration;
 import saker.build.ide.configuration.SimpleIDEConfiguration;
+import saker.build.meta.PropertyNames;
 import saker.build.scripting.ScriptInformationProvider;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
+import saker.build.trace.InternalBuildTraceImpl;
+import testing.saker.build.flag.TestFlag;
 
 public class BuildTaskResultDatabase implements Externalizable {
 	private static final long serialVersionUID = 1L;
@@ -158,22 +161,28 @@ public class BuildTaskResultDatabase implements Externalizable {
 				taskid = (TaskIdentifier) in.readObject();
 			} catch (ClassNotFoundException | IOException | ClassCastException e) {
 				//catch classcastexception too, if the class for the key is modified to no longer extend it
-				System.err.println(e);
 				//failed to read key
 				//read the value from the stream, so next entry can be read
 				try {
 					in.readObject();
 				} catch (ClassNotFoundException | IOException e2) {
-					System.err.println(e2);
+					e.addSuppressed(e2);
 					//failed to read value, continue to the next entry
 				}
+				if (TestFlag.ENABLED) {
+					System.err.println(getClass().getSimpleName() + " readExternal TaskIdentifier: " + e);
+				}
+				InternalBuildTraceImpl.serializationException(e);
 				continue;
 			}
 			TaskExecutionResult<?> valexcres;
 			try {
 				valexcres = (TaskExecutionResult<?>) in.readObject();
 			} catch (ClassNotFoundException | IOException e) {
-				System.err.println(e);
+				if (TestFlag.ENABLED) {
+					System.err.println(getClass().getSimpleName() + " readExternal TaskExecutionResult: " + e);
+				}
+				InternalBuildTraceImpl.serializationException(e);
 				//failed to read value
 				continue;
 			}

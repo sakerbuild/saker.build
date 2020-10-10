@@ -99,6 +99,8 @@ public final class Main {
 	}
 
 	private static boolean isArgumentException(Throwable e) {
+		// check instanceof by examining superclasses instead of the instanceof operator
+		//   as the ArgumentException.class is not accessible by this class
 		return ReflectUtils.findClassWithNameInHierarchy(e.getClass(),
 				"sipka.cmdline.runtime.ArgumentException") != null;
 	}

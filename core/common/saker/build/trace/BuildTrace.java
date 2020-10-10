@@ -31,6 +31,7 @@ import saker.build.thirdparty.saker.util.function.ThrowingRunnable;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
 import saker.build.util.exc.ExceptionView;
+import testing.saker.build.flag.TestFlag;
 
 /**
  * This is the client API class for reporting build trace information.
@@ -525,6 +526,9 @@ public final class BuildTrace {
 		if (e == null) {
 			return;
 		}
+		if (TestFlag.ENABLED) {
+			e.printStackTrace();
+		}
 		try {
 			InternalBuildTrace trace = getTrace();
 			trace.ignoredException(null, ExceptionView.create(e));
@@ -550,6 +554,9 @@ public final class BuildTrace {
 	public static void ignoredException(ExceptionView e) {
 		if (e == null) {
 			return;
+		}
+		if (TestFlag.ENABLED) {
+			e.printStackTrace();
 		}
 		try {
 			InternalBuildTrace trace = getTrace();

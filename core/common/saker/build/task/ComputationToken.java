@@ -23,8 +23,9 @@ import java.util.function.BooleanSupplier;
 
 import saker.apiextract.api.ExcludeApi;
 import saker.build.meta.PropertyNames;
-import saker.build.runtime.execution.SakerLog;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.trace.InternalBuildTraceImpl;
+import saker.build.util.exc.ExceptionView;
 import testing.saker.build.flag.TestFlag;
 
 public class ComputationToken implements AutoCloseable {
@@ -34,17 +35,23 @@ public class ComputationToken implements AutoCloseable {
 		String prop = PropertyNames.getProperty(PropertyNames.PROPERTY_SAKER_COMPUTATION_TOKEN_COUNT);
 		if (prop != null) {
 			try {
-				int parsed = Integer.parseInt(prop);
+				int parsed;
+				try {
+					parsed = Integer.parseInt(prop);
+				} catch (NumberFormatException e) {
+					throw new IllegalArgumentException("Property "
+							+ PropertyNames.PROPERTY_SAKER_COMPUTATION_TOKEN_COUNT + " is not an integer: " + prop, e);
+				}
 				if (parsed > 0) {
 					val = parsed;
 				} else {
-					SakerLog.warning().out(System.err)
-							.println("Property " + PropertyNames.PROPERTY_SAKER_COMPUTATION_TOKEN_COUNT
-									+ " must be a positive non zero integer number.");
+					throw new IllegalArgumentException(
+							"Property " + PropertyNames.PROPERTY_SAKER_COMPUTATION_TOKEN_COUNT
+									+ " must be a positive non zero integer number. (Current: " + parsed + ")");
 				}
-			} catch (NumberFormatException e) {
-				SakerLog.warning().out(System.err).println("Property "
-						+ PropertyNames.PROPERTY_SAKER_COMPUTATION_TOKEN_COUNT + " is not an integer: " + prop);
+			} catch (IllegalArgumentException e) {
+				//ignore for build trace
+				InternalBuildTraceImpl.ignoredStaticException(ExceptionView.create(e));
 			}
 		}
 		if (val < 0) {

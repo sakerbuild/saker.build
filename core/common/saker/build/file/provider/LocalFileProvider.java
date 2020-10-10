@@ -86,8 +86,6 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -109,7 +107,6 @@ import saker.build.file.provider.LocalFileProviderInternalRMIAccess.RMIBufferedR
 import saker.build.file.provider.LocalFileProviderInternalRMIAccess.RMIWriteToResult;
 import saker.build.meta.PropertyNames;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
-import saker.build.runtime.execution.SakerLog;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWriter;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
 import saker.build.thirdparty.saker.rmi.io.writer.SerializeRMIObjectWriteHandler;
@@ -130,6 +127,7 @@ import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import saker.build.thirdparty.saker.util.ref.WeakReferencedToken;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
+import saker.build.trace.InternalBuildTraceImpl;
 import saker.build.util.config.ReferencePolicy;
 import saker.osnative.watcher.NativeWatcherService;
 import saker.osnative.watcher.RegisteringWatchService;
@@ -995,8 +993,6 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 				wentry.modified(evpath.getFileName().toString());
 			} else if (kind == StandardWatchEventKinds.OVERFLOW) {
 				wentry.overflown();
-			} else {
-				SakerLog.error().out(System.err).println("Unknown watch event kind: " + kind);
 			}
 		}
 
@@ -1051,8 +1047,6 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 						break;
 					}
 				}
-			} else {
-				SakerLog.error().out(System.err).println("Unknown watch event kind: " + kind);
 			}
 		}
 
@@ -1584,8 +1578,8 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 		} else {
 			try {
 				fp.watcher = localFileSystem.newWatchService();
-			} catch (IOException e) {
-				e.printStackTrace();
+			} catch (IOException | UnsupportedOperationException e) {
+				InternalBuildTraceImpl.ignoredStaticException(e);
 				return;
 			}
 			registerer = WatchRegisterer.of(fp.watcher);
@@ -1696,10 +1690,11 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 				//invalid contents or failed to read
 				//proceed by generating a new one
 				UUID uuid = UUID.randomUUID();
-				Files.createDirectories(storagedir);
+				Path tempfile = null;
 
-				Path tempfile = filepath.resolveSibling(UUID.randomUUID() + ".temp");
 				try {
+					Files.createDirectories(storagedir);
+					tempfile = filepath.resolveSibling(UUID.randomUUID() + ".temp");
 					try {
 						Files.write(tempfile, uuid.toString().getBytes(StandardCharsets.UTF_8));
 						Files.move(tempfile, filepath);
@@ -1715,10 +1710,12 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 					}
 				} catch (Throwable e) {
 					e.addSuppressed(e1);
-					try {
-						Files.deleteIfExists(tempfile);
-					} catch (Exception e2) {
-						e.addSuppressed(e2);
+					if (tempfile != null) {
+						try {
+							Files.deleteIfExists(tempfile);
+						} catch (Exception e2) {
+							e.addSuppressed(e2);
+						}
 					}
 					throw e;
 				}
@@ -1726,11 +1723,8 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 			}
 		} catch (IOException e) {
 			//something failed horribly? use a random
-			//lock to avoid interlaced output
-			synchronized (System.err) {
-				System.err.println("Error: Failed to retrieve local file provider UUID from: " + filepath);
-				e.printStackTrace(System.err);
-			}
+			InternalBuildTraceImpl.ignoredStaticException(
+					new IOException("Failed to retrieve local file provider UUID from: " + filepath, e));
 			return UUID.randomUUID();
 		}
 	}
