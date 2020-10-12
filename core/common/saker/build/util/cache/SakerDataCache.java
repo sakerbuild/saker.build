@@ -26,6 +26,7 @@ import java.security.PrivilegedAction;
 import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Predicate;
 
@@ -43,9 +44,17 @@ public class SakerDataCache implements Closeable {
 	private static final long EXPIRY_RECHECK_INTERVAL_MILLIS = 1 * DateUtils.MS_PER_MINUTE;
 
 	private interface CommonReference<DataType, ResourceType> {
-		public ResourceType getResource();
+		public DataType get();
 
-		public void freeResource() throws Exception;
+		public default void freeResource() throws Exception {
+			CacheEntry<DataType, ResourceType> entry = getEntry();
+			entry.lock.lock();
+			try {
+				entry.key.close(get(), entry.resource);
+			} finally {
+				entry.lock.unlock();
+			}
+		}
 
 		public CacheEntry<DataType, ResourceType> getEntry();
 	}
@@ -58,16 +67,6 @@ public class SakerDataCache implements Closeable {
 				CacheEntry<DataType, ResourceType> key) {
 			super(datareferent, q);
 			this.entry = key;
-		}
-
-		@Override
-		public ResourceType getResource() {
-			return entry.resource;
-		}
-
-		@Override
-		public void freeResource() throws Exception {
-			entry.key.close(get(), entry.resource);
 		}
 
 		@Override
@@ -84,16 +83,6 @@ public class SakerDataCache implements Closeable {
 				CacheEntry<DataType, ResourceType> key) {
 			super(datareferent, q);
 			this.entry = key;
-		}
-
-		@Override
-		public ResourceType getResource() {
-			return entry.resource;
-		}
-
-		@Override
-		public void freeResource() throws Exception {
-			entry.key.close(get(), entry.resource);
 		}
 
 		@Override
@@ -136,27 +125,115 @@ public class SakerDataCache implements Closeable {
 
 	}
 
-	private ConcurrentHashMap<CacheKey<?, ?>, CacheEntry<?, ?>> entries = new ConcurrentHashMap<>();
+	private static final class CacheGCThread extends Thread {
+		private final ReferenceQueue<Object> queue;
+		private final Reference<? extends SakerDataCache> cacheReference;
 
-	private ReferenceQueue<Object> queue = new ReferenceQueue<>();
+		public CacheGCThread(ThreadGroup tg, ReferenceQueue<Object> queue,
+				Reference<? extends SakerDataCache> cacheReference) {
+			super(tg, "Cache GC");
+			this.queue = queue;
+			this.cacheReference = cacheReference;
+			setContextClassLoader(null);
+			setDaemon(true);
+		}
 
-	private volatile Thread removingThread;
+		@Override
+		@SuppressWarnings({ "unchecked", "rawtypes" })
+		public void run() {
+			try {
+				long lastcheck = System.nanoTime() / 1_000_000;
+				//TODO wait the least amount of time until something happens.
+				long nextcheckmillis = lastcheck + EXPIRY_RECHECK_INTERVAL_MILLIS;
+				while (true) {
+					long millis = System.nanoTime() / 1_000_000;
+					Reference<?> removed;
+					long towait = nextcheckmillis - millis;
+					if (towait <= 0) {
+						removed = queue.poll();
+					} else {
+						removed = queue.remove(towait);
+					}
+					SakerDataCache datacache;
+					if (removed == cacheReference || (datacache = cacheReference.get()) == null) {
+						//the data cache has been garbage collected, or we are asked to quit
+						//in any case, the resources are (already) cleaned up in close()
+						break;
+					}
+					remove_handler:
+					if (removed != null) {
+						CommonReference<?, ?> rpr = (CommonReference<?, ?>) removed;
+						CacheEntry<?, ?> entry = rpr.getEntry();
+						entry.lock.lock();
+						try {
+							if (entry.dataRef != rpr) {
+								//dont close the resource as it is being used by a new data
+								break remove_handler;
+							}
+							entry.invalidate();
+						} finally {
+							entry.lock.unlock();
+						}
+						datacache.entries.remove(entry.key, entry);
+						try {
+							rpr.freeResource();
+						} catch (Exception e) {
+							e.printStackTrace();
+						}
+					}
+					//else timed out
+					millis = System.nanoTime() / 1_000_000;
+					// recheck expirations
+					// set references to weak ones if they expire
+					if (millis - nextcheckmillis >= 0) {
+						for (Iterator<Entry<CacheKey<?, ?>, CacheEntry<?, ?>>> it = datacache.entries.entrySet()
+								.iterator(); it.hasNext();) {
+							Entry<CacheKey<?, ?>, CacheEntry<?, ?>> entry = it.next();
+							CacheEntry ce = entry.getValue();
+							ce.lock.lock();
+							try {
+								if (!ce.isConstructed() || ce.isInvalidated()) {
+									//not yet finished constructing
+									continue;
+								}
+								Object value = ce.dataRef.get();
+								if (value == null) {
+									it.remove();
+									ce.invalidate();
+									continue;
+								}
+								long expiry = ce.expiryMillis;
+								if (millis - expiry >= 0) {
+									//use subtraction instead of greater than because of signed overflow
+									ce.dataRef = new ResourceWeakReference<>(value, queue, ce);
+								}
+							} finally {
+								ce.lock.unlock();
+							}
+						}
+						nextcheckmillis = System.nanoTime() / 1_000_000 + EXPIRY_RECHECK_INTERVAL_MILLIS;
+					}
+				}
+			} catch (InterruptedException e) {
+			}
+		}
 
-	private ThreadGroup removingThreadGroup;
-
-	public SakerDataCache(ThreadGroup threadgroup) {
-		this.removingThreadGroup = threadgroup;
-		init(threadgroup);
 	}
 
-	private void init(ThreadGroup threadgroup) {
-		//this function may be called by others as well
+	private static final AtomicReferenceFieldUpdater<SakerDataCache, CacheGCThread> ARFU_gcThread = AtomicReferenceFieldUpdater
+			.newUpdater(SakerDataCache.class, CacheGCThread.class, "gcThread");
+
+	private volatile CacheGCThread gcThread;
+
+	private ConcurrentHashMap<CacheKey<?, ?>, CacheEntry<?, ?>> entries = new ConcurrentHashMap<>();
+
+	private final ReferenceQueue<Object> queue = new ReferenceQueue<>();
+
+	public SakerDataCache(ThreadGroup threadgroup) {
 		//call it in a priviliged context so there no reference leaks in the thread
 		AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
-			removingThread = new Thread(threadgroup, this::runQueueRemoving, "Cache GC");
-			removingThread.setContextClassLoader(null);
-			removingThread.setDaemon(true);
-			removingThread.start();
+			gcThread = new CacheGCThread(threadgroup, queue, new WeakReference<>(this, queue));
+			gcThread.start();
 			return null;
 		});
 	}
@@ -164,45 +241,47 @@ public class SakerDataCache implements Closeable {
 	public <D, R> void invalidate(CacheKey<D, R> key) {
 		@SuppressWarnings("unchecked")
 		CacheEntry<D, R> entry = (CacheEntry<D, R>) entries.remove(key);
-		if (entry != null) {
-			entry.lock.lock();
-			try {
-				R entryres = entry.getResource();
-				if (entryres != null) {
-					try {
-						key.close(entry.getData(), entryres);
-					} catch (Exception e) {
-						e.printStackTrace();
-					}
+		if (entry == null) {
+			return;
+		}
+		entry.lock.lock();
+		try {
+			R entryres = entry.getResource();
+			if (entryres != null) {
+				try {
+					key.close(entry.getData(), entryres);
+				} catch (Exception e) {
+					e.printStackTrace();
 				}
-			} finally {
-				entry.lock.unlock();
 			}
+		} finally {
+			entry.lock.unlock();
 		}
 	}
 
-	@SuppressWarnings({ "rawtypes", "unchecked", "cast" })
+	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public void invalidateIf(Predicate<? super CacheKey<?, ?>> keypredicate) {
 		for (Iterator<Entry<CacheKey<?, ?>, CacheEntry<?, ?>>> it = entries.entrySet().iterator(); it.hasNext();) {
 			Entry<CacheKey<?, ?>, CacheEntry<?, ?>> cacheentry = it.next();
 			CacheKey key = cacheentry.getKey();
 			//the cast is required in the following line, else javac throws an error for it. Eclipse warns about unnecessary cast, but leave it.
-			if (keypredicate.test((CacheKey<?, ?>) key)) {
-				it.remove();
-				CacheEntry entry = cacheentry.getValue();
-				if (entry != null) {
-					entry.lock.lock();
-					try {
-						if (entry.resource != null) {
-							try {
-								key.close(entry.getData(), entry.getResource());
-							} catch (Exception e) {
-								e.printStackTrace();
-							}
+			if (!keypredicate.test((CacheKey<?, ?>) key)) {
+				continue;
+			}
+			it.remove();
+			CacheEntry entry = cacheentry.getValue();
+			if (entry != null) {
+				entry.lock.lock();
+				try {
+					if (entry.resource != null) {
+						try {
+							key.close(entry.getData(), entry.getResource());
+						} catch (Exception e) {
+							e.printStackTrace();
 						}
-					} finally {
-						entry.lock.unlock();
 					}
+				} finally {
+					entry.lock.unlock();
 				}
 			}
 		}
@@ -210,6 +289,9 @@ public class SakerDataCache implements Closeable {
 
 	@SuppressWarnings("unchecked")
 	public <DataType, ResourceType> DataType get(CacheKey<DataType, ResourceType> key) throws Exception {
+		if (gcThread == null) {
+			throw new IllegalStateException("closed");
+		}
 		//XXX could use compute...() functions instead of put and get in map accesses?
 		CacheEntry<DataType, ResourceType> entry = new CacheEntry<>(key);
 		CacheEntry<DataType, ResourceType> prev = (CacheEntry<DataType, ResourceType>) entries.putIfAbsent(key, entry);
@@ -345,138 +427,65 @@ public class SakerDataCache implements Closeable {
 		return res;
 	}
 
-	public <DataType, ResourceType> Reference<DataType> createDataReference(CacheEntry<DataType, ResourceType> entry,
+	private <DataType, ResourceType> Reference<DataType> createDataReference(CacheEntry<DataType, ResourceType> entry,
 			DataType val, long keyexpiry) {
 		return keyexpiry <= 0 ? new ResourceWeakReference<>(val, queue, entry)
 				: new ResourceSoftReference<>(val, queue, entry);
 	}
 
-	//TODO validate the mechanics in this class
-	//garbage collection, closing, and instantiation might be bad
-
-	@SuppressWarnings({ "unchecked", "rawtypes" })
-	private void runQueueRemoving() {
-		try {
-			long lastcheck = System.nanoTime() / 1_000_000;
-			//TODO wait the least amount of time until something happens.
-			long nextcheckmillis = lastcheck + EXPIRY_RECHECK_INTERVAL_MILLIS;
-			while (true) {
-				long millis = System.nanoTime() / 1_000_000;
-				Reference<?> removed;
-				long towait = nextcheckmillis - millis;
-				if (towait <= 0) {
-					removed = queue.poll();
-				} else {
-					removed = queue.remove(towait);
-				}
-				remove_handler:
-				if (removed != null) {
-					CommonReference<?, ?> rpr = (CommonReference<?, ?>) removed;
-					CacheEntry<?, ?> entry = rpr.getEntry();
-					entry.lock.lock();
-					try {
-						if (entry.dataRef != rpr) {
-							//dont close the resource as it is being used by a new data
-							break remove_handler;
-						}
-						entry.invalidate();
-					} finally {
-						entry.lock.unlock();
-					}
-					entries.remove(entry.key, entry);
-					try {
-						rpr.freeResource();
-					} catch (Exception e) {
-						e.printStackTrace();
-					}
-				}
-				//else timed out
-				millis = System.nanoTime() / 1_000_000;
-				// recheck expirations
-				// set references to weak ones if they expire
-				if (millis - nextcheckmillis >= 0) {
-					for (Iterator<Entry<CacheKey<?, ?>, CacheEntry<?, ?>>> it = entries.entrySet().iterator(); it
-							.hasNext();) {
-						Entry<CacheKey<?, ?>, CacheEntry<?, ?>> entry = it.next();
-						CacheEntry ce = entry.getValue();
-						ce.lock.lock();
-						try {
-							if (!ce.isConstructed() || ce.isInvalidated()) {
-								//not yet finished constructing
-								continue;
-							}
-							Object value = ce.dataRef.get();
-							if (value == null) {
-								it.remove();
-								ce.invalidate();
-								continue;
-							}
-							long expiry = ce.expiryMillis;
-							if (millis - expiry >= 0) {
-								//use subtraction instead of greater than because of signed overflow
-								ce.dataRef = new ResourceWeakReference<>(value, queue, ce);
-							}
-						} finally {
-							ce.lock.unlock();
-						}
-					}
-					nextcheckmillis = System.nanoTime() / 1_000_000 + EXPIRY_RECHECK_INTERVAL_MILLIS;
-				}
-			}
-		} catch (InterruptedException e) {
-		}
-	}
-
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	@Override
 	public void close() {
-		Thread t = removingThread;
+		CacheGCThread t = ARFU_gcThread.getAndSet(this, null);
 		if (t == null) {
 			return;
 		}
-		t.interrupt();
-		IOException exc = null;
+		boolean interrupted = false;
 		try {
-			t.join();
-			removingThread = null;
-		} catch (InterruptedException e) {
-			exc = IOUtils.addExc(exc, e);
-		}
-		while (true) {
-			CommonReference<?, ?> polled = (CommonReference<?, ?>) queue.poll();
-			if (polled == null) {
-				break;
-			}
+			//signal exit
+			t.cacheReference.enqueue();
+			IOException exc = null;
 			try {
-				polled.freeResource();
-			} catch (Exception e) {
+				t.join();
+			} catch (InterruptedException e) {
+				interrupted = true;
 				exc = IOUtils.addExc(exc, e);
 			}
-		}
-		for (CacheEntry ce : entries.values()) {
-			Object res = ce.getResource();
-			if (res != null) {
+			while (true) {
+				CommonReference<?, ?> polled = (CommonReference<?, ?>) queue.poll();
+				if (polled == null) {
+					break;
+				}
 				try {
-					ce.key.close(ce.getData(), res);
+					polled.freeResource();
 				} catch (Exception e) {
 					exc = IOUtils.addExc(exc, e);
 				}
 			}
+			while (!entries.isEmpty()) {
+				for (Iterator<CacheEntry<?, ?>> it = entries.values().iterator(); it.hasNext();) {
+					CacheEntry ce = it.next();
+					it.remove();
+					ce.lock.lock();
+					try {
+						Object res = ce.getResource();
+						if (res == null) {
+							continue;
+						}
+						ce.key.close(ce.getData(), res);
+					} catch (Exception e) {
+						exc = IOUtils.addExc(exc, e);
+					} finally {
+						ce.lock.unlock();
+					}
+				}
+			}
+			//do not throw
+			IOUtils.printExc(exc);
+		} finally {
+			if (interrupted) {
+				Thread.currentThread().interrupt();
+			}
 		}
-		entries.clear();
-		//do not throw
-		IOUtils.printExc(exc);
-	}
-
-	public void clear() {
-		Thread t = removingThread;
-		if (t == null) {
-			//already closed
-			return;
-		}
-		//closing is fine, it doesnt throw, shuts down the thread, and closes the resources
-		//reinitialize after
-		close();
-		init(removingThreadGroup);
 	}
 }

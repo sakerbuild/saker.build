@@ -63,16 +63,17 @@ public final class Main {
 	 * suitable for command line usage. This usually means that the error stacktraces most likely won't be displayed,
 	 * but rather a description of the error.
 	 * <p>
-	 * The method may call {@link System#exit(int)} with a non-zero exit code instead of throwing an exception.
+	 * The method will call {@link System#exit(int)} with an appropriate exit code instead of throwing an exception.
 	 * 
 	 * @param args
 	 *            The command line arguments.
-	 * @throws Throwable
-	 *             If the operation specified by the arguments failed.
 	 */
-	public static void main(String... args) throws Throwable {
+	public static void main(String... args) {
 		try {
 			mainImpl(args);
+			//Exit manually to avoid unfinished threads preventing the shutdown. Although they all
+			// should've been shut down when the build finishes, bugs may happen.
+			System.exit(0);
 		} catch (BuildExecutionFailedException e) {
 			//failure info is printed by the build command
 			System.exit(1);
@@ -82,19 +83,22 @@ public final class Main {
 		} catch (IllegalArgumentException e) {
 			if (isArgumentException(e)) {
 				SakerLog.printFormatException(ExceptionView.create(e), CommonExceptionFormat.NO_TRACE);
-				System.exit(1);
 			} else {
-				throw e;
+				e.printStackTrace();
 			}
+			System.exit(1);
 		} catch (ParallelExecutionFailedException e) {
 			for (Throwable t : e.getSuppressed()) {
 				if (isArgumentException(t)) {
 					SakerLog.printFormatException(ExceptionView.create(t), CommonExceptionFormat.NO_TRACE);
 				} else {
-					SakerLog.printFormatException(ExceptionView.create(t), CommonExceptionFormat.FULL);
+					e.printStackTrace();
 				}
 			}
 			System.exit(1);
+		} catch (Throwable e) {
+			e.printStackTrace();
+			System.exit(-1);
 		}
 	}
 

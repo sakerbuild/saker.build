@@ -471,7 +471,13 @@ public final class SakerEnvironmentImpl implements Closeable {
 			while (!runningExecutions.isEmpty()) {
 				runningExecutionsLock.wait();
 			}
-			dataCache.clear();
+			//replace with a new data cache
+			SakerDataCache dc = dataCache;
+			try {
+				this.dataCache = new SakerDataCache(environmentThreadGroup);
+			} finally {
+				dc.close();
+			}
 		}
 	}
 
