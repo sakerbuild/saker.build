@@ -20,10 +20,9 @@ import java.util.NavigableMap;
 
 final class SimpleSakerDirectory extends SakerDirectoryBase {
 	SimpleSakerDirectory(String name) {
-		super(name);
 		//this directory does not refer to any existing directory, so populating does nothing.
 		//we can set the state to already populated
-		populatedState = POPULATED_STATE_POPULATED;
+		super(name, PopulateState.populated());
 	}
 
 	@Override

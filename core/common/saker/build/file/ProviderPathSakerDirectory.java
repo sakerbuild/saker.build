@@ -80,18 +80,18 @@ public class ProviderPathSakerDirectory extends SakerDirectoryBase {
 	}
 
 	public boolean isAnyPopulated() {
-		return populatedState != POPULATED_STATE_UNPOPULATED;
+		return populatedState.state != POPULATED_STATE_UNPOPULATED;
 	}
 
 	public void clearPopulated() {
-		this.populatedState = POPULATED_STATE_UNPOPULATED;
+		this.populatedState = PopulateState.unpopulated();
 	}
 
 	public ConcurrentNavigableMap<String, SakerFileBase> getTrackedFilesMap() {
 		return super.getTrackedFiles();
 	}
 
-	public synchronized NavigableMap<String, ? extends BasicFileAttributes> repair() {
+	public NavigableMap<String, ? extends BasicFileAttributes> repair() {
 		ConcurrentNavigableMap<String, SakerFileBase> thistrackedfiles = getTrackedFiles();
 
 		ConcurrentSkipListMap<String, SakerFileBase> trackedfiles = new ConcurrentSkipListMap<>();

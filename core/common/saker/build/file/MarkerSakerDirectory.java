@@ -31,10 +31,9 @@ class MarkerSakerDirectory extends SakerDirectoryBase {
 		internal_setParent(REMOVED_FROM_PARENT, REMOVED_FROM_PARENT);
 		internal_setParent(POPULATED_NOT_PRESENT, REMOVED_FROM_PARENT);
 	}
-	
+
 	MarkerSakerDirectory() {
-		super(null, (Void) null);
-		populatedState = POPULATED_STATE_POPULATED;
+		super(null, PopulateState.populated(), (Void) null);
 	}
 
 	@Override

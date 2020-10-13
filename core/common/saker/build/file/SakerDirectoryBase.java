@@ -29,6 +29,9 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -51,22 +54,32 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 	public static final Predicate<SakerFileBase> PREDICATE_NOT_DIRECTORY = f -> !(f instanceof SakerDirectory);
 	public static final Predicate<SakerFileBase> PREDICATE_DIRECTORY = f -> f instanceof SakerDirectory;
 
-	protected static final AtomicIntegerFieldUpdater<SakerDirectoryBase> AIFU_populatedState = AtomicIntegerFieldUpdater
-			.newUpdater(SakerDirectoryBase.class, "populatedState");
+	private static final AtomicReferenceFieldUpdater<SakerDirectoryBase, PopulateState> ARFU_populatedState = AtomicReferenceFieldUpdater
+			.newUpdater(SakerDirectoryBase.class, PopulateState.class, "populatedState");
+
 	protected static final int POPULATED_STATE_UNPOPULATED = 0;
 	protected static final int POPULATED_STATE_PARTIALLY_POPULATED = 1;
 	protected static final int POPULATED_STATE_POPULATED = 2;
 
 	protected ConcurrentNavigableMap<String, SakerFileBase> trackedFiles = new ConcurrentSkipListMap<>();
+	protected volatile PopulateState populatedState;
 
-	protected volatile int populatedState = POPULATED_STATE_UNPOPULATED;
+	/* default */ SakerDirectoryBase(String name, PopulateState populatedState) {
+		super(name);
+		this.populatedState = populatedState;
+	}
 
 	/* default */ SakerDirectoryBase(String name) {
-		super(name);
+		this(name, PopulateState.unpopulated());
 	}
 
 	/* default */ SakerDirectoryBase(String name, Void placeholder) {
+		this(name, PopulateState.unpopulated(), placeholder);
+	}
+
+	/* default */ SakerDirectoryBase(String name, PopulateState populatedState, Void placeholder) {
 		super(name, placeholder);
+		this.populatedState = PopulateState.unpopulated();
 	}
 
 	@Override
@@ -301,13 +314,20 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 
 	@Override
 	public void clear() {
-		ConcurrentNavigableMap<String, SakerFileBase> files = getTrackedFiles();
-		synchronized (files) {
+		ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = getTrackedFiles();
+		PopulateState ps = this.populatedState;
+		if (ps.state != POPULATED_STATE_POPULATED) {
 			//synchronize so no population is being done concurrently
-			populatedState = POPULATED_STATE_POPULATED;
+			ps.lock.lock();
+			try {
+				this.populatedState = PopulateState.populated();
+			} finally {
+				ps.lock.unlock();
+			}
 		}
+		//clear the files
 		while (true) {
-			Entry<String, SakerFileBase> first = files.pollFirstEntry();
+			Entry<String, SakerFileBase> first = trackedfiles.pollFirstEntry();
 			if (first == null) {
 				break;
 			}
@@ -334,15 +354,22 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 	}
 
 	public boolean isPopulated() {
-		return populatedState == POPULATED_STATE_POPULATED;
+		return populatedState.state == POPULATED_STATE_POPULATED;
 	}
 
 	public void ensurePopulated() {
-		if (populatedState != POPULATED_STATE_POPULATED) {
-			synchronized (getTrackedFiles()) {
-				if (populatedState != POPULATED_STATE_POPULATED) {
-					executePopulation();
+		PopulateState ps = populatedState;
+		if (ps.state != POPULATED_STATE_POPULATED) {
+			ps.lock.lock();
+			try {
+				PopulateState ps2 = populatedState;
+				if (ps2.state == POPULATED_STATE_POPULATED) {
+					// became populated concurrently
+					return;
 				}
+				executePopulation();
+			} finally {
+				ps.lock.unlock();
 			}
 		}
 	}
@@ -360,11 +387,6 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 
 	protected abstract SakerFileBase populateSingleImpl(String name);
 
-	private final SakerFileBase populateSingle(String name) {
-		AIFU_populatedState.compareAndSet(this, POPULATED_STATE_UNPOPULATED, POPULATED_STATE_PARTIALLY_POPULATED);
-		return this.populateSingleImpl(name);
-	}
-
 	protected final void remove(SakerFileBase file) {
 		if (!internal_casParent(file, this, MarkerSakerDirectory.REMOVED_FROM_PARENT)) {
 			//file is not attached to this directory
@@ -373,11 +395,11 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		}
 		ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = getTrackedFiles();
 		String filename = file.getName();
-		if (populatedState == POPULATED_STATE_POPULATED) {
+		if (populatedState.state == POPULATED_STATE_POPULATED) {
 			trackedfiles.remove(filename, file);
 		} else {
 			boolean replaced = trackedfiles.replace(filename, file, MarkerSakerDirectory.POPULATED_NOT_PRESENT);
-			if (replaced && populatedState == POPULATED_STATE_POPULATED) {
+			if (replaced && populatedState.state == POPULATED_STATE_POPULATED) {
 				//if the populated state changed meanwhile. let's not keep the marker in the map
 				trackedfiles.remove(filename, MarkerSakerDirectory.POPULATED_NOT_PRESENT);
 			}
@@ -430,12 +452,13 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 	private SakerFileBase putIfAbsentImpl(ConcurrentNavigableMap<String, SakerFileBase> trackedfiles,
 			SakerFileBase file) {
 		String filename = file.getName();
-		if (populatedState == POPULATED_STATE_POPULATED) {
+		PopulateState ps = populatedState;
+		if (ps.state == POPULATED_STATE_POPULATED) {
 			return putIfAbsentImplForPopulatedState(trackedfiles, file, filename);
 		}
 		SakerFileBase v = trackedfiles.get(filename);
 		Supplier<SakerFileBase> populater = LazySupplier.of(() -> {
-			SakerFileBase popresult = populateSingle(filename);
+			SakerFileBase popresult = populateSingleImpl(filename);
 			if (popresult != null) {
 				SakerFileBase.internal_setParent(popresult, this);
 			}
@@ -466,10 +489,12 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 				//the file was put in place, success
 				return null;
 			}
-			synchronized (trackedfiles) {
+			ps.lock.lock();
+			try {
 				//synchronize to ensure that any concurrent population requests finish before we put the populated file
-				if (populatedState != POPULATED_STATE_POPULATED) {
-					//still unpopulated, put the file
+				PopulateState ps2 = populatedState;
+				if (ps2.state != POPULATED_STATE_POPULATED) {
+					//still not fully populated, put the file
 					SakerFileBase prev = trackedfiles.putIfAbsent(filename, populated);
 					if (prev != null) {
 						//try again
@@ -477,9 +502,14 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 						continue;
 					}
 					//the populated file was put in place, put if absent failed
+					if (ps2.state == POPULATED_STATE_UNPOPULATED) {
+						ARFU_populatedState.compareAndSet(this, ps2, ps2.partiallyPopulated());
+					}
 					return populated;
 				}
 				//don't use the populated file, as the full population completed meanwhile
+			} finally {
+				ps.lock.unlock();
 			}
 			//the directory was populated meanwhile
 			//perform the absent insertion for the populated state
@@ -525,13 +555,8 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 				});
 			}
 		}
-		populatedState = POPULATED_STATE_POPULATED;
-		for (Iterator<SakerFileBase> it = trackedfiles.values().iterator(); it.hasNext();) {
-			SakerFileBase f = it.next();
-			if (f == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
-				it.remove();
-			}
-		}
+		this.populatedState = PopulateState.populated();
+		trackedfiles.values().removeIf(f -> f == MarkerSakerDirectory.POPULATED_NOT_PRESENT);
 	}
 
 	private SakerFileBase getImpl(String name) {
@@ -543,19 +568,22 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 			}
 			return got;
 		}
-		if (populatedState == POPULATED_STATE_POPULATED) {
+		PopulateState ps = populatedState;
+		if (ps.state == POPULATED_STATE_POPULATED) {
 			got = trackedfiles.get(name);
 			if (got == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
 				return null;
 			}
 			return got;
 		}
-		SakerFileBase populated = populateSingle(name);
+		SakerFileBase populated = populateSingleImpl(name);
 		if (populated != null) {
 			SakerFileBase.internal_setParent(populated, this);
-			synchronized (trackedfiles) {
+			ps.lock.lock();
+			try {
 				//synchronize to ensure that any concurrent population requests finish before we put the populated file
-				if (populatedState != POPULATED_STATE_POPULATED) {
+				PopulateState ps2 = populatedState;
+				if (ps2.state != POPULATED_STATE_POPULATED) {
 					//still unpopulated, put the file
 					SakerFileBase prev = trackedfiles.putIfAbsent(name, populated);
 					if (prev != null) {
@@ -564,8 +592,13 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 						}
 						return prev;
 					}
+					if (ps2.state == POPULATED_STATE_UNPOPULATED) {
+						ARFU_populatedState.compareAndSet(this, ps2, ps2.partiallyPopulated());
+					}
 					return populated;
 				}
+			} finally {
+				ps.lock.unlock();
 			}
 			//the directory was populated meanwhile. simply get.
 			got = trackedfiles.get(name);
@@ -785,6 +818,30 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 			}
 			moveToNext();
 			return n;
+		}
+	}
+
+	protected static class PopulateState {
+		protected static final PopulateState POPULATED_INSTANCE = new PopulateState(POPULATED_STATE_POPULATED, null);
+
+		public final int state;
+		public final Lock lock;
+
+		public PopulateState(int state, Lock lock) {
+			this.state = state;
+			this.lock = lock;
+		}
+
+		public PopulateState partiallyPopulated() {
+			return new PopulateState(POPULATED_STATE_PARTIALLY_POPULATED, lock);
+		}
+
+		public static PopulateState populated() {
+			return POPULATED_INSTANCE;
+		}
+
+		public static PopulateState unpopulated() {
+			return new PopulateState(POPULATED_STATE_UNPOPULATED, new ReentrantLock());
 		}
 	}
 }
