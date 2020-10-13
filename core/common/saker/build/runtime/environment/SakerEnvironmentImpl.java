@@ -566,34 +566,40 @@ public final class SakerEnvironmentImpl implements Closeable {
 		}
 		closed = true;
 		IOException exc = null;
-		boolean interrupted = false;
-		synchronized (runningExecutionsLock) {
-			while (!runningExecutions.isEmpty()) {
-				try {
-					runningExecutionsLock.wait();
-				} catch (InterruptedException e) {
-					interrupted = true;
+		InterruptedException interruptexception = null;
+		try {
+			synchronized (runningExecutionsLock) {
+				while (!runningExecutions.isEmpty()) {
+					try {
+						runningExecutionsLock.wait();
+					} catch (InterruptedException e) {
+						interruptexception = e;
+					}
 				}
 			}
-		}
-		exc = IOUtils.closeExc(exc, dataCache);
+			exc = IOUtils.closeExc(exc, dataCache);
 
-		exc = IOUtils.closeExc(exc, repositoryManager);
-		exc = IOUtils.closeExc(exc, classPathManager);
+			exc = IOUtils.closeExc(exc, repositoryManager);
+			exc = IOUtils.closeExc(exc, classPathManager);
 
-		unredirectStandardIOIfInstalled();
-		try {
-			environmentThreadGroup.destroy();
-		} catch (IllegalThreadStateException e) {
-			if (!environmentThreadGroup.isDestroyed()) {
-				ThreadUtils.dumpThreadGroupStackTraces(System.out, environmentThreadGroup);
-				exc = IOUtils.addExc(exc, new IOException("Failed to destroy Environment ThreadGroup.", e));
+			unredirectStandardIOIfInstalled();
+			try {
+				environmentThreadGroup.destroy();
+			} catch (IllegalThreadStateException e) {
+				if (!environmentThreadGroup.isDestroyed()) {
+					ThreadUtils.dumpThreadGroupStackTraces(System.err, environmentThreadGroup);
+					exc = IOUtils.addExc(exc, new IOException("Failed to destroy Environment ThreadGroup.", e));
+				}
+			}
+			if (exc != null) {
+				exc.addSuppressed(interruptexception);
+			}
+			IOUtils.throwExc(exc);
+		} finally {
+			if (interruptexception != null) {
+				Thread.currentThread().interrupt();
 			}
 		}
-		if (interrupted) {
-			Thread.currentThread().interrupt();
-		}
-		IOUtils.throwExc(exc);
 	}
 
 	private static final class TransitivePropertyDependencyCollectionForwardingSakerEnvironment
