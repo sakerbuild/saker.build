@@ -22,10 +22,11 @@ import java.lang.ref.WeakReference;
 import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
-
-import saker.build.thirdparty.saker.util.io.function.IOConsumer;
+import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * {@link OutputStream} implementation that takes write requests and executes the writing to a subject stream
@@ -83,11 +84,18 @@ public class AsyncOutputStream extends OutputStream implements ByteSink {
 	private volatile IOException exception = null;
 	private volatile Thread flushingThread;
 	private final OutputStream out;
-	private volatile BlockingQueue<IOConsumer<OutputStream>> commands = new LinkedBlockingQueue<>();
+	private volatile BlockingQueue<AsyncAction> commands = new LinkedBlockingQueue<>();
 	private UnsyncByteArrayOutputStream buffer = new UnsyncByteArrayOutputStream();
 	private UnsyncByteArrayOutputStream swapBuffer = new UnsyncByteArrayOutputStream();
 
-	private final IOConsumer<OutputStream> bufferWriterAction = this::flushBufferOnThread;
+	protected final ReentrantLock lock = new ReentrantLock();
+
+	private final AsyncAction bufferWriterAction = new AsyncAction() {
+		@Override
+		public void accept(OutputStream os) throws IOException {
+			flushBufferOnThread(os);
+		}
+	};
 
 	/**
 	 * Creates a new instance for the given stream.
@@ -98,34 +106,66 @@ public class AsyncOutputStream extends OutputStream implements ByteSink {
 	 *             If the stream is <code>null</code>.
 	 */
 	public AsyncOutputStream(OutputStream out) throws NullPointerException {
+		this(out, null);
+	}
+
+	/**
+	 * Creates a new instance that uses the given thread factory.
+	 * <p>
+	 * The specified thread factory will be used to create the asynchronously flushing thread. The thread factory should
+	 * set if the thread is {@linkplain Thread#setDaemon(boolean) daemon} and set its
+	 * {@linkplain Thread#setPriority(int) priority}.
+	 * 
+	 * @param out
+	 *            The output stream.
+	 * @param threadfactory
+	 *            The thread factory. May be <code>null</code> in which case a new {@linkplain Thread#setDaemon(boolean)
+	 *            daemon thread} with {@linkplain Thread#MIN_PRIORITY minimum} {@linkplain Thread#setPriority(int)
+	 *            priority} is created.
+	 * @throws NullPointerException
+	 *             If the output stream is <code>null</code>.
+	 * @since saker.util 0.8.2
+	 */
+	public AsyncOutputStream(OutputStream out, ThreadFactory threadfactory) throws NullPointerException {
 		Objects.requireNonNull(out, "out");
 		this.out = out;
 
-		BlockingQueue<IOConsumer<OutputStream>> cmds = commands;
+		BlockingQueue<AsyncAction> cmds = commands;
 		WeakReference<AsyncOutputStream> weakref = new WeakReference<>(this);
 
-		Thread thread = new Thread(() -> runFlushing(weakref, cmds), "Async stream-" + out);
+		Thread thread;
+		if (threadfactory == null) {
+			thread = new Thread(() -> runFlushing(weakref, cmds), "Async stream-" + out);
+			thread.setDaemon(true);
+			thread.setPriority(Thread.MIN_PRIORITY);
+		} else {
+			thread = threadfactory.newThread(() -> runFlushing(weakref, cmds));
+			if (thread == null) {
+				throw new NullPointerException("ThreadFactory returned null thread.");
+			}
+		}
 		thread.setContextClassLoader(null);
-		thread.setDaemon(true);
-		thread.setPriority(Thread.MIN_PRIORITY);
 		thread.start();
 
 		flushingThread = thread;
 	}
 
-	private static void runFlushing(WeakReference<AsyncOutputStream> osref,
-			BlockingQueue<IOConsumer<OutputStream>> commands) {
+	private static void runFlushing(WeakReference<? extends AsyncOutputStream> osref,
+			BlockingQueue<? extends AsyncAction> commands) {
 		try {
 			while (true) {
-				IOConsumer<OutputStream> run = commands.poll(5, TimeUnit.SECONDS);
+				AsyncAction run = commands.poll(5, TimeUnit.SECONDS);
 				AsyncOutputStream os = osref.get();
 				if (os == null) {
 					break;
 				}
 				if (run == null) {
 					if (os.flushingThread == null) {
-						synchronized (os) {
+						os.lock.lockInterruptibly();
+						try {
 							os.commands = null;
+						} finally {
+							os.lock.unlock();
 						}
 						break;
 					}
@@ -140,19 +180,30 @@ public class AsyncOutputStream extends OutputStream implements ByteSink {
 					os.exception = new IOException(e);
 				}
 				os.flushingThread = null;
-				synchronized (os) {
+				os.lock.lockInterruptibly();
+				try {
 					os.commands = null;
+				} finally {
+					os.lock.unlock();
 				}
 				break;
 			}
 		} catch (InterruptedException e) {
 		} finally {
-			for (IOConsumer<OutputStream> p; (p = commands.poll()) != null;) {
+			//signal closing
+			AsyncOutputStream os = osref.get();
+			if (os != null) {
+				os.lock.lock();
+				try {
+					os.commands = null;
+				} finally {
+					os.lock.unlock();
+				}
+			}
+			for (AsyncAction p; (p = commands.poll()) != null;) {
 				if (p instanceof DeliverAction) {
 					//it it was a delivering runnable, notify it
-					synchronized (p) {
-						p.notify();
-					}
+					((DeliverAction) p).notifyDelivery();
 				}
 			}
 		}
@@ -160,13 +211,16 @@ public class AsyncOutputStream extends OutputStream implements ByteSink {
 
 	private void flushBufferOnThread(OutputStream os) throws IOException {
 		UnsyncByteArrayOutputStream toflush;
-		synchronized (this) {
+		lock.lock();
+		try {
 			toflush = buffer;
 			if (toflush.isEmpty()) {
 				return;
 			}
 			buffer = swapBuffer;
 			swapBuffer = toflush;
+		} finally {
+			lock.unlock();
 		}
 		toflush.writeTo(os);
 		toflush.reset();
@@ -181,46 +235,59 @@ public class AsyncOutputStream extends OutputStream implements ByteSink {
 
 	@Override
 	public void write(int b) throws IOException {
-		synchronized (this) {
+		lock.lock();
+		try {
 			throwOnException();
-			BlockingQueue<IOConsumer<OutputStream>> cmds = commands;
+			BlockingQueue<AsyncAction> cmds = commands;
 			if (cmds == null) {
 				throw new IOException("closed.");
 			}
 			buffer.write(b);
 			cmds.add(bufferWriterAction);
+		} finally {
+			lock.unlock();
 		}
 	}
 
 	@Override
 	public void write(byte[] b) throws IOException {
-		synchronized (this) {
+		lock.lock();
+		try {
 			throwOnException();
-			BlockingQueue<IOConsumer<OutputStream>> cmds = commands;
+			BlockingQueue<AsyncAction> cmds = commands;
 			if (cmds == null) {
 				throw new IOException("closed.");
 			}
 			buffer.write(b);
 			cmds.add(bufferWriterAction);
+		} finally {
+			lock.unlock();
 		}
 	}
 
 	@Override
 	public void write(byte[] b, int off, int len) throws IOException {
-		synchronized (this) {
+		lock.lock();
+		try {
 			throwOnException();
-			BlockingQueue<IOConsumer<OutputStream>> cmds = commands;
+			BlockingQueue<AsyncAction> cmds = commands;
 			if (cmds == null) {
 				throw new IOException("closed.");
 			}
 			buffer.write(b, off, len);
 			cmds.add(bufferWriterAction);
+		} finally {
+			lock.unlock();
 		}
 	}
 
 	@Override
 	public void write(ByteArrayRegion buf) throws IOException, NullPointerException {
 		buf.writeTo((OutputStream) this);
+	}
+
+	private static abstract class AsyncAction {
+		public abstract void accept(OutputStream os) throws IOException;
 	}
 
 	private static class FlusherAction extends DeliverAction {
@@ -234,11 +301,29 @@ public class AsyncOutputStream extends OutputStream implements ByteSink {
 		}
 	}
 
-	private static class DeliverAction implements IOConsumer<OutputStream> {
+	private static class DeliverAction extends AsyncAction {
+		private volatile Thread deliveryThread = Thread.currentThread();
+
 		@Override
 		public void accept(OutputStream os) throws IOException {
-			synchronized (this) {
-				this.notify();
+			notifyDelivery();
+		}
+
+		protected void notifyDelivery() {
+			Thread t = deliveryThread;
+			if (t == null) {
+				return;
+			}
+			deliveryThread = null;
+			LockSupport.unpark(t);
+		}
+
+		protected void waitDelivery() throws InterruptedException {
+			while (deliveryThread != null) {
+				LockSupport.park();
+				if (Thread.interrupted()) {
+					throw new InterruptedException();
+				}
 			}
 		}
 	}
@@ -288,19 +373,20 @@ public class AsyncOutputStream extends OutputStream implements ByteSink {
 		}
 	}
 
-	private void deliverAction(IOConsumer<OutputStream> flusher) throws IOException, InterruptedIOException {
+	private void deliverAction(DeliverAction flusher) throws IOException, InterruptedIOException {
 		try {
-			synchronized (flusher) {
-				synchronized (this) {
-					throwOnException();
-					BlockingQueue<IOConsumer<OutputStream>> cmds = commands;
-					if (cmds == null) {
-						throw new IOException("closed.");
-					}
-					cmds.add(flusher);
+			lock.lock();
+			try {
+				throwOnException();
+				BlockingQueue<AsyncAction> cmds = commands;
+				if (cmds == null) {
+					throw new IOException("closed.");
 				}
-				flusher.wait();
+				cmds.add(flusher);
+			} finally {
+				lock.unlock();
 			}
+			flusher.waitDelivery();
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			throw new InterruptedIOException();
@@ -310,15 +396,24 @@ public class AsyncOutputStream extends OutputStream implements ByteSink {
 	@Override
 	public void close() throws IOException {
 		try {
-			deliver();
-		} catch (IOException e) {
+			try {
+				deliver();
+			} catch (IOException e) {
+			}
+			commands = null;
+			Thread t = ARFU_flushingThread.getAndSet(this, null);
+			if (t != null) {
+				t.interrupt();
+				try {
+					t.join();
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					throw new InterruptedIOException();
+				}
+			}
+		} finally {
+			out.close();
 		}
-		commands = null;
-		Thread t = ARFU_flushingThread.getAndSet(this, null);
-		if (t != null) {
-			t.interrupt();
-		}
-		out.close();
 		throwOnException();
 	}
 

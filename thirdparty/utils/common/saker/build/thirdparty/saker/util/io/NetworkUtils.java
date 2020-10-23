@@ -103,8 +103,7 @@ public class NetworkUtils {
 		//there is port, and the address might be ipv6
 		String host = address.substring(0, lidx);
 		String port = address.substring(lidx + 1);
-		int portval = parsePort(port);
-		return new InetSocketAddress(InetAddress.getByName(host), portval);
+		return new InetSocketAddress(InetAddress.getByName(host), parsePort(port));
 	}
 
 	/**

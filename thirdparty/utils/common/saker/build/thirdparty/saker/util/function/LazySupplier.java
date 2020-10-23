@@ -15,6 +15,7 @@
  */
 package saker.build.thirdparty.saker.util.function;
 
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -61,15 +62,17 @@ public final class LazySupplier<T> implements Supplier<T> {
 		return new LazySupplier<>(initer);
 	}
 
-	private volatile Supplier<? extends T> initer;
-	private T value;
+	private volatile Object state;
+
+//	private volatile Supplier<? extends T> initer;
+//	private T value;
 
 	private LazySupplier(Function<? super LazySupplier<? extends T>, T> initer) {
-		this.initer = () -> initer.apply(this);
+		this.state = new State<>(() -> initer.apply(this));
 	}
 
 	private LazySupplier(Supplier<? extends T> initer) {
-		this.initer = initer;
+		this.state = new State<>(initer);
 	}
 
 	/**
@@ -78,7 +81,7 @@ public final class LazySupplier<T> implements Supplier<T> {
 	 * @return <code>true</code> if the result is ready.
 	 */
 	public boolean isComputed() {
-		return initer == null;
+		return !(state instanceof State);
 	}
 
 	/**
@@ -89,8 +92,13 @@ public final class LazySupplier<T> implements Supplier<T> {
 	 * 
 	 * @return The computed result or <code>null</code> if not yet computed.
 	 */
+	@SuppressWarnings("unchecked")
 	public T getIfComputed() {
-		return this.value;
+		Object s = state;
+		if (s instanceof State) {
+			return null;
+		}
+		return (T) s;
 	}
 
 	/**
@@ -102,41 +110,73 @@ public final class LazySupplier<T> implements Supplier<T> {
 	 * 
 	 * @return The computed value or <code>null</code> if not yet computed.
 	 */
+	@SuppressWarnings("unchecked")
 	public T getIfComputedPrevent() {
-		if (initer != null) {
-			synchronized (this) {
-				Supplier<? extends T> initer = this.initer;
-				if (initer != null) {
-					this.initer = null;
-					return null;
+		Object s = state;
+		if (s instanceof State<?>) {
+			State<? extends T> ss = (State<? extends T>) s;
+			T val;
+
+			ss.lock.lock();
+			try {
+				Object cs = this.state;
+				if (cs == ss) {
+					this.state = null;
+					val = null;
+				} else {
+					val = (T) cs;
 				}
+			} finally {
+				ss.lock.unlock();
 			}
+
+			return val;
 		}
-		return value;
+		return (T) s;
 	}
 
+	@SuppressWarnings("unchecked")
 	@Override
 	public T get() {
-		if (initer != null) {
-			synchronized (this) {
-				Supplier<? extends T> initer = this.initer;
-				if (initer != null) {
-					T result = initer.get();
-					value = result;
-					this.initer = null;
-					return result;
+		Object s = state;
+		if (s instanceof State<?>) {
+			State<? extends T> ss = (State<? extends T>) s;
+			T val;
+
+			ss.lock.lock();
+			try {
+				Object cs = this.state;
+				if (cs == ss) {
+					val = ss.initer.get();
+					this.state = val;
+				} else {
+					val = (T) cs;
 				}
+			} finally {
+				ss.lock.unlock();
 			}
+
+			return val;
 		}
-		return value;
+		return (T) s;
 	}
 
 	@Override
 	public String toString() {
-		if (initer != null) {
+		Object s = state;
+		if (s instanceof State<?>) {
 			return getClass().getSimpleName() + "[not yet computed]";
 		}
-		return getClass().getSimpleName() + "[" + value + "]";
+		return getClass().getSimpleName() + "[" + s + "]";
 	}
 
+	private static class State<T> {
+		protected final Supplier<? extends T> initer;
+		protected final ReentrantLock lock;
+
+		public State(Supplier<? extends T> initer) {
+			this.initer = initer;
+			this.lock = new ReentrantLock();
+		}
+	}
 }

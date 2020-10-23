@@ -21,6 +21,7 @@ import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ACC_FINAL;
 import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ACC_PRIVATE;
 import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ACC_PUBLIC;
 import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ACC_STATIC;
+import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ACC_VOLATILE;
 import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ACONST_NULL;
 import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ALOAD;
 import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ANEWARRAY;
@@ -191,14 +192,17 @@ class ProxyGenerator {
 
 			++i;
 			String methodfieldname = createMethodHolderVariableName(i);
-			String cachefieldname = cacheresult ? createCacheFieldHolderVariableName(i) : null;
-			String cachehelperfielddescriptor = RMICACHEHELPER_DESCRIPTOR;
+			String cachefieldname;
+			String cachehelperfielddescriptor = JAVA_LANG_OBJECT_DESCRIPTOR;
 			if (cacheresult) {
+				cachefieldname = createCacheFieldHolderVariableName(i);
 				cachehelperfieldnames.add(cachefieldname);
 
-				FieldVisitor cachefieldfw = cw.visitField(ACC_PRIVATE | ACC_FINAL, cachefieldname,
+				FieldVisitor cachefieldfw = cw.visitField(ACC_PRIVATE | ACC_VOLATILE, cachefieldname,
 						cachehelperfielddescriptor, null, null);
 				cachefieldfw.visitEnd();
+			} else {
+				cachefieldname = null;
 			}
 
 			FieldVisitor methodfieldfw = cw.visitField(ACC_PRIVATE | ACC_STATIC, methodfieldname,
@@ -277,6 +281,14 @@ class ProxyGenerator {
 			if (cacheresult) {
 				mw.visitVarInsn(ALOAD, 0);
 				mw.visitFieldInsn(GETFIELD, thisclassinternalname, cachefieldname, cachehelperfielddescriptor);
+				mw.visitInsn(DUP);
+				mw.visitVarInsn(Opcodes.ASTORE, 1);
+				mw.visitTypeInsn(Opcodes.INSTANCEOF, RMICACHEHELPER_INTERNAL_NAME);
+				Label resultreadylabel = new Label();
+				mw.visitJumpInsn(Opcodes.IFEQ, resultreadylabel);
+
+				mw.visitVarInsn(ALOAD, 1);
+				mw.visitTypeInsn(CHECKCAST, RMICACHEHELPER_INTERNAL_NAME);
 				loadCallInvokerMethodInstructionParameters(mw, thisclassinternalname, methodfieldname, key);
 				String methoddescriptor;
 				if (collectstatistics) {
@@ -289,6 +301,14 @@ class ProxyGenerator {
 							+ "[Ljava/lang/Object;)Ljava/lang/Object;";
 				}
 				mw.visitMethodInsn(INVOKEVIRTUAL, RMICACHEHELPER_INTERNAL_NAME, "call", methoddescriptor, false);
+				mw.visitInsn(DUP);
+				mw.visitVarInsn(ALOAD, 0);
+				mw.visitInsn(Opcodes.SWAP);
+				mw.visitFieldInsn(PUTFIELD, thisclassinternalname, cachefieldname, cachehelperfielddescriptor);
+				writeObjectReturnInstructions(mw, mr);
+
+				mw.visitLabel(resultreadylabel);
+				mw.visitVarInsn(ALOAD, 1);
 				writeObjectReturnInstructions(mw, mr);
 			} else {
 				writeCallInvokerMethodReturnInstructions(mw, thisclassinternalname, methodfieldname, mr, key,
@@ -688,7 +708,7 @@ class ProxyGenerator {
 			constructorv.visitTypeInsn(NEW, RMICACHEHELPER_INTERNAL_NAME);
 			constructorv.visitInsn(DUP);
 			constructorv.visitMethodInsn(INVOKESPECIAL, RMICACHEHELPER_INTERNAL_NAME, "<init>", "()V", false);
-			constructorv.visitFieldInsn(PUTFIELD, thisclassinternalname, chfname, RMICACHEHELPER_DESCRIPTOR);
+			constructorv.visitFieldInsn(PUTFIELD, thisclassinternalname, chfname, JAVA_LANG_OBJECT_DESCRIPTOR);
 		}
 		constructorv.visitInsn(RETURN);
 		constructorv.visitMaxs(0, 0);

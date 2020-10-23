@@ -21,6 +21,8 @@ import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 
 import saker.build.thirdparty.saker.util.ArrayUtils;
 
@@ -44,6 +46,9 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 	private int position = 0;
 	private volatile boolean closed = false;
 
+	private final ReentrantLock lock = new ReentrantLock();
+	private final Condition cond = lock.newCondition();
+
 	/**
 	 * Creates a new instance.
 	 */
@@ -66,22 +71,27 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 	//XXX we should add readIfAvailable or something methods, that doesn't block
 
 	@Override
-	public synchronized int read() throws IOException {
-		while (true) {
-			int available = baos.count - position;
-			if (available > 0) {
-				int result = Byte.toUnsignedInt(baos.buf[position++]);
-				compact();
-				return result;
+	public int read() throws IOException {
+		lock.lock();
+		try {
+			while (true) {
+				int available = baos.count - position;
+				if (available > 0) {
+					int result = Byte.toUnsignedInt(baos.buf[position++]);
+					compact();
+					return result;
+				}
+				if (closed) {
+					return -1;
+				}
+				try {
+					cond.await();
+				} catch (InterruptedException e) {
+					throw new InterruptedIOException();
+				}
 			}
-			if (closed) {
-				return -1;
-			}
-			try {
-				this.wait();
-			} catch (InterruptedException e) {
-				throw new InterruptedIOException();
-			}
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -100,7 +110,7 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 	 * @throws NullPointerException
 	 *             If the buffer is <code>null</code>.
 	 */
-	public synchronized int read(byte[] buffer) throws IOException, NullPointerException {
+	public int read(byte[] buffer) throws IOException, NullPointerException {
 		return read(buffer, 0, buffer.length);
 	}
 
@@ -125,9 +135,19 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 	 * @throws IndexOutOfBoundsException
 	 *             If the specified range is outside of the array.
 	 */
-	public synchronized int read(byte[] buffer, int offset, int length)
+	public int read(byte[] buffer, int offset, int length)
 			throws IOException, IndexOutOfBoundsException, NullPointerException {
 		ArrayUtils.requireArrayRange(buffer, offset, length);
+
+		lock.lock();
+		try {
+			return readLocked(buffer, offset, length);
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	private int readLocked(byte[] buffer, int offset, int length) throws InterruptedIOException {
 		while (true) {
 			int available = baos.count - position;
 			if (length <= available) {
@@ -147,40 +167,25 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 			}
 			//none available
 			try {
-				this.wait();
+				cond.await();
 			} catch (InterruptedException e) {
 				throw new InterruptedIOException();
 			}
 		}
 	}
 
-	@Override
-	public synchronized ByteArrayRegion read(int count) throws IOException {
-		if (count <= 0) {
-			return ByteArrayRegion.EMPTY;
-		}
+	private int waitForSomeBytesLocked() throws InterruptedIOException {
 		while (true) {
 			int available = baos.count - position;
 			if (available > 0) {
-				if (available >= count) {
-					//more available than count
-					byte[] copied = Arrays.copyOfRange(baos.buf, position, count);
-					position += count;
-					return ByteArrayRegion.wrap(copied);
-				}
-				//less available than count.
-				//reset the counts
-				byte[] copied = Arrays.copyOfRange(baos.buf, position, available);
-				this.position = 0;
-				baos.count = 0;
-				return ByteArrayRegion.wrap(copied);
+				return available;
 			}
 			if (closed) {
-				return ByteArrayRegion.EMPTY;
+				return -1;
 			}
-			//none available, wait
+			//none available
 			try {
-				this.wait();
+				cond.await();
 			} catch (InterruptedException e) {
 				throw new InterruptedIOException();
 			}
@@ -188,31 +193,90 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 	}
 
 	@Override
-	public synchronized void write(int b) throws IOException {
-		checkClosed();
-		baos.write(b);
-		this.notifyAll();
+	public ByteArrayRegion read(int count) throws IOException {
+		if (count <= 0) {
+			return ByteArrayRegion.EMPTY;
+		}
+		lock.lock();
+		try {
+
+			while (true) {
+				int available = baos.count - position;
+				if (available > 0) {
+					if (available >= count) {
+						//more available than count
+						byte[] copied = Arrays.copyOfRange(baos.buf, position, count);
+						position += count;
+						return ByteArrayRegion.wrap(copied);
+					}
+					//less available than count.
+					//reset the counts
+					byte[] copied = Arrays.copyOfRange(baos.buf, position, available);
+					this.position = 0;
+					baos.count = 0;
+					return ByteArrayRegion.wrap(copied);
+				}
+				if (closed) {
+					return ByteArrayRegion.EMPTY;
+				}
+				//none available, wait
+				try {
+					cond.await();
+				} catch (InterruptedException e) {
+					throw new InterruptedIOException();
+				}
+			}
+		} finally {
+			lock.unlock();
+		}
 	}
 
 	@Override
-	public synchronized void write(byte[] b, int off, int len) throws IOException {
-		checkClosed();
-		baos.write(b, off, len);
-		this.notifyAll();
+	public void write(int b) throws IOException {
+		lock.lock();
+		try {
+			checkClosed();
+			baos.write(b);
+			cond.signalAll();
+		} finally {
+			lock.unlock();
+		}
 	}
 
 	@Override
-	public synchronized void write(byte[] b) throws IOException {
-		checkClosed();
-		baos.write(b);
-		this.notifyAll();
+	public void write(byte[] b, int off, int len) throws IOException {
+		lock.lock();
+		try {
+			checkClosed();
+			baos.write(b, off, len);
+			cond.signalAll();
+		} finally {
+			lock.unlock();
+		}
 	}
 
 	@Override
-	public synchronized void write(ByteArrayRegion buf) throws IOException, NullPointerException {
-		checkClosed();
-		baos.write(buf);
-		this.notifyAll();
+	public void write(byte[] b) throws IOException {
+		lock.lock();
+		try {
+			checkClosed();
+			baos.write(b);
+			cond.signalAll();
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	@Override
+	public void write(ByteArrayRegion buf) throws IOException, NullPointerException {
+		lock.lock();
+		try {
+			checkClosed();
+			baos.write(buf);
+			cond.signalAll();
+		} finally {
+			lock.unlock();
+		}
 	}
 
 	/**
@@ -220,8 +284,13 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 	 * 
 	 * @return The number of available bytes.
 	 */
-	public synchronized int available() {
-		return baos.count - position;
+	public int available() {
+		lock.lock();
+		try {
+			return baos.count - position;
+		} finally {
+			lock.unlock();
+		}
 	}
 
 	/**
@@ -235,18 +304,28 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 	 * @throws NullPointerException
 	 *             If the argument is <code>null</code>.
 	 */
-	public synchronized long readFrom(InputStream in) throws IOException, NullPointerException {
+	public long readFrom(InputStream in) throws IOException, NullPointerException {
 		Objects.requireNonNull(in, "in");
-		checkClosed();
-		long result = baos.readFrom(in);
-		this.notifyAll();
-		return result;
+		lock.lock();
+		try {
+			checkClosed();
+			long result = baos.readFrom(in);
+			cond.signalAll();
+			return result;
+		} finally {
+			lock.unlock();
+		}
 	}
 
 	@Override
-	public synchronized long readFrom(ByteSource in) throws IOException, NullPointerException {
-		checkClosed();
-		return baos.readFrom(in);
+	public long readFrom(ByteSource in) throws IOException, NullPointerException {
+		lock.lock();
+		try {
+			checkClosed();
+			return baos.readFrom(in);
+		} finally {
+			lock.unlock();
+		}
 	}
 
 	/**
@@ -260,27 +339,32 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 	 * @throws NullPointerException
 	 *             If the argument is <code>null</code>.
 	 */
-	public synchronized long writeTo(OutputStream out) throws IOException, NullPointerException {
+	public long writeTo(OutputStream out) throws IOException, NullPointerException {
 		Objects.requireNonNull(out, "out");
 		long result = 0;
-		while (true) {
-			int available = baos.count - position;
-			if (available > 0) {
-				baos.writeTo(out, position, available);
-				this.baos.count = 0;
-				this.position = 0;
-				result += available;
-				continue;
+		lock.lock();
+		try {
+			while (true) {
+				int available = baos.count - position;
+				if (available > 0) {
+					baos.writeTo(out, position, available);
+					this.baos.count = 0;
+					this.position = 0;
+					result += available;
+					continue;
+				}
+				if (closed) {
+					break;
+				}
+				//none available, wait
+				try {
+					cond.await();
+				} catch (InterruptedException e) {
+					throw new InterruptedIOException();
+				}
 			}
-			if (closed) {
-				break;
-			}
-			//none available, wait
-			try {
-				this.wait();
-			} catch (InterruptedException e) {
-				throw new InterruptedIOException();
-			}
+		} finally {
+			lock.unlock();
 		}
 		return result;
 	}
@@ -292,54 +376,77 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 	 * is signaled by a thrown {@link InterruptedIOException}.
 	 */
 	@Override
-	public synchronized long writeTo(ByteSink out) throws IOException, NullPointerException {
+	public long writeTo(ByteSink out) throws IOException, NullPointerException {
 		Objects.requireNonNull(out, "out");
 		long result = 0;
-		while (true) {
-			int available = baos.count - position;
-			if (available > 0) {
-				baos.writeTo(out, position, available);
-				this.baos.count = 0;
-				this.position = 0;
-				result += available;
-				continue;
+		lock.lock();
+		try {
+			while (true) {
+				int available = baos.count - position;
+				if (available > 0) {
+					baos.writeTo(out, position, available);
+					this.baos.count = 0;
+					this.position = 0;
+					result += available;
+					continue;
+				}
+				if (closed) {
+					break;
+				}
+				//none available, wait
+				try {
+					cond.await();
+				} catch (InterruptedException e) {
+					throw new InterruptedIOException();
+				}
 			}
-			if (closed) {
-				break;
-			}
-			//none available, wait
-			try {
-				this.wait();
-			} catch (InterruptedException e) {
-				throw new InterruptedIOException();
-			}
+		} finally {
+			lock.unlock();
 		}
 		return result;
 	}
 
 	@Override
 	public void close() {
-		synchronized (this) {
+		lock.lock();
+		try {
 			closed = true;
-			this.notifyAll();
+			cond.signalAll();
+		} finally {
+			lock.unlock();
 		}
 		baos.close();
 	}
 
 	@Override
-	public synchronized int read(ByteRegion buffer) throws IOException {
+	public int read(ByteRegion buffer) throws IOException {
 		if (buffer instanceof ByteArrayRegion) {
 			//we can read directly to the byte array
 			ByteArrayRegion bar = (ByteArrayRegion) buffer;
 			return read(bar.getArray(), bar.getOffset(), bar.getLength());
 		}
-		byte[] bytebuf = new byte[Math.min(buffer.getLength(), 1024 * 4)];
-		int r = read(bytebuf);
-		if (r <= 0) {
+		lock.lock();
+		try {
+			int available = baos.count - position;
+			if (available > 0) {
+				int r = Math.min(available, buffer.getLength());
+				buffer.put(0, ByteArrayRegion.wrap(baos.buf, position, r));
+				position += r;
+				compact();
+				return r;
+			}
+			//no available bytes, we need to wait for some
+			int r = waitForSomeBytesLocked();
+			if (r <= 0) {
+				return r;
+			}
+			buffer.put(0, ByteArrayRegion.wrap(baos.buf, position, r));
+			position += r;
+			compact();
 			return r;
+		} finally {
+			lock.unlock();
 		}
-		buffer.put(0, ByteArrayRegion.wrap(baos.buf, 0, r));
-		return r;
 	}
 
 	private void compact() {

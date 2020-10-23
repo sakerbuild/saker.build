@@ -226,10 +226,11 @@ public class RMIServer implements AutoCloseable {
 	 *             If the current thread was interrupted.
 	 */
 	public final void closeWait() throws IOException, InterruptedException {
+		IOException exc = null;
 		synchronized (this) {
 			state = STATE_CLOSED;
-			IOUtils.closePrint(acceptorSocket);
-			IOUtils.closePrint(unhandledSockets);
+			exc = IOUtils.closeExc(exc, acceptorSocket);
+			exc = IOUtils.closeExc(exc, unhandledSockets);
 			unhandledSockets.clear();
 		}
 
@@ -237,11 +238,16 @@ public class RMIServer implements AutoCloseable {
 		if (tpool != null) {
 			tpool.exit();
 		}
-		closeImpl();
+		try {
+			closeImpl();
+		} catch (IOException e) {
+			exc = IOUtils.addExc(exc, e);
+		}
 		if (tpool != null) {
 			removeCloseWaitAllConnections();
 			tpool.closeInterruptible();
 		}
+		IOUtils.throwExc(exc);
 	}
 
 	/**
@@ -258,20 +264,25 @@ public class RMIServer implements AutoCloseable {
 	 */
 	@Override
 	public final void close() throws IOException {
+		IOException exc = null;
 		synchronized (this) {
 			state = STATE_CLOSED;
-			IOUtils.closePrint(acceptorSocket);
-			IOUtils.closePrint(unhandledSockets);
+			exc = IOUtils.closeExc(exc, acceptorSocket);
+			exc = IOUtils.closeExc(exc, unhandledSockets);
 			unhandledSockets.clear();
 		}
-
-		closeImpl();
+		try {
+			closeImpl();
+		} catch (IOException e) {
+			exc = IOUtils.addExc(exc, e);
+		}
 
 		ThreadWorkPool tpool = serverThreadWorkPool;
 		if (tpool != null) {
 			removeCloseAllConnections();
 			tpool.exit();
 		}
+		IOUtils.throwExc(exc);
 	}
 
 	/**
@@ -442,6 +453,7 @@ public class RMIServer implements AutoCloseable {
 	 *             In case of I/O error.
 	 * @throws RuntimeException
 	 *             If the validation of the socket failed.
+	 * @see RMIConnection#PROTOCOL_VERSION_LATEST
 	 */
 	@SuppressWarnings("static-method")
 	protected RMIOptions getRMIOptionsForAcceptedConnection(Socket acceptedsocket, int protocolversion)
@@ -548,6 +560,51 @@ public class RMIServer implements AutoCloseable {
 	}
 
 	/**
+	 * Called in case an exception is encountered during the operation of the {@link RMIServer}.
+	 * <p>
+	 * The argument exception may be cause by IO errors, SSL exceptions, or by other reasons. Implementations can deal
+	 * with the exception in any way fit.
+	 * <p>
+	 * If an exception is thrown from this method, its stacktrace will be printed to the standard error.
+	 * <p>
+	 * The default implementation prints the exception to the standard error.
+	 * 
+	 * @param socket
+	 *            The socket to which the exception relates. May be <code>null</code> if the exception occurs when
+	 *            accepting clients.
+	 * @param e
+	 *            The exception.
+	 * @since saker.rmi 0.8.2
+	 */
+	@SuppressWarnings("static-method")
+	protected void serverError(Socket socket, Throwable e) {
+		e.printStackTrace();
+	}
+
+	/**
+	 * Called right after a client connection has been accepted.
+	 * <p>
+	 * Implementations can use this method to validate or log information related to the accepted socket. In case of SSL
+	 * connections, subclasses may perform validations.
+	 * <p>
+	 * Implementations should <b>not</b> use the input and output streams of the accepted socket.
+	 * <p>
+	 * If an exception is thrown from this method, the socket will be closed.
+	 * <p>
+	 * The default implementation does nothing.
+	 * 
+	 * @param accepted
+	 *            The accepted connection.
+	 * @throws IOException
+	 *             In case of errors.
+	 * @throws RuntimeException
+	 *             In case of errors.
+	 * @since saker.rmi 0.8.2
+	 */
+	protected void validateSocket(Socket accepted) throws IOException, RuntimeException {
+	}
+
+	/**
 	 * Requests the subclasses to release its resources.
 	 * <p>
 	 * This method is called when the RMI server is being closed. This method is called after the underlying sockets
@@ -562,6 +619,10 @@ public class RMIServer implements AutoCloseable {
 	}
 
 	static void initSocketOptions(Socket accepted) {
+		//this method shouldn't throw an exception, as if there are any connectivity error, an exception
+		//will be encountered down the line
+		//if setting these options fail, we can actually continue initialization as they are not strictly required
+
 		try {
 			//the data packets are buffered in RMIStream, set the options to send them immediately
 			accepted.setTcpNoDelay(true);
@@ -642,7 +703,7 @@ public class RMIServer implements AutoCloseable {
 				Socket accepted = accsocket.accept();
 				synchronized (this) {
 					if (state != STATE_RUNNING) {
-						IOUtils.closePrint(accepted);
+						IOUtils.close(accepted);
 						break;
 					}
 					unhandledSockets.add(accepted);
@@ -650,22 +711,32 @@ public class RMIServer implements AutoCloseable {
 				}
 			}
 		} catch (IOException e) {
+			//we accept an IOException if the server has been closed
+			//as closing the socket will cause accept() to throw
 			if (state == STATE_RUNNING) {
-				e.printStackTrace();
+				try {
+					serverError(null, e);
+				} catch (Throwable e2) {
+					//add the original exception as suppressed for printing
+					e2.addSuppressed(e);
+					e2.printStackTrace();
+				}
 			}
 		}
 	}
 
-	private void handleAcceptedConnection(Socket accepted) {
+	private void handleAcceptedConnection(final Socket accepted) {
 		Thread.currentThread().setContextClassLoader(null);
 
 		Socket socketclose = accepted;
 		WeakReference<RMIConnection> connref = null;
 		UUID connuuidtoremove = null;
+		Throwable exception = null;
 		try {
 			if (state != STATE_RUNNING) {
 				return;
 			}
+			validateSocket(accepted);
 			initSocketOptions(accepted);
 
 			accepted.setSoTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
@@ -707,10 +778,10 @@ public class RMIServer implements AutoCloseable {
 					try {
 						setupConnection(accepted, connection);
 					} catch (IOException | RuntimeException e) {
-						IOUtils.closePrint(connection);
 						dataos.writeShort(COMMAND_ERROR_SETUP_FAILED);
 						dataos.flush();
-						break;
+						IOUtils.addExc(e, IOUtils.closeExc(connection));
+						throw e;
 					}
 
 					RMIStream stream = new RMIStream(connection, socketis, socketos);
@@ -725,7 +796,7 @@ public class RMIServer implements AutoCloseable {
 					accepted.setSoTimeout(0);
 					synchronized (this) {
 						if (state != STATE_RUNNING) {
-							IOUtils.closePrint(stream, connection);
+							IOUtils.close(stream, connection);
 							return;
 						}
 						socketclose = null;
@@ -791,18 +862,28 @@ public class RMIServer implements AutoCloseable {
 					throw new IOException("Unknown connection command: " + cmd);
 				}
 			}
+		} catch (IOException e) {
+			//includes SSLExceptions
+			// communication error
+			exception = e;
 		} catch (Exception e) {
-			//failed to establish connection
-			//ignore exception
-			//socket is getting closed in finally
-			e.printStackTrace();
+			//some RMI library error?
+			exception = e;
 		} finally {
 			unhandledSockets.remove(accepted);
 			if (socketclose != null) {
-				IOUtils.closePrint(socketclose);
+				exception = IOUtils.addExc(exception, IOUtils.closeExc(socketclose));
 			}
 			if (connuuidtoremove != null) {
 				connections.remove(connuuidtoremove, connref);
+			}
+			if (exception != null) {
+				try {
+					serverError(accepted, exception);
+				} catch (Throwable e2) {
+					e2.addSuppressed(exception);
+					e2.printStackTrace();
+				}
 			}
 		}
 	}
@@ -854,27 +935,28 @@ public class RMIServer implements AutoCloseable {
 	}
 
 	private static final class StreamConnector implements IOFunction<Collection<? super AutoCloseable>, StreamPair> {
-		private final short useversion;
+		private final short useVersion;
 		private final UUID uuid;
-		private final SocketFactory socketfactory;
+		private final SocketFactory socketFactory;
 		private final SocketAddress address;
 
 		private StreamConnector(short useversion, UUID uuid, SocketFactory socketfactory, SocketAddress address) {
-			this.useversion = useversion;
+			this.useVersion = useversion;
 			this.uuid = uuid;
-			this.socketfactory = socketfactory;
+			this.socketFactory = socketfactory;
 			this.address = address;
 		}
 
 		@Override
 		public StreamPair apply(Collection<? super AutoCloseable> closer) throws IOException {
 			Socket ssockclose = null;
+			Throwable exc = null;
 			try {
 				Socket sock;
-				if (socketfactory == null) {
+				if (socketFactory == null) {
 					sock = new Socket();
 				} else {
-					sock = socketfactory.createSocket();
+					sock = socketFactory.createSocket();
 				}
 				closer.add(sock);
 				ssockclose = sock;
@@ -889,7 +971,7 @@ public class RMIServer implements AutoCloseable {
 				DataOutputStream sdataos = new DataOutputStream(ssockout);
 				DataInputStream sdatais = new DataInputStream(ssockin);
 				sdataos.writeShort(RMIServer.CONNECTION_MAGIC_NUMBER);
-				sdataos.writeShort(useversion);
+				sdataos.writeShort(useVersion);
 				sdataos.writeShort(RMIServer.COMMAND_NEW_STREAM);
 				sdataos.writeLong(uuid.getMostSignificantBits());
 				sdataos.writeLong(uuid.getLeastSignificantBits());
@@ -903,7 +985,7 @@ public class RMIServer implements AutoCloseable {
 				short suseversion = sremoteversion > RMIConnection.PROTOCOL_VERSION_LATEST
 						? RMIConnection.PROTOCOL_VERSION_LATEST
 						: sremoteversion;
-				if (suseversion != useversion) {
+				if (suseversion != useVersion) {
 					throw new IOException("Invalid version detected: 0x" + Integer.toHexString(suseversion));
 				}
 				short response = sdatais.readShort();
@@ -915,11 +997,19 @@ public class RMIServer implements AutoCloseable {
 				ssockclose = null;
 				closer.remove(sock);
 				return new StreamPair(ssockin, ssockout);
-			} catch (Exception e) {
+			} catch (Throwable e) {
+				exc = e;
 				//failed to connect, or other error
 				throw e;
 			} finally {
-				IOUtils.closePrint(ssockclose);
+				IOException sockexc = IOUtils.closeExc(ssockclose);
+				//throw or add as suppressed exception based on if we're throwing right now
+				if (sockexc != null) {
+					if (exc == null) {
+						throw sockexc;
+					}
+					exc.addSuppressed(sockexc);
+				}
 			}
 		}
 

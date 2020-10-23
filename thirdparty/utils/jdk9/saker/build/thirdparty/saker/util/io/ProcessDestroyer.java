@@ -15,8 +15,6 @@
  */
 package saker.build.thirdparty.saker.util.io;
 
-import saker.build.thirdparty.saker.util.io.ProcessDestroyer;
-
 public class ProcessDestroyer {
 	private ProcessDestroyer() {
 		throw new UnsupportedOperationException();

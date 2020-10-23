@@ -15,6 +15,7 @@
  */
 package saker.build.thirdparty.saker.rmi.connection;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 
@@ -52,7 +53,9 @@ class BlockInputStream extends InputStream {
 		//we are at user block
 		if (blockRemainingCount > 0) {
 			int result = in.read();
-			blockRemainingCount--;
+			if (result >= 0) {
+				blockRemainingCount--;
+			}
 			return result;
 		}
 		//no more data
@@ -116,7 +119,15 @@ class BlockInputStream extends InputStream {
 
 	private void readNextBlock() throws IOException {
 		byte[] ints = new byte[8];
-		StreamUtils.readStreamBytesExactly(in, ints, 0, 8);
+		//use this loop instead of StreamUtils.readStreamBytesExactly to provide a more meaningful exception
+		for (int off = 0; off < ints.length;) {
+			int read = in.read(ints, off, ints.length - off);
+			if (read <= 0) {
+				throw new EOFException("Failed to read RMI block header (" + ints.length + " bytes), only received: "
+						+ off + " bytes. (Last read result: " + read + ", last block id: " + blockId + ")");
+			}
+			off += read;
+		}
 		blockId = SerialUtils.readIntFromBuffer(ints, 0);
 		blockRemainingCount = SerialUtils.readIntFromBuffer(ints, 4);
 		if (blockRemainingCount < 0) {

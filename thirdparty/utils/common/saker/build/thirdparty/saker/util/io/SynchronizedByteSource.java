@@ -81,7 +81,7 @@ class SynchronizedByteSource extends InputStream implements ByteSource {
 	}
 
 	@Override
-	public boolean markSupported() {
+	public synchronized boolean markSupported() {
 		return super.markSupported();
 	}
 

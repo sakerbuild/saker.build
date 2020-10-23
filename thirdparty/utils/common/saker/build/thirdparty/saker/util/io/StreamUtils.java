@@ -35,6 +35,7 @@ import java.security.MessageDigest;
 import java.security.Signature;
 import java.security.SignatureException;
 import java.util.Objects;
+import java.util.concurrent.locks.Lock;
 
 import javax.crypto.Mac;
 
@@ -297,6 +298,134 @@ public class StreamUtils {
 			return null;
 		}
 		return new SynchronizedByteSource(in);
+	}
+
+	/**
+	 * Gets an output stream that forwards its calls to the argument, and every method of it is locked using an internal
+	 * {@link Lock}.
+	 * 
+	 * @param out
+	 *            The output stream.
+	 * @return The locked output stream, or <code>null</code> if the argument is <code>null</code>.
+	 * @since saker.util 0.8.2
+	 */
+	public static OutputStream lockedOutputStream(OutputStream out) {
+		if (out == null) {
+			return null;
+		}
+		return new LockedOutputStream(out);
+	}
+
+	/**
+	 * Gets an output stream that forwards its calls to the argument, and every method of it is locked using an internal
+	 * {@link Lock}.
+	 * 
+	 * @param out
+	 *            The byte sink.
+	 * @return The locked output stream, or <code>null</code> if the argument is <code>null</code>.
+	 * @since saker.util 0.8.2
+	 */
+	public static OutputStream lockedOutputStream(ByteSink out) {
+		if (out == null) {
+			return null;
+		}
+		return new LockedByteSink(out);
+	}
+
+	/**
+	 * Gets a byte sink that forwards its calls to the argument, and every method of it is locked using an internal
+	 * {@link Lock}.
+	 * 
+	 * @param out
+	 *            The output stream.
+	 * @return The locked byte sink, or <code>null</code> if the argument is <code>null</code>.
+	 * @since saker.util 0.8.2
+	 */
+	public static ByteSink lockedByteSink(OutputStream out) {
+		if (out == null) {
+			return null;
+		}
+		return new LockedOutputStream(out);
+	}
+
+	/**
+	 * Gets a byte sink that forwards its calls to the argument, and every method of it is locked using an internal
+	 * {@link Lock}.
+	 * 
+	 * @param out
+	 *            The byte sink.
+	 * @return The locked byte sink, or <code>null</code> if the argument is <code>null</code>.
+	 * @since saker.util 0.8.2
+	 */
+	public static ByteSink lockedByteSink(ByteSink out) {
+		if (out == null) {
+			return null;
+		}
+		return new LockedByteSink(out);
+	}
+
+	/**
+	 * Gets an input stream that forwards its calls to the argument, and every method of it is locked using an internal
+	 * {@link Lock}.
+	 * 
+	 * @param in
+	 *            The input stream.
+	 * @return The locked input stream, or <code>null</code> if the argument is <code>null</code>.
+	 * @since saker.util 0.8.2
+	 */
+	public static InputStream lockedInputStream(InputStream in) {
+		if (in == null) {
+			return null;
+		}
+		return new LockedInputStream(in);
+	}
+
+	/**
+	 * Gets a byte source that forwards its calls to the argument, nd every method of it is locked using an internal
+	 * {@link Lock}.
+	 * 
+	 * @param in
+	 *            The input stream.
+	 * @return The locked byte source, or <code>null</code> if the argument is <code>null</code>.
+	 * @since saker.util 0.8.2
+	 */
+	public static ByteSource lockedByteSource(InputStream in) {
+		if (in == null) {
+			return null;
+		}
+		return new LockedInputStream(in);
+	}
+
+	/**
+	 * Gets an input stream that forwards its calls to the argument, and every method of it is locked using an internal
+	 * {@link Lock}.
+	 * 
+	 * @param in
+	 *            The byte source.
+	 * @return The locked input stream, or <code>null</code> if the argument is <code>null</code>.
+	 * @since saker.util 0.8.2
+	 */
+	public static InputStream lockedInputStream(ByteSource in) {
+		if (in == null) {
+			return null;
+		}
+		return new LockedByteSource(in);
+	}
+
+	/**
+	 * Gets a byte source that forwards its calls to the argument, and every method of it is locked using an internal
+	 * {@link Lock}.
+	 * 
+	 * @param in
+	 *            The byte source.
+	 * @return The locked byte source, or <code>null</code> if the argument is <code>null</code>.
+	 * @since saker.util 0.8.2
+	 */
+	public static ByteSource lockedByteSource(ByteSource in) {
+		if (in == null) {
+			return null;
+		}
+		return new LockedByteSource(in);
 	}
 
 	/**

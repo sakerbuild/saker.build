@@ -988,15 +988,15 @@ public class RMIVariables implements AutoCloseable {
 	int getLocalInstanceIdIncreaseReference(Object localobject) {
 		synchronized (refSync) {
 			@SuppressWarnings("unlikely-arg-type")
-			LocalObjectReference got = localObjectsToLocalReferences.get(new IdentityRefSearcher(localobject));
-			if (got != null) {
-				synchronized (got) {
-					++got.remoteReferenceCount;
-					if (got.strongReference == null) {
-						got.strongReference = localobject;
+			LocalObjectReference gotobjref = localObjectsToLocalReferences.get(new IdentityRefSearcher(localobject));
+			if (gotobjref != null) {
+				synchronized (gotobjref) {
+					++gotobjref.remoteReferenceCount;
+					if (gotobjref.strongReference == null) {
+						gotobjref.strongReference = localobject;
 					}
 				}
-				return got.localId;
+				return gotobjref.localId;
 			}
 			int id = nextId();
 			IdentityEqWeakReference<?> keyref = new IdentityEqWeakReference<>(localobject, gcReferenceQueue);

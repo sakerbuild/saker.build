@@ -139,17 +139,12 @@ public final class Functionals {
 			this.run = run;
 		}
 
-		@SuppressWarnings("unchecked")
-		private static <T extends Throwable> RuntimeException sneakyThrowImpl(Throwable t) throws T {
-			throw (T) t;
-		}
-
 		@Override
 		public void run() {
 			try {
 				run.run();
 			} catch (Throwable e) {
-				throw sneakyThrowImpl(e);
+				throw ObjectUtils.sneakyThrow(e);
 			}
 		}
 

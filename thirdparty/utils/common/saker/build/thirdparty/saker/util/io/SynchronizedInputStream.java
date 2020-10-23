@@ -62,7 +62,7 @@ class SynchronizedInputStream extends InputStream implements ByteSource {
 
 	@Override
 	public synchronized int available() throws IOException {
-		return super.available();
+		return in.available();
 	}
 
 	@Override
@@ -81,7 +81,7 @@ class SynchronizedInputStream extends InputStream implements ByteSource {
 	}
 
 	@Override
-	public boolean markSupported() {
+	public synchronized boolean markSupported() {
 		return in.markSupported();
 	}
 

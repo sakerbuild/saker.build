@@ -24,6 +24,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.ServiceConfigurationError;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -33,12 +34,14 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import saker.build.thirdparty.saker.rmi.connection.RMIStream.ClassLoaderNotFoundIOException;
 import saker.build.thirdparty.saker.rmi.exception.RMIIOFailureException;
+import saker.build.thirdparty.saker.rmi.exception.RMIListenerException;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
+import saker.build.thirdparty.saker.util.ArrayUtils;
 import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
+import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.function.Functionals;
-import saker.build.thirdparty.saker.util.function.ThrowingRunnable;
 import saker.build.thirdparty.saker.util.io.DataOutputUnsyncByteArrayOutputStream;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.StreamPair;
@@ -97,7 +100,12 @@ public final class RMIConnection implements AutoCloseable {
 		/**
 		 * Notifies the listener about some I/O error in the connection.
 		 * <p>
-		 * The exception argument is often an instance of {@link IOException}.
+		 * The exception argument is often an instance of {@link IOException}, however, it also may be of other types.
+		 * <p>
+		 * The argument may be an instance of {@link RMIListenerException} when a callback threw an exception. That is,
+		 * callback exceptions are also reported via this listener.
+		 * <p>
+		 * The invocation of this callback may not necessarily cause the closing of the RMI connection.
 		 * 
 		 * @param exc
 		 *            The exception that caused the error.
@@ -164,8 +172,8 @@ public final class RMIConnection implements AutoCloseable {
 	private Collection<CloseListener> closeListeners = ObjectUtils.newIdentityHashSet();
 
 	private final RequestHandler requestHandler = new RequestHandler();
-	private final ThreadLocal<AtomicInteger> currentThreadPreviousMethodCallRequestId = ThreadLocal
-			.withInitial(AtomicInteger::new);
+	private final ThreadLocal<int[]> currentThreadPreviousMethodCallRequestId = ThreadLocal
+			.withInitial(() -> new int[1]);
 
 	@SuppressWarnings("unused")
 	private volatile int offeredStreamTaskCount;
@@ -199,7 +207,8 @@ public final class RMIConnection implements AutoCloseable {
 	}
 
 	RMIConnection(RMIOptions options, StreamPair streams, short protocolversion,
-			IOFunction<Collection<? super AutoCloseable>, StreamPair> streamconnector) throws IOException {
+			IOFunction<? super Collection<? super AutoCloseable>, ? extends StreamPair> streamconnector)
+			throws IOException {
 		this.allowDirectRequests = options.allowDirectRequests;
 		if (options.collectStatistics) {
 			this.statistics = new RMIStatistics();
@@ -419,7 +428,8 @@ public final class RMIConnection implements AutoCloseable {
 	 * <p>
 	 * If an I/O error was already detected, then the listener will be called before this method returns.
 	 * <p>
-	 * When an I/O error occurs, the listeners are called, and this connection will remove all installed listeners.
+	 * Listeners are kept until they are explicitly {@linkplain #removeErrorListener(IOErrorListener) remoeved}. They
+	 * may be called concurrently, and multiple times.
 	 * 
 	 * @param listener
 	 *            The listener.
@@ -427,18 +437,28 @@ public final class RMIConnection implements AutoCloseable {
 	 *             If the argument is <code>null</code>.
 	 * @throws IllegalArgumentException
 	 *             If the listener is a remote object.
+	 * @throws RMIListenerException
+	 *             If an I/O error was detected therefore the argument listener is called, and it threw an exception.
 	 */
-	public void addErrorListener(IOErrorListener listener) throws NullPointerException, IllegalArgumentException {
+	public void addErrorListener(IOErrorListener listener)
+			throws NullPointerException, IllegalArgumentException, RMIListenerException {
 		Objects.requireNonNull(listener, "listener");
 		if (isRemoteObject(listener)) {
 			throw new IllegalArgumentException("Listener must be a local object.");
 		}
+		Throwable callexc;
 		synchronized (errorListeners) {
-			if (ioErrorException != null) {
-				listener.onIOError(ioErrorException);
+			errorListeners.add(listener);
+			callexc = ioErrorException;
+			if (callexc == null) {
 				return;
 			}
-			errorListeners.add(listener);
+			//listener to be called outside of lock
+		}
+		try {
+			listener.onIOError(callexc);
+		} catch (Exception e) {
+			throw new RMIListenerException("RMI listener callback threw an exception.", e);
 		}
 	}
 
@@ -475,21 +495,30 @@ public final class RMIConnection implements AutoCloseable {
 	 *             If the argument is <code>null</code>.
 	 * @throws IllegalArgumentException
 	 *             If the listener is a remote object.
+	 * @throws RMIListenerException
+	 *             If the connection is closed, therefore the argument listener is called, and it threw an exception.
 	 * @since saker.rmi 0.8.2
 	 */
-	public void addCloseListener(CloseListener listener) throws NullPointerException, IllegalArgumentException {
+	public void addCloseListener(CloseListener listener)
+			throws NullPointerException, IllegalArgumentException, RMIListenerException {
 		Objects.requireNonNull(listener, "listener");
 		if (isRemoteObject(listener)) {
 			throw new IllegalArgumentException("Listener must be a local object.");
 		}
 		synchronized (stateModifyLock) {
 			if (aborting && this.variablesByLocalId.isEmpty()) {
-				listener.onConnectionClosed();
+				//listener to be called outside of lock
+			} else {
+				synchronized (closeListeners) {
+					closeListeners.add(listener);
+				}
 				return;
 			}
-			synchronized (closeListeners) {
-				closeListeners.add(listener);
-			}
+		}
+		try {
+			listener.onConnectionClosed();
+		} catch (Exception e) {
+			throw new RMIListenerException("RMI listener callback threw an exception.", e);
 		}
 	}
 
@@ -627,7 +656,7 @@ public final class RMIConnection implements AutoCloseable {
 		return requestHandler;
 	}
 
-	ThreadLocal<AtomicInteger> getCurrentThreadPreviousMethodCallRequestIdThreadLocal() {
+	ThreadLocal<int[]> getCurrentThreadPreviousMethodCallRequestIdThreadLocal() {
 		return currentThreadPreviousMethodCallRequestId;
 	}
 
@@ -635,7 +664,7 @@ public final class RMIConnection implements AutoCloseable {
 		return taskPool;
 	}
 
-	void finishNewConnectionSetup(RMIStream stream) {
+	void finishNewConnectionSetup(RMIStream stream) throws RMIRuntimeException, IOException {
 		addStream(stream);
 	}
 
@@ -662,17 +691,18 @@ public final class RMIConnection implements AutoCloseable {
 		int identifier = variables.getLocalIdentifier();
 		synchronized (stateModifyLock) {
 			boolean removed = this.variablesByLocalId.remove(identifier, variables);
-			if (removed) {
-				if (variables instanceof NamedRMIVariables) {
-					this.variablesByNames.remove(((NamedRMIVariables) variables).getName(), variables);
-				}
-
-				try {
-					getStream().writeVariablesClosed(variables);
-				} catch (IOException | RMIRuntimeException e) {
-				}
-				closeIfAbortingAndNoVariables();
+			if (!removed) {
+				return;
 			}
+			if (variables instanceof NamedRMIVariables) {
+				this.variablesByNames.remove(((NamedRMIVariables) variables).getName(), variables);
+			}
+
+			try {
+				getStreamStateModifyLocked().writeVariablesClosed(variables);
+			} catch (IOException | RMIRuntimeException e) {
+			}
+			closeIfAbortingAndNoVariables();
 		}
 	}
 
@@ -680,7 +710,7 @@ public final class RMIConnection implements AutoCloseable {
 		return nullClassLoader;
 	}
 
-	void offerStreamTask(ThrowingRunnable task) {
+	void offerStreamTask(Runnable task) {
 		ARFU_offeredStreamTaskCount.incrementAndGet(this);
 		taskPool.offer(() -> {
 			Thread.currentThread().setContextClassLoader(null);
@@ -692,7 +722,7 @@ public final class RMIConnection implements AutoCloseable {
 					//this was the last stream task to run
 					//stream reading tasks have already exited (or this was it)
 					//no streams running -> no more requests will be added
-					//close the request handler as it will not receive respones anymore
+					//close the request handler as it will not receive responses anymore
 					requestHandler.close();
 				}
 			}
@@ -719,11 +749,11 @@ public final class RMIConnection implements AutoCloseable {
 		return properties;
 	}
 
-	void addStream(RMIStream stream) throws RMIRuntimeException {
+	void addStream(RMIStream stream) throws RMIRuntimeException, IOException {
 		checkClosed();
 		synchronized (stateModifyLock) {
 			if (aborting) {
-				IOUtils.closePrint(stream);
+				IOUtils.close(stream);
 				return;
 			}
 			streamRoundRobin = allStreams.size();
@@ -732,7 +762,7 @@ public final class RMIConnection implements AutoCloseable {
 		stream.start();
 	}
 
-	void removeStream(RMIStream stream) {
+	void removeStream(RMIStream stream) throws IOException {
 		boolean removed;
 		synchronized (stateModifyLock) {
 			removed = allStreams.remove(stream);
@@ -740,17 +770,21 @@ public final class RMIConnection implements AutoCloseable {
 		if (removed) {
 			connectedOrConnectingStreams.decrementAndGet();
 		}
-		IOUtils.closePrint(stream);
+		IOUtils.close(stream);
 	}
 
 	RMIStream getStream() {
 		checkClosed();
 		synchronized (stateModifyLock) {
-			if (allStreams.isEmpty()) {
-				throw new RMIIOFailureException("No stream found.");
-			}
-			return allStreams.get(ARFU_streamRoundRobin.getAndIncrement(this) % allStreams.size());
+			return getStreamStateModifyLocked();
 		}
+	}
+
+	private RMIStream getStreamStateModifyLocked() {
+		if (allStreams.isEmpty()) {
+			throw new RMIIOFailureException("No stream found.");
+		}
+		return allStreams.get(ARFU_streamRoundRobin.getAndIncrement(this) % allStreams.size());
 	}
 
 	void clientClose() {
@@ -759,9 +793,30 @@ public final class RMIConnection implements AutoCloseable {
 	}
 
 	void streamError(RMIStream stream, Throwable exc) {
-		onIOError(exc);
+		Exception runexc = null;
+		try {
+			//this method doesn't throw an exception, but keep this nonetheless
+			invokeIOErrorListeners(exc);
+		} catch (Exception e) {
+			runexc = IOUtils.addExc(runexc, e);
+		}
 		exitMessage = "Connection stream error. (" + exc + ")";
-		abort();
+		try {
+			abort();
+		} catch (Exception abortexc) {
+			IOUtils.addExc(abortexc, runexc);
+
+			//this method doesn't throw an exception
+			invokeIOErrorListeners(abortexc);
+
+		} catch (Throwable abortexc) {
+			IOUtils.addExc(abortexc, runexc);
+
+			//this method doesn't throw an exception
+			invokeIOErrorListeners(abortexc);
+			//serious error, throw back
+			throw abortexc;
+		}
 	}
 
 	String getClassLoaderId(ClassLoader cl) {
@@ -936,7 +991,7 @@ public final class RMIConnection implements AutoCloseable {
 		}
 		aborting = true;
 		//use a copy collection to be able to remove from the real collection while the variables are closing
-		for (RMIVariables v : new ArrayList<>(variablesByLocalId.values())) {
+		for (RMIVariables v : ImmutableUtils.makeImmutableList(variablesByLocalId.values())) {
 			v.close();
 		}
 		taskPool.exit();
@@ -950,25 +1005,54 @@ public final class RMIConnection implements AutoCloseable {
 	}
 
 	private void postAddAdditionalStreams(
-			IOFunction<Collection<? super AutoCloseable>, ? extends StreamPair> streamconnector) {
+			IOFunction<? super Collection<? super AutoCloseable>, ? extends StreamPair> streamconnector) {
 		taskPool.offer(() -> addAdditionalStreams(streamconnector));
 	}
 
-	private void onIOError(Throwable exc) {
-		Collection<IOErrorListener> copy;
+	void invokeIOErrorListeners(Throwable exc, boolean storeexception) {
+		Collection<IOErrorListener> ioerrorlistenerscopy;
 		synchronized (errorListeners) {
 			if (ioErrorException == null) {
-				ioErrorException = exc;
+				if (storeexception) {
+					ioErrorException = exc;
+				}
+			} else {
+				ioErrorException.addSuppressed(exc);
 			}
 			if (errorListeners.isEmpty()) {
 				return;
 			}
-			copy = new ArrayList<>(errorListeners);
-			errorListeners.clear();
+			ioerrorlistenerscopy = ImmutableUtils.makeImmutableList(errorListeners);
 		}
-		for (IOErrorListener l : copy) {
-			l.onIOError(exc);
+		Throwable[] listenerexceptions = ObjectUtils.EMPTY_THROWABLE_ARRAY;
+		for (IOErrorListener l : ioerrorlistenerscopy) {
+			try {
+				l.onIOError(exc);
+			} catch (Exception | LinkageError | StackOverflowError | AssertionError | ServiceConfigurationError
+					| OutOfMemoryError e) {
+				listenerexceptions = ArrayUtils.appended(listenerexceptions, e);
+			}
 		}
+		if (listenerexceptions.length > 0) {
+			RMIListenerException ex = new RMIListenerException("IO error listeners threw an exception.");
+			for (Throwable t : listenerexceptions) {
+				ex.addSuppressed(t);
+			}
+			//invoke them again, but just print any other thrown exceptions
+			//this is a hard fallback
+			for (IOErrorListener l : ioerrorlistenerscopy) {
+				try {
+					l.onIOError(exc);
+				} catch (Exception | LinkageError | StackOverflowError | AssertionError | ServiceConfigurationError
+						| OutOfMemoryError e) {
+					e.printStackTrace();
+				}
+			}
+		}
+	}
+
+	void invokeIOErrorListeners(Throwable exc) {
+		invokeIOErrorListeners(exc, true);
 	}
 
 	private RMIVariables newUnnamedRemoteVariables(int remoteid) {
@@ -1014,13 +1098,14 @@ public final class RMIConnection implements AutoCloseable {
 		//all variables have been closed
 		//no requests are running
 		//we can close the streams now
-		ArrayList<RMIStream> streamscopy = new ArrayList<>(allStreams);
+		List<RMIStream> streamscopy = ImmutableUtils.makeImmutableList(allStreams);
 		allStreams.clear();
-		for (RMIStream stream : streamscopy) {
-			stream.close();
-		}
+		IOException closeexc = null;
 
-		IOUtils.closePrint(connectingStreamSockets);
+		closeexc = IOUtils.closeExc(closeexc, streamscopy);
+
+		closeexc = IOUtils.closeExc(closeexc, connectingStreamSockets);
+
 		//interrupt the stream adding thread if any
 		//if the stream adding thread stays interrupted in the task pool that is fine, as there are no more requests running.
 		ThreadUtils.interruptThread(ObjectUtils.getReference(streamAddingThread));
@@ -1028,32 +1113,43 @@ public final class RMIConnection implements AutoCloseable {
 		variablesByNames.clear();
 		contextVariables.clear();
 
-		Collection<CloseListener> copy;
+		Collection<CloseListener> closelistenerscopy;
 		synchronized (closeListeners) {
 			if (closeListeners.isEmpty()) {
 				return;
 			}
-			copy = new ArrayList<>(closeListeners);
+			closelistenerscopy = ImmutableUtils.makeImmutableList(closeListeners);
 			closeListeners.clear();
 		}
-		for (CloseListener l : copy) {
-			l.onConnectionClosed();
+		Throwable[] listenerexceptions = ObjectUtils.EMPTY_THROWABLE_ARRAY;
+		for (CloseListener l : closelistenerscopy) {
+			try {
+				l.onConnectionClosed();
+			} catch (Exception | LinkageError | StackOverflowError | AssertionError | ServiceConfigurationError
+					| OutOfMemoryError e) {
+				listenerexceptions = ArrayUtils.appended(listenerexceptions, e);
+			}
+		}
+		if (listenerexceptions.length > 0) {
+			RMIListenerException listenerexc = new RMIListenerException("Close listeners threw an exception.");
+			for (Throwable t : listenerexceptions) {
+				listenerexc.addSuppressed(t);
+			}
+			invokeIOErrorListeners(listenerexc);
+		}
+		if (closeexc != null) {
+			invokeIOErrorListeners(closeexc);
 		}
 	}
 
 	private void addAdditionalStreams(
-			IOFunction<Collection<? super AutoCloseable>, ? extends StreamPair> streamconnector) throws IOException {
+			IOFunction<? super Collection<? super AutoCloseable>, ? extends StreamPair> streamconnector) {
 		this.streamAddingThread = new WeakReference<>(Thread.currentThread());
 		try {
 			while (!aborting) {
 				int cocstreams = connectedOrConnectingStreams.getAndIncrement();
 				if (cocstreams < maxStreamCount) {
-					StreamPair streampair;
-					try {
-						streampair = streamconnector.apply(connectingStreamSockets);
-					} catch (IOException e) {
-						throw e;
-					}
+					StreamPair streampair = streamconnector.apply(connectingStreamSockets);
 
 					RMIStream nstream = new RMIStream(this, streampair);
 					addStream(nstream);
@@ -1063,6 +1159,8 @@ public final class RMIConnection implements AutoCloseable {
 					break;
 				}
 			}
+		} catch (Exception e) {
+			invokeIOErrorListeners(e, false);
 		} finally {
 			this.streamAddingThread = null;
 		}

@@ -19,6 +19,7 @@ import java.lang.ref.Reference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.ReentrantLock;
 
 import saker.apiextract.api.ExcludeApi;
 import saker.build.thirdparty.saker.rmi.exception.RMICallFailedException;
@@ -149,48 +150,50 @@ public abstract class RemoteProxyObject {
 				.newUpdater(RMICacheHelper.class, Object.class, "result");
 
 		private volatile Object result = RESULT_NOT_READY;
+		//the lock must be reentrant as the method may call itself recursively
+		private final ReentrantLock lock = new ReentrantLock();
 
 		public RMICacheHelper() {
 		}
 
 		public Object call(RemoteProxyObject proxy, MethodTransferProperties method, Object[] args) throws Throwable {
-			//XXX it would be nice if we could spare the array object creation by the proxy for the stack when the result is already ready
 			Object r = this.result;
 			if (r != RESULT_NOT_READY) {
 				return r;
 			}
-			synchronized (this) {
+			lock.lock();
+			try {
 				r = this.result;
 				if (r != RESULT_NOT_READY) {
 					return r;
 				}
-				try {
-					Object res = RemoteProxyObject.callMethodInternal(proxy, method, args);
-					//the following CAS will always succeed as we're in a synchronized block
-					ARFU_result.compareAndSet(this, RESULT_NOT_READY, res);
-					return res;
-				} finally {
-					reachabilityFence(proxy);
-				}
+				Object res = RemoteProxyObject.callMethodInternal(proxy, method, args);
+				//the following CAS will always succeed as we're in a locked section
+				ARFU_result.compareAndSet(this, RESULT_NOT_READY, res);
+				return res;
+			} finally {
+				lock.unlock();
 			}
 		}
 
 		public Object call(RemoteProxyObject proxy, MethodTransferProperties method, Object[] args,
 				RMIStatistics statistics) throws Throwable {
-			//XXX it would be nice if we could spare the array object creation by the proxy for the stack when the result is already ready
 			Object r = this.result;
 			if (r != RESULT_NOT_READY) {
 				return r;
 			}
-			synchronized (this) {
+			lock.lock();
+			try {
 				r = this.result;
 				if (r != RESULT_NOT_READY) {
 					return r;
 				}
 				Object res = RemoteProxyObject.callMethodInternal(proxy, method, args, statistics);
-				//the following CAS will always succeed as we're in a synchronized block
+				//the following CAS will always succeed as we're in a locked section
 				ARFU_result.compareAndSet(this, RESULT_NOT_READY, res);
 				return res;
+			} finally {
+				lock.unlock();
 			}
 		}
 	}
