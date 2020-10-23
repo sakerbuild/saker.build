@@ -20,7 +20,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Path;
 
 import saker.build.thirdparty.saker.util.ReflectUtils;
-import saker.build.trace.BuildTrace;
 import saker.build.trace.InternalBuildTraceImpl;
 import saker.osnative.NativeLibs;
 import testing.saker.build.flag.TestFlag;

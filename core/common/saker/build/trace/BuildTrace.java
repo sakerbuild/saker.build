@@ -15,6 +15,9 @@
  */
 package saker.build.trace;
 
+import java.net.URI;
+import java.net.URL;
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
@@ -396,6 +399,8 @@ public final class BuildTrace {
 	 * types are the following:
 	 * <ul>
 	 * <li>{@link String}, or {@link CharSequence} instances.</li>
+	 * <li>{@link SakerPath}, {@link Path}, {@link URL}, {@link URI} are converted to {@link String}. (Since saker.build
+	 * 0.8.16)</li>
 	 * <li>Boxed primitive numbers and <code>boolean</code>.</li>
 	 * <li>Arrays of other values.</li>
 	 * <li>{@link Collection Collections} and {@link Iterable Iterables} of other values.</li>
@@ -411,6 +416,9 @@ public final class BuildTrace {
 	 * <p>
 	 * The specified category determines where the given values are displayed in the build trace. See the
 	 * <code>VALUE_CATEGORY_*</code> constants for their placement.
+	 * <p>
+	 * String keys serving as names in the rendered build trace may contain the <code>\t</code> character in which case
+	 * they are displayed in two separate columns when appropriate.
 	 * <p>
 	 * <b>Note:</b> Although this method takes a map with wildcard key type as its argument, only {@link String} keys
 	 * are supported. It is wildcard for compatibility as we may support non-string keys in the future.

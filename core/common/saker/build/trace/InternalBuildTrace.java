@@ -44,6 +44,7 @@ import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import saker.build.util.exc.ExceptionView;
+import testing.saker.build.flag.TestFlag;
 
 public interface InternalBuildTrace extends Closeable {
 	public static InternalBuildTrace current() {
@@ -156,6 +157,10 @@ public interface InternalBuildTrace extends Closeable {
 		}
 
 		@Override
+		public void openTargetConfigurationFile(ScriptParsingOptions parsingoptions, SakerFile file) {
+		}
+
+		@Override
 		public int hashCode() {
 			return getClass().getName().hashCode();
 		}
@@ -179,8 +184,30 @@ public interface InternalBuildTrace extends Closeable {
 				}
 			} catch (Exception e) {
 				// this should never happen, but handle just in case as we may not throw
+				if (TestFlag.ENABLED) {
+					e.printStackTrace();
+				}
 			}
 			return NullInternalBuildTrace.INSTANCE;
+		}
+
+		public static InternalTaskBuildTrace currentOrNull() {
+			try {
+				TaskContextReference currentref = TaskContextReference.currentReference();
+				if (currentref == null) {
+					return null;
+				}
+				InternalTaskBuildTrace bt = currentref.getTaskBuildTrace();
+				if (bt != null) {
+					return bt;
+				}
+			} catch (Exception e) {
+				// this should never happen, but handle just in case as we may not throw
+				if (TestFlag.ENABLED) {
+					e.printStackTrace();
+				}
+			}
+			return null;
 		}
 
 		public default void setStandardOutDisplayIdentifier(String displayid) {
@@ -227,6 +254,9 @@ public interface InternalBuildTrace extends Closeable {
 		}
 
 		public default void omitInnerTask() {
+		}
+
+		public default void openTargetConfigurationFile(ScriptParsingOptions parsingoptions, SakerFile file) {
 		}
 	}
 

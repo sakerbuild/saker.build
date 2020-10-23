@@ -23,7 +23,6 @@ import saker.build.daemon.DaemonOutputController.StreamToken;
 import saker.build.daemon.RemoteDaemonConnection;
 import saker.build.daemon.RemoteDaemonConnection.ConnectionIOErrorListener;
 import saker.build.thirdparty.saker.util.io.ByteSink;
-import saker.build.thirdparty.saker.util.io.IOUtils;
 import sipka.cmdline.api.Parameter;
 
 /**
@@ -65,8 +64,8 @@ public class IODaemonCommand {
 						if (exc == null) {
 							System.out.println("Daemon stopped.");
 						} else {
-							System.out.println("Connection lost: " + exc);
-							IOUtils.printExc(exc);
+							System.out.println("Daemon connection error: " + exc);
+							exc.printStackTrace(System.out);
 						}
 					} finally {
 						sem.release();

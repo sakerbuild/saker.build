@@ -27,11 +27,15 @@ import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
+import java.net.URI;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -48,6 +52,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
@@ -253,8 +258,6 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	private DatabaseConfiguration databaseConfiguration;
 	private ExecutionPathConfiguration pathConfiguration;
 	private boolean successful;
-
-	private final NavigableMap<SakerPath, ByteArrayRegion> readScriptContents = new ConcurrentSkipListMap<>();
 
 	/**
 	 * Maps category strings to linked hash maps that should be synchronized on.
@@ -469,9 +472,19 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				//currently only strings are supported
 				continue;
 			}
-			//if it normalizes to null, keep it to signal value removal
-			Object nval = normalizeValue(entry.getValue(), seenobjects);
+			Object val = entry.getValue();
+			if (val == null) {
+				//if it normalizes to null, keep it to signal value removal
+				result.put(key.toString(), val);
+			}
+			Object nval = normalizeValue(val, seenobjects);
+			if (nval == null) {
+				//failed to normalize the value
+				// don't put it
+				continue;
+			}
 			result.put(key.toString(), nval);
+
 		}
 		return result;
 	}
@@ -493,9 +506,13 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				//String returns identity
 				return val.toString();
 			}
+			if (val instanceof SakerPath || val instanceof Path || val instanceof URL || val instanceof URI) {
+				//normalize these types to string
+				return val.toString();
+			}
 			if (val instanceof Number) {
 				//keep floating or integral representation
-				if (val instanceof Float || val instanceof Double) {
+				if (val instanceof Float || val instanceof Double || val instanceof BigDecimal) {
 					return ((Number) val).doubleValue();
 				}
 				return ((Number) val).longValue();
@@ -736,17 +753,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	@Override
 	public void openTargetConfigurationFile(ScriptParsingOptions parsingoptions, SakerFile file) {
 		noException(() -> {
-			readScriptContents.computeIfAbsent(parsingoptions.getScriptPath(), p -> {
-				try {
-					return file.getBytesImpl();
-				} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError
-						| AssertionError | Exception e) {
-					if (TestFlag.ENABLED) {
-						e.printStackTrace();
-					}
-					return null;
-				}
-			});
+			InternalTaskBuildTrace tasktrace = InternalBuildTrace.InternalTaskBuildTrace.currentOrNull();
+			if (tasktrace == null) {
+				return;
+			}
+			tasktrace.openTargetConfigurationFile(parsingoptions, file);
 		});
 	}
 
@@ -1062,7 +1073,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				writeFieldName(os, "values");
 				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
 				for (Entry<String, LinkedHashMap<String, Object>> entry : this.values.entrySet()) {
-					LinkedHashMap<String, Object> categoryvals = entry.getValue();
+					Map<String, Object> categoryvals = entry.getValue();
 					if (ObjectUtils.isNullOrEmpty(categoryvals)) {
 						continue;
 					}
@@ -1074,16 +1085,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				writeFieldName(os, "");
 			}
 
-			if (!readScriptContents.isEmpty()) {
-				writeFieldName(os, "scripts");
-				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
-				for (Entry<SakerPath, ByteArrayRegion> entry : readScriptContents.entrySet()) {
-					writeFieldName(os, entry.getKey().toString());
-					writeByteArray(os, entry.getValue());
-				}
-				writeFieldName(os, "");
-			}
-
+			Map<ScriptParsingOptions, ByteArrayRegion> readscriptcontents = new HashMap<>();
 			NavigableMap<SakerPath, Collection<ArtifactOutputInformation>> artifacts = new TreeMap<>();
 
 			if (!ignoredExceptions.isEmpty()) {
@@ -1182,6 +1184,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 						writeFieldName(os, "values");
 						writeObject(os, ttrace.traceInfo.values);
 					}
+					readscriptcontents.putAll(ttrace.traceInfo.readScriptContents);
 				}
 
 				if (ttrace.workingDirectory != null && !Objects.equals(workingDirectoryPath, ttrace.workingDirectory)) {
@@ -1360,6 +1363,17 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				writeFieldName(os, "");
 			}
 			writeNull(os);
+
+			if (!readscriptcontents.isEmpty()) {
+				writeFieldName(os, "scripts");
+				os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+				for (Entry<ScriptParsingOptions, ByteArrayRegion> entry : readscriptcontents.entrySet()) {
+					ScriptParsingOptions scriptoptions = entry.getKey();
+					writeFieldName(os, scriptoptions.getScriptPath().toString());
+					writeByteArray(os, entry.getValue());
+				}
+				writeFieldName(os, "");
+			}
 
 			if (!artifacts.isEmpty()) {
 				writeFieldName(os, "artifacts");
@@ -1904,6 +1918,23 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			});
 		}
 
+		@Override
+		public void openTargetConfigurationFile(ScriptParsingOptions parsingoptions, SakerFile file) {
+			noException(() -> {
+				traceInfo.readScriptContents.computeIfAbsent(parsingoptions, p -> {
+					try {
+						return file.getBytesImpl();
+					} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError
+							| AssertionError | Exception e) {
+						if (TestFlag.ENABLED) {
+							e.printStackTrace();
+						}
+						return null;
+					}
+				});
+			});
+		}
+
 		public void ignoredException(ExceptionView e) {
 			ignoredExceptions.add(printExceptionToString(e));
 		}
@@ -2376,6 +2407,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		protected Set<ArtifactOutputInformation> artifacts = ConcurrentHashMap.newKeySet();
 
+		protected ConcurrentMap<ScriptParsingOptions, ByteArrayRegion> readScriptContents = new ConcurrentHashMap<>();
+
 		/**
 		 * Should be synchronized on itself when used.
 		 */
@@ -2389,6 +2422,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			try {
 				TaskBuildTraceInfo result = (TaskBuildTraceInfo) super.clone();
 				result.artifacts = ObjectUtils.addAll(ConcurrentHashMap.newKeySet(), result.artifacts);
+				result.readScriptContents = new ConcurrentHashMap<>();
+				result.readScriptContents.putAll(this.readScriptContents);
 				return result;
 			} catch (CloneNotSupportedException e) {
 				throw new AssertionError(e);
@@ -2426,6 +2461,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				synchronized (values) {
 					SerialUtils.writeExternalMap(out, values);
 				}
+				SerialUtils.writeExternalMap(out, readScriptContents);
 			} catch (Exception e) {
 				//ignore
 				if (TestFlag.ENABLED) {
@@ -2454,6 +2490,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				environmentSelector = (TaskExecutionEnvironmentSelector) in.readObject();
 				artifacts = SerialUtils.readExternalImmutableHashSet(in);
 				values = SerialUtils.readExternalImmutableLinkedHashMap(in);
+				readScriptContents = SerialUtils.readExternalMap(new ConcurrentHashMap<>(), in);
 			} catch (Exception e) {
 				//ignore
 				if (TestFlag.ENABLED) {

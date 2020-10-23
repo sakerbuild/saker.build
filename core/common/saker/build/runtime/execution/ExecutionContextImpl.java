@@ -32,10 +32,11 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
@@ -152,8 +153,8 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	private TaskResultCollectionImpl resultCollection;
 	private final Object executionLock = new Object();
 
-	private ConcurrentNavigableMap<SakerPath, TargetConfigurationReadingResult> scriptCache = new ConcurrentSkipListMap<>();
-	private ConcurrentNavigableMap<SakerPath, Object> scriptLoadLock = new ConcurrentSkipListMap<>();
+	private ConcurrentMap<SakerPath, TargetConfigurationReadingResult> scriptCache = new ConcurrentSkipListMap<>();
+	private ConcurrentMap<SakerPath, Lock> scriptLoadLock = new ConcurrentSkipListMap<>();
 
 	private FileContentDataComputeHandler fileComputeDataHandler;
 
@@ -823,22 +824,25 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 	private TargetConfiguration getTargetConfiguration(TaskContext taskcontext, SakerFile file, SakerPath path)
 			throws IOException, ScriptParsingFailedException {
+		ScriptParsingConfigurationExecutionProperty.PropertyValue parsingconfig = taskcontext.getTaskUtilities()
+				.getReportExecutionDependency(new ScriptParsingConfigurationExecutionProperty(path));
+		if (parsingconfig == null) {
+			throw new MissingConfigurationException("No script configuration defined for path: " + path);
+		}
+		ScriptParsingOptions parseoptions = parsingconfig.getParsingOptions();
+
 		TargetConfigurationReadingResult present = scriptCache.get(path);
 		if (present != null) {
 			return present.getTargetConfiguration();
 		}
-		synchronized (scriptLoadLock.computeIfAbsent(path, Functionals.objectComputer())) {
+		Lock lock = scriptLoadLock.computeIfAbsent(path, x -> new ReentrantLock());
+		lock.lock();
+		try {
 			present = scriptCache.get(path);
 			if (present != null) {
 				return present.getTargetConfiguration();
 			}
-			ScriptParsingConfigurationExecutionProperty.PropertyValue parsingconfig = taskcontext.getTaskUtilities()
-					.getReportExecutionDependency(new ScriptParsingConfigurationExecutionProperty(path));
-			if (parsingconfig == null) {
-				throw new MissingConfigurationException("No script configuration defined for path: " + path);
-			}
 			ScriptAccessProvider scriptaccessor = parsingconfig.getAccessProvider();
-			ScriptParsingOptions parseoptions = parsingconfig.getParsingOptions();
 
 			TargetConfigurationReadingResult readresult;
 			try {
@@ -857,6 +861,8 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 				return prev.getTargetConfiguration();
 			}
 			return readresult.getTargetConfiguration();
+		} finally {
+			lock.unlock();
 		}
 	}
 

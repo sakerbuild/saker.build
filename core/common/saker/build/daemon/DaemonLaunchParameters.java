@@ -195,7 +195,7 @@ public class DaemonLaunchParameters implements Externalizable, Cloneable {
 	protected static void checkPort(int pint) {
 		if (pint < 0 || pint > 0xFFFF) {
 			throw new IllegalArgumentException(
-					"Invalid port number: " + pint + " Must be positive and less than " + 0xFFFF);
+					"Invalid port number: " + pint + " Must be positive in range of " + 0 + " and " + 0xFFFF);
 		}
 	}
 

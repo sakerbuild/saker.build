@@ -153,12 +153,10 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 	public static Set<SakerPath> getDefaultsFiles(ScriptParsingOptions parsingoptions,
 			ExecutionPathConfiguration pathconfig) {
 		String opt = parsingoptions.getOptions().get(SCRIPT_OPTION_DEFAULTS_FILE);
-		SakerPath pathconfigworkingdir = pathconfig == null ? null : pathconfig.getWorkingDirectory();
 		if (opt == null) {
 			return null;
-//			SakerPath defaultsbuildpath = pathconfigworkingdir.resolve(DEFAULT_DEFAULTS_BUILD_FILE_RELATIVE_PATH);
-//			return ImmutableUtils.singletonNavigableSet(defaultsbuildpath);
 		}
+		SakerPath pathconfigworkingdir = pathconfig == null ? null : pathconfig.getWorkingDirectory();
 		Iterator<? extends CharSequence> splitit = StringUtils.splitCharSequenceIterator(opt, ';');
 		Set<SakerPath> result = new TreeSet<>();
 		while (splitit.hasNext()) {

@@ -1033,6 +1033,9 @@ public class ImmutableUtils {
 			return new UnmodifiableSet<>((Set<? extends E>) collection);
 		}
 		if (collection instanceof List) {
+			if (collection instanceof RandomAccess) {
+				return new UnmodifiableRandomAccessList<>((List<? extends E>) collection);
+			}
 			return new UnmodifiableList<>((List<? extends E>) collection);
 		}
 		//no empty check, as we need a valid hashcode and equals

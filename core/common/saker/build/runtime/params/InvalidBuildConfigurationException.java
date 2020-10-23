@@ -15,8 +15,16 @@
  */
 package saker.build.runtime.params;
 
+import saker.build.task.exception.TaskParameterException;
+
 /**
  * Exceptions class representing the scenario when a build execution configuration is invalid.
+ * <p>
+ * This exception should be used in case when the command line invocation has some errors, or the build was generally
+ * invoked with invalid arguments.
+ * <p>
+ * If a build task was given invalid arguments, consider using {@link TaskParameterException} or another more
+ * appropriate exception.
  */
 public class InvalidBuildConfigurationException extends RuntimeException {
 	private static final long serialVersionUID = 1L;
