@@ -27,6 +27,9 @@ strategy:
     Java14:
       J_JAVA_MAJOR: '14'
       J_JDKS: '8 9 14'
+    Java15:
+      J_JAVA_MAJOR: '15'
+      J_JDKS: '8 9 15'
 steps:
 - script: curl -L https://api.nest.saker.build/bundle/download/saker.build-v$(curl -s https://mirror.nest.saker.build/badges/saker.build/latest.txt) -o saker.build.jar
   displayName: 'Download saker.build'
@@ -35,7 +38,7 @@ steps:
 - script: bash /tmp/azure_ubuntu_jdksetup_variables.sh $(J_JDKS)
   displayName: 'Setup JDKs'
 - script: |
-    java -jar saker.build.jar -bd build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64)" -trace pwd://build/build_test.trace "testjava$(J_JAVA_MAJOR)"
+    java -jar saker.build.jar -bd build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64);$(JAVA_HOME_15_X64)" -trace pwd://build/build_test.trace "testjava$(J_JAVA_MAJOR)"
     retVal=$?
     if [ $retVal -ne 0 ]; then
       if [ $(J_JAVA_MAJOR) -eq 11 ]; then
@@ -53,7 +56,7 @@ steps:
   inputs:
     pathtoPublish: build/build_test.trace
     artifactName: 'test_trace_$(J_JAVA_MAJOR)'
-- script: java -jar saker.build.jar -bd build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64)" -trace pwd://build/build_exportall.trace exportall
+- script: java -jar saker.build.jar -bd build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64);$(JAVA_HOME_15_X64)" -trace pwd://build/build_exportall.trace exportall
   displayName: 'Export'
 - task: PublishBuildArtifacts@1
   condition: always()
@@ -67,7 +70,7 @@ steps:
     pathtoPublish: build/saker.jar.create/
     artifactName: 'export_jars_$(J_JAVA_MAJOR)'
     parallel: true
-- script: java -jar saker.build.jar -bd df_build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64)" exportall
+- script: java -jar saker.build.jar -bd df_build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64);$(JAVA_HOME_15_X64)" exportall
   displayName: 'Dogfood export'
 - script: cmp build/saker.jar.create/saker.build.jar df_build/saker.jar.create/saker.build.jar
   displayName: 'Compare dogfood export outputs'
