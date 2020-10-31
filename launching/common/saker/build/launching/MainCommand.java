@@ -63,6 +63,8 @@ import sipka.cmdline.runtime.ParseUtil;
 @SubCommand(name = { "version", "-version", "--version" }, type = VersionCommand.class)
 public abstract class MainCommand {
 
+	protected boolean shouldSystemExit = false;
+	
 	/**
 	 * @cmd-format &lt;path&gt;
 	 */
@@ -104,8 +106,10 @@ public abstract class MainCommand {
 		throw new IllegalArgumentException("Failed to resolve address: " + address);
 	}
 
-	public static void main(String... args) throws Exception {
-		Launcher.parse(java.util.Arrays.asList(args).iterator()).callCommand();
+	public static boolean main(String... args) throws Exception {
+		Launcher launcher = Launcher.parse(java.util.Arrays.asList(args).iterator());
+		launcher.callCommand();
+		return launcher.shouldSystemExit;
 	}
 
 	protected abstract void callCommand() throws Exception;

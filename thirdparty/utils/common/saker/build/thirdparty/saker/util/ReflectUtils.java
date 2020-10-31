@@ -20,6 +20,7 @@ import java.io.InputStream;
 import java.io.Serializable;
 import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -1257,6 +1258,49 @@ public class ReflectUtils {
 	 */
 	public static String getClassName(Class<?> type) {
 		return type == null ? null : type.getName();
+	}
+
+	/**
+	 * Gets the <code>Module</code> for the given type.
+	 * <p>
+	 * If the current code runs on Java 8 or below, this method returns <code>null</code>. Otherwise it returns
+	 * <code>Class.getModule()</code>.
+	 * <p>
+	 * Note: This method returns {@link Object} to keep compatibility with Java 8.
+	 * 
+	 * @param type
+	 *            The type to get the module of.
+	 * @return The module the type is member of or <code>null</code> if not applicable. <code>null</code> is also
+	 *             returned if the argument is <code>null</code>.
+	 * @since saker.util 0.8.2
+	 */
+	public static Object getModule(Class<?> type) {
+		return Reflector.getModule(type);
+	}
+
+	/**
+	 * Determines if a class can be accessed from the lookup context defined bythis Lookup object.
+	 * <p>
+	 * The method calls <code>Lookup.accessClass(targetClass)</code> when run on Java 9+, while simply returns the
+	 * <code>targetClass</code> when running on Java 8 or below.
+	 * 
+	 * @param lookup
+	 *            The lookup object.
+	 * @param targetClass
+	 *            The class to be access-checked.
+	 * @return The class that has been access-checked.
+	 * @throws IllegalAccessException
+	 *             if the class is not accessible from the lookup class and previous lookup class, if present, using the
+	 *             allowed access modes.
+	 * @throws SecurityException
+	 *             if a security manager is present and it <a href="MethodHandles.Lookup.html#secmgr">refuses access</a>
+	 * @throws NullPointerException
+	 *             If any of the arguments are <code>null</code>.
+	 * @since saker.util 0.8.2
+	 */
+	public static Class<?> lookupAccessClass(MethodHandles.Lookup lookup, Class<?> targetClass)
+			throws NullPointerException, IllegalAccessException, SecurityException {
+		return Reflector.lookupAccessClass(lookup, targetClass);
 	}
 
 	private static final Map<Class<?>, Object> PRIMITIVE_DEFAULTS = new HashMap<>();

@@ -70,10 +70,12 @@ public final class Main {
 	 */
 	public static void main(String... args) {
 		try {
-			mainImpl(args);
+			boolean shouldsystemexit = mainImpl(args);
 			//Exit manually to avoid unfinished threads preventing the shutdown. Although they all
 			// should've been shut down when the build finishes, bugs may happen.
-			System.exit(0);
+			if (shouldsystemexit) {
+				System.exit(0);
+			}
 		} catch (BuildExecutionFailedException e) {
 			//failure info is printed by the build command
 			System.exit(1);
@@ -81,19 +83,11 @@ public final class Main {
 			SakerLog.printFormatException(ExceptionView.create(e), CommonExceptionFormat.NO_TRACE);
 			System.exit(1);
 		} catch (IllegalArgumentException e) {
-			if (isArgumentException(e)) {
-				SakerLog.printFormatException(ExceptionView.create(e), CommonExceptionFormat.NO_TRACE);
-			} else {
-				e.printStackTrace();
-			}
+			LaunchConfigUtils.printArgumentExceptionOmitTraceIfSo(e);
 			System.exit(1);
 		} catch (ParallelExecutionFailedException e) {
 			for (Throwable t : e.getSuppressed()) {
-				if (isArgumentException(t)) {
-					SakerLog.printFormatException(ExceptionView.create(t), CommonExceptionFormat.NO_TRACE);
-				} else {
-					e.printStackTrace();
-				}
+				LaunchConfigUtils.printArgumentExceptionOmitTraceIfSo(t);
 			}
 			System.exit(1);
 		} catch (Throwable e) {
@@ -102,7 +96,7 @@ public final class Main {
 		}
 	}
 
-	private static boolean isArgumentException(Throwable e) {
+	static boolean isArgumentException(Throwable e) {
 		// check instanceof by examining superclasses instead of the instanceof operator
 		//   as the ArgumentException.class is not accessible by this class
 		return ReflectUtils.findClassWithNameInHierarchy(e.getClass(),
@@ -128,13 +122,13 @@ public final class Main {
 		mainImpl(args);
 	}
 
-	private static void mainImpl(String... args)
+	private static boolean mainImpl(String... args)
 			throws ClassNotFoundException, NoSuchMethodException, IllegalAccessException, Throwable {
 		Class<?> launcherclass = Class.forName("saker.build.launching.MainCommand", false,
 				INTERNAL_LAUNCHING_CLASSLOADER);
 		Method mainmethod = launcherclass.getMethod("main", String[].class);
 		try {
-			mainmethod.invoke(null, (Object) args);
+			return (boolean) mainmethod.invoke(null, (Object) args);
 		} catch (InvocationTargetException e) {
 			throw e.getCause();
 		}

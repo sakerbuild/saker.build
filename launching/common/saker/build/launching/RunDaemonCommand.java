@@ -23,6 +23,8 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import javax.net.ssl.SSLContext;
+
 import saker.build.daemon.DaemonLaunchParameters;
 import saker.build.daemon.DaemonOutputController.StreamToken;
 import saker.build.daemon.LocalDaemonEnvironment;
@@ -68,7 +70,7 @@ public class RunDaemonCommand {
 	@ParameterContext
 	public RunGeneralDaemonParams daemonParams = new RunGeneralDaemonParams();
 	@ParameterContext
-	public EnvironmentParams envParams = new EnvironmentParams();
+	public EnvironmentParamContext envParams = new EnvironmentParamContext();
 	@ParameterContext
 	public StartDaemonParams startParams = new StartDaemonParams();
 
@@ -81,8 +83,24 @@ public class RunDaemonCommand {
 	@Flag
 	public boolean noOutput = false;
 
+	/**
+	 * <pre>
+	 * Flag to specify that the JVM shouldn't be forcibly exited when a stop request
+	 * is made towards the build daemon.
+	 * 
+	 * Generally developers shouldn't use this flag and may be useful only when the 
+	 * build system is run programmatically rather than via command line.
+	 * </pre>
+	 */
+	@Parameter("-no-jvm-exit")
+	@Flag
+	public boolean noJvmExit = false;
+
 	@ParameterContext
 	public SakerJarLocatorParamContext sakerJarParam = new SakerJarLocatorParamContext();
+
+	@ParameterContext
+	public AuthKeystoreParamContext authParams = new AuthKeystoreParamContext();
 
 	@SuppressWarnings("resource")
 	public void call() throws FileNotFoundException, IOException {
@@ -99,7 +117,20 @@ public class RunDaemonCommand {
 				outputcontroller.replaceStandardIO();
 			}
 
-			daemonenv = new LocalDaemonEnvironment(sakerJarParam.getSakerJarPath(), launchparams, outputcontroller);
+			boolean noexit = noJvmExit;
+			SSLContext sslcontext = authParams.getSSLContext();
+			daemonenv = new LocalDaemonEnvironment(sakerJarParam.getSakerJarPath(), launchparams, outputcontroller,
+					LaunchingUtils.getSocketFactory(sslcontext)) {
+				@Override
+				protected void closeImpl() {
+					//when the daemon environment is being closed, call system.exit so any mistakenly unjoined threads won't prevent JVM shutdown
+					if (!noexit) {
+						System.exit(0);
+					}
+				}
+			};
+			daemonenv.setServerSocketFactory(LaunchingUtils.getServerSocketFactory(sslcontext));
+			daemonenv.setSslKeystorePath(authParams.getAuthKeystorePath());
 			if (!ObjectUtils.isNullOrEmpty(startParams.connectClientParam)) {
 				if (!launchparams.isActsAsCluster()) {
 					throw new IllegalArgumentException(
@@ -126,7 +157,7 @@ public class RunDaemonCommand {
 			} else {
 				if (ObjectUtils.isNullOrEmpty(startParams.connectClientParam)) {
 					throw new IllegalArgumentException("Invalid daemon start parameters. "
-							+ "Daemon doesn't accepts connections, or connects to servers. It has no purpose. "
+							+ "Daemon doesn't accept connections, or connects to servers. It has no purpose. "
 							+ "Specify -port or -connect-client parameters.");
 				}
 				System.out.println(FIRST_LINE_NON_SERVER_DAEMON);
@@ -155,4 +186,5 @@ public class RunDaemonCommand {
 			throw e;
 		}
 	}
+
 }

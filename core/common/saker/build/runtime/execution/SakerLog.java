@@ -731,7 +731,7 @@ public class SakerLog {
 				Set<ExceptionView> printed = ObjectUtils.newIdentityHashSet();
 				printEnclosedStackTrace(exc, ps, ObjectUtils.EMPTY_STACK_TRACE_ELEMENT_ARRAY,
 						ScriptPositionedExceptionView.EMPTY_STACKTRACE_ARRAY, NO_CAPTION, "", printed, workingdir,
-						format);
+						format, ls);
 				if (it.hasNext()) {
 					ps.append(ls);
 				} else {
@@ -801,13 +801,13 @@ public class SakerLog {
 			printed.add(ev);
 			for (ExceptionView se : ev.getSuppressed()) {
 				printEnclosedStackTrace(se, ps, trace, scripttrace, SUPPRESSED_CAPTION, "\t", printed, workingdir,
-						format);
-				ps.append(ls);
+						format, ls);
 			}
 
 			ExceptionView cause = ev.getCause();
 			if (cause != null) {
-				printEnclosedStackTrace(cause, ps, trace, scripttrace, CAUSE_CAPTION, "", printed, workingdir, format);
+				printEnclosedStackTrace(cause, ps, trace, scripttrace, CAUSE_CAPTION, "", printed, workingdir, format,
+						ls);
 			}
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
@@ -834,8 +834,7 @@ public class SakerLog {
 
 	private static void printEnclosedStackTrace(ExceptionView ev, Appendable ps, StackTraceElement[] enclosingTrace,
 			ScriptPositionStackTraceElement[] enclosingscripttrace, String caption, String prefix,
-			Set<ExceptionView> printed, SakerPath workingdir, ExceptionFormat format) throws IOException {
-		String ls = System.lineSeparator();
+			Set<ExceptionView> printed, SakerPath workingdir, ExceptionFormat format, String ls) throws IOException {
 		if (!printed.add(ev)) {
 			ps.append(prefix + caption + "\t[CIRCULAR REFERENCE:" + ev + "]");
 			ps.append(ls);
@@ -927,14 +926,13 @@ public class SakerLog {
 
 			for (ExceptionView se : ev.getSuppressed()) {
 				printEnclosedStackTrace(se, ps, trace, scripttrace, SUPPRESSED_CAPTION, prefix + "\t", printed,
-						workingdir, format);
-				ps.append(ls);
+						workingdir, format, ls);
 			}
 
 			ExceptionView ourCause = ev.getCause();
 			if (ourCause != null) {
 				printEnclosedStackTrace(ourCause, ps, trace, scripttrace, CAUSE_CAPTION, prefix + "", printed,
-						workingdir, format);
+						workingdir, format, ls);
 			}
 		}
 	}

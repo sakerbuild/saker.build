@@ -23,8 +23,6 @@ import java.io.PrintWriter;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -52,6 +50,8 @@ import saker.build.daemon.BuildExecutionInvoker;
 import saker.build.daemon.DaemonEnvironment;
 import saker.build.daemon.DaemonLaunchParameters;
 import saker.build.daemon.EnvironmentBuildExecutionInvoker;
+import saker.build.daemon.LocalDaemonEnvironment;
+import saker.build.daemon.LocalDaemonEnvironment.RunningDaemonConnectionInfo;
 import saker.build.daemon.RemoteDaemonConnection;
 import saker.build.daemon.files.DaemonPath;
 import saker.build.exception.BuildExecutionFailedException;
@@ -90,15 +90,16 @@ import saker.build.runtime.params.DatabaseConfiguration;
 import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.runtime.params.ExecutionRepositoryConfiguration;
 import saker.build.runtime.params.ExecutionScriptConfiguration;
-import saker.build.runtime.params.InvalidBuildConfigurationException;
 import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptOptionsConfig;
 import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptProviderLocation;
+import saker.build.runtime.params.InvalidBuildConfigurationException;
 import saker.build.runtime.params.NestRepositoryClassPathLocation;
 import saker.build.runtime.project.ProjectCacheHandle;
 import saker.build.runtime.repository.SakerRepositoryFactory;
 import saker.build.scripting.ScriptAccessProvider;
 import saker.build.task.cluster.TaskInvokerFactory;
 import saker.build.task.utils.TaskUtils;
+import saker.build.thirdparty.saker.util.ArrayUtils;
 import saker.build.thirdparty.saker.util.DateUtils;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -115,7 +116,6 @@ import saker.build.util.java.JavaTools;
 import sipka.cmdline.api.Converter;
 import sipka.cmdline.api.Flag;
 import sipka.cmdline.api.MultiParameter;
-import sipka.cmdline.api.NameSubstitution;
 import sipka.cmdline.api.Parameter;
 import sipka.cmdline.api.ParameterContext;
 import sipka.cmdline.api.PositionalParameter;
@@ -264,7 +264,7 @@ public class BuildCommand {
 
 	/**
 	 * <pre>
-	 * Species user parameters for the build execution.
+	 * Specifes user parameters for the build execution.
 	 * 
 	 * User parameters are arbitrary key-value pairs which can be used to dynamically
 	 * configure different aspects of the build system. This is usually applicable for
@@ -382,7 +382,7 @@ public class BuildCommand {
 
 	/**
 	 * <pre>
-	 * Specifies the address of the daemon that should be used for build execution.
+	 * Specifies the network address of the daemon that should be used for build execution.
 	 * 
 	 * The default port for the address is 3500.
 	 * 
@@ -398,11 +398,11 @@ public class BuildCommand {
 	@Parameter(PARAM_NAME_DAEMON_ADDRESS)
 	public DaemonAddressParam daemonAddress;
 
-	@ParameterContext(substitutions = { @NameSubstitution(pattern = "-(.*)", replacement = "-daemon-$1") })
-	public GeneralDaemonParams instantiateDaemonParams = new GeneralDaemonParams();
+	@ParameterContext
+	public StorageDirectoryParamContext storageDirectoryParam = new StorageDirectoryParamContext();
 
 	@ParameterContext
-	public EnvironmentParams envParams = new EnvironmentParams();
+	public EnvironmentParamContext envParams = new EnvironmentParamContext();
 
 	@ParameterContext
 	public SakerJarLocatorParamContext sakerJarLocator = new SakerJarLocatorParamContext();
@@ -527,6 +527,9 @@ public class BuildCommand {
 	@PositionalParameter(-2)
 	public SakerPath buildScriptFile;
 
+	@ParameterContext
+	public AuthKeystoreParamContext authParams = new AuthKeystoreParamContext();
+
 	private PrintStream stdOut;
 	private PrintStream stdErr;
 	private InputStream stdIn;
@@ -548,7 +551,9 @@ public class BuildCommand {
 		stdIn = System.in;
 	}
 
-	public void call() throws Exception {
+	public void call(MainCommand mc) throws Exception {
+		//build command should be finished with a system.exit if called from command line
+		mc.shouldSystemExit = true;
 		if (this.daemon || daemonAddress != null) {
 			if (daemonAddress != null) {
 				//there is an address specified, only create a local daemon if necessary, and -daemon is specified
@@ -556,11 +561,14 @@ public class BuildCommand {
 				InetSocketAddress remoteaddress = daemonAddress.getSocketAddressThrowArgumentException();
 				if (this.daemon) {
 					//we're allowed to create a local daemon if necessary
-					if (isLocalAddress(remoteaddress.getAddress())) {
+					DaemonLaunchParameters launchparams = getLaunchDaemonParameters();
+					if (LaunchingUtils.isLocalAddress(remoteaddress.getAddress())) {
 						//we're connecting to a local daemon
 						try (RemoteDaemonConnection connection = connectOrCreateDaemon(
-								JavaTools.getCurrentJavaExePath(), sakerJarLocator.getSakerJarPath(),
-								getLaunchDaemonParameters())) {
+								JavaTools.getCurrentJavaExePath(), sakerJarLocator.getSakerJarPath(), launchparams,
+								authParams)) {
+							verifyDaemonConfiguration(launchparams, connection);
+
 							DaemonEnvironment daemonenv = connection.getDaemonEnvironment();
 							runBuild(daemonenv, null);
 						}
@@ -570,11 +578,12 @@ public class BuildCommand {
 							//we want to use caching for the project, so we need a persistent connection to the build daemon
 							//this is in order so the file watching and stuff works properly
 							//connect or create a daemon and connect via that
-							DaemonLaunchParameters localdaemonparams = getLaunchDaemonParameters();
 							//it is required for the local daemon to act as a client
 							try (RemoteDaemonConnection localconnection = connectOrCreateDaemon(
-									JavaTools.getCurrentJavaExePath(), sakerJarLocator.getSakerJarPath(),
-									localdaemonparams)) {
+									JavaTools.getCurrentJavaExePath(), sakerJarLocator.getSakerJarPath(), launchparams,
+									authParams)) {
+								verifyDaemonConfiguration(launchparams, localconnection);
+
 								DaemonEnvironment env = localconnection.getDaemonEnvironment();
 								try (RemoteDaemonConnection remoteconnection = env.connectTo(remoteaddress)) {
 									runBuild(remoteconnection.getDaemonEnvironment(),
@@ -583,7 +592,9 @@ public class BuildCommand {
 							}
 						} else {
 							//we don't use caching, so we can just directly connect to the daemon
-							try (RemoteDaemonConnection connection = RemoteDaemonConnection.connect(remoteaddress)) {
+							try (RemoteDaemonConnection connection = RemoteDaemonConnection
+									.connect(authParams.getSocketFactory(), remoteaddress)) {
+								//no need to verify the daemon connection, as environment related configuration is related to local daemons
 								runBuild(connection.getDaemonEnvironment(), null);
 							}
 						}
@@ -592,6 +603,7 @@ public class BuildCommand {
 					//we're not allowed to start a new daemon
 					//just directly connect to the daemon address
 					try (RemoteDaemonConnection connection = RemoteDaemonConnection.connect(remoteaddress)) {
+						//no need to verify the daemon connection, as environment related configuration is related to local daemons
 						runBuild(connection.getDaemonEnvironment(), null);
 					}
 				}
@@ -625,10 +637,15 @@ public class BuildCommand {
 			} else {
 				//no address specified.
 				//connect or create on localhost with given parameters
+				//attempt to choose a running daemon that matches the requested configuration or create
 
 				DaemonLaunchParameters launchparams = getLaunchDaemonParameters();
-				try (RemoteDaemonConnection connection = connectOrCreateDaemon(JavaTools.getCurrentJavaExePath(),
-						sakerJarLocator.getSakerJarPath(), launchparams)) {
+				List<RunningDaemonConnectionInfo> runninginfos = LocalDaemonEnvironment
+						.getRunningDaemonInfos(launchparams.getStorageDirectory());
+				//auth params are passed to the daemon as well.
+				//this is needed in multi-user systems so they don't interfere with our daemon
+				try (RemoteDaemonConnection connection = findRunningDaemonWithParamsOrCreate(runninginfos, launchparams,
+						JavaTools.getCurrentJavaExePath(), sakerJarLocator.getSakerJarPath(), authParams)) {
 					runBuild(null, connection.getDaemonEnvironment());
 				}
 			}
@@ -637,7 +654,7 @@ public class BuildCommand {
 			EnvironmentParameters modenvparams = EnvironmentParameters.builder(sakerJarLocator.getSakerJarPath())
 					.setUserParameters(envParams.getEnvironmentUserParameters())
 					.setThreadFactor(envParams.getThreadFactor())
-					.setStorageDirectory(instantiateDaemonParams.getStorageDirectoryPath()).build();
+					.setStorageDirectory(storageDirectoryParam.getStorageDirectoryPath()).build();
 			try (SakerEnvironmentImpl sakerenv = new SakerEnvironmentImpl(modenvparams)) {
 				sakerenv.redirectStandardIO();
 				runBuild(null, null, new EnvironmentBuildExecutionInvoker(sakerenv));
@@ -645,8 +662,76 @@ public class BuildCommand {
 		}
 	}
 
+	private static RemoteDaemonConnection findRunningDaemonWithParamsOrCreate(
+			Iterable<? extends RunningDaemonConnectionInfo> daemons, DaemonLaunchParameters params, Path javaexe,
+			Path sakerjarpath, AuthKeystoreParamContext authparams) throws IOException {
+		InetAddress loopbackaddress = InetAddress.getLoopbackAddress();
+		SakerPath authkspath = authparams.getAuthKeystorePath();
+		if (authkspath != null) {
+			//only attempt daemons that use secure connections
+			List<RunningDaemonConnectionInfo> secureddaemons = new ArrayList<>();
+			for (RunningDaemonConnectionInfo conninfo : daemons) {
+				String kspathstr = conninfo.getSslKeystorePath();
+				if (ObjectUtils.isNullOrEmpty(kspathstr)) {
+					continue;
+				}
+				secureddaemons.add(conninfo);
+			}
+			daemons = secureddaemons;
+		}
+		//XXX parallelize?
+		Exception[] connfails = {};
+		for (RunningDaemonConnectionInfo conninfo : daemons) {
+			InetSocketAddress address = new InetSocketAddress(loopbackaddress, conninfo.getPort());
+			String connkspathstr = conninfo.getSslKeystorePath();
+			SocketFactory socketfactory;
+			if (ObjectUtils.isNullOrEmpty(connkspathstr)) {
+				//use default, not secure connection
+				socketfactory = null;
+			} else {
+				socketfactory = authparams.getSocketFactoryForDefaultedKeystore(SakerPath.valueOf(connkspathstr));
+			}
+			try {
+				RemoteDaemonConnection connection = RemoteDaemonConnection.connect(socketfactory, address);
+				try {
+					verifyDaemonConfiguration(params, connection);
+					return connection;
+				} catch (Throwable e) {
+					//if verification fails due to different configuration, close the connection and attempt the next one if any
+					IOUtils.addExc(e, IOUtils.closeExc(connection));
+					throw e;
+				}
+			} catch (IOException | InvalidBuildConfigurationException e) {
+				connfails = ArrayUtils.appended(connfails, e);
+			}
+		}
+		SocketFactory socketfactory = authparams.getSocketFactory();
+		try {
+			RemoteDaemonConnection connection = StartDaemonCommand.createDaemon(javaexe, sakerjarpath, params,
+					authparams, null, socketfactory);
+			//verify the newly created daemon nonetheless
+			try {
+				verifyDaemonConfiguration(params, connection);
+				return connection;
+			} catch (Throwable e) {
+				//if verification fails due to different configuration, close the connection
+				IOUtils.addExc(e, IOUtils.closeExc(connection));
+				throw e;
+			}
+		} catch (IOException | InvalidBuildConfigurationException e) {
+			for (Throwable supp : connfails) {
+				e.addSuppressed(supp);
+			}
+			throw e;
+		}
+	}
+
 	private DaemonLaunchParameters getLaunchDaemonParameters() {
-		return instantiateDaemonParams.toLaunchParameters(envParams);
+		DaemonLaunchParameters.Builder builder = DaemonLaunchParameters.builder();
+		builder.setPort(DaemonLaunchParameters.DEFAULT_PORT);
+		builder.setStorageDirectory(storageDirectoryParam.getStorageDirectory());
+		envParams.applyToBuilder(builder);
+		return builder.build();
 	}
 
 	private ExceptionFormat getStackTraceFormat() {
@@ -736,6 +821,9 @@ public class BuildCommand {
 					this.buildScriptFile = defaultbuildfilepath;
 				} else {
 					if (buildfiles.size() != 1) {
+						if (buildfiles.isEmpty()) {
+							throw new BuildTargetNotFoundException("No build files found.");
+						}
 						throw new BuildTargetNotFoundException(
 								"Failed to determine build file to use: " + StringUtils.toStringJoin(", ", buildfiles));
 					}
@@ -1019,49 +1107,36 @@ public class BuildCommand {
 		}
 	}
 
-	private static boolean isLocalAddress(InetAddress address) {
-		if (address.isLoopbackAddress()) {
-			return true;
+	private static void verifyDaemonConfiguration(DaemonLaunchParameters requestedlaunchparams,
+			RemoteDaemonConnection daemonconnection) throws InvalidBuildConfigurationException {
+		DaemonLaunchParameters actualruntimeconfig = daemonconnection.getDaemonEnvironment()
+				.getRuntimeLaunchConfiguration();
+		//the environment user parameters and storage directory must match
+		boolean userparamsmatch = requestedlaunchparams.getUserParameters()
+				.equals(actualruntimeconfig.getUserParameters());
+		boolean storagedirmatch = Objects.equals(requestedlaunchparams.getStorageDirectory(),
+				actualruntimeconfig.getStorageDirectory());
+		if (!userparamsmatch || !storagedirmatch) {
+			StringBuilder sb = new StringBuilder();
+			sb.append("Configuration mismatch between build arguments and running daemon configuration (port ");
+			sb.append(actualruntimeconfig.getPort());
+			sb.append(").");
+			if (!storagedirmatch) {
+				sb.append(" Storage directories differ. Actual: " + actualruntimeconfig.getStorageDirectory()
+						+ " expected: " + requestedlaunchparams.getStorageDirectory() + ".");
+			}
+			if (!userparamsmatch) {
+				sb.append(" Enironment user parameters differ. Actual: " + actualruntimeconfig.getUserParameters()
+						+ " expected: " + requestedlaunchparams.getUserParameters() + ".");
+			}
+			//Note: carefully change this exception type, as callers rely on its type
+			throw new InvalidBuildConfigurationException(sb.toString());
 		}
-		try {
-			return NetworkInterface.getByInetAddress(address) != null;
-		} catch (SocketException e) {
-		}
-		return false;
 	}
 
 	private static RemoteDaemonConnection connectOrCreateDaemon(Path javaexe, Path sakerjarpath,
-			DaemonLaunchParameters launchparams) throws IOException {
-		RemoteDaemonConnection connected = StartDaemonCommand.connectOrCreateDaemon(javaexe, sakerjarpath,
-				launchparams);
-		RemoteDaemonConnection toclose = connected;
-		try {
-			DaemonLaunchParameters actualconfig = connected.getDaemonEnvironment().getRuntimeLaunchConfiguration();
-			if (isDaemonSuitableForUse(launchparams, actualconfig)) {
-				toclose = null;
-				return connected;
-			}
-			throw new IOException("Cannot use running daemon at storage directory, configuration mismatch: "
-					+ launchparams.getStorageDirectory() + " with requested " + launchparams + " and actual "
-					+ actualconfig);
-		} finally {
-			IOUtils.close(toclose);
-		}
-	}
-
-	private static boolean isDaemonSuitableForUse(DaemonLaunchParameters requestedlaunchparams,
-			DaemonLaunchParameters actualruntimeconfig) {
-		//the storage directories are the same for the two daemons
-		//there is no breaking parameters that could cause a build to fail due to configuration
-		//    port number is irrelevant regarding to the build
-		//    it doesnt matter if the daemon acts as a server, as we're already connected to it
-		//    the thread factor doesn't matter, as the daemon was created with a specific thread factor in order for the builds to use it
-
-		//the environment user parameters are important
-		if (!requestedlaunchparams.getUserParameters().equals(actualruntimeconfig.getUserParameters())) {
-			return false;
-		}
-		return true;
+			DaemonLaunchParameters launchparams, AuthKeystoreParamContext authparams) throws IOException {
+		return StartDaemonCommand.connectOrCreateDaemon(javaexe, sakerjarpath, launchparams, authparams);
 	}
 
 	private ClassPathLocation createClassPathLocation(String argname, ClassPathParam cp, DaemonEnvironment remoteenv,

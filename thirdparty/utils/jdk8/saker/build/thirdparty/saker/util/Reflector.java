@@ -33,4 +33,11 @@ class Reflector {
 		return constructor.newInstance(declaringClass).unreflectSpecial(method, declaringClass);
 	}
 
+	static Object getModule(Class<?> type) {
+		return null;
+	}
+
+	public static Class<?> lookupAccessClass(MethodHandles.Lookup lookup, Class<?> type) {
+		return type;
+	}
 }

@@ -24,7 +24,7 @@ import java.util.Map;
 /**
  * Class which specifies the transfer properties to use during the RMI connection.
  * <p>
- * This class is immutable and the {@link Builder} should be use for its construction.
+ * This class is immutable and the {@link Builder} should be used for its construction.
  * 
  * @see MethodTransferProperties
  * @see ConstructorTransferProperties
@@ -45,7 +45,6 @@ public class RMITransferProperties extends RMITransferPropertiesHolder {
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
 	public MethodTransferProperties getExecutableProperties(Method method) {
 		return (MethodTransferProperties) retrieveExecutableProperty(method);
 	}

@@ -16,6 +16,9 @@
 package saker.build.thirdparty.saker.rmi.connection;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
@@ -104,6 +107,7 @@ public class RMIVariables implements AutoCloseable {
 	private RMIProxyClassLoader proxyBaseClassLoader;
 	private ConcurrentHashMap<Set<Class<?>>, Constructor<? extends RemoteProxyObject>> proxyConstructors = new ConcurrentHashMap<>();
 	private Class<?> proxyMarkerClass;
+	private MethodHandles.Lookup markerClassLookup;
 	private Map<Set<ClassLoader>, RMIClassDefiner> multiProxyClassDefiners = new HashMap<>();
 	private final Object proxyGeneratorLock = new Object();
 	private int proxyNameIdCounter = 0;
@@ -136,6 +140,7 @@ public class RMIVariables implements AutoCloseable {
 		boolean hasstatistics = connection.isStatisticsCollected();
 		this.proxyMarkerClass = this.proxyBaseClassLoader.defineClass(PROXY_MARKER_CLASS_NAME,
 				ProxyGenerator.generateProxyMarkerClass(PROXY_MARKER_CLASS_NAME, hasstatistics));
+		this.markerClassLookup = MethodHandles.lookup().in(proxyMarkerClass);
 		if (hasstatistics) {
 			try {
 				this.proxyMarkerClass.getField(ProxyGenerator.PROXY_MARKER_RMI_STATISTICS_FIELD_NAME).set(null,
@@ -1023,6 +1028,16 @@ public class RMIVariables implements AutoCloseable {
 		return this.remoteIdentifier;
 	}
 
+	MethodHandles.Lookup getMarkerClassLookup() {
+		return markerClassLookup;
+	}
+
+	Object invokeRemoteMethodInternal(int remoteid, MethodTransferProperties method, Object[] arguments)
+			throws RMIRuntimeException, InvocationTargetException {
+		checkForbidden(method);
+		return invokeAllowedNonRedirectMethod(remoteid, method, arguments);
+	}
+
 	private static class LocalObjectReference extends WeakReference<Object> {
 		final int localId;
 		Object strongReference;
@@ -1131,12 +1146,6 @@ public class RMIVariables implements AutoCloseable {
 		}
 	}
 
-	Object invokeRemoteMethodInternal(int remoteid, MethodTransferProperties method, Object[] arguments)
-			throws RMIRuntimeException, InvocationTargetException {
-		checkForbidden(method);
-		return invokeAllowedNonRedirectMethod(remoteid, method, arguments);
-	}
-
 	private Object invokeMethod(int remoteid, Object remoteobject, MethodTransferProperties method, Object[] arguments)
 			throws RMIRuntimeException, InvocationTargetException {
 		Method redirectmethod = method.getRedirectMethod();
@@ -1181,7 +1190,7 @@ public class RMIVariables implements AutoCloseable {
 	}
 
 	private Constructor<? extends RemoteProxyObject> getProxyConstructorForRequestedClass(Class<?> requestedclass) {
-		Set<Class<?>> interfaces = RMIStream.getPublicNonAssignableInterfaces(requestedclass);
+		Set<Class<?>> interfaces = getProxyInterfacesForRequestedClass(requestedclass);
 		Constructor<? extends RemoteProxyObject> c = proxyConstructors.get(interfaces);
 		if (c == null) {
 			synchronized (proxyGeneratorLock) {
@@ -1193,6 +1202,11 @@ public class RMIVariables implements AutoCloseable {
 			}
 		}
 		return c;
+	}
+
+	private Set<Class<?>> getProxyInterfacesForRequestedClass(Class<?> requestedclass) {
+		return RMIStream.getPublicNonAssignableInterfaces(requestedclass, markerClassLookup,
+				connection.getCollectingStatistics());
 	}
 
 	private Constructor<? extends RemoteProxyObject> getProxyConstructor(Set<Class<?>> interfaces) {
@@ -1213,7 +1227,8 @@ public class RMIVariables implements AutoCloseable {
 			Constructor<? extends RemoteProxyObject> c, Set<ClassLoader> classloaders) throws AssertionError {
 		RMIClassDefiner classdefiner = multiProxyClassDefiners.get(classloaders);
 		if (classdefiner == null) {
-			classdefiner = new MultiClassLoaderRMIProxyClassLoader(proxyBaseClassLoader, classloaders);
+			classdefiner = new MultiClassLoaderRMIProxyClassLoader(proxyBaseClassLoader, classloaders,
+					markerClassLookup);
 			multiProxyClassDefiners.put(classloaders, classdefiner);
 		}
 		String name = PROXY_PACKAGE_NAME + ".Proxy$" + proxyNameIdCounter++;
@@ -1221,14 +1236,32 @@ public class RMIVariables implements AutoCloseable {
 		Class<? extends RemoteProxyObject> proxyclass = (Class<? extends RemoteProxyObject>) classdefiner
 				.defineClass(name, ProxyGenerator.generateProxy(name, interfaces,
 						Type.getInternalName(proxyMarkerClass), properties, connection.isStatisticsCollected()));
+
+		//Use method handle to retrieve the initialization static method instead of usual reflection
+		//that is because if we use Class.getMethod(String), then it will load the classes related to the methods
+		//present in the class
+		//however, if some types are not available in some other methods, then it will throw an exception
+		//e.g. if a proxy has a parent interface, that has a method:
+		//     void myMethod(ClassWithPrivateModifier)
+		//that means that ClassWithPrivateModifier won't be accessible to the proxy class, and
+		//will therefore throw an IllegalAccessException, even though we don't use this method
+		//this illegal access exception is valid, however, we want to delay throwing it until someone attempts to call it
+		MethodHandle initmethod = null;
 		try {
-			proxyclass.getMethod(ProxyGenerator.INITIALIZE_CACHE_FIELDS_METHOD_NAME, RMITransferPropertiesHolder.class)
-					.invoke(null, properties);
+			initmethod = markerClassLookup.findStatic(proxyclass, ProxyGenerator.INITIALIZE_CACHE_FIELDS_METHOD_NAME,
+					MethodType.methodType(void.class, RMITransferPropertiesHolder.class));
 		} catch (NoSuchMethodException e) {
-		} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException | SecurityException e) {
+		} catch (IllegalAccessException | IllegalArgumentException | SecurityException e) {
 			//none of these should be thrown, as the proxy generation should properly verify the interfaces
 			//as the byte code are generated
 			throw new AssertionError("Failed to initialize proxy class: " + interfaces, e);
+		}
+		if (initmethod != null) {
+			try {
+				initmethod.invokeExact(properties);
+			} catch (Throwable e) {
+				throw new AssertionError("Failed to initialize proxy class: " + interfaces, e);
+			}
 		}
 		try {
 			c = proxyclass.getConstructor(Reference.class, int.class);
@@ -1363,6 +1396,7 @@ public class RMIVariables implements AutoCloseable {
 		proxyBaseClassLoader = null;
 		proxyConstructors = null;
 		proxyMarkerClass = null;
+		markerClassLookup = null;
 		multiProxyClassDefiners = null;
 		properties = null;
 	}

@@ -25,15 +25,23 @@ import java.util.Map.Entry;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import javax.net.SocketFactory;
+import javax.net.ssl.SSLContext;
+
 import saker.build.daemon.DaemonLaunchParameters;
 import saker.build.daemon.LocalDaemonEnvironment;
+import saker.build.daemon.LocalDaemonEnvironment.RunningDaemonConnectionInfo;
 import saker.build.daemon.RemoteDaemonConnection;
 import saker.build.file.path.SakerPath;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
+import saker.build.runtime.execution.SakerLog;
+import saker.build.runtime.execution.SakerLog.CommonExceptionFormat;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
+import saker.build.util.exc.ExceptionView;
 import sipka.cmdline.api.Parameter;
+import sipka.cmdline.api.ParameterContext;
 
 /**
  * <pre>
@@ -45,7 +53,7 @@ public class InfoDaemonCommand {
 	private static final byte[] SPACE_4_BYTES = "    ".getBytes(StandardCharsets.UTF_8);
 	/**
 	 * <pre>
-	 * The address of the daemon to connect to.
+	 * The network address of the daemon to connect to.
 	 * If the daemon is not running at the given address, or doesn't accept
 	 * client connections then an exception will be thrown.
 	 * 
@@ -53,41 +61,82 @@ public class InfoDaemonCommand {
 	 * </pre>
 	 */
 	@Parameter("-address")
-	public DaemonAddressParam address;
+	public DaemonAddressParam addressParam;
+
+	@ParameterContext
+	public AuthKeystoreParamContext authParams = new AuthKeystoreParamContext();
 
 	public void call() throws IOException {
 		ReentrantLock iolock = new ReentrantLock();
 
-		if (address == null) {
-			List<Integer> ports = LocalDaemonEnvironment
-					.getRunningDaemonPorts(SakerEnvironmentImpl.getDefaultStorageDirectory());
-			if (!ports.isEmpty()) {
-				try (ThreadWorkPool pool = ThreadUtils.newDynamicWorkPool()) {
-					for (Integer port : ports) {
-						pool.offer(() -> {
-							printDaemonInformationOfDaemon(
-									DaemonAddressParam.getDefaultLocalDaemonSocketAddressWithPort(port), iolock);
-						});
-					}
-				}
-			} else {
-				System.out.println("No daemon running on the local machine.");
+		if (addressParam != null) {
+			RunningDaemonConnectionInfo[] outconninfo = { null };
+			InetSocketAddress address = this.addressParam.getSocketAddressThrowArgumentException();
+			SocketFactory socketfactory = authParams.getSocketFactoryForDaemonConnection(address, null, outconninfo);
+			printDaemonInformationOfDaemon(address, iolock, outconninfo[0], socketfactory, null);
+			return;
+		}
+
+		List<RunningDaemonConnectionInfo> connectioninfos = LocalDaemonEnvironment
+				.getRunningDaemonInfos(SakerEnvironmentImpl.getDefaultStorageDirectory());
+		if (connectioninfos.isEmpty()) {
+			System.out.println("No daemon running on the local machine.");
+			return;
+		}
+		SocketFactory socketfactory = authParams.getSocketFactory();
+		try (ThreadWorkPool pool = ThreadUtils.newDynamicWorkPool()) {
+			for (RunningDaemonConnectionInfo conninfo : connectioninfos) {
+				pool.offer(() -> {
+					printDaemonInformationOfDaemon(conninfo, iolock, socketfactory);
+				});
 			}
-		} else {
-			printDaemonInformationOfDaemon(this.address.getSocketAddressThrowArgumentException(), iolock);
 		}
 	}
 
-	private static void printDaemonInformationOfDaemon(InetSocketAddress sockaddress, Lock lock) {
+	private static void printDaemonInformationOfDaemon(RunningDaemonConnectionInfo conninfo, ReentrantLock iolock,
+			SocketFactory socketfactory) {
+		String sslkspathstr = conninfo.getSslKeystorePath();
+		Exception keystoreautoopenexception = null;
+		if (ObjectUtils.isNullOrEmpty(sslkspathstr)) {
+			//don't use an ssl socket factory even if specified, as the daemon doesn't use it
+			socketfactory = null;
+		} else if (socketfactory == null) {
+			//use file system instead of Paths.get so we don't use other funky uris or things.
+			try {
+				SSLContext sc = LaunchingUtils.createSSLContext(SakerPath.valueOf(sslkspathstr), null, null, null);
+				socketfactory = sc.getSocketFactory();
+			} catch (Exception e) {
+				keystoreautoopenexception = e;
+			}
+		}
+		printDaemonInformationOfDaemon(
+				DaemonAddressParam.getDefaultLocalDaemonSocketAddressWithPort(conninfo.getPort()), iolock, conninfo,
+				socketfactory, keystoreautoopenexception);
+	}
+
+	private static void printDaemonInformationOfDaemon(InetSocketAddress sockaddress, Lock lock,
+			RunningDaemonConnectionInfo conninfo, SocketFactory socketfactory, Exception keystoreautoopenexception) {
 		RemoteDaemonConnection connected;
 		try {
-			connected = RemoteDaemonConnection.connect(sockaddress);
+			connected = RemoteDaemonConnection.connect(socketfactory, sockaddress);
 		} catch (IOException e) {
 			lock.lock();
 			try {
-				System.out
-						.println("No daemon running at address or failed to connect: " + sockaddress + " (" + e + ")");
+				System.out.println("No daemon running at address or failed to connect: " + sockaddress);
+				SakerLog.printFormatException(ExceptionView.create(e), CommonExceptionFormat.NO_TRACE);
+				if (conninfo != null) {
+					String keystorepath = conninfo.getSslKeystorePath();
+					if (!ObjectUtils.isNullOrEmpty(keystorepath)) {
+						System.out.println("Daemon uses keystore for authentication: " + keystorepath);
+					}
+				}
+				if (keystoreautoopenexception != null) {
+					System.out.println("Failed to automatically open keystore for daemon.");
+					LaunchConfigUtils.printArgumentExceptionOmitTraceIfSo(keystoreautoopenexception);
+				}
 			} finally {
+				//empty line
+				System.out.println();
 				lock.unlock();
 			}
 			return;
@@ -98,6 +147,12 @@ public class InfoDaemonCommand {
 			lock.lock();
 			locked = true;
 			System.out.println("Daemon running at: " + sockaddress);
+			if (conninfo != null) {
+				String keystorepath = conninfo.getSslKeystorePath();
+				if (!ObjectUtils.isNullOrEmpty(keystorepath)) {
+					System.out.println("Daemon uses keystore for authentication: " + keystorepath);
+				}
+			}
 			System.out.println("Configuration: ");
 			printInformation(launchconfig, System.out);
 		} catch (Exception e) {
@@ -105,6 +160,8 @@ public class InfoDaemonCommand {
 			e.printStackTrace();
 		} finally {
 			if (locked) {
+				//empty line
+				System.out.println();
 				lock.unlock();
 			}
 		}

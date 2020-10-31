@@ -15,28 +15,23 @@
  */
 package saker.build.launching;
 
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 
 import saker.build.daemon.DaemonLaunchParameters;
+import saker.build.exception.InvalidPathFormatException;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.LocalFileProvider;
-import saker.build.runtime.environment.SakerEnvironmentImpl;
 import sipka.cmdline.api.Flag;
 import sipka.cmdline.api.Parameter;
+import sipka.cmdline.api.ParameterContext;
+import sipka.cmdline.runtime.InvalidArgumentValueException;
 
 abstract class GeneralDaemonParamsBase {
 	public static final String PARAM_NAME_CLUSTER_ENABLE = "-cluster-enable";
 
-	/**
-	 * <pre>
-	 * Specifies the storage directory that the build environment can use
-	 * to store its files and various data.
-	 * 
-	 * Note that only a single daemon can be running in a given storage directory.
-	 * </pre>
-	 */
-	@Parameter({ "-storage-directory", "-storage-dir", "-sd" })
-	public SakerPath storageDirectory;
+	@ParameterContext
+	public StorageDirectoryParamContext storageDirectory = new StorageDirectoryParamContext();
 
 	/**
 	 * <pre>
@@ -96,21 +91,14 @@ abstract class GeneralDaemonParamsBase {
 	}
 
 	public SakerPath getStorageDirectory() {
-		return getStorageDirectoryOrDefault(this.storageDirectory);
+		return this.storageDirectory.getStorageDirectory();
 	}
 
-	public Path getStorageDirectoryPath() {
-		return LocalFileProvider.toRealPath(getStorageDirectory());
+	public Path getStorageDirectoryPath() throws InvalidArgumentValueException {
+		return storageDirectory.getStorageDirectoryPath();
 	}
 
-	public static SakerPath getStorageDirectoryOrDefault(SakerPath storagedirectory) {
-		if (storagedirectory == null) {
-			storagedirectory = SakerPath.valueOf(SakerEnvironmentImpl.getDefaultStorageDirectory());
-		}
-		return LaunchingUtils.absolutize(storagedirectory);
-	}
-
-	public DaemonLaunchParameters toLaunchParameters(EnvironmentParams envparams) {
+	public DaemonLaunchParameters toLaunchParameters(EnvironmentParamContext envparams) {
 		DaemonLaunchParameters.Builder result = DaemonLaunchParameters.builder();
 		envparams.applyToBuilder(result);
 		applyToBuilder(result);

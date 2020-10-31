@@ -27,6 +27,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamClass;
 import java.io.OutputStream;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
@@ -1182,7 +1183,7 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private Set<Class<?>> readClassesSet(DataInputUnsyncByteArrayInputStream in)
+	private Set<Class<?>> readClassesSet(DataInputUnsyncByteArrayInputStream in, RMIVariables variables)
 			throws IOException, ClassSetPartiallyReadException {
 		short count = in.readShort();
 		if (count == 0) {
@@ -1206,7 +1207,8 @@ final class RMIStream implements Closeable {
 				}
 			}
 		}
-		reducePublicNonAssignableInterfaces(result);
+		reducePublicNonAssignableInterfaces(result, variables.getMarkerClassLookup(),
+				connection.getCollectingStatistics());
 		IOUtils.throwExc(partialexc);
 		return result;
 	}
@@ -1846,7 +1848,7 @@ final class RMIStream implements Closeable {
 			int remoteindex = in.readInt();
 			Set<Class<?>> interfaces;
 			try {
-				interfaces = readClassesSet(in);
+				interfaces = readClassesSet(in, variables);
 			} catch (ClassSetPartiallyReadException e) {
 				interfaces = e.getReadClasses();
 			}
@@ -2316,28 +2318,48 @@ final class RMIStream implements Closeable {
 						interruptreqcount);
 				return;
 			}
-			writeCommandUnknownNewInstanceResult(variables, reqid, localindex, getPublicNonAssignableInterfaces(clazz),
+			writeCommandUnknownNewInstanceResult(variables, reqid, localindex, ReflectUtils.getAllInterfaces(clazz),
 					Thread.interrupted(), interruptreqcount);
 		} finally {
 			variables.removeOngoingRequest();
 		}
 	}
 
-	public static Set<Class<?>> getPublicNonAssignableInterfaces(Class<?> clazz) {
+	public static Set<Class<?>> getPublicNonAssignableInterfaces(Class<?> clazz, MethodHandles.Lookup lookup,
+			RMIStatistics rmistatistics) {
 		Set<Class<?>> itfs = ReflectUtils.getAllInterfaces(clazz);
-		reducePublicNonAssignableInterfaces(itfs);
+		reducePublicNonAssignableInterfaces(itfs, lookup, rmistatistics);
 		return itfs;
 	}
 
-	public static void reducePublicNonAssignableInterfaces(Set<Class<?>> itfs) {
+	public static void reducePublicNonAssignableInterfaces(Set<Class<?>> itfs, MethodHandles.Lookup lookup,
+			RMIStatistics rmistatistics) {
 		if (itfs.isEmpty()) {
 			return;
 		}
 		for (Iterator<Class<?>> it = itfs.iterator(); it.hasNext();) {
 			Class<?> itf = it.next();
-			if (!itf.isInterface() || !Modifier.isPublic(itf.getModifiers())) {
+			if (!itf.isInterface()) {
 				//the type might not be an interface if read from an other endpoint
 				it.remove();
+				continue;
+			}
+			if (!Modifier.isPublic(itf.getModifiers())) {
+				//the type might not be an interface if read from an other endpoint
+				it.remove();
+				if (rmistatistics != null) {
+					rmistatistics.inaccessibleInterface(itf);
+				}
+				continue;
+			}
+			try {
+				ReflectUtils.lookupAccessClass(lookup, itf);
+			} catch (IllegalAccessException | SecurityException e) {
+				it.remove();
+				if (rmistatistics != null) {
+					rmistatistics.inaccessibleInterface(itf);
+				}
+				continue;
 			}
 		}
 		ReflectUtils.reduceAssignableTypes(itfs);
@@ -2543,7 +2565,7 @@ final class RMIStream implements Closeable {
 		int localid = variables.getLocalInstanceIdIncreaseReference(obj);
 		out.writeShort(OBJECT_NEW_REMOTE);
 		//XXX write only a class set identifier and cache these
-		writeClasses(getPublicNonAssignableInterfaces(obj.getClass()), out);
+		writeClasses(ReflectUtils.getAllInterfaces(obj.getClass()), out);
 		out.writeInt(localid);
 	}
 
@@ -2554,7 +2576,7 @@ final class RMIStream implements Closeable {
 		}
 		Set<Class<?>> classes;
 		try {
-			classes = readClassesSet(in);
+			classes = readClassesSet(in, variables);
 		} catch (ClassSetPartiallyReadException e) {
 			classes = e.getReadClasses();
 		}

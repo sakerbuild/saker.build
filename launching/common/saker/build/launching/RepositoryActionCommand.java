@@ -185,8 +185,8 @@ public class RepositoryActionCommand {
 			}
 		}
 
-		try (ClassPathLoadManager classpathmanager = new ClassPathLoadManager(
-				LocalFileProvider.toRealPath(GeneralDaemonParams.getStorageDirectoryOrDefault(storageDirectory)));
+		try (ClassPathLoadManager classpathmanager = new ClassPathLoadManager(LocalFileProvider
+				.toRealPath(StorageDirectoryParamContext.getStorageDirectoryOrDefault(storageDirectory)));
 				RepositoryManager repomanager = new RepositoryManager(classpathmanager,
 						sakerJarLocator.getSakerJarPath())) {
 			SakerRepository userepo;

@@ -206,6 +206,8 @@ public class JavaTools {
 
 	/**
 	 * Gets the path to the <code>java</code> executable of the current JRE installation directory.
+	 * <p>
+	 * The returned path has the same semantics as {@link #getJavaExeProcessPath(Path)}.
 	 * 
 	 * @return The <code>java</code> executable path.
 	 * @see #getJavaInstallationDirectory()

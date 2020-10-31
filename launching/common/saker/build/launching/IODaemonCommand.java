@@ -16,6 +16,7 @@
 package saker.build.launching;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.util.concurrent.Semaphore;
 
 import saker.build.daemon.DaemonOutputController;
@@ -24,6 +25,7 @@ import saker.build.daemon.RemoteDaemonConnection;
 import saker.build.daemon.RemoteDaemonConnection.ConnectionIOErrorListener;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import sipka.cmdline.api.Parameter;
+import sipka.cmdline.api.ParameterContext;
 
 /**
  * <pre>
@@ -36,7 +38,7 @@ import sipka.cmdline.api.Parameter;
 public class IODaemonCommand {
 	/**
 	 * <pre>
-	 * The address of the daemon to connect to.
+	 * The network address of the daemon to connect to.
 	 * If the daemon is not running at the given address, or doesn't accept
 	 * client connections then an exception will be thrown.
 	 * </pre>
@@ -44,9 +46,13 @@ public class IODaemonCommand {
 	@Parameter("-address")
 	public DaemonAddressParam addressParams = new DaemonAddressParam();
 
+	@ParameterContext
+	public AuthKeystoreParamContext authParams = new AuthKeystoreParamContext();
+
 	public void call() throws IOException {
+		InetSocketAddress address = addressParams.getSocketAddressThrowArgumentException();
 		try (RemoteDaemonConnection connected = RemoteDaemonConnection
-				.connect(addressParams.getSocketAddressThrowArgumentException())) {
+				.connect(authParams.getSocketFactoryForDaemonConnection(address), address)) {
 			DaemonOutputController controller = connected.getDaemonEnvironment().getOutputController();
 			if (controller == null) {
 				throw new IOException("Failed to attach to remote daemon I/O. (Not available)");

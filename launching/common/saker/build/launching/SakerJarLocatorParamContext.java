@@ -20,8 +20,11 @@ import java.nio.file.Path;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.LocalFileProvider;
 import sipka.cmdline.api.Parameter;
+import sipka.cmdline.runtime.ArgumentResolutionException;
 
 public class SakerJarLocatorParamContext {
+	private static final String PARAM_NAME_SAKER_JAR = "-saker-jar";
+
 	/**
 	 * <pre>
 	 * Specifies the location of the build system runtime.
@@ -41,15 +44,16 @@ public class SakerJarLocatorParamContext {
 	 * an issue at https://github.com/sakerbuild/saker.build/issues)
 	 * </pre>
 	 */
-	@Parameter("-saker-jar")
+	@Parameter(PARAM_NAME_SAKER_JAR)
 	public SakerPath sakerJar;
 
 	public SakerPath getSakerJar() {
 		if (sakerJar == null) {
 			sakerJar = LaunchingUtils.searchForSakerJarInClassPath();
-		}
-		if (sakerJar == null) {
-			throw new IllegalArgumentException("Saker JAR not found.");
+			if (sakerJar == null) {
+				throw new ArgumentResolutionException("Failed to locate saker.build JAR file. Consider setting the "
+						+ PARAM_NAME_SAKER_JAR + " parameter.", PARAM_NAME_SAKER_JAR);
+			}
 		}
 		if (sakerJar.isRelative()) {
 			sakerJar = LaunchingUtils.absolutize(sakerJar);

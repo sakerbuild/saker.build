@@ -18,29 +18,41 @@ package saker.build.launching;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 
+import javax.net.SocketFactory;
+
 import saker.build.daemon.RemoteDaemonConnection;
 import sipka.cmdline.api.Parameter;
+import sipka.cmdline.api.ParameterContext;
+import sipka.cmdline.api.SubCommand;
 
 /**
  * <pre>
- * Stops the daemon at the specified address.
+ * Stops the build daemon at the specified address.
  * </pre>
  */
+@SubCommand(name = "all", type = StopAllDaemonCommand.class)
 public class StopDaemonCommand {
 	/**
 	 * <pre>
-	 * The address of the daemon to connect to.
+	 * The network address of the daemon to connect to.
 	 * If the daemon is not running at the given address, or doesn't accept
 	 * client connections then an exception will be thrown.
 	 * </pre>
 	 */
 	@Parameter("-address")
-	public DaemonAddressParam address = new DaemonAddressParam();
+	public DaemonAddressParam addressParam = new DaemonAddressParam();
+
+	@ParameterContext
+	public AuthKeystoreParamContext authParams = new AuthKeystoreParamContext();
 
 	public void call() throws IOException {
-		InetSocketAddress sockaddr = address.getSocketAddressThrowArgumentException();
-		try (RemoteDaemonConnection env = RemoteDaemonConnection.connect(sockaddr)) {
-			env.getDaemonEnvironment().close();
+		InetSocketAddress address = addressParam.getSocketAddressThrowArgumentException();
+		SocketFactory socketfactory = authParams.getSocketFactoryForDaemonConnection(address);
+		try (RemoteDaemonConnection connection = RemoteDaemonConnection.connect(socketfactory, address)) {
+			connection.getDaemonEnvironment().close();
+		} catch (Exception e) {
+			throw new IOException("Failed to close daemon at: " + address, e);
 		}
+		System.out.println("Build daemon at " + address + " has been stopped.");
 	}
 }

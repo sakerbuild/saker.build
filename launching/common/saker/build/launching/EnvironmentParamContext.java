@@ -20,8 +20,11 @@ import java.util.TreeMap;
 
 import saker.build.daemon.DaemonLaunchParameters;
 import sipka.cmdline.api.Parameter;
+import sipka.cmdline.runtime.ArgumentResolutionException;
 
-class EnvironmentParams {
+class EnvironmentParamContext {
+	private static final String PARAM_NAME_EU = "-EU";
+
 	private Map<String, String> environmentUserParameters = new TreeMap<>();
 
 	/**
@@ -37,10 +40,11 @@ class EnvironmentParams {
 	 * Can be used multiple times to define multiple entries.
 	 * </pre>
 	 */
-	@Parameter("-EU")
+	@Parameter(PARAM_NAME_EU)
 	public void environmentUserParameter(String key, String value) {
 		if (environmentUserParameters.containsKey(key)) {
-			throw new IllegalArgumentException("Environment user parameter specified multiple times: " + key);
+			throw new ArgumentResolutionException("Environment user parameter specified multiple times: " + key,
+					PARAM_NAME_EU);
 		}
 		environmentUserParameters.put(key, value);
 	}

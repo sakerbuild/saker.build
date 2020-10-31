@@ -63,7 +63,7 @@ public class DaemonLaunchParameters implements Externalizable, Cloneable {
 	}
 
 	//doc: nullable:
-	//null: should be only local, doesn't accept any connections
+	//null: should run only in the current JVM, doesn't accept any connections whatsoever
 	//0: automatic port selection
 	// > 0: use that port
 	public Integer getPort() {
@@ -176,12 +176,36 @@ public class DaemonLaunchParameters implements Externalizable, Cloneable {
 
 	@Override
 	public String toString() {
-		return getClass().getSimpleName() + "["
-				+ (storageDirectory != null ? "storageDirectory=" + storageDirectory + ", " : "")
-				+ (port != null ? "port=" + port + ", " : "") + "actsAsServer=" + actsAsServer + ", threadFactor="
-				+ threadFactor + ", actsAsCluster=" + actsAsCluster + ", "
-				+ (clusterMirrorDirectory != null ? "clusterMirrorDirectory=" + clusterMirrorDirectory + ", " : "")
-				+ (!ObjectUtils.isNullOrEmpty(userParameters) ? "userParameters=" + userParameters : "") + "]";
+		StringBuilder sb = new StringBuilder();
+		sb.append("DaemonLaunchParameters[");
+		sb.append("actsAsServer=");
+		sb.append(actsAsServer);
+		sb.append(", threadFactor=");
+		sb.append(threadFactor);
+		sb.append(", actsAsCluster=");
+		sb.append(actsAsCluster);
+		if (storageDirectory != null) {
+			sb.append(", ");
+			sb.append("storageDirectory=");
+			sb.append(storageDirectory);
+		}
+		if (port != null) {
+			sb.append(", ");
+			sb.append("port=");
+			sb.append(port);
+		}
+		if (clusterMirrorDirectory != null) {
+			sb.append(", ");
+			sb.append("clusterMirrorDirectory=");
+			sb.append(clusterMirrorDirectory);
+		}
+		if (userParameters != null) {
+			sb.append(", ");
+			sb.append("userParameters=");
+			sb.append(userParameters);
+		}
+		sb.append("]");
+		return sb.toString();
 	}
 
 	public static Builder builder() {
@@ -234,7 +258,8 @@ public class DaemonLaunchParameters implements Externalizable, Cloneable {
 		}
 
 		public Builder setThreadFactor(int threadFactor) {
-			result.threadFactor = threadFactor;
+			//normalize < 0 values to 0
+			result.threadFactor = Math.max(threadFactor, 0);
 			return this;
 		}
 

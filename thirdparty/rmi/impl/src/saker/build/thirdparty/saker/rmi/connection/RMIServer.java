@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import javax.net.ServerSocketFactory;
 import javax.net.SocketFactory;
+import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -666,6 +667,10 @@ public class RMIServer implements AutoCloseable {
 			dataos.flush();
 			short magic = datais.readShort();
 			if (magic != RMIServer.CONNECTION_MAGIC_NUMBER) {
+				if (!(s instanceof SSLSocket)) {
+					throw new IOException("Invalid magic: 0x" + Integer.toHexString(magic)
+							+ ", attempting to connect to SSL socket?");
+				}
 				throw new IOException("Invalid magic: 0x" + Integer.toHexString(magic));
 			}
 			short remoteversion = datais.readShort();
@@ -979,6 +984,10 @@ public class RMIServer implements AutoCloseable {
 
 				short smagic = sdatais.readShort();
 				if (smagic != RMIServer.CONNECTION_MAGIC_NUMBER) {
+					if (!(sock instanceof SSLSocket)) {
+						throw new IOException("Invalid magic: 0x" + Integer.toHexString(smagic)
+								+ ", attempting to connect to SSL socket?");
+					}
 					throw new IOException("Invalid magic: 0x" + Integer.toHexString(smagic));
 				}
 				short sremoteversion = sdatais.readShort();

@@ -18,6 +18,7 @@ package saker.build.daemon;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.io.PrintStream;
 import java.io.RandomAccessFile;
 import java.lang.ref.WeakReference;
 import java.net.ConnectException;
@@ -28,7 +29,9 @@ import java.net.SocketTimeoutException;
 import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.Principal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -41,6 +44,9 @@ import java.util.WeakHashMap;
 
 import javax.net.ServerSocketFactory;
 import javax.net.SocketFactory;
+import javax.net.ssl.SSLPeerUnverifiedException;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocket;
 
 import saker.build.file.path.PathKey;
 import saker.build.file.path.ProviderHolderPathKey;
@@ -52,6 +58,7 @@ import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.FileMirrorHandler;
 import saker.build.runtime.execution.InternalExecutionContext;
+import saker.build.runtime.execution.SakerLog;
 import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.runtime.params.InvalidBuildConfigurationException;
 import saker.build.runtime.project.ProjectCacheHandle;
@@ -72,7 +79,6 @@ import saker.build.thirdparty.saker.util.DateUtils;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.StringUtils;
-import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
 import saker.build.thirdparty.saker.util.function.ThrowingRunnable;
 import saker.build.thirdparty.saker.util.io.FileUtils;
@@ -81,7 +87,9 @@ import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
 import saker.build.trace.InternalBuildTrace;
 import saker.build.util.cache.CacheKey;
+import saker.build.util.exc.ExceptionView;
 import saker.build.util.rmi.SakerRMIHelper;
+import testing.saker.build.flag.TestFlag;
 
 public class LocalDaemonEnvironment implements DaemonEnvironment {
 	//TODO implement auto shutdown
@@ -96,8 +104,31 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	private static final int STATE_STARTED = 1;
 	private static final int STATE_CLOSED = 2;
 
-	//4 byte port 
-	private static final long FILE_LOCK_DATA_LENGTH = 4;
+	/**
+	 * Format:
+	 * 
+	 * <pre>
+	 * no data
+	 * </pre>
+	 */
+	private static final int DAEMON_CONNECTION_FORMAT_TCP = 1;
+	/**
+	 * Format:
+	 * 
+	 * <pre>
+	 * 4 byte keystore utf8 byte count
+	 * keystore utf8 full absolute path bytes
+	 * </pre>
+	 */
+	private static final int DAEMON_CONNECTION_FORMAT_SSL = 2;
+
+	/**
+	 * <pre>
+	 * 4 byte format
+	 * 4 byte port
+	 * </pre>
+	 */
+	private static final long FILE_LOCK_DATA_LENGTH = 4096;
 	//can't run more than 65535 daemons as we would run out of ports
 	private static final int DAEMON_INSTANCE_INDEX_END = 0xFFFF;
 
@@ -117,6 +148,8 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 	private SocketFactory connectionSocketFactory;
 	private ServerSocketFactory serverSocketFactory;
+
+	private SakerPath sslKeystorePath;
 
 	private volatile int state = STATE_UNSTARTED;
 
@@ -167,6 +200,10 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	public void setConnectionSocketFactory(SocketFactory connectionSocketFactory) {
 		checkUnstarted();
 		this.connectionSocketFactory = connectionSocketFactory;
+	}
+
+	public void setSslKeystorePath(SakerPath sslKeystorePath) {
+		this.sslKeystorePath = sslKeystorePath;
 	}
 
 	public void setServerSocketFactory(ServerSocketFactory serverSocketFactory) {
@@ -252,7 +289,6 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 			lockFile = new RandomAccessFile(lockpath.toFile(), "rw");
 			FileChannel channel = lockFile.getChannel();
-			//do not put the file lock in try-with-resources as closing is not idempotent
 			for (int i = 0; i < DAEMON_INSTANCE_INDEX_END; i++) {
 				FileLock flock = channel.tryLock(FILE_LOCK_REGION_START + i * FILE_LOCK_DATA_LENGTH,
 						FILE_LOCK_DATA_LENGTH, false);
@@ -324,10 +360,53 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 						});
 						super.setupConnection(acceptedsocket, connection);
 					}
+
+					@Override
+					protected void validateSocket(Socket accepted) throws IOException, RuntimeException {
+						if (accepted instanceof SSLSocket) {
+							SSLSocket ssls = (SSLSocket) accepted;
+							PrintStream ps = System.out;
+							SSLSession session = ssls.getSession();
+							try {
+								Principal localprincipal = session.getLocalPrincipal();
+								Principal peerprincipal = session.getPeerPrincipal();
+								synchronized (ps) {
+									ps.println("Connection accepted from: " + accepted.getRemoteSocketAddress());
+									ps.println("Local principal: " + localprincipal);
+									ps.println("Peer principal: " + peerprincipal);
+								}
+							} catch (SSLPeerUnverifiedException e) {
+								synchronized (ps) {
+									ps.println("Connection accepted from: " + accepted.getRemoteSocketAddress());
+									ps.println("Failed to verify peer identity.");
+								}
+								throw e;
+							} catch (Exception e) {
+								synchronized (ps) {
+									ps.println("Connection accepted from: " + accepted.getRemoteSocketAddress());
+									ps.println("Connection error.");
+									SakerLog.printFormatException(ExceptionView.create(e), ps,
+											SakerLog.CommonExceptionFormat.NO_TRACE);
+								}
+								throw e;
+							}
+
+						}
+						super.validateSocket(accepted);
+					}
 				};
 				int port = server.getPort();
 				lockFile.seek(daemonInstanceIndex * FILE_LOCK_DATA_LENGTH);
-				lockFile.writeInt(port);
+				if (sslKeystorePath != null) {
+					byte[] bytes = sslKeystorePath.toString().getBytes(StandardCharsets.UTF_8);
+					lockFile.writeInt(DAEMON_CONNECTION_FORMAT_SSL);
+					lockFile.writeInt(port);
+					lockFile.writeInt(bytes.length);
+					lockFile.write(bytes);
+				} else {
+					lockFile.writeInt(DAEMON_CONNECTION_FORMAT_TCP);
+					lockFile.writeInt(port);
+				}
 				builder.setPort(port);
 				builder.setStorageDirectory(SakerPath.valueOf(environment.getStorageDirectoryPath()));
 				builder.setThreadFactor(environment.getThreadFactor());
@@ -384,16 +463,17 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		return result;
 	}
 
-	public static List<Integer> getRunningDaemonPorts(SakerPath storagedirectory) throws IOException {
-		return getRunningDaemonPorts(LocalFileProvider.toRealPath(storagedirectory));
+	public static List<RunningDaemonConnectionInfo> getRunningDaemonInfos(SakerPath storagedirectory)
+			throws IOException {
+		return getRunningDaemonInfos(LocalFileProvider.toRealPath(storagedirectory));
 	}
 
 	@SuppressWarnings("try")
-	public static List<Integer> getRunningDaemonPorts(Path storagedirectory) throws IOException {
-		List<Integer> result = new ArrayList<>();
+	public static List<RunningDaemonConnectionInfo> getRunningDaemonInfos(Path storagedirectory) throws IOException {
+		List<RunningDaemonConnectionInfo> result = new ArrayList<>();
 		Path lockpath = storagedirectory.resolve(DAEMON_LOCK_FILE_NAME);
 		try (RandomAccessFile f = new RandomAccessFile(lockpath.toFile(), "r")) {
-			collectDaemonPortsFromLockFile(result, f);
+			collectDaemonInfosFromLockFile(result, f);
 			return result;
 		} catch (FileNotFoundException e) {
 			return Collections.emptyList();
@@ -401,7 +481,8 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	}
 
 	@SuppressWarnings("try")
-	private static void collectDaemonPortsFromLockFile(List<Integer> result, RandomAccessFile f) throws IOException {
+	private static void collectDaemonInfosFromLockFile(List<RunningDaemonConnectionInfo> result, RandomAccessFile f)
+			throws IOException {
 		//XXX there is a race condition when concurrently creating deamons
 		//    in theory, if we poll the lock file with locks, and happen to lock the only
 		//    free region in the file, then concurrently creating daemons will not be possible
@@ -437,23 +518,33 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 					long remlockpos2 = remlockstart + remlocklen1;
 					//lock the later region first as if we lock in order
 					//then in rare cases a concurrent daemon may fail to start
+					boolean nonerunningin1 = true;
+					boolean nonerunningin2 = true;
 					try (FileLock remlock = channel.tryLock(remlockpos2, remlocklen2, true)) {
 						if (remlock == null) {
 							//some region is locked by other
-							continue;
+							nonerunningin2 = false;
 						}
 					}
 					try (FileLock remlock = channel.tryLock(remlockpos1, remlocklen1, true)) {
 						if (remlock == null) {
 							//some region is locked by other
-							continue;
+							nonerunningin1 = false;
 						}
-						//no locks in the first region, we can skip over that
-						i += remregion1count;
 					}
-					//both regions succeeded to lock
-					//no more daemons
-					return;
+					if (!nonerunningin1) {
+						//theres a daemon running in the first region, continue
+						continue;
+					}
+					//no locks in the first region, we can skip over that
+					i += remregion1count;
+					if (nonerunningin2) {
+						//both regions succeeded to lock
+						//no more daemons
+						return;
+					}
+					//continue checking
+					continue;
 				}
 			} finally {
 				IOUtils.close(flock);
@@ -461,9 +552,45 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 			//lock on the data to wait initialization
 			try (FileLock datalock = channel.lock(FILE_LOCK_DATA_LENGTH * i, FILE_LOCK_DATA_LENGTH, true)) {
 				f.seek(i * FILE_LOCK_DATA_LENGTH);
+				int format = f.readInt();
 				int resport = f.readInt();
-				if (resport > 0) {
-					result.add(resport);
+				if (resport < 0) {
+					continue;
+				}
+				switch (format) {
+					case DAEMON_CONNECTION_FORMAT_TCP: {
+						result.add(new RunningDaemonConnectionInfo(resport));
+						break;
+					}
+					case DAEMON_CONNECTION_FORMAT_SSL: {
+						int utf8len = f.readInt();
+						if (utf8len > FILE_LOCK_DATA_LENGTH) {
+							//invalid
+							continue;
+						}
+						try {
+							String kspathstr;
+							if (utf8len > 0) {
+								byte[] keystoreutf8bytes = new byte[utf8len];
+								f.readFully(keystoreutf8bytes);
+								kspathstr = new String(keystoreutf8bytes, StandardCharsets.UTF_8);
+							} else {
+								kspathstr = null;
+							}
+							RunningDaemonConnectionInfo info = new RunningDaemonConnectionInfo(resport);
+							info.sslKeystorePath = kspathstr;
+							result.add(info);
+						} catch (RuntimeException e) {
+							//some decoding exception or other things. don't throw, can be silently ignored
+							if (TestFlag.ENABLED) {
+								throw e;
+							}
+						}
+						break;
+					}
+					default: {
+						break;
+					}
 				}
 			}
 		}
@@ -505,6 +632,12 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		}
 	}
 
+	/**
+	 * Subclasses can override.
+	 */
+	protected void closeImpl() {
+	}
+
 	@Override
 	@SuppressWarnings("try")
 	public synchronized final void close() {
@@ -537,9 +670,23 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 				}
 			}
 
-			IOUtils.closePrint(server);
+			//the following resources should be closed on a background daemon thread
+			//as this method can be called through RMI,
+			//we need to perform this on a different thread to make sure that the response
+			//of the close() method arrives to the caller.
+			ThreadUtils.startDaemonThread(() -> {
+				//close the environment first so builds finish
+				IOUtils.closePrint(environment);
 
-			IOUtils.closePrint(environment);
+				try {
+					server.closeWait();
+				} catch (IOException | InterruptedException e) {
+					//print the result
+					e.printStackTrace();
+				}
+
+				closeImpl();
+			});
 
 			IOUtils.closePrint(this.fileLock, this.lockFile);
 			this.fileLock = null;
@@ -569,6 +716,23 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 			throw e;
 		} catch (Exception e) {
 			throw new IOException(e);
+		}
+	}
+
+	public static final class RunningDaemonConnectionInfo {
+		protected final int port;
+		protected String sslKeystorePath;
+
+		protected RunningDaemonConnectionInfo(int port) {
+			this.port = port;
+		}
+
+		public int getPort() {
+			return port;
+		}
+
+		public String getSslKeystorePath() {
+			return sslKeystorePath;
 		}
 	}
 
