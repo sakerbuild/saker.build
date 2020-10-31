@@ -670,14 +670,14 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 				}
 			}
 
+			//close the environment first so builds finish
+			IOUtils.closePrint(environment);
+
 			//the following resources should be closed on a background daemon thread
 			//as this method can be called through RMI,
 			//we need to perform this on a different thread to make sure that the response
 			//of the close() method arrives to the caller.
 			ThreadUtils.startDaemonThread(() -> {
-				//close the environment first so builds finish
-				IOUtils.closePrint(environment);
-
 				try {
 					server.closeWait();
 				} catch (IOException | InterruptedException e) {
