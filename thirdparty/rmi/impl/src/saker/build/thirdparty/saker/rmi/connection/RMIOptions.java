@@ -17,6 +17,7 @@ package saker.build.thirdparty.saker.rmi.connection;
 
 import java.io.IOException;
 import java.net.SocketAddress;
+import java.util.Objects;
 
 import javax.net.SocketFactory;
 
@@ -238,9 +239,13 @@ public final class RMIOptions {
 	 * @return The initiated connection.
 	 * @throws IOException
 	 *             In case of connection failure.
+	 * @throws NullPointerException
+	 *             If the address is <code>null</code>.
 	 * @see RMIConnection
 	 */
-	public RMIConnection connect(SocketFactory socketfactory, SocketAddress address) throws IOException {
+	public RMIConnection connect(SocketFactory socketfactory, SocketAddress address)
+			throws IOException, NullPointerException {
+		Objects.requireNonNull(address, "addres");
 		return RMIServer.newConnection(this, socketfactory, address);
 	}
 
@@ -256,9 +261,32 @@ public final class RMIOptions {
 	 * @return The initiated connection.
 	 * @throws IOException
 	 *             In case of connection failure.
+	 * @throws NullPointerException
+	 *             If the address is <code>null</code>.
 	 */
-	public RMIConnection connect(SocketAddress address) throws IOException {
+	public RMIConnection connect(SocketAddress address) throws IOException, NullPointerException {
 		return this.connect(null, address);
+	}
+
+	/**
+	 * Initiates the connection to the given address with the specified socket configuration.
+	 * 
+	 * @param address
+	 *            The address to connect to.
+	 * @param socketconfig
+	 *            The socket configuration.
+	 * @return The initiated connection.
+	 * @throws IOException
+	 *             In case of connection failure.
+	 * @throws NullPointerException
+	 *             If any of the arguments are <code>null</code>.
+	 * @since saker.rmi 0.8.2
+	 */
+	public RMIConnection connect(SocketAddress address, RMISocketConfiguration socketconfig)
+			throws IOException, NullPointerException {
+		Objects.requireNonNull(socketconfig, "socket config");
+		Objects.requireNonNull(address, "addres");
+		return RMIServer.newConnection(this, address, socketconfig);
 	}
 
 	/**

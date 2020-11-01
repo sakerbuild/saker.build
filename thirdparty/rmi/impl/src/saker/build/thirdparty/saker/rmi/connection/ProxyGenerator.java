@@ -15,39 +15,6 @@
  */
 package saker.build.thirdparty.saker.rmi.connection;
 
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.AASTORE;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ACC_ABSTRACT;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ACC_FINAL;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ACC_PRIVATE;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ACC_PUBLIC;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ACC_STATIC;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ACC_VOLATILE;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ACONST_NULL;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ALOAD;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ANEWARRAY;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ARETURN;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ATHROW;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.CHECKCAST;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.DLOAD;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.DRETURN;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.DUP;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.FLOAD;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.FRETURN;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.GETFIELD;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.GETSTATIC;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.ILOAD;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.INVOKESPECIAL;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.INVOKESTATIC;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.INVOKEVIRTUAL;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.IRETURN;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.LLOAD;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.LRETURN;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.NEW;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.PUTFIELD;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.PUTSTATIC;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.RETURN;
-import static saker.build.thirdparty.org.objectweb.asm.Opcodes.V1_8;
-
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -82,22 +49,24 @@ class ProxyGenerator {
 
 	public static byte[] generateProxyMarkerClass(String name, boolean withstatisticsfield) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
-		cw.visit(V1_8, ACC_PUBLIC | ACC_ABSTRACT, name.replace('.', '/'), null, REMOTEPROXYOBJECT_INTERNAL_NAME, null);
+		cw.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name.replace('.', '/'), null,
+				REMOTEPROXYOBJECT_INTERNAL_NAME, null);
 
-		MethodVisitor constructorv = cw.visitMethod(ACC_PUBLIC, "<init>", "(Ljava/lang/ref/Reference;I)V", null, null);
+		MethodVisitor constructorv = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(Ljava/lang/ref/Reference;I)V", null,
+				null);
 		constructorv.visitCode();
-		constructorv.visitVarInsn(ALOAD, 0);
-		constructorv.visitVarInsn(ALOAD, 1);
-		constructorv.visitVarInsn(ILOAD, 2);
-		constructorv.visitMethodInsn(INVOKESPECIAL, REMOTEPROXYOBJECT_INTERNAL_NAME, "<init>",
+		constructorv.visitVarInsn(Opcodes.ALOAD, 0);
+		constructorv.visitVarInsn(Opcodes.ALOAD, 1);
+		constructorv.visitVarInsn(Opcodes.ILOAD, 2);
+		constructorv.visitMethodInsn(Opcodes.INVOKESPECIAL, REMOTEPROXYOBJECT_INTERNAL_NAME, "<init>",
 				"(Ljava/lang/ref/Reference;I)V", false);
-		constructorv.visitInsn(RETURN);
+		constructorv.visitInsn(Opcodes.RETURN);
 		constructorv.visitMaxs(0, 0);
 		constructorv.visitEnd();
 
 		if (withstatisticsfield) {
-			FieldVisitor fw = cw.visitField(ACC_PUBLIC | ACC_STATIC, PROXY_MARKER_RMI_STATISTICS_FIELD_NAME,
-					RMISTATISTICS_DESCRIPTOR, null, null);
+			FieldVisitor fw = cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+					PROXY_MARKER_RMI_STATISTICS_FIELD_NAME, RMISTATISTICS_DESCRIPTOR, null, null);
 			fw.visitEnd();
 		}
 
@@ -131,7 +100,8 @@ class ProxyGenerator {
 		String thisclassinternalname = name.replace('.', '/');
 
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
-		cw.visit(V1_8, ACC_PUBLIC | ACC_FINAL, thisclassinternalname, null, superclassinternalname, itfnames);
+		cw.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, thisclassinternalname, null,
+				superclassinternalname, itfnames);
 
 		Collection<Consumer<MethodVisitor>> initcachefieldswriters = new ArrayList<>();
 
@@ -147,7 +117,8 @@ class ProxyGenerator {
 			boolean cacheresult = mr.properties.isCacheResult();
 			if (forbidden && defaultonfailure) {
 				//call default super
-				MethodVisitor mrefv = cw.visitMethod(ACC_PUBLIC | ACC_FINAL, key.name, key.descriptor, null, null);
+				MethodVisitor mrefv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, key.name, key.descriptor,
+						null, null);
 				mrefv.visitCode();
 				writeCallDefaultMethodAndReturn(mr, interfaces, mrefv);
 				mrefv.visitMaxs(0, 0);
@@ -161,11 +132,12 @@ class ProxyGenerator {
 				//don't throw RMIProxyCreationFailedException, as it may be a valid use case
 				//however, fail the method call
 
-				MethodVisitor mrefv = cw.visitMethod(ACC_PUBLIC | ACC_FINAL, key.name, key.descriptor, null, null);
+				MethodVisitor mrefv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, key.name, key.descriptor,
+						null, null);
 				mrefv.visitCode();
 
-				mrefv.visitTypeInsn(NEW, RMICALLFAILEDEXCEPTION_INTERNAL_NAME);
-				mrefv.visitInsn(DUP);
+				mrefv.visitTypeInsn(Opcodes.NEW, RMICALLFAILEDEXCEPTION_INTERNAL_NAME);
+				mrefv.visitInsn(Opcodes.DUP);
 				StringBuilder sb = new StringBuilder();
 				sb.append("Failed to call method with inaccessible return or argument types: ");
 				sb.append(key.returnType.getName());
@@ -181,9 +153,9 @@ class ProxyGenerator {
 				}
 				sb.append(")");
 				mrefv.visitLdcInsn(sb.toString());
-				mrefv.visitMethodInsn(INVOKESPECIAL, RMICALLFAILEDEXCEPTION_INTERNAL_NAME, "<init>",
+				mrefv.visitMethodInsn(Opcodes.INVOKESPECIAL, RMICALLFAILEDEXCEPTION_INTERNAL_NAME, "<init>",
 						"(Ljava/lang/String;)V", false);
-				mrefv.visitInsn(ATHROW);
+				mrefv.visitInsn(Opcodes.ATHROW);
 
 				mrefv.visitMaxs(0, 0);
 				mrefv.visitEnd();
@@ -198,14 +170,14 @@ class ProxyGenerator {
 				cachefieldname = createCacheFieldHolderVariableName(i);
 				cachehelperfieldnames.add(cachefieldname);
 
-				FieldVisitor cachefieldfw = cw.visitField(ACC_PRIVATE | ACC_VOLATILE, cachefieldname,
+				FieldVisitor cachefieldfw = cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_VOLATILE, cachefieldname,
 						cachehelperfielddescriptor, null, null);
 				cachefieldfw.visitEnd();
 			} else {
 				cachefieldname = null;
 			}
 
-			FieldVisitor methodfieldfw = cw.visitField(ACC_PRIVATE | ACC_STATIC, methodfieldname,
+			FieldVisitor methodfieldfw = cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, methodfieldname,
 					METHODTRANSFERROPERTIES_DESCRIPTOR, null, null);
 			methodfieldfw.visitEnd();
 
@@ -213,7 +185,8 @@ class ProxyGenerator {
 					.add(getMethodCacheFieldAssignInstructionWriter(methodfieldname, thisclassinternalname, mr));
 
 			if (mr.properties.getRedirectMethod() != null) {
-				MethodVisitor mw = cw.visitMethod(ACC_PUBLIC | ACC_FINAL, key.name, key.descriptor, null, null);
+				MethodVisitor mw = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, key.name, key.descriptor,
+						null, null);
 				mw.visitCode();
 
 				//XXX we might create the array which has the proxy as the first element instead of just the parameters
@@ -224,26 +197,26 @@ class ProxyGenerator {
 				mw.visitEnd();
 
 				if (!forbidden) {
-					MethodVisitor snrmw = cw.visitMethod(ACC_PUBLIC | ACC_FINAL, "0rmi_nonredirect$" + key.name,
-							key.descriptor, null, null);
+					MethodVisitor snrmw = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL,
+							"0rmi_nonredirect$" + key.name, key.descriptor, null, null);
 					snrmw.visitCode();
 
-					snrmw.visitFieldInsn(GETSTATIC, thisclassinternalname, methodfieldname,
+					snrmw.visitFieldInsn(Opcodes.GETSTATIC, thisclassinternalname, methodfieldname,
 							METHODTRANSFERROPERTIES_DESCRIPTOR);
-					snrmw.visitVarInsn(ALOAD, 0);
+					snrmw.visitVarInsn(Opcodes.ALOAD, 0);
 					writeLoadArgumentsArrayInstructions(snrmw, key.argTypes);
 					String methoddescriptor;
 					if (collectstatistics) {
 						methoddescriptor = "(" + METHODTRANSFERROPERTIES_DESCRIPTOR + REMOTEPROXYOBJECT_DESCRIPTOR
 								+ ARRAY_JAVA_LANG_OBJECT_DESCRIPTOR + RMISTATISTICS_DESCRIPTOR + ")"
 								+ JAVA_LANG_OBJECT_DESCRIPTOR;
-						snrmw.visitFieldInsn(GETSTATIC, markerclassinternalname, PROXY_MARKER_RMI_STATISTICS_FIELD_NAME,
-								RMISTATISTICS_DESCRIPTOR);
+						snrmw.visitFieldInsn(Opcodes.GETSTATIC, markerclassinternalname,
+								PROXY_MARKER_RMI_STATISTICS_FIELD_NAME, RMISTATISTICS_DESCRIPTOR);
 					} else {
 						methoddescriptor = "(" + METHODTRANSFERROPERTIES_DESCRIPTOR + REMOTEPROXYOBJECT_DESCRIPTOR
 								+ ARRAY_JAVA_LANG_OBJECT_DESCRIPTOR + ")" + JAVA_LANG_OBJECT_DESCRIPTOR;
 					}
-					snrmw.visitMethodInsn(INVOKESTATIC, REMOTEPROXYOBJECT_INTERNAL_NAME,
+					snrmw.visitMethodInsn(Opcodes.INVOKESTATIC, REMOTEPROXYOBJECT_INTERNAL_NAME,
 							"callNonRedirectMethodFromStaticDelegate", methoddescriptor, false);
 					writeCheckCastReturn(snrmw, mr.getReturnType());
 
@@ -253,21 +226,24 @@ class ProxyGenerator {
 				continue;
 			}
 			if (forbidden) {
-				MethodVisitor mrefv = cw.visitMethod(ACC_PUBLIC | ACC_FINAL, key.name, key.descriptor, null, null);
+				MethodVisitor mrefv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, key.name, key.descriptor,
+						null, null);
 				mrefv.visitCode();
 
-				mrefv.visitFieldInsn(GETSTATIC, thisclassinternalname, methodfieldname,
+				mrefv.visitFieldInsn(Opcodes.GETSTATIC, thisclassinternalname, methodfieldname,
 						METHODTRANSFERROPERTIES_DESCRIPTOR);
-				mrefv.visitMethodInsn(INVOKESTATIC, REMOTEPROXYOBJECT_INTERNAL_NAME, "forbiddenThrowableInternal",
+				mrefv.visitMethodInsn(Opcodes.INVOKESTATIC, REMOTEPROXYOBJECT_INTERNAL_NAME,
+						"forbiddenThrowableInternal",
 						"(" + METHODTRANSFERROPERTIES_DESCRIPTOR + ")" + JAVA_LANG_THROWABLE_DESCRIPTOR, false);
-				mrefv.visitInsn(ATHROW);
+				mrefv.visitInsn(Opcodes.ATHROW);
 
 				mrefv.visitMaxs(0, 0);
 				mrefv.visitEnd();
 				continue;
 			}
 
-			MethodVisitor mw = cw.visitMethod(ACC_PUBLIC | ACC_FINAL, key.name, key.descriptor, null, null);
+			MethodVisitor mw = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, key.name, key.descriptor, null,
+					null);
 			mw.visitCode();
 
 			Label rmibodystart = new Label();
@@ -279,36 +255,37 @@ class ProxyGenerator {
 			mw.visitLabel(rmibodystart);
 
 			if (cacheresult) {
-				mw.visitVarInsn(ALOAD, 0);
-				mw.visitFieldInsn(GETFIELD, thisclassinternalname, cachefieldname, cachehelperfielddescriptor);
-				mw.visitInsn(DUP);
+				mw.visitVarInsn(Opcodes.ALOAD, 0);
+				mw.visitFieldInsn(Opcodes.GETFIELD, thisclassinternalname, cachefieldname, cachehelperfielddescriptor);
+				mw.visitInsn(Opcodes.DUP);
 				mw.visitVarInsn(Opcodes.ASTORE, 1);
 				mw.visitTypeInsn(Opcodes.INSTANCEOF, RMICACHEHELPER_INTERNAL_NAME);
 				Label resultreadylabel = new Label();
 				mw.visitJumpInsn(Opcodes.IFEQ, resultreadylabel);
 
-				mw.visitVarInsn(ALOAD, 1);
-				mw.visitTypeInsn(CHECKCAST, RMICACHEHELPER_INTERNAL_NAME);
+				mw.visitVarInsn(Opcodes.ALOAD, 1);
+				mw.visitTypeInsn(Opcodes.CHECKCAST, RMICACHEHELPER_INTERNAL_NAME);
 				loadCallInvokerMethodInstructionParameters(mw, thisclassinternalname, methodfieldname, key);
 				String methoddescriptor;
 				if (collectstatistics) {
-					mw.visitFieldInsn(GETSTATIC, markerclassinternalname, PROXY_MARKER_RMI_STATISTICS_FIELD_NAME,
-							RMISTATISTICS_DESCRIPTOR);
+					mw.visitFieldInsn(Opcodes.GETSTATIC, markerclassinternalname,
+							PROXY_MARKER_RMI_STATISTICS_FIELD_NAME, RMISTATISTICS_DESCRIPTOR);
 					methoddescriptor = "(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
 							+ "[Ljava/lang/Object;" + RMISTATISTICS_DESCRIPTOR + ")Ljava/lang/Object;";
 				} else {
 					methoddescriptor = "(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
 							+ "[Ljava/lang/Object;)Ljava/lang/Object;";
 				}
-				mw.visitMethodInsn(INVOKEVIRTUAL, RMICACHEHELPER_INTERNAL_NAME, "call", methoddescriptor, false);
-				mw.visitInsn(DUP);
-				mw.visitVarInsn(ALOAD, 0);
+				mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, RMICACHEHELPER_INTERNAL_NAME, "call", methoddescriptor,
+						false);
+				mw.visitInsn(Opcodes.DUP);
+				mw.visitVarInsn(Opcodes.ALOAD, 0);
 				mw.visitInsn(Opcodes.SWAP);
-				mw.visitFieldInsn(PUTFIELD, thisclassinternalname, cachefieldname, cachehelperfielddescriptor);
+				mw.visitFieldInsn(Opcodes.PUTFIELD, thisclassinternalname, cachefieldname, cachehelperfielddescriptor);
 				writeObjectReturnInstructions(mw, mr);
 
 				mw.visitLabel(resultreadylabel);
-				mw.visitVarInsn(ALOAD, 1);
+				mw.visitVarInsn(Opcodes.ALOAD, 1);
 				writeObjectReturnInstructions(mw, mr);
 			} else {
 				writeCallInvokerMethodReturnInstructions(mw, thisclassinternalname, methodfieldname, mr, key,
@@ -320,7 +297,7 @@ class ProxyGenerator {
 
 			int excvarnum = getMethodVariableSlot(mr.key.argTypes);
 
-			mw.visitMethodInsn(INVOKEVIRTUAL, Type.getInternalName(Throwable.class), "getCause",
+			mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, Type.getInternalName(Throwable.class), "getCause",
 					"()" + JAVA_LANG_THROWABLE_DESCRIPTOR, false);
 
 			//used for debugging only
@@ -341,25 +318,25 @@ class ProxyGenerator {
 
 				mw.visitInsn(Opcodes.DUP);
 				mw.visitVarInsn(Opcodes.ALOAD, excvarnum);
-				mw.visitMethodInsn(INVOKEVIRTUAL, THROWABLE_INTERNAL_NAME, "addSuppressed",
+				mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, THROWABLE_INTERNAL_NAME, "addSuppressed",
 						"(" + JAVA_LANG_THROWABLE_DESCRIPTOR + ")V", false);
 			}
 
-			mw.visitInsn(ATHROW);
+			mw.visitInsn(Opcodes.ATHROW);
 
 			mw.visitMaxs(0, 0);
 			mw.visitEnd();
 		}
 
 		if (!initcachefieldswriters.isEmpty()) {
-			MethodVisitor initcachemethodv = cw.visitMethod(ACC_STATIC | ACC_PUBLIC,
+			MethodVisitor initcachemethodv = cw.visitMethod(Opcodes.ACC_STATIC | Opcodes.ACC_PUBLIC,
 					INITIALIZE_CACHE_FIELDS_METHOD_NAME, "(" + RMITRANSFERPROPERTIESHOLDER_DESCRIPTOR + ")V", null,
 					null);
 			initcachemethodv.visitCode();
 			for (Consumer<MethodVisitor> writer : initcachefieldswriters) {
 				writer.accept(initcachemethodv);
 			}
-			initcachemethodv.visitInsn(RETURN);
+			initcachemethodv.visitInsn(Opcodes.RETURN);
 			initcachemethodv.visitMaxs(0, 0);
 			initcachemethodv.visitEnd();
 		}
@@ -518,56 +495,56 @@ class ProxyGenerator {
 
 	private static int loadVariable(Class<?> t, int index, MethodVisitor mw) {
 		if (t == boolean.class) {
-			mw.visitVarInsn(ILOAD, index);
+			mw.visitVarInsn(Opcodes.ILOAD, index);
 			return 1;
 		} else if (t == byte.class) {
-			mw.visitVarInsn(ILOAD, index);
+			mw.visitVarInsn(Opcodes.ILOAD, index);
 			return 1;
 		} else if (t == short.class) {
-			mw.visitVarInsn(ILOAD, index);
+			mw.visitVarInsn(Opcodes.ILOAD, index);
 			return 1;
 		} else if (t == int.class) {
-			mw.visitVarInsn(ILOAD, index);
+			mw.visitVarInsn(Opcodes.ILOAD, index);
 			return 1;
 		} else if (t == long.class) {
-			mw.visitVarInsn(LLOAD, index);
+			mw.visitVarInsn(Opcodes.LLOAD, index);
 			return 2;
 		} else if (t == float.class) {
-			mw.visitVarInsn(FLOAD, index);
+			mw.visitVarInsn(Opcodes.FLOAD, index);
 			return 1;
 		} else if (t == double.class) {
-			mw.visitVarInsn(DLOAD, index);
+			mw.visitVarInsn(Opcodes.DLOAD, index);
 			return 2;
 		} else if (t == char.class) {
-			mw.visitVarInsn(ILOAD, index);
+			mw.visitVarInsn(Opcodes.ILOAD, index);
 			return 1;
 		} else {
-			mw.visitVarInsn(ALOAD, index);
+			mw.visitVarInsn(Opcodes.ALOAD, index);
 			return 1;
 		}
 	}
 
 	private static void returnType(MethodVisitor mw, Class<?> t) {
 		if (t == void.class) {
-			mw.visitInsn(RETURN);
+			mw.visitInsn(Opcodes.RETURN);
 		} else if (t == double.class) {
-			mw.visitInsn(DRETURN);
+			mw.visitInsn(Opcodes.DRETURN);
 		} else if (t == float.class) {
-			mw.visitInsn(FRETURN);
+			mw.visitInsn(Opcodes.FRETURN);
 		} else if (t == long.class) {
-			mw.visitInsn(LRETURN);
+			mw.visitInsn(Opcodes.LRETURN);
 		} else if (t == int.class) {
-			mw.visitInsn(IRETURN);
+			mw.visitInsn(Opcodes.IRETURN);
 		} else if (t == boolean.class) {
-			mw.visitInsn(IRETURN);
+			mw.visitInsn(Opcodes.IRETURN);
 		} else if (t == byte.class) {
-			mw.visitInsn(IRETURN);
+			mw.visitInsn(Opcodes.IRETURN);
 		} else if (t == short.class) {
-			mw.visitInsn(IRETURN);
+			mw.visitInsn(Opcodes.IRETURN);
 		} else if (t == char.class) {
-			mw.visitInsn(IRETURN);
+			mw.visitInsn(Opcodes.IRETURN);
 		} else {
-			mw.visitInsn(ARETURN);
+			mw.visitInsn(Opcodes.ARETURN);
 		}
 	}
 
@@ -653,64 +630,65 @@ class ProxyGenerator {
 
 	private static void writeCheckCastReturn(MethodVisitor mw, Class<?> returntype) {
 		if (returntype == void.class) {
-			mw.visitInsn(RETURN);
+			mw.visitInsn(Opcodes.RETURN);
 		} else if (returntype == double.class) {
-			mw.visitTypeInsn(CHECKCAST, JAVA_LANG_DOUBLE_INTERNAL_NAME);
-			mw.visitMethodInsn(INVOKEVIRTUAL, JAVA_LANG_DOUBLE_INTERNAL_NAME, "doubleValue", "()D", false);
-			mw.visitInsn(DRETURN);
+			mw.visitTypeInsn(Opcodes.CHECKCAST, JAVA_LANG_DOUBLE_INTERNAL_NAME);
+			mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, JAVA_LANG_DOUBLE_INTERNAL_NAME, "doubleValue", "()D", false);
+			mw.visitInsn(Opcodes.DRETURN);
 		} else if (returntype == float.class) {
-			mw.visitTypeInsn(CHECKCAST, JAVA_LANG_FLOAT_INTERNAL_NAME);
-			mw.visitMethodInsn(INVOKEVIRTUAL, JAVA_LANG_FLOAT_INTERNAL_NAME, "floatValue", "()F", false);
-			mw.visitInsn(FRETURN);
+			mw.visitTypeInsn(Opcodes.CHECKCAST, JAVA_LANG_FLOAT_INTERNAL_NAME);
+			mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, JAVA_LANG_FLOAT_INTERNAL_NAME, "floatValue", "()F", false);
+			mw.visitInsn(Opcodes.FRETURN);
 		} else if (returntype == long.class) {
-			mw.visitTypeInsn(CHECKCAST, JAVA_LANG_LONG_INTERNAL_NAME);
-			mw.visitMethodInsn(INVOKEVIRTUAL, JAVA_LANG_LONG_INTERNAL_NAME, "longValue", "()J", false);
-			mw.visitInsn(LRETURN);
+			mw.visitTypeInsn(Opcodes.CHECKCAST, JAVA_LANG_LONG_INTERNAL_NAME);
+			mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, JAVA_LANG_LONG_INTERNAL_NAME, "longValue", "()J", false);
+			mw.visitInsn(Opcodes.LRETURN);
 		} else if (returntype == int.class) {
-			mw.visitTypeInsn(CHECKCAST, JAVA_LANG_INTEGER_INTERNAL_NAME);
-			mw.visitMethodInsn(INVOKEVIRTUAL, JAVA_LANG_INTEGER_INTERNAL_NAME, "intValue", "()I", false);
-			mw.visitInsn(IRETURN);
+			mw.visitTypeInsn(Opcodes.CHECKCAST, JAVA_LANG_INTEGER_INTERNAL_NAME);
+			mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, JAVA_LANG_INTEGER_INTERNAL_NAME, "intValue", "()I", false);
+			mw.visitInsn(Opcodes.IRETURN);
 		} else if (returntype == boolean.class) {
-			mw.visitTypeInsn(CHECKCAST, JAVA_LANG_BOOLEAN_INTERNAL_NAME);
-			mw.visitMethodInsn(INVOKEVIRTUAL, JAVA_LANG_BOOLEAN_INTERNAL_NAME, "booleanValue", "()Z", false);
-			mw.visitInsn(IRETURN);
+			mw.visitTypeInsn(Opcodes.CHECKCAST, JAVA_LANG_BOOLEAN_INTERNAL_NAME);
+			mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, JAVA_LANG_BOOLEAN_INTERNAL_NAME, "booleanValue", "()Z", false);
+			mw.visitInsn(Opcodes.IRETURN);
 		} else if (returntype == byte.class) {
-			mw.visitTypeInsn(CHECKCAST, JAVA_LANG_BYTE_INTERNAL_NAME);
-			mw.visitMethodInsn(INVOKEVIRTUAL, JAVA_LANG_BYTE_INTERNAL_NAME, "byteValue", "()B", false);
-			mw.visitInsn(IRETURN);
+			mw.visitTypeInsn(Opcodes.CHECKCAST, JAVA_LANG_BYTE_INTERNAL_NAME);
+			mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, JAVA_LANG_BYTE_INTERNAL_NAME, "byteValue", "()B", false);
+			mw.visitInsn(Opcodes.IRETURN);
 		} else if (returntype == short.class) {
-			mw.visitTypeInsn(CHECKCAST, JAVA_LANG_SHORT_INTERNAL_NAME);
-			mw.visitMethodInsn(INVOKEVIRTUAL, JAVA_LANG_SHORT_INTERNAL_NAME, "shortValue", "()S", false);
-			mw.visitInsn(IRETURN);
+			mw.visitTypeInsn(Opcodes.CHECKCAST, JAVA_LANG_SHORT_INTERNAL_NAME);
+			mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, JAVA_LANG_SHORT_INTERNAL_NAME, "shortValue", "()S", false);
+			mw.visitInsn(Opcodes.IRETURN);
 		} else if (returntype == char.class) {
-			mw.visitTypeInsn(CHECKCAST, JAVA_LANG_CHARACTER_INTERNAL_NAME);
-			mw.visitMethodInsn(INVOKEVIRTUAL, JAVA_LANG_CHARACTER_INTERNAL_NAME, "charValue", "()C", false);
-			mw.visitInsn(IRETURN);
+			mw.visitTypeInsn(Opcodes.CHECKCAST, JAVA_LANG_CHARACTER_INTERNAL_NAME);
+			mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, JAVA_LANG_CHARACTER_INTERNAL_NAME, "charValue", "()C", false);
+			mw.visitInsn(Opcodes.IRETURN);
 		} else {
 			if (returntype != Object.class) {
-				mw.visitTypeInsn(CHECKCAST, Type.getInternalName(returntype));
+				mw.visitTypeInsn(Opcodes.CHECKCAST, Type.getInternalName(returntype));
 			}
-			mw.visitInsn(ARETURN);
+			mw.visitInsn(Opcodes.ARETURN);
 		}
 	}
 
 	private static void writeProxyConstructorMethod(String thisclassinternalname, String superclassinternalname,
 			ClassWriter cw, Set<String> cachehelperfieldnames) {
-		MethodVisitor constructorv = cw.visitMethod(ACC_PUBLIC, "<init>", "(Ljava/lang/ref/Reference;I)V", null, null);
+		MethodVisitor constructorv = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(Ljava/lang/ref/Reference;I)V", null,
+				null);
 		constructorv.visitCode();
-		constructorv.visitVarInsn(ALOAD, 0);
-		constructorv.visitVarInsn(ALOAD, 1);
-		constructorv.visitVarInsn(ILOAD, 2);
-		constructorv.visitMethodInsn(INVOKESPECIAL, superclassinternalname, "<init>", "(Ljava/lang/ref/Reference;I)V",
-				false);
+		constructorv.visitVarInsn(Opcodes.ALOAD, 0);
+		constructorv.visitVarInsn(Opcodes.ALOAD, 1);
+		constructorv.visitVarInsn(Opcodes.ILOAD, 2);
+		constructorv.visitMethodInsn(Opcodes.INVOKESPECIAL, superclassinternalname, "<init>",
+				"(Ljava/lang/ref/Reference;I)V", false);
 		for (String chfname : cachehelperfieldnames) {
-			constructorv.visitVarInsn(ALOAD, 0);
-			constructorv.visitTypeInsn(NEW, RMICACHEHELPER_INTERNAL_NAME);
-			constructorv.visitInsn(DUP);
-			constructorv.visitMethodInsn(INVOKESPECIAL, RMICACHEHELPER_INTERNAL_NAME, "<init>", "()V", false);
-			constructorv.visitFieldInsn(PUTFIELD, thisclassinternalname, chfname, JAVA_LANG_OBJECT_DESCRIPTOR);
+			constructorv.visitVarInsn(Opcodes.ALOAD, 0);
+			constructorv.visitTypeInsn(Opcodes.NEW, RMICACHEHELPER_INTERNAL_NAME);
+			constructorv.visitInsn(Opcodes.DUP);
+			constructorv.visitMethodInsn(Opcodes.INVOKESPECIAL, RMICACHEHELPER_INTERNAL_NAME, "<init>", "()V", false);
+			constructorv.visitFieldInsn(Opcodes.PUTFIELD, thisclassinternalname, chfname, JAVA_LANG_OBJECT_DESCRIPTOR);
 		}
-		constructorv.visitInsn(RETURN);
+		constructorv.visitInsn(Opcodes.RETURN);
 		constructorv.visitMaxs(0, 0);
 		constructorv.visitEnd();
 	}
@@ -724,21 +702,23 @@ class ProxyGenerator {
 		if (collectstatistics) {
 			methoddescriptor = "(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
 					+ "[Ljava/lang/Object;" + RMISTATISTICS_DESCRIPTOR + ")Ljava/lang/Object;";
-			mw.visitFieldInsn(GETSTATIC, markerclassinternalname, PROXY_MARKER_RMI_STATISTICS_FIELD_NAME,
+			mw.visitFieldInsn(Opcodes.GETSTATIC, markerclassinternalname, PROXY_MARKER_RMI_STATISTICS_FIELD_NAME,
 					RMISTATISTICS_DESCRIPTOR);
 		} else {
 			methoddescriptor = "(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
 					+ "[Ljava/lang/Object;)Ljava/lang/Object;";
 		}
-		mw.visitMethodInsn(INVOKESTATIC, REMOTEPROXYOBJECT_INTERNAL_NAME, callmethodname, methoddescriptor, false);
+		mw.visitMethodInsn(Opcodes.INVOKESTATIC, REMOTEPROXYOBJECT_INTERNAL_NAME, callmethodname, methoddescriptor,
+				false);
 
 		writeObjectReturnInstructions(mw, mr);
 	}
 
 	private static void loadCallInvokerMethodInstructionParameters(MethodVisitor mw, String thisclassinternalname,
 			String methodfieldname, MethodKey key) {
-		mw.visitVarInsn(ALOAD, 0);
-		mw.visitFieldInsn(GETSTATIC, thisclassinternalname, methodfieldname, METHODTRANSFERROPERTIES_DESCRIPTOR);
+		mw.visitVarInsn(Opcodes.ALOAD, 0);
+		mw.visitFieldInsn(Opcodes.GETSTATIC, thisclassinternalname, methodfieldname,
+				METHODTRANSFERROPERTIES_DESCRIPTOR);
 		Class<?>[] argtypes = key.argTypes;
 		writeLoadArgumentsArrayInstructions(mw, argtypes);
 	}
@@ -749,7 +729,7 @@ class ProxyGenerator {
 
 	private static void writeObjectReturnInstructions(MethodVisitor mw, Class<?> returntype) {
 		if (returntype == void.class) {
-			mw.visitInsn(RETURN);
+			mw.visitInsn(Opcodes.RETURN);
 		} else {
 			writeCheckCastReturn(mw, returntype);
 		}
@@ -758,63 +738,63 @@ class ProxyGenerator {
 	private static void writeLoadArgumentsArrayInstructions(MethodVisitor mw, Class<?>[] argtypes) {
 		if (argtypes.length > 0) {
 			mw.visitLdcInsn(argtypes.length);
-			mw.visitTypeInsn(ANEWARRAY, JAVA_LANG_OBJECT_INTERNAL_NAME);
+			mw.visitTypeInsn(Opcodes.ANEWARRAY, JAVA_LANG_OBJECT_INTERNAL_NAME);
 
 			int idx = 0;
 			for (int j = 0; j < argtypes.length; j++) {
-				mw.visitInsn(DUP);
+				mw.visitInsn(Opcodes.DUP);
 				mw.visitLdcInsn(j);
 
 				Class<?> t = argtypes[j];
 				if (t == boolean.class) {
-					mw.visitVarInsn(ILOAD, idx + 1);
-					mw.visitMethodInsn(INVOKESTATIC, JAVA_LANG_BOOLEAN_INTERNAL_NAME, "valueOf",
+					mw.visitVarInsn(Opcodes.ILOAD, idx + 1);
+					mw.visitMethodInsn(Opcodes.INVOKESTATIC, JAVA_LANG_BOOLEAN_INTERNAL_NAME, "valueOf",
 							"(Z)Ljava/lang/Boolean;", false);
 					idx += 1;
 				} else if (t == byte.class) {
-					mw.visitVarInsn(ILOAD, idx + 1);
-					mw.visitMethodInsn(INVOKESTATIC, JAVA_LANG_BYTE_INTERNAL_NAME, "valueOf", "(B)Ljava/lang/Byte;",
-							false);
+					mw.visitVarInsn(Opcodes.ILOAD, idx + 1);
+					mw.visitMethodInsn(Opcodes.INVOKESTATIC, JAVA_LANG_BYTE_INTERNAL_NAME, "valueOf",
+							"(B)Ljava/lang/Byte;", false);
 					idx += 1;
 				} else if (t == short.class) {
-					mw.visitVarInsn(ILOAD, idx + 1);
-					mw.visitMethodInsn(INVOKESTATIC, JAVA_LANG_SHORT_INTERNAL_NAME, "valueOf", "(S)Ljava/lang/Short;",
-							false);
+					mw.visitVarInsn(Opcodes.ILOAD, idx + 1);
+					mw.visitMethodInsn(Opcodes.INVOKESTATIC, JAVA_LANG_SHORT_INTERNAL_NAME, "valueOf",
+							"(S)Ljava/lang/Short;", false);
 					idx += 1;
 				} else if (t == int.class) {
-					mw.visitVarInsn(ILOAD, idx + 1);
-					mw.visitMethodInsn(INVOKESTATIC, JAVA_LANG_INTEGER_INTERNAL_NAME, "valueOf",
+					mw.visitVarInsn(Opcodes.ILOAD, idx + 1);
+					mw.visitMethodInsn(Opcodes.INVOKESTATIC, JAVA_LANG_INTEGER_INTERNAL_NAME, "valueOf",
 							"(I)Ljava/lang/Integer;", false);
 					idx += 1;
 				} else if (t == long.class) {
-					mw.visitVarInsn(LLOAD, idx + 1);
-					mw.visitMethodInsn(INVOKESTATIC, JAVA_LANG_LONG_INTERNAL_NAME, "valueOf", "(J)Ljava/lang/Long;",
-							false);
+					mw.visitVarInsn(Opcodes.LLOAD, idx + 1);
+					mw.visitMethodInsn(Opcodes.INVOKESTATIC, JAVA_LANG_LONG_INTERNAL_NAME, "valueOf",
+							"(J)Ljava/lang/Long;", false);
 					idx += 2;
 				} else if (t == float.class) {
-					mw.visitVarInsn(FLOAD, idx + 1);
-					mw.visitMethodInsn(INVOKESTATIC, JAVA_LANG_FLOAT_INTERNAL_NAME, "valueOf", "(F)Ljava/lang/Float;",
-							false);
+					mw.visitVarInsn(Opcodes.FLOAD, idx + 1);
+					mw.visitMethodInsn(Opcodes.INVOKESTATIC, JAVA_LANG_FLOAT_INTERNAL_NAME, "valueOf",
+							"(F)Ljava/lang/Float;", false);
 					idx += 1;
 				} else if (t == double.class) {
-					mw.visitVarInsn(DLOAD, idx + 1);
-					mw.visitMethodInsn(INVOKESTATIC, JAVA_LANG_DOUBLE_INTERNAL_NAME, "valueOf", "(D)Ljava/lang/Double;",
-							false);
+					mw.visitVarInsn(Opcodes.DLOAD, idx + 1);
+					mw.visitMethodInsn(Opcodes.INVOKESTATIC, JAVA_LANG_DOUBLE_INTERNAL_NAME, "valueOf",
+							"(D)Ljava/lang/Double;", false);
 					idx += 2;
 				} else if (t == char.class) {
-					mw.visitVarInsn(ILOAD, idx + 1);
-					mw.visitMethodInsn(INVOKESTATIC, JAVA_LANG_CHARACTER_INTERNAL_NAME, "valueOf",
+					mw.visitVarInsn(Opcodes.ILOAD, idx + 1);
+					mw.visitMethodInsn(Opcodes.INVOKESTATIC, JAVA_LANG_CHARACTER_INTERNAL_NAME, "valueOf",
 							"(C)Ljava/lang/Character;", false);
 					idx += 1;
 				} else {
-					mw.visitVarInsn(ALOAD, idx + 1);
+					mw.visitVarInsn(Opcodes.ALOAD, idx + 1);
 					idx += 1;
 				}
 
-				mw.visitInsn(AASTORE);
+				mw.visitInsn(Opcodes.AASTORE);
 			}
 		} else {
-			mw.visitInsn(ACONST_NULL);
+			mw.visitInsn(Opcodes.ACONST_NULL);
 		}
 	}
 
@@ -822,7 +802,7 @@ class ProxyGenerator {
 			String thisclassinternalname, MethodRef mr) {
 		MethodKey key = mr.key;
 		return mv -> {
-			mv.visitVarInsn(ALOAD, 0);
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
 			//TODO if the declaring class of the method is not public, then the calling of the method will throw an IllegalAccessError
 			//     this needs to be either disallowed, or fixed. This can happen if the method that specifies the
 			//     properties are defined in a superinterface that is package private, although the subinterface is public
@@ -830,42 +810,50 @@ class ProxyGenerator {
 			mv.visitLdcInsn(Type.getType(mr.getMethod().getDeclaringClass()));
 			mv.visitLdcInsn(key.name);
 			mv.visitLdcInsn(key.argTypes.length);
-			mv.visitTypeInsn(ANEWARRAY, JAVA_LANG_CLASS_INTERNAL_NAME);
+			mv.visitTypeInsn(Opcodes.ANEWARRAY, JAVA_LANG_CLASS_INTERNAL_NAME);
 			for (int j = 0; j < key.argTypes.length; j++) {
-				mv.visitInsn(DUP);
+				mv.visitInsn(Opcodes.DUP);
 				mv.visitLdcInsn(j);
 
 				Class<?> argtype = key.argTypes[j];
 				loadClassTypeConstant(argtype, mv);
 
-				mv.visitInsn(AASTORE);
+				mv.visitInsn(Opcodes.AASTORE);
 			}
 
-			mv.visitMethodInsn(INVOKEVIRTUAL, JAVA_LANG_CLASS_INTERNAL_NAME, "getMethod",
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, JAVA_LANG_CLASS_INTERNAL_NAME, "getMethod",
 					"(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;", false);
-			mv.visitMethodInsn(INVOKEVIRTUAL, RMITRANSFERPROPERTIESHOLDER_INTERNAL_NAME, "getExecutableProperties",
-					"(Ljava/lang/reflect/Method;)" + METHODTRANSFERROPERTIES_DESCRIPTOR, false);
-			mv.visitFieldInsn(PUTSTATIC, thisclassinternalname, methodfieldname, METHODTRANSFERROPERTIES_DESCRIPTOR);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, RMITRANSFERPROPERTIESHOLDER_INTERNAL_NAME,
+					"getExecutableProperties", "(Ljava/lang/reflect/Method;)" + METHODTRANSFERROPERTIES_DESCRIPTOR,
+					false);
+			mv.visitFieldInsn(Opcodes.PUTSTATIC, thisclassinternalname, methodfieldname,
+					METHODTRANSFERROPERTIES_DESCRIPTOR);
 		};
 	}
 
 	private static void loadClassTypeConstant(Class<?> argtype, MethodVisitor clinitv) {
 		if (argtype == byte.class) {
-			clinitv.visitFieldInsn(GETSTATIC, JAVA_LANG_BYTE_INTERNAL_NAME, "TYPE", JAVA_LANG_CLASS_DESCRIPTOR);
+			clinitv.visitFieldInsn(Opcodes.GETSTATIC, JAVA_LANG_BYTE_INTERNAL_NAME, "TYPE", JAVA_LANG_CLASS_DESCRIPTOR);
 		} else if (argtype == short.class) {
-			clinitv.visitFieldInsn(GETSTATIC, JAVA_LANG_SHORT_INTERNAL_NAME, "TYPE", JAVA_LANG_CLASS_DESCRIPTOR);
+			clinitv.visitFieldInsn(Opcodes.GETSTATIC, JAVA_LANG_SHORT_INTERNAL_NAME, "TYPE",
+					JAVA_LANG_CLASS_DESCRIPTOR);
 		} else if (argtype == int.class) {
-			clinitv.visitFieldInsn(GETSTATIC, JAVA_LANG_INTEGER_INTERNAL_NAME, "TYPE", JAVA_LANG_CLASS_DESCRIPTOR);
+			clinitv.visitFieldInsn(Opcodes.GETSTATIC, JAVA_LANG_INTEGER_INTERNAL_NAME, "TYPE",
+					JAVA_LANG_CLASS_DESCRIPTOR);
 		} else if (argtype == long.class) {
-			clinitv.visitFieldInsn(GETSTATIC, JAVA_LANG_LONG_INTERNAL_NAME, "TYPE", JAVA_LANG_CLASS_DESCRIPTOR);
+			clinitv.visitFieldInsn(Opcodes.GETSTATIC, JAVA_LANG_LONG_INTERNAL_NAME, "TYPE", JAVA_LANG_CLASS_DESCRIPTOR);
 		} else if (argtype == float.class) {
-			clinitv.visitFieldInsn(GETSTATIC, JAVA_LANG_FLOAT_INTERNAL_NAME, "TYPE", JAVA_LANG_CLASS_DESCRIPTOR);
+			clinitv.visitFieldInsn(Opcodes.GETSTATIC, JAVA_LANG_FLOAT_INTERNAL_NAME, "TYPE",
+					JAVA_LANG_CLASS_DESCRIPTOR);
 		} else if (argtype == double.class) {
-			clinitv.visitFieldInsn(GETSTATIC, JAVA_LANG_DOUBLE_INTERNAL_NAME, "TYPE", JAVA_LANG_CLASS_DESCRIPTOR);
+			clinitv.visitFieldInsn(Opcodes.GETSTATIC, JAVA_LANG_DOUBLE_INTERNAL_NAME, "TYPE",
+					JAVA_LANG_CLASS_DESCRIPTOR);
 		} else if (argtype == boolean.class) {
-			clinitv.visitFieldInsn(GETSTATIC, JAVA_LANG_BOOLEAN_INTERNAL_NAME, "TYPE", JAVA_LANG_CLASS_DESCRIPTOR);
+			clinitv.visitFieldInsn(Opcodes.GETSTATIC, JAVA_LANG_BOOLEAN_INTERNAL_NAME, "TYPE",
+					JAVA_LANG_CLASS_DESCRIPTOR);
 		} else if (argtype == char.class) {
-			clinitv.visitFieldInsn(GETSTATIC, JAVA_LANG_CHARACTER_INTERNAL_NAME, "TYPE", JAVA_LANG_CLASS_DESCRIPTOR);
+			clinitv.visitFieldInsn(Opcodes.GETSTATIC, JAVA_LANG_CHARACTER_INTERNAL_NAME, "TYPE",
+					JAVA_LANG_CLASS_DESCRIPTOR);
 		} else {
 			clinitv.visitLdcInsn(Type.getType(argtype));
 		}
@@ -884,9 +872,9 @@ class ProxyGenerator {
 			}
 		}
 
-		mrefv.visitVarInsn(ALOAD, 0);
+		mrefv.visitVarInsn(Opcodes.ALOAD, 0);
 		loadParameters(key.argTypes, mrefv);
-		mrefv.visitMethodInsn(INVOKESPECIAL, Type.getInternalName(defaultinvokesuperclass), key.name,
+		mrefv.visitMethodInsn(Opcodes.INVOKESPECIAL, Type.getInternalName(defaultinvokesuperclass), key.name,
 				Type.getMethodDescriptor(mr.getMethod()), true);
 		returnType(mrefv, mr.getReturnType());
 	}

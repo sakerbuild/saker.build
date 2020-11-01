@@ -111,7 +111,7 @@ import saker.build.thirdparty.saker.util.io.function.ObjectWriterFunction;
  * elements can be queried from the exception.
  * <p>
  * Callers may optionally handle such scenario, but they are recommended to ensure that this never occurs, and fail the
- * serialization completly instead. If this happens, make sure to cease all modifications to the externalized
+ * serialization completely instead. If this happens, make sure to cease all modifications to the externalized
  * collections by employing some sort of synchronization.
  * <p>
  * Some functions in this class define themselves to read a specific type of collection from an input, or read them as
