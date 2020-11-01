@@ -766,10 +766,11 @@ public class BuildCommand {
 				IOFunction<DaemonConnectParam, RemoteDaemonConnection> connector;
 
 				if (builddaemonenv == null) {
-					//XXX make this socket factory configureable
-					SocketFactory socketfactory = SocketFactory.getDefault();
-					connector = c -> RemoteDaemonConnection.connect(socketfactory,
-							c.address.getSocketAddressThrowArgumentException());
+					connector = c -> {
+						InetSocketAddress address = c.address.getSocketAddressThrowArgumentException();
+						SocketFactory socketfactory = authParams.getSocketFactoryForDaemonConnection(address);
+						return RemoteDaemonConnection.connect(socketfactory, address);
+					};
 				} else {
 					connector = c -> builddaemonenv.connectTo(c.address.getSocketAddressThrowArgumentException());
 				}

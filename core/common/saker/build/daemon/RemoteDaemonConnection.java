@@ -102,7 +102,7 @@ public interface RemoteDaemonConnection extends Closeable {
 	}
 
 	public static RemoteDaemonConnection connect(SocketAddress address) throws IOException {
-		return connect(SocketFactory.getDefault(), address);
+		return connect(null, address);
 	}
 
 	public static ClassLoaderResolverRegistry createConnectionBaseClassLoaderResolver() {

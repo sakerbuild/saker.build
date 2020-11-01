@@ -20,8 +20,11 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 
 import javax.net.ServerSocketFactory;
 import javax.net.SocketFactory;
@@ -95,6 +98,8 @@ public class AuthKeystoreParamContext {
 
 	private transient LazySupplier<SSLContext> sslContextComputer = LazySupplier.of(this::computeSSLContext);
 
+	private transient ConcurrentMap<Path, LazySupplier<Collection<? extends RunningDaemonConnectionInfo>>> runningDamonInfos = new ConcurrentSkipListMap<>();
+
 	public List<String> toCommandLineArguments() {
 		SakerPath kspath = getAuthKeystorePath();
 		if (kspath == null) {
@@ -152,7 +157,7 @@ public class AuthKeystoreParamContext {
 	}
 
 	public SSLContext getSSLContext() {
-		return computeSSLContext();
+		return sslContextComputer.get();
 	}
 
 	private SSLContext computeSSLContext() {
@@ -176,8 +181,7 @@ public class AuthKeystoreParamContext {
 							storagedirectory = SakerEnvironmentImpl.getDefaultStorageDirectory();
 						}
 						int port = address.getPort();
-						for (RunningDaemonConnectionInfo conninfo : LocalDaemonEnvironment
-								.getRunningDaemonInfos(storagedirectory)) {
+						for (RunningDaemonConnectionInfo conninfo : getRunningDaemonConnectionInfo(storagedirectory)) {
 							if (conninfo.getPort() != port) {
 								continue;
 							}
@@ -195,7 +199,7 @@ public class AuthKeystoreParamContext {
 							}
 							return result;
 						}
-					} catch (IOException | RuntimeException e) {
+					} catch (RuntimeException e) {
 						if (TestFlag.ENABLED) {
 							e.printStackTrace();
 						}
@@ -209,5 +213,20 @@ public class AuthKeystoreParamContext {
 
 	public SocketFactory getSocketFactoryForDaemonConnection(InetSocketAddress address) {
 		return getSocketFactoryForDaemonConnection(address, null, null);
+	}
+
+	private Collection<? extends RunningDaemonConnectionInfo> getRunningDaemonConnectionInfo(Path storagedirectory) {
+		return runningDamonInfos.computeIfAbsent(storagedirectory, p -> {
+			return LazySupplier.of(() -> {
+				try {
+					return LocalDaemonEnvironment.getRunningDaemonInfos(storagedirectory);
+				} catch (IOException e) {
+					if (TestFlag.ENABLED) {
+						e.printStackTrace();
+					}
+				}
+				return Collections.emptyList();
+			});
+		}).get();
 	}
 }
