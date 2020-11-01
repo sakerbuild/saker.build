@@ -51,11 +51,11 @@ import saker.build.runtime.environment.SakerEnvironment;
  * If no cache entry exists for the retrieval, the allocation and generation will proceed without any validation.
  * <p>
  * If the cache key implementation throws an error during allocation or generation, the cache entry will be removed
- * completly from the cache, and any open resources will be closed.
+ * completely from the cache, and any open resources will be closed.
  * <p>
  * The cache implementation uses {@linkplain SoftReference soft} and {linkplain WeakReference weak} references to keep
  * track of the generated Datas. When it detects that they have been garbage collected, then the allocated Resource will
- * be closed sometime in the future via {@link #close(Object, Object)}, and the cache entry will be completly removed.
+ * be closed sometime in the future via {@link #close(Object, Object)}, and the cache entry will be completely removed.
  * <p>
  * It is possible that the Data is garbage collected, and Resource still resides in the cache. When a new cache entry
  * retrieval is done, it can reuse the still available Resource if possible.

@@ -27,6 +27,7 @@ import javax.net.ssl.SSLContext;
 
 import saker.build.daemon.DaemonLaunchParameters;
 import saker.build.daemon.DaemonOutputController.StreamToken;
+import saker.build.daemon.LocalDaemonEnvironment.AddressResolver;
 import saker.build.daemon.LocalDaemonEnvironment;
 import saker.build.daemon.WeakRefDaemonOutputController;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -137,9 +138,9 @@ public class RunDaemonCommand {
 							"Cannot connect to daemon as client without acting as cluster. (Use "
 									+ GeneralDaemonParams.PARAM_NAME_CLUSTER_ENABLE + ")");
 				}
-				Set<SocketAddress> serveraddresses = new LinkedHashSet<>();
+				Set<AddressResolver> serveraddresses = new LinkedHashSet<>();
 				ThreadUtils.runParallelItems(startParams.connectClientParam, addr -> {
-					serveraddresses.add(addr.getSocketAddressThrowArgumentException());
+					serveraddresses.add(addr.getAsAddressResolver());
 				});
 				daemonenv.setConnectToAsClusterAddresses(serveraddresses);
 			}

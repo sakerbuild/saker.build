@@ -26,6 +26,7 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
@@ -52,6 +53,7 @@ import saker.build.file.path.PathKey;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.LocalFileProvider;
+import saker.build.launching.LaunchConfigUtils;
 import saker.build.runtime.environment.EnvironmentParameters;
 import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
@@ -74,6 +76,7 @@ import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
 import saker.build.thirdparty.saker.rmi.connection.RMIOptions;
 import saker.build.thirdparty.saker.rmi.connection.RMIServer;
+import saker.build.thirdparty.saker.rmi.connection.RMISocketConfiguration;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.util.DateUtils;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
@@ -164,7 +167,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 	private Set<WeakReference<TaskInvokerFactory>> clientClusterTaskInvokers = Collections
 			.synchronizedSet(new HashSet<>());
-	private Set<SocketAddress> connectToAsClusterAddresses;
+	private Set<? extends AddressResolver> connectToAsClusterAddresses;
 	private ThreadWorkPool clusterClientConnectingWorkPool;
 	private ThreadGroup clusterClientConnectingThreadGroup;
 
@@ -211,7 +214,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		this.serverSocketFactory = serverSocketFactory;
 	}
 
-	public void setConnectToAsClusterAddresses(Set<SocketAddress> serveraddresses) {
+	public void setConnectToAsClusterAddresses(Set<? extends AddressResolver> serveraddresses) {
 		checkUnstarted();
 		if (!constructLaunchParameters.isActsAsCluster()) {
 			throw new IllegalArgumentException("Daemon environment doesn't act as cluster.");
@@ -444,7 +447,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 			clusterClientConnectingThreadGroup.setDaemon(true);
 			clusterClientConnectingWorkPool = ThreadUtils.newDynamicWorkPool(clusterClientConnectingThreadGroup,
 					"cluster-client-");
-			for (SocketAddress addr : connectToAsClusterAddresses) {
+			for (AddressResolver addr : connectToAsClusterAddresses) {
 				clusterClientConnectingWorkPool.offer(new ClusterClientConnectingRunnable(addr));
 			}
 		}
@@ -648,10 +651,12 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		try {
 			state = STATE_CLOSED;
 
-			if (clusterClientConnectingThreadGroup != null) {
-				clusterClientConnectingThreadGroup.interrupt();
+			ThreadGroup connthreadgroup = clusterClientConnectingThreadGroup;
+			if (connthreadgroup != null) {
+				connthreadgroup.interrupt();
+				//signal exit to the thread pool, but don't wait for it yet.
 				try {
-					clusterClientConnectingWorkPool.close();
+					clusterClientConnectingWorkPool.exit();
 				} catch (Exception e) {
 					//shouldn't happen but print anyway
 					e.printStackTrace();
@@ -681,8 +686,16 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 				try {
 					server.closeWait();
 				} catch (IOException | InterruptedException e) {
-					//print the result
 					e.printStackTrace();
+				} catch (Throwable e) {
+					//print any exception
+					try {
+						closeImpl();
+					} catch (Throwable e2) {
+						e.addSuppressed(e2);
+					}
+					e.printStackTrace();
+					throw e;
 				}
 
 				closeImpl();
@@ -691,6 +704,16 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 			IOUtils.closePrint(this.fileLock, this.lockFile);
 			this.fileLock = null;
 			this.lockFile = null;
+
+			if (connthreadgroup != null) {
+				//wait for the thread pool
+				try {
+					clusterClientConnectingWorkPool.close();
+				} catch (Exception e) {
+					//shouldn't happen but print anyway
+					e.printStackTrace();
+				}
+			}
 		} finally {
 			if (interrupted) {
 				Thread.currentThread().interrupt();
@@ -701,6 +724,13 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	@Override
 	public ProjectCacheHandle getProject(PathKey workingdir) throws IOException {
 		return getProjectImpl(workingdir);
+	}
+
+	public interface AddressResolver {
+		public SocketAddress getAddress() throws UnknownHostException;
+
+		@Override
+		public String toString();
 	}
 
 	private DaemonProjectHandle getProjectImpl(PathKey workingdir) throws IOException {
@@ -737,10 +767,10 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	}
 
 	private final class ClusterClientConnectingRunnable implements ThrowingRunnable {
-		private final SocketAddress addr;
+		private final AddressResolver addrResolver;
 
-		private ClusterClientConnectingRunnable(SocketAddress addr) {
-			this.addr = addr;
+		private ClusterClientConnectingRunnable(AddressResolver addrResolver) {
+			this.addrResolver = addrResolver;
 		}
 
 		@Override
@@ -748,71 +778,90 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 			int sleepsecs = 5;
 			try {
 				while (!Thread.interrupted() && state == STATE_STARTED) {
+					SocketAddress addr = null;
 					try {
-						System.out.println("Connecting as client to: " + addr);
-						RMIConnection rmiconn = RemoteDaemonConnection.initiateRMIConnection(connectionSocketFactory,
-								addr);
-						System.out.println("Connected as client to: " + addr);
-						sleepsecs = 1;
-						RMIVariables vars = null;
-						try {
-							vars = rmiconn.newVariables();
-							DaemonAccess access = (DaemonAccess) vars
-									.getRemoteContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_ACCESS);
-							DaemonClientServer clientserver = access.getDaemonClientServer();
+						addr = addrResolver.getAddress();
+					} catch (UnknownHostException e) {
+						ExceptionView ev = ExceptionView.create(e);
 
-							ClassLoaderResolverRegistry connectionclresolver = (ClassLoaderResolverRegistry) rmiconn
-									.getClassLoaderResolver();
-							LocalDaemonClusterInvokerFactory clusterinvokerfactory = new LocalDaemonClusterInvokerFactory(
-									connectionclresolver, constructLaunchParameters.getClusterMirrorDirectory());
-							boolean selfconnection = false;
-							try {
-								clientserver.addClientClusterTaskInvokerFactory(clusterinvokerfactory);
-							} catch (InvalidBuildConfigurationException e) {
-								synchronized (System.err) {
-									System.err.println(
-											"Invalid cluster configuration error detected while connecting to daemon:");
-									System.err.println(e);
-									System.err.println("Dropping client connection attempts for: " + addr);
-								}
-								selfconnection = true;
-							}
-							if (!selfconnection) {
-								final RMIConnection frmiconn = rmiconn;
-								rmiconn.addCloseListener(new RMIConnection.CloseListener() {
-									@Override
-									public void onConnectionClosed() {
-										SakerRMIHelper.dumpRMIStatistics(frmiconn);
-										if (state != STATE_STARTED) {
-											return;
-										}
-										//restart connection
-										try {
-											clusterClientConnectingWorkPool.offer(ClusterClientConnectingRunnable.this);
-										} catch (Exception e) {
-											//the pool may've been closed already
-											e.printStackTrace();
-										}
-									}
-								});
-								rmiconn = null;
-							}
-							break;
-						} catch (Exception e) {
-							e.printStackTrace(System.out);
-						} finally {
-							IOUtils.closePrint(rmiconn);
-						}
-					} catch (ConnectException e) {
-						//connection failed.
-					} catch (SocketTimeoutException e) {
-					} catch (ClosedByInterruptException | InterruptedIOException e) {
-						//exit gracefully
-						break;
+						System.out.println("Failed to resolve address: " + addrResolver);
+						SakerLog.printFormatException(ev, System.out, SakerLog.CommonExceptionFormat.NO_TRACE);
 					} catch (Exception e) {
 						e.printStackTrace(System.out);
 					}
-					System.out.println("Connection failed to: " + addr + " Sleeping for " + sleepsecs + " seconds");
+					if (addr != null) {
+						try {
+							System.out.println("Connecting as client to: " + addr);
+							RMISocketConfiguration socketconfig = new RMISocketConfiguration();
+							socketconfig.setSocketFactory(connectionSocketFactory);
+							socketconfig.setConnectionInterruptible(true);
+							socketconfig.setConnectionTimeout(5000);
+
+							RMIConnection rmiconn = RemoteDaemonConnection.initiateRMIConnection(addr, socketconfig);
+							System.out.println("Connected as client to: " + addr);
+							sleepsecs = 1;
+							RMIVariables vars = null;
+							try {
+								vars = rmiconn.newVariables();
+								DaemonAccess access = (DaemonAccess) vars
+										.getRemoteContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_ACCESS);
+								DaemonClientServer clientserver = access.getDaemonClientServer();
+
+								ClassLoaderResolverRegistry connectionclresolver = (ClassLoaderResolverRegistry) rmiconn
+										.getClassLoaderResolver();
+								LocalDaemonClusterInvokerFactory clusterinvokerfactory = new LocalDaemonClusterInvokerFactory(
+										connectionclresolver, constructLaunchParameters.getClusterMirrorDirectory());
+								boolean selfconnection = false;
+								try {
+									clientserver.addClientClusterTaskInvokerFactory(clusterinvokerfactory);
+								} catch (InvalidBuildConfigurationException e) {
+									synchronized (System.err) {
+										System.err.println(
+												"Invalid cluster configuration error detected while connecting to daemon:");
+										System.err.println(e);
+										System.err.println("Dropping client connection attempts for: " + addr);
+									}
+									selfconnection = true;
+								}
+								if (!selfconnection) {
+									final RMIConnection frmiconn = rmiconn;
+									rmiconn.addCloseListener(new RMIConnection.CloseListener() {
+										@Override
+										public void onConnectionClosed() {
+											SakerRMIHelper.dumpRMIStatistics(frmiconn);
+											if (state != STATE_STARTED) {
+												return;
+											}
+											//restart connection
+											try {
+												clusterClientConnectingWorkPool
+														.offer(ClusterClientConnectingRunnable.this);
+											} catch (Exception e) {
+												//the pool may've been closed already
+												e.printStackTrace();
+											}
+										}
+									});
+									rmiconn = null;
+								}
+								break;
+							} catch (Exception e) {
+								e.printStackTrace(System.out);
+							} finally {
+								IOUtils.closePrint(rmiconn);
+							}
+						} catch (ConnectException e) {
+							//connection failed.
+						} catch (SocketTimeoutException e) {
+						} catch (ClosedByInterruptException | InterruptedIOException e) {
+							//exit gracefully
+							break;
+						} catch (Exception e) {
+							e.printStackTrace(System.out);
+						}
+					}
+					System.out.println(
+							"Connection failed to: " + addrResolver + " Sleeping for " + sleepsecs + " seconds");
 					Thread.sleep(sleepsecs * 1000);
 					sleepsecs += 5;
 					if (sleepsecs > 30) {
@@ -822,7 +871,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 			} catch (InterruptedException e) {
 				//exit gracefully
 			}
-			System.out.println("Exiting client connection thread of: " + addr);
+			System.out.println("Exiting client connection thread of: " + addrResolver);
 		}
 	}
 

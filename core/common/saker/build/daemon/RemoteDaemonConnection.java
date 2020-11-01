@@ -27,6 +27,7 @@ import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
 import saker.build.thirdparty.saker.rmi.connection.RMIOptions;
+import saker.build.thirdparty.saker.rmi.connection.RMISocketConfiguration;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
@@ -62,7 +63,12 @@ public interface RemoteDaemonConnection extends Closeable {
 	//doc: class loader resolver will be overwritten
 	public static RemoteDaemonConnection connect(SocketFactory socketfactory, SocketAddress address,
 			RMIOptions rmioptions) throws IOException {
-		RMIConnection connection = initiateRMIConnection(socketfactory, address, rmioptions);
+		RMISocketConfiguration socketconfig = new RMISocketConfiguration();
+		socketconfig.setSocketFactory(socketfactory);
+		//be interruptible by default
+		socketconfig.setConnectionInterruptible(true);
+
+		RMIConnection connection = initiateRMIConnection(address, rmioptions, socketconfig);
 		RMIVariables vars = null;
 		try {
 			vars = connection.newVariables();
@@ -103,13 +109,27 @@ public interface RemoteDaemonConnection extends Closeable {
 		return SakerEnvironmentImpl.createEnvironmentBaseClassLoaderResolverRegistry();
 	}
 
+	@Deprecated
 	public static RMIConnection initiateRMIConnection(SocketFactory socketfactory, SocketAddress address)
 			throws IOException {
 		return initiateRMIConnection(socketfactory, address, null);
 	}
 
+	public static RMIConnection initiateRMIConnection(SocketAddress address, RMISocketConfiguration socketconfig)
+			throws IOException {
+		return initiateRMIConnection(address, null, socketconfig);
+	}
+
+	@Deprecated
 	public static RMIConnection initiateRMIConnection(SocketFactory socketfactory, SocketAddress address,
 			RMIOptions rmioptions) throws IOException {
+		RMISocketConfiguration socketconfig = new RMISocketConfiguration();
+		socketconfig.setSocketFactory(socketfactory);
+		return initiateRMIConnection(address, rmioptions, socketconfig);
+	}
+
+	public static RMIConnection initiateRMIConnection(SocketAddress address, RMIOptions rmioptions,
+			RMISocketConfiguration socketconfig) throws IOException {
 		//do not need to keep reference to connection or variables
 		//    they are going to be closed when the connection is closed
 
@@ -122,7 +142,7 @@ public interface RemoteDaemonConnection extends Closeable {
 			clresolver = new ClassLoaderResolverRegistry(createConnectionBaseClassLoaderResolver());
 			rmioptions.classResolver(clresolver);
 		}
-		RMIConnection connection = rmioptions.connect(socketfactory, address);
+		RMIConnection connection = rmioptions.connect(address, socketconfig);
 		return connection;
 	}
 }

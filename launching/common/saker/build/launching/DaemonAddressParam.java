@@ -18,10 +18,12 @@ package saker.build.launching;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.net.UnknownHostException;
 import java.util.Iterator;
 
 import saker.build.daemon.DaemonLaunchParameters;
+import saker.build.daemon.LocalDaemonEnvironment.AddressResolver;
 import sipka.cmdline.api.Converter;
 import sipka.cmdline.runtime.ArgumentResolutionException;
 import sipka.cmdline.runtime.InvalidArgumentFormatException;
@@ -59,6 +61,43 @@ class DaemonAddressParam {
 	public static InetSocketAddress parseInetSocketAddress(String str) throws UnknownHostException {
 		int defaultport = DaemonLaunchParameters.DEFAULT_PORT;
 		return LaunchingUtils.parseInetSocketAddress(str, defaultport);
+	}
+
+	public AddressResolver getAsAddressResolver() {
+		String argval = this.argument;
+		if (argval == null) {
+			InetSocketAddress defaddr = getDefaultLocalDaemonSocketAddress();
+			return new AddressResolver() {
+				@Override
+				public SocketAddress getAddress() throws UnknownHostException {
+					return defaddr;
+				}
+
+				@Override
+				public String toString() {
+					return defaddr.toString();
+				}
+			};
+		}
+		return new AddressResolver() {
+			@Override
+			public SocketAddress getAddress() throws UnknownHostException {
+				try {
+					return parseInetSocketAddress(argval);
+				} catch (UnknownHostException e) {
+					throw e;
+				} catch (IllegalArgumentException e) {
+					UnknownHostException exc = new UnknownHostException("Invalid network address format: " + argval);
+					exc.initCause(e);
+					throw exc;
+				}
+			}
+
+			@Override
+			public String toString() {
+				return argval;
+			}
+		};
 	}
 
 	public InetSocketAddress getSocketAddressThrowArgumentException() {
