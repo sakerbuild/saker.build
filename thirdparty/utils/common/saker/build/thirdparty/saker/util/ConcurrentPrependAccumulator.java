@@ -177,6 +177,21 @@ public final class ConcurrentPrependAccumulator<T> implements Iterable<T> {
 		addNodeImpl(n);
 	}
 
+	/**
+	 * Prepends an element if and only if the accumulator is currently empty.
+	 * <p>
+	 * If this method succeeds, the accumulator will only contain the element that was just added.
+	 * 
+	 * @param item
+	 *            The element to add.
+	 * @return <code>true</code> if the accumulator was empty and the element was successfully added.
+	 * @since saker.util 0.8.3
+	 */
+	public boolean addIfEmpty(T item) {
+		Node<T> n = new Node<>(item);
+		return ARFU_first.compareAndSet(this, null, n);
+	}
+
 	private void addNodeImpl(Node<T> n) {
 		while (true) {
 			Node<T> f = this.first;

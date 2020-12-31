@@ -220,7 +220,7 @@ abstract class ImmutableNavigableMapBase<K, V> implements NavigableMap<K, V> {
 	@Override
 	public final Entry<K, V> firstEntry() {
 		if (isEmpty()) {
-			throw new NoSuchElementException();
+			return null;
 		}
 		return entryAt(0);
 	}
@@ -228,7 +228,7 @@ abstract class ImmutableNavigableMapBase<K, V> implements NavigableMap<K, V> {
 	@Override
 	public final Entry<K, V> lastEntry() {
 		if (isEmpty()) {
-			throw new NoSuchElementException();
+			return null;
 		}
 		return entryAt(size() - 1);
 	}
