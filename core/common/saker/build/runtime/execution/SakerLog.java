@@ -20,6 +20,7 @@ import java.io.PrintStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
@@ -29,6 +30,7 @@ import saker.build.exception.ScriptPositionedExceptionView;
 import saker.build.exception.ScriptPositionedExceptionView.ScriptPositionStackTraceElement;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
+import saker.build.meta.PropertyNames;
 import saker.build.task.InternalTaskContext;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskContextReference;
@@ -36,6 +38,7 @@ import saker.build.task.TaskExecutionManager;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSink;
+import saker.build.trace.InternalBuildTraceImpl;
 import saker.build.util.exc.ExceptionView;
 
 /**
@@ -555,13 +558,41 @@ public class SakerLog {
 
 		;
 
-		//XXX make the default value configureable using system properties
 		/**
 		 * The default format to display the exceptions in.
 		 * <p>
 		 * It is {@link #COMPACT} by default.
+		 * <p>
+		 * The value is configurable using the {@link PropertyNames#PROPERTY_DEFAULT_EXCEPTION_FORMAT} system property.
 		 */
-		public static final ExceptionFormat DEFAULT_FORMAT = COMPACT;
+		public static final ExceptionFormat DEFAULT_FORMAT;
+		static {
+			ExceptionFormat defaultvalue = COMPACT;
+			String excformatproperty = PropertyNames.getProperty(PropertyNames.PROPERTY_DEFAULT_EXCEPTION_FORMAT);
+			if (!ObjectUtils.isNullOrEmpty(excformatproperty)) {
+				try {
+					defaultvalue = valueOf(excformatproperty);
+				} catch (IllegalArgumentException e) {
+					//may be not found. try again by uppercasing and trimming it
+					try {
+						defaultvalue = valueOf(excformatproperty.toUpperCase(Locale.ENGLISH).trim());
+					} catch (IllegalArgumentException e2) {
+						e.addSuppressed(e2);
+						try {
+							InternalBuildTraceImpl.ignoredStaticException(e);
+						} catch (LinkageError le) {
+							// some classes aren't found for build trace, or others...
+							// ignore this
+						} catch (Throwable e3) {
+							//other errors are not acceptable though
+							e3.addSuppressed(e);
+							throw e3;
+						}
+					}
+				}
+			}
+			DEFAULT_FORMAT = defaultvalue;
+		}
 
 		private final boolean includeSkipped;
 
@@ -589,10 +620,17 @@ public class SakerLog {
 	 * 
 	 * @param exc
 	 *            The exception view.
+	 * @throws NullPointerException
+	 *             If the exception view is <code>null</code>.
 	 * @see CommonExceptionFormat#DEFAULT_FORMAT
 	 */
-	public static void printFormatException(ExceptionView exc) {
-		printStackTraceImpl(exc, System.err, null, CommonExceptionFormat.DEFAULT_FORMAT);
+	public static void printFormatException(ExceptionView exc) throws NullPointerException {
+		try {
+			printStackTraceImpl(exc, System.err, null, CommonExceptionFormat.DEFAULT_FORMAT);
+		} catch (IOException e) {
+			//PrintStream shouldn't throw IOException
+			throw new UncheckedIOException(e);
+		}
 	}
 
 	/**
@@ -603,9 +641,12 @@ public class SakerLog {
 	 *            The exception view.
 	 * @param workingdir
 	 *            The path to relativize script trace element paths, or <code>null</code> to don't relativize.
+	 * @throws NullPointerException
+	 *             If the exception view is <code>null</code>.
 	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @see ScriptPositionedExceptionView
 	 */
-	public static void printFormatException(ExceptionView exc, SakerPath workingdir) {
+	public static void printFormatException(ExceptionView exc, SakerPath workingdir) throws NullPointerException {
 		printFormatException(exc, workingdir, System.err);
 	}
 
@@ -618,10 +659,66 @@ public class SakerLog {
 	 *            The path to relativize script trace element paths, or <code>null</code> to don't relativize.
 	 * @param ps
 	 *            The output stream.
+	 * @throws NullPointerException
+	 *             If the exception view or the output is <code>null</code>.
 	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @see ScriptPositionedExceptionView
 	 */
-	public static void printFormatException(ExceptionView exc, SakerPath workingdir, PrintStream ps) {
+	public static void printFormatException(ExceptionView exc, SakerPath workingdir, PrintStream ps)
+			throws NullPointerException {
+		try {
+			printStackTraceImpl(exc, ps, workingdir, CommonExceptionFormat.DEFAULT_FORMAT);
+		} catch (IOException e) {
+			//PrintStream shouldn't throw IOException
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	/**
+	 * Prints a formatted exception view to the specified output with the default exception format.
+	 * 
+	 * @param exc
+	 *            The exception view.
+	 * @param workingdir
+	 *            The path to relativize script trace element paths, or <code>null</code> to don't relativize.
+	 * @param ps
+	 *            The output.
+	 * @throws NullPointerException
+	 *             If the exception view or the output is <code>null</code>.
+	 * @throws IOException
+	 *             In case of I/O error.
+	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @see ScriptPositionedExceptionView
+	 * @since saker.build 0.8.16
+	 */
+	public static void printFormatException(ExceptionView exc, SakerPath workingdir, Appendable ps)
+			throws NullPointerException, IOException {
 		printStackTraceImpl(exc, ps, workingdir, CommonExceptionFormat.DEFAULT_FORMAT);
+	}
+
+	/**
+	 * Prints a formatted exception view to the specified string builder with the default exception format.
+	 * 
+	 * @param exc
+	 *            The exception view.
+	 * @param workingdir
+	 *            The path to relativize script trace element paths, or <code>null</code> to don't relativize.
+	 * @param ps
+	 *            The output.
+	 * @throws NullPointerException
+	 *             If the exception view or the output is <code>null</code>.
+	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @see ScriptPositionedExceptionView
+	 * @since saker.build 0.8.16
+	 */
+	public static void printFormatException(ExceptionView exc, SakerPath workingdir, StringBuilder ps)
+			throws NullPointerException {
+		try {
+			printStackTraceImpl(exc, ps, workingdir, CommonExceptionFormat.DEFAULT_FORMAT);
+		} catch (IOException e) {
+			//StringBuilder shouldn't throw IOException
+			throw new UncheckedIOException(e);
+		}
 	}
 
 	/**
@@ -631,10 +728,56 @@ public class SakerLog {
 	 *            The exception view.
 	 * @param ps
 	 *            The output stream.
+	 * @throws NullPointerException
+	 *             If the exception view or the output is <code>null</code>.
 	 * @see CommonExceptionFormat#DEFAULT_FORMAT
 	 */
-	public static void printFormatException(ExceptionView exc, PrintStream ps) {
+	public static void printFormatException(ExceptionView exc, PrintStream ps) throws NullPointerException {
+		try {
+			printStackTraceImpl(exc, ps, null, CommonExceptionFormat.DEFAULT_FORMAT);
+		} catch (IOException e) {
+			//PrintStream shouldn't throw IOException
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	/**
+	 * Prints a formatted exception view to the specified output with the default exception format.
+	 * 
+	 * @param exc
+	 *            The exception view.
+	 * @param ps
+	 *            The output.
+	 * @throws NullPointerException
+	 *             If the exception view or the output is <code>null</code>.
+	 * @throws IOException
+	 *             In case of I/O error.
+	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @since saker.build 0.8.16
+	 */
+	public static void printFormatException(ExceptionView exc, Appendable ps) throws NullPointerException, IOException {
 		printStackTraceImpl(exc, ps, null, CommonExceptionFormat.DEFAULT_FORMAT);
+	}
+
+	/**
+	 * Prints a formatted exception view to the specified string builder with the default exception format.
+	 * 
+	 * @param exc
+	 *            The exception view.
+	 * @param ps
+	 *            The output.
+	 * @throws NullPointerException
+	 *             If the exception view or the output is <code>null</code>.
+	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @since saker.build 0.8.16
+	 */
+	public static void printFormatException(ExceptionView exc, StringBuilder ps) throws NullPointerException {
+		try {
+			printStackTraceImpl(exc, ps, null, CommonExceptionFormat.DEFAULT_FORMAT);
+		} catch (IOException e) {
+			//StringBuilder shouldn't throw IOException
+			throw new UncheckedIOException(e);
+		}
 	}
 
 	/**
@@ -644,11 +787,18 @@ public class SakerLog {
 	 * @param exc
 	 *            The exception view.
 	 * @param format
-	 *            The exception format.
+	 *            The exception format. {@link CommonExceptionFormat#DEFAULT_FORMAT} in case of <code>null</code>.
+	 * @throws NullPointerException
+	 *             If the exception view is <code>null</code>.
 	 * @see CommonExceptionFormat#DEFAULT_FORMAT
 	 */
-	public static void printFormatException(ExceptionView exc, ExceptionFormat format) {
-		printStackTraceImpl(exc, System.err, null, format);
+	public static void printFormatException(ExceptionView exc, ExceptionFormat format) throws NullPointerException {
+		try {
+			printStackTraceImpl(exc, System.err, null, format);
+		} catch (IOException e) {
+			//PrintStream shouldn't throw IOException
+			throw new UncheckedIOException(e);
+		}
 	}
 
 	/**
@@ -660,10 +810,14 @@ public class SakerLog {
 	 * @param workingdir
 	 *            The path to relativize script trace element paths, or <code>null</code> to don't relativize.
 	 * @param format
-	 *            The exception format.
+	 *            The exception format. {@link CommonExceptionFormat#DEFAULT_FORMAT} in case of <code>null</code>.
+	 * @throws NullPointerException
+	 *             If the exception view is <code>null</code>.
 	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @see ScriptPositionedExceptionView
 	 */
-	public static void printFormatException(ExceptionView exc, SakerPath workingdir, ExceptionFormat format) {
+	public static void printFormatException(ExceptionView exc, SakerPath workingdir, ExceptionFormat format)
+			throws NullPointerException {
 		printFormatException(exc, System.err, workingdir, format);
 	}
 
@@ -677,12 +831,71 @@ public class SakerLog {
 	 * @param workingdir
 	 *            The path to relativize script trace element paths, or <code>null</code> to don't relativize.
 	 * @param format
-	 *            The exception format.
+	 *            The exception format. {@link CommonExceptionFormat#DEFAULT_FORMAT} in case of <code>null</code>.
+	 * @throws NullPointerException
+	 *             If the exception view or the output is <code>null</code>.
 	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @see ScriptPositionedExceptionView
 	 */
 	public static void printFormatException(ExceptionView exc, PrintStream ps, SakerPath workingdir,
-			ExceptionFormat format) {
+			ExceptionFormat format) throws NullPointerException {
+		try {
+			printStackTraceImpl(exc, ps, workingdir, format);
+		} catch (IOException e) {
+			//PrintStream shouldn't throw IOException
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	/**
+	 * Prints a formatted exception view to the specified output with the specified exception format.
+	 * 
+	 * @param exc
+	 *            The exception view.
+	 * @param ps
+	 *            The output.
+	 * @param workingdir
+	 *            The path to relativize script trace element paths, or <code>null</code> to don't relativize.
+	 * @param format
+	 *            The exception format. {@link CommonExceptionFormat#DEFAULT_FORMAT} in case of <code>null</code>.
+	 * @throws NullPointerException
+	 *             If the exception view or the output is <code>null</code>.
+	 * @throws IOException
+	 *             In case of I/O error.
+	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @see ScriptPositionedExceptionView
+	 * @since saker.build 0.8.16
+	 */
+	public static void printFormatException(ExceptionView exc, Appendable ps, SakerPath workingdir,
+			ExceptionFormat format) throws NullPointerException, IOException {
 		printStackTraceImpl(exc, ps, workingdir, format);
+	}
+
+	/**
+	 * Prints a formatted exception view to the specified string builder with the specified exception format.
+	 * 
+	 * @param exc
+	 *            The exception view.
+	 * @param ps
+	 *            The output.
+	 * @param workingdir
+	 *            The path to relativize script trace element paths, or <code>null</code> to don't relativize.
+	 * @param format
+	 *            The exception format. {@link CommonExceptionFormat#DEFAULT_FORMAT} in case of <code>null</code>.
+	 * @throws NullPointerException
+	 *             If the exception view or the output is <code>null</code>.
+	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @see ScriptPositionedExceptionView
+	 * @since saker.build 0.8.16
+	 */
+	public static void printFormatException(ExceptionView exc, StringBuilder ps, SakerPath workingdir,
+			ExceptionFormat format) throws NullPointerException {
+		try {
+			printStackTraceImpl(exc, ps, workingdir, format);
+		} catch (IOException e) {
+			//StringBuilder shouldn't throw IOException
+			throw new UncheckedIOException(e);
+		}
 	}
 
 	/**
@@ -693,11 +906,64 @@ public class SakerLog {
 	 * @param ps
 	 *            The output stream.
 	 * @param format
-	 *            The exception format.
+	 *            The exception format. {@link CommonExceptionFormat#DEFAULT_FORMAT} in case of <code>null</code>.
+	 * @throws NullPointerException
+	 *             If the exception view or the output is <code>null</code>.
 	 * @see CommonExceptionFormat#DEFAULT_FORMAT
 	 */
-	public static void printFormatException(ExceptionView exc, PrintStream ps, ExceptionFormat format) {
+	public static void printFormatException(ExceptionView exc, PrintStream ps, ExceptionFormat format)
+			throws NullPointerException {
+		try {
+			printStackTraceImpl(exc, ps, null, format);
+		} catch (IOException e) {
+			//PrintStream shouldn't throw IOException
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	/**
+	 * Prints a formatted exception view to the specified output with the specified exception format.
+	 * 
+	 * @param exc
+	 *            The exception view.
+	 * @param ps
+	 *            The output.
+	 * @param format
+	 *            The exception format. {@link CommonExceptionFormat#DEFAULT_FORMAT} in case of <code>null</code>.
+	 * @throws NullPointerException
+	 *             If the exception view or the output is <code>null</code>.
+	 * @throws IOException
+	 *             In case of I/O error.
+	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @since saker.build 0.8.16
+	 */
+	public static void printFormatException(ExceptionView exc, Appendable ps, ExceptionFormat format)
+			throws NullPointerException, IOException {
 		printStackTraceImpl(exc, ps, null, format);
+	}
+
+	/**
+	 * Prints a formatted exception view to the specified string builder with the specified exception format.
+	 * 
+	 * @param exc
+	 *            The exception view.
+	 * @param ps
+	 *            The output.
+	 * @param format
+	 *            The exception format. {@link CommonExceptionFormat#DEFAULT_FORMAT} in case of <code>null</code>.
+	 * @throws NullPointerException
+	 *             If the exception view or the output is <code>null</code>.
+	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @since saker.build 0.8.16
+	 */
+	public static void printFormatException(ExceptionView exc, StringBuilder ps, ExceptionFormat format)
+			throws NullPointerException {
+		try {
+			printStackTraceImpl(exc, ps, null, format);
+		} catch (IOException e) {
+			//StringBuilder shouldn't throw IOException
+			throw new UncheckedIOException(e);
+		}
 	}
 
 	/**
@@ -710,36 +976,93 @@ public class SakerLog {
 	 * @param workingdir
 	 *            The path to relativize script trace element paths, or <code>null</code> to don't relativize.
 	 * @param format
-	 *            The exception format.
+	 *            The exception format. {@link CommonExceptionFormat#DEFAULT_FORMAT} in case of <code>null</code>.
 	 * @throws NullPointerException
-	 *             If the exceptions, exception format, or output stream arguments are <code>null</code>.
+	 *             If the exceptions, or output stream arguments are <code>null</code>.
 	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @see ScriptPositionedExceptionView
 	 */
 	public static void printFormatExceptions(Iterable<? extends ExceptionView> exceptions, PrintStream ps,
 			SakerPath workingdir, ExceptionFormat format) throws NullPointerException {
+		try {
+			printFormatExceptionsImpl(exceptions, ps, workingdir, format);
+		} catch (IOException e) {
+			//PrintStream shouldn't throw IOException
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	/**
+	 * Prints multiple formatted exception views to the specified output with the specified exception format.
+	 * 
+	 * @param exceptions
+	 *            The exceptions to print.
+	 * @param ps
+	 *            The output.
+	 * @param workingdir
+	 *            The path to relativize script trace element paths, or <code>null</code> to don't relativize.
+	 * @param format
+	 *            The exception format. {@link CommonExceptionFormat#DEFAULT_FORMAT} in case of <code>null</code>.
+	 * @throws NullPointerException
+	 *             If the exceptions, or output stream arguments are <code>null</code>.
+	 * @throws IOException
+	 *             In case of I/O error.
+	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @see ScriptPositionedExceptionView
+	 * @since saker.build 0.8.16
+	 */
+	public static void printFormatExceptions(Iterable<? extends ExceptionView> exceptions, Appendable ps,
+			SakerPath workingdir, ExceptionFormat format) throws NullPointerException, IOException {
+		printFormatExceptionsImpl(exceptions, ps, workingdir, format);
+	}
+
+	/**
+	 * Prints multiple formatted exception views to the specified string builder with the specified exception format.
+	 * 
+	 * @param exceptions
+	 *            The exceptions to print.
+	 * @param ps
+	 *            The output.
+	 * @param workingdir
+	 *            The path to relativize script trace element paths, or <code>null</code> to don't relativize.
+	 * @param format
+	 *            The exception format. {@link CommonExceptionFormat#DEFAULT_FORMAT} in case of <code>null</code>.
+	 * @throws NullPointerException
+	 *             If the exceptions, or output stream arguments are <code>null</code>.
+	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @see ScriptPositionedExceptionView
+	 * @since saker.build 0.8.16
+	 */
+	public static void printFormatExceptions(Iterable<? extends ExceptionView> exceptions, StringBuilder ps,
+			SakerPath workingdir, ExceptionFormat format) throws NullPointerException {
+		try {
+			printFormatExceptionsImpl(exceptions, ps, workingdir, format);
+		} catch (IOException e) {
+			//StringBuilder shouldn't throw IOException
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	private static void printFormatExceptionsImpl(Iterable<? extends ExceptionView> exceptions, Appendable ps,
+			SakerPath workingdir, ExceptionFormat format) throws NullPointerException, IOException {
 		Objects.requireNonNull(exceptions, "exceptions");
 		Iterator<? extends ExceptionView> it = exceptions.iterator();
 		if (!it.hasNext()) {
 			return;
 		}
-		Objects.requireNonNull(format, "exception format");
-		Objects.requireNonNull(ps, "print stream");
+
+		Objects.requireNonNull(ps, "output");
 		String ls = System.lineSeparator();
-		try {
-			while (true) {
-				ExceptionView exc = it.next();
-				Set<ExceptionView> printed = ObjectUtils.newIdentityHashSet();
-				printEnclosedStackTrace(exc, ps, ObjectUtils.EMPTY_STACK_TRACE_ELEMENT_ARRAY,
-						ScriptPositionedExceptionView.EMPTY_STACKTRACE_ARRAY, NO_CAPTION, "", printed, workingdir,
-						format, ls);
-				if (it.hasNext()) {
-					ps.append(ls);
-				} else {
-					break;
-				}
+		while (true) {
+			ExceptionView exc = it.next();
+			Set<ExceptionView> printed = ObjectUtils.newIdentityHashSet();
+			printEnclosedStackTrace(exc, ps, ObjectUtils.EMPTY_STACK_TRACE_ELEMENT_ARRAY,
+					ScriptPositionedExceptionView.EMPTY_STACKTRACE_ARRAY, NO_CAPTION, "", printed, workingdir, format,
+					ls);
+			if (!it.hasNext()) {
+				break;
 			}
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
+			ps.append(ls);
 		}
 	}
 
@@ -748,69 +1071,66 @@ public class SakerLog {
 	private static final String NO_CAPTION = "";
 
 	private static void printStackTraceImpl(ExceptionView ev, Appendable ps, SakerPath workingdir,
-			ExceptionFormat format) throws NullPointerException {
+			ExceptionFormat format) throws NullPointerException, IOException {
 		Objects.requireNonNull(ev, "exception view");
-		Objects.requireNonNull(format, "exception format");
-		Objects.requireNonNull(ps, "print stream");
+		Objects.requireNonNull(ps, "output");
+		if (format == null) {
+			format = CommonExceptionFormat.DEFAULT_FORMAT;
+		}
 
 		String ls = System.lineSeparator();
-		try {
-			String evstr = Objects.toString(ev, null);
-			if (evstr != null) {
-				ps.append(evstr);
-				ps.append(ls);
-			}
+		String evstr = Objects.toString(ev, null);
+		if (evstr != null) {
+			ps.append(evstr);
+			ps.append(ls);
+		}
 
-			StackTraceElement[] trace = ev.getStackTrace();
-			int skipcount = 0;
-			for (StackTraceElement traceElement : trace) {
-				if (!format.includeStackTraceElement(traceElement)) {
-					++skipcount;
-					continue;
-				}
-				if (skipcount > 0) {
-					if (format.isIncludeSkippedCount()) {
-						ps.append("\t... (skipped " + skipcount + " frames)");
-						ps.append(ls);
-					}
-					skipcount = 0;
-				}
-				ps.append("\tat " + traceElement);
-				ps.append(ls);
+		StackTraceElement[] trace = ev.getStackTrace();
+		int skipcount = 0;
+		for (StackTraceElement traceElement : trace) {
+			if (!format.includeStackTraceElement(traceElement)) {
+				++skipcount;
+				continue;
 			}
 			if (skipcount > 0) {
 				if (format.isIncludeSkippedCount()) {
 					ps.append("\t... (skipped " + skipcount + " frames)");
 					ps.append(ls);
 				}
+				skipcount = 0;
 			}
-			ScriptPositionStackTraceElement[] scripttrace = ScriptPositionedExceptionView.EMPTY_STACKTRACE_ARRAY;
-			if (ev instanceof ScriptPositionedExceptionView) {
-				ScriptPositionStackTraceElement[] posst = ((ScriptPositionedExceptionView) ev).getPositionStackTrace();
-				if (posst.length > 0) {
-					for (int i = 0; i < posst.length; i++) {
-						ScriptPositionStackTraceElement posste = posst[i];
-						ps.append("\t  at " + posste.toString(workingdir));
-						ps.append(ls);
-					}
+			ps.append("\tat " + traceElement);
+			ps.append(ls);
+		}
+		if (skipcount > 0) {
+			if (format.isIncludeSkippedCount()) {
+				ps.append("\t... (skipped " + skipcount + " frames)");
+				ps.append(ls);
+			}
+		}
+		ScriptPositionStackTraceElement[] scripttrace = ScriptPositionedExceptionView.EMPTY_STACKTRACE_ARRAY;
+		if (ev instanceof ScriptPositionedExceptionView) {
+			ScriptPositionStackTraceElement[] posst = ((ScriptPositionedExceptionView) ev).getPositionStackTrace();
+			if (posst.length > 0) {
+				for (int i = 0; i < posst.length; i++) {
+					ScriptPositionStackTraceElement posste = posst[i];
+					ps.append("\t  at " + posste.toString(workingdir));
+					ps.append(ls);
 				}
-				scripttrace = posst;
 			}
+			scripttrace = posst;
+		}
 
-			Set<ExceptionView> printed = ObjectUtils.newIdentityHashSet();
-			printed.add(ev);
-			for (ExceptionView se : ev.getSuppressed()) {
-				printEnclosedStackTrace(se, ps, trace, scripttrace, SUPPRESSED_CAPTION, "\t", printed, workingdir,
-						format, ls);
-			}
+		Set<ExceptionView> printed = ObjectUtils.newIdentityHashSet();
+		printed.add(ev);
+		for (ExceptionView se : ev.getSuppressed()) {
+			printEnclosedStackTrace(se, ps, trace, scripttrace, SUPPRESSED_CAPTION, "\t", printed, workingdir, format,
+					ls);
+		}
 
-			ExceptionView cause = ev.getCause();
-			if (cause != null) {
-				printEnclosedStackTrace(cause, ps, trace, scripttrace, CAUSE_CAPTION, "", printed, workingdir, format,
-						ls);
-			}
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
+		ExceptionView cause = ev.getCause();
+		if (cause != null) {
+			printEnclosedStackTrace(cause, ps, trace, scripttrace, CAUSE_CAPTION, "", printed, workingdir, format, ls);
 		}
 	}
 

@@ -18,6 +18,8 @@ package saker.build.meta;
 import saker.apiextract.api.ExcludeApi;
 import saker.build.file.provider.LocalFileProvider;
 import saker.build.file.provider.SakerFileProvider;
+import saker.build.runtime.execution.SakerLog;
+import saker.build.runtime.execution.SakerLog.CommonExceptionFormat;
 import saker.build.util.config.ReferencePolicy;
 
 /**
@@ -78,13 +80,12 @@ public class PropertyNames {
 	 * <p>
 	 * This property is a comma separated concatenation of root file provider keys. Adding a provider key to the list
 	 * disables any file caching for that file provider.
-	 * <p>
-	 * TODO document where can the provider keys be found
 	 * 
 	 * @see #PROPERTY_SAKER_FILES_REMOTE_CACHE_DIRECTORY
 	 * @see LocalFileProvider#getProviderKey()
 	 * @deprecated This property is not currently in use.
 	 */
+	//TODO document where can the provider keys be found
 	@Deprecated
 	@ExcludeApi
 	public static final String PROPERTY_SAKER_FILES_DISABLE_REMOTE_CACHE = "saker.files.disable.remote.cache";
@@ -121,6 +122,16 @@ public class PropertyNames {
 	 * @since saker.build 0.8.15
 	 */
 	public static final String PROPERTY_COLLECT_RMI_STATISTICS = "saker.build.rmi.statistics.collect";
+
+	/**
+	 * The default exception format used by the {@link SakerLog} utility class.
+	 * <p>
+	 * The value should be any of the {@link CommonExceptionFormat} enumeration names.
+	 * 
+	 * @see CommonExceptionFormat#DEFAULT_FORMAT
+	 * @since saker.build 0.8.16
+	 */
+	public static final String PROPERTY_DEFAULT_EXCEPTION_FORMAT = "saker.build.log.exception.default.format";
 
 	/**
 	 * Gets the JVM level property with the given name.
