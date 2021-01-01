@@ -27,6 +27,7 @@ import saker.build.file.path.SakerPath;
 import sipka.cmdline.api.Command;
 import sipka.cmdline.api.CommonConverter;
 import sipka.cmdline.api.SubCommand;
+import sipka.cmdline.runtime.ArgumentResolutionException;
 import sipka.cmdline.runtime.InvalidArgumentFormatException;
 import sipka.cmdline.runtime.ParseUtil;
 
@@ -64,7 +65,7 @@ import sipka.cmdline.runtime.ParseUtil;
 public abstract class MainCommand {
 
 	protected boolean shouldSystemExit = false;
-	
+
 	/**
 	 * @cmd-format &lt;path&gt;
 	 */
@@ -101,9 +102,9 @@ public abstract class MainCommand {
 				return result;
 			}
 		} catch (UnknownHostException e) {
-			throw new IllegalArgumentException("Failed to resolve address: " + address, e);
+			throw new ArgumentResolutionException("Failed to resolve address: " + address, e, argname);
 		}
-		throw new IllegalArgumentException("Failed to resolve address: " + address);
+		throw new ArgumentResolutionException("Failed to resolve address: " + address, argname);
 	}
 
 	public static boolean main(String... args) throws Exception {
