@@ -112,7 +112,7 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 	static {
 		//clear the static state of the class
 		SakerJavaTestingInvoker.addCloseable(() -> {
-			List<SakerEnvironmentImpl> envs = new ArrayList<>(commonEnvironments.values());
+			List<SakerEnvironmentImpl> envs = ImmutableUtils.makeImmutableList(commonEnvironments.values());
 			commonEnvironments.clear();
 			IOUtils.close(envs);
 		});

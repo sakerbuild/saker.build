@@ -40,6 +40,7 @@ import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.rmi.exception.RMICallForbiddenException;
 import saker.build.thirdparty.saker.util.ArrayUtils;
+import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
@@ -123,7 +124,7 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 			if (errorListeners.isEmpty()) {
 				return;
 			}
-			copy = new ArrayList<>(errorListeners);
+			copy = ImmutableUtils.makeImmutableList(errorListeners);
 			errorListeners.clear();
 		}
 		Throwable[] listenerexceptions = ObjectUtils.EMPTY_THROWABLE_ARRAY;

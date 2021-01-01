@@ -26,7 +26,6 @@ import java.nio.file.WatchEvent;
 import java.nio.file.WatchEvent.Kind;
 import java.nio.file.WatchEvent.Modifier;
 import java.nio.file.WatchKey;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -42,6 +41,7 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.io.FileUtils;
@@ -174,7 +174,7 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 				signaledKeysLock.unlock();
 			}
 			//create a copy collection to defend against concurrent removal
-			List<SakerNativeWatchKey> copy = new ArrayList<>(nativeKeys.values());
+			List<SakerNativeWatchKey> copy = ImmutableUtils.makeImmutableList(nativeKeys.values());
 			for (SakerNativeWatchKey nativekey : copy) {
 				closeNativeKeyServiceLocked(nativekey, serviceptr);
 			}
