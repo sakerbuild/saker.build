@@ -11,6 +11,7 @@ public class ClusterNameReturningTaskFactory extends SelfStatelessTaskFactory<St
 	private static final long serialVersionUID = 1L;
 
 	@Override
+	@SuppressWarnings("deprecation")
 	public NavigableSet<String> getCapabilities() {
 		return ObjectUtils.newTreeSet(CAPABILITY_REMOTE_DISPATCHABLE);
 	}

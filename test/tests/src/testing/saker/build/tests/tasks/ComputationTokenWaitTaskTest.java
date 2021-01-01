@@ -62,6 +62,7 @@ public class ComputationTokenWaitTaskTest extends CollectingMetricEnvironmentTes
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public int getRequestedComputationTokenCount() {
 			return 1;
 		}

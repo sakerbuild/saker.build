@@ -113,6 +113,7 @@ public class SimpleInnerTaskTest extends CollectingMetricEnvironmentTestCase {
 	}
 
 	@Override
+	@SuppressWarnings("deprecation")
 	protected void runTestImpl() throws Throwable {
 		runTask("main", new InnerTaskStarter("hello")
 				.setCapabilities(ImmutableUtils.singletonNavigableSet(TaskFactory.CAPABILITY_SHORT_TASK)));

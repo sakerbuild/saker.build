@@ -73,6 +73,7 @@ public class InnerTaskDuplicationCancelTaskTest extends CollectingMetricEnvironm
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public NavigableSet<String> getCapabilities() {
 			return ImmutableUtils.singletonNavigableSet(CAPABILITY_INNER_TASKS_COMPUTATIONAL);
 		}
@@ -106,11 +107,13 @@ public class InnerTaskDuplicationCancelTaskTest extends CollectingMetricEnvironm
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public NavigableSet<String> getCapabilities() {
 			return ImmutableUtils.singletonNavigableSet(CAPABILITY_REMOTE_DISPATCHABLE);
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public int getRequestedComputationTokenCount() {
 			return 1;
 		}

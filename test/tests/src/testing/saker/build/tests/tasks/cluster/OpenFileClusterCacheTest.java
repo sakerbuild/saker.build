@@ -52,11 +52,13 @@ public class OpenFileClusterCacheTest extends ClusterBuildTestCase {
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public NavigableSet<String> getCapabilities() {
 			return ObjectUtils.newTreeSet(CAPABILITY_REMOTE_DISPATCHABLE);
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
 			return new TestClusterNameExecutionEnvironmentSelector(ClusterBuildTestCase.DEFAULT_CLUSTER_NAME);
 		}

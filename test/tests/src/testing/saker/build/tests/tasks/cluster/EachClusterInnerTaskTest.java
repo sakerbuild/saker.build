@@ -129,11 +129,13 @@ public class EachClusterInnerTaskTest extends ClusterBuildTestCase {
 		private static final long serialVersionUID = 1L;
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public NavigableSet<String> getCapabilities() {
 			return ObjectUtils.newTreeSet(CAPABILITY_REMOTE_DISPATCHABLE);
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
 			return new SuitableEnvironmentSelector();
 		}

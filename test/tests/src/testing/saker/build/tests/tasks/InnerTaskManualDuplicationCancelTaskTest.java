@@ -49,6 +49,7 @@ public class InnerTaskManualDuplicationCancelTaskTest extends CollectingMetricEn
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public NavigableSet<String> getCapabilities() {
 			return ImmutableUtils.singletonNavigableSet(CAPABILITY_INNER_TASKS_COMPUTATIONAL);
 		}
@@ -79,6 +80,7 @@ public class InnerTaskManualDuplicationCancelTaskTest extends CollectingMetricEn
 		private static final long serialVersionUID = 1L;
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public int getRequestedComputationTokenCount() {
 			return 1;
 		}

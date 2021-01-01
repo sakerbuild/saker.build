@@ -52,6 +52,7 @@ public class StringTaskFactory implements TaskFactory<String>, Task<String>, Ext
 	}
 
 	@Override
+	@SuppressWarnings("deprecation")
 	public NavigableSet<String> getCapabilities() {
 		return capabilities;
 	}

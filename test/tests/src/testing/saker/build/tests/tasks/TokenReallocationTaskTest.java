@@ -85,6 +85,7 @@ public class TokenReallocationTaskTest extends CollectingMetricEnvironmentTestCa
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public Set<String> getCapabilities() {
 			return ImmutableUtils.singletonSet(CAPABILITY_INNER_TASKS_COMPUTATIONAL);
 		}
@@ -103,6 +104,7 @@ public class TokenReallocationTaskTest extends CollectingMetricEnvironmentTestCa
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public int getRequestedComputationTokenCount() {
 			return 1;
 		}
@@ -142,6 +144,7 @@ public class TokenReallocationTaskTest extends CollectingMetricEnvironmentTestCa
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public int getRequestedComputationTokenCount() {
 			return 1;
 		}

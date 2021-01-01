@@ -73,6 +73,7 @@ public class CoordinatorPredicateInnerTaskTest extends ClusterBuildTestCase {
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public NavigableSet<String> getCapabilities() {
 			return ObjectUtils.newTreeSet(CAPABILITY_REMOTE_DISPATCHABLE, CAPABILITY_INNER_TASKS_COMPUTATIONAL);
 		}

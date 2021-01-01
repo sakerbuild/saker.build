@@ -41,6 +41,7 @@ public class ClusterDeadlockTaskTest extends ClusterBuildTestCase {
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public NavigableSet<String> getCapabilities() {
 			return ObjectUtils.newTreeSet(CAPABILITY_REMOTE_DISPATCHABLE);
 		}
@@ -54,6 +55,7 @@ public class ClusterDeadlockTaskTest extends ClusterBuildTestCase {
 	}
 
 	@Override
+	@SuppressWarnings("deprecation")
 	protected void runTestImpl() throws Throwable {
 		ChildTaskStarterTaskFactory starter = new ChildTaskStarterTaskFactory();
 		starter.add(strTaskId("dispatched"), new StringTaskFactory("x")
@@ -67,7 +69,8 @@ public class ClusterDeadlockTaskTest extends ClusterBuildTestCase {
 		//we should be able to detect the deadlock.
 		assertTaskException(TaskExecutionDeadlockedException.class, () -> runTask("main", starter));
 
-		assertTaskException(TaskExecutionDeadlockedException.class, () -> runTask("main", new ClusterWaiterTaskFactory()));
+		assertTaskException(TaskExecutionDeadlockedException.class,
+				() -> runTask("main", new ClusterWaiterTaskFactory()));
 	}
 
 }

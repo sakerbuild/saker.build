@@ -9,6 +9,7 @@ public class LocalPreferringClusterNameReturningTaskFactory extends ClusterNameR
 	private static final long serialVersionUID = 1L;
 
 	@Override
+	@SuppressWarnings("deprecation")
 	public NavigableSet<String> getCapabilities() {
 		TreeSet<String> result = ObjectUtils.newTreeSet(super.getCapabilities());
 		result.add(CAPABILITY_PREFERS_LOCAL_ENVIRONMENT);

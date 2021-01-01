@@ -24,6 +24,7 @@ import testing.saker.build.tests.tasks.factories.StringTaskFactory;
 public class SimpleCacheableTaskTest extends CacheableTaskTestCase {
 
 	@Override
+	@SuppressWarnings("deprecation")
 	protected void runTestImpl() throws Throwable {
 		StringTaskFactory main = new StringTaskFactory("content");
 		main.setCapabilities(ImmutableUtils.singletonNavigableSet(TaskFactory.CAPABILITY_CACHEABLE));

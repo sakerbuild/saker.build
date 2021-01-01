@@ -19,6 +19,7 @@ public class ShortFailingTaskStarterTest extends CollectingMetricEnvironmentTest
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public Set<String> getCapabilities() {
 			return Collections.singleton(CAPABILITY_SHORT_TASK);
 		}

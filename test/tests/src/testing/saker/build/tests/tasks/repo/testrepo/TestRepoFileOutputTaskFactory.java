@@ -96,6 +96,7 @@ public class TestRepoFileOutputTaskFactory implements TaskFactory<Void>, Externa
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public NavigableSet<String> getCapabilities() {
 			return ObjectUtils.newTreeSet(CAPABILITY_REMOTE_DISPATCHABLE);
 		}

@@ -134,6 +134,7 @@ public class EnvironmentSelectorInnerTaskTest extends CollectingMetricEnvironmen
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
 			return new TaskExecutionEnvironmentSelector() {
 				@Override

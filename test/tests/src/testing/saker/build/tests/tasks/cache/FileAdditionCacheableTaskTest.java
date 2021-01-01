@@ -52,6 +52,7 @@ public class FileAdditionCacheableTaskTest extends CacheableTaskTestCase {
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public NavigableSet<String> getCapabilities() {
 			return ImmutableUtils.singletonNavigableSet(TaskFactory.CAPABILITY_CACHEABLE);
 		}

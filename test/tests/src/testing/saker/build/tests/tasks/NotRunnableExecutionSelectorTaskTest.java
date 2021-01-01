@@ -71,6 +71,7 @@ public class NotRunnableExecutionSelectorTaskTest extends CollectingMetricEnviro
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
 			return new TaskExecutionEnvironmentSelector() {
 

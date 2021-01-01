@@ -49,6 +49,7 @@ public class IllegalShortTaskWaitTaskTest extends CollectingMetricEnvironmentTes
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public NavigableSet<String> getCapabilities() {
 			return createShortTaskCapabilities();
 		}
@@ -89,6 +90,7 @@ public class IllegalShortTaskWaitTaskTest extends CollectingMetricEnvironmentTes
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public NavigableSet<String> getCapabilities() {
 			return createShortTaskCapabilities();
 		}
@@ -126,6 +128,7 @@ public class IllegalShortTaskWaitTaskTest extends CollectingMetricEnvironmentTes
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public NavigableSet<String> getCapabilities() {
 			return createShortTaskCapabilities();
 		}
@@ -154,6 +157,7 @@ public class IllegalShortTaskWaitTaskTest extends CollectingMetricEnvironmentTes
 		}
 	}
 
+	@SuppressWarnings("deprecation")
 	protected static NavigableSet<String> createShortTaskCapabilities() {
 		TreeSet<String> result = new TreeSet<>();
 		result.add(TaskFactory.CAPABILITY_SHORT_TASK);

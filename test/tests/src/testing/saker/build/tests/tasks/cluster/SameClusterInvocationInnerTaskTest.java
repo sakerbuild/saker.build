@@ -40,6 +40,7 @@ public class SameClusterInvocationInnerTaskTest extends ClusterBuildTestCase {
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public NavigableSet<String> getCapabilities() {
 			return ObjectUtils.newTreeSet(CAPABILITY_REMOTE_DISPATCHABLE);
 		}

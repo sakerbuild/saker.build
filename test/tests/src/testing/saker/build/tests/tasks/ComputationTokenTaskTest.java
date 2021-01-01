@@ -40,6 +40,7 @@ public class ComputationTokenTaskTest extends CollectingMetricEnvironmentTestCas
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public int getRequestedComputationTokenCount() {
 			//to ensure no two tasks can run at the same time
 			return ComputationToken.MAX_TOKEN_COUNT * 2;
@@ -73,6 +74,7 @@ public class ComputationTokenTaskTest extends CollectingMetricEnvironmentTestCas
 		}
 
 		@Override
+		@SuppressWarnings("deprecation")
 		public int getRequestedComputationTokenCount() {
 			//to ensure that two tasks can run at the same time
 			return ComputationToken.MAX_TOKEN_COUNT / 2;
