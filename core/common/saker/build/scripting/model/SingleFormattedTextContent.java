@@ -59,6 +59,48 @@ public class SingleFormattedTextContent implements FormattedTextContent, Externa
 	}
 
 	/**
+	 * Creates a new instance with plaintext format and the given text.
+	 * 
+	 * @param text
+	 *            The text content.
+	 * @return The new instance.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @since saker.build 0.8.16
+	 */
+	public static FormattedTextContent createPlaintext(String text) throws NullPointerException {
+		return new SingleFormattedTextContent(FORMAT_PLAINTEXT, text);
+	}
+
+	/**
+	 * Creates a new instance with markdown format and the given text.
+	 * 
+	 * @param text
+	 *            The text content.
+	 * @return The new instance.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @since saker.build 0.8.16
+	 */
+	public static FormattedTextContent createMarkdown(String text) throws NullPointerException {
+		return new SingleFormattedTextContent(FORMAT_MARKDOWN, text);
+	}
+
+	/**
+	 * Creates a new instance with html format and the given text.
+	 * 
+	 * @param text
+	 *            The text content.
+	 * @return The new instance.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @since saker.build 0.8.16
+	 */
+	public static FormattedTextContent createHtml(String text) throws NullPointerException {
+		return new SingleFormattedTextContent(FORMAT_HTML, text);
+	}
+
+	/**
 	 * Gets the text used to construct this instance.
 	 * 
 	 * @return The text.

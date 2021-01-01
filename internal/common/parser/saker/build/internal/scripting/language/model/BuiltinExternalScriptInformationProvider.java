@@ -26,7 +26,6 @@ import java.util.TreeSet;
 import saker.build.file.path.SakerPath;
 import saker.build.internal.scripting.language.task.TaskInvocationSakerTaskFactory;
 import saker.build.internal.scripting.language.task.builtin.IncludeTaskFactory;
-import saker.build.scripting.model.FormattedTextContent;
 import saker.build.scripting.model.SingleFormattedTextContent;
 import saker.build.scripting.model.info.ExternalScriptInformationProvider;
 import saker.build.scripting.model.info.SimpleTaskInformation;
@@ -65,34 +64,32 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 		{
 			TaskName taskname = TaskName.valueOf(TaskInvocationSakerTaskFactory.TASKNAME_PATH);
 			SimpleTaskInformation taskinfo = new SimpleTaskInformation(taskname);
-			taskinfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
+			taskinfo.setInformation(SingleFormattedTextContent.createPlaintext(
 					"Converts a path to absolute representation. Returns the current working directory if no parameter is specified."));
 
 			SimpleTaskParameterInformation pathparam = new SimpleTaskParameterInformation(taskinfo, "Path");
 			pathparam.setAliases(ImmutableUtils.singletonSet(""));
 			pathparam.setRequired(true);
-			pathparam.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"The path to convert to absolute representation."));
+			pathparam.setInformation(
+					SingleFormattedTextContent.createPlaintext("The path to convert to absolute representation."));
 			taskinfo.setParameters(ImmutableUtils.singletonList(pathparam));
 			map.put(taskname, taskinfo);
 
 			SimpleTypeInformation returninfo = new SimpleTypeInformation(TypeInformationKind.LITERAL);
 			returninfo.setTypeQualifiedName(SakerPath.class.getCanonicalName());
 			returninfo.setTypeSimpleName(SakerPath.class.getSimpleName());
-			returninfo.setInformation(
-					new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT, "An execution path."));
+			returninfo.setInformation(SingleFormattedTextContent.createPlaintext("An execution path."));
 			taskinfo.setReturnType(returninfo);
 		}
 		{
 			TaskName taskname = TaskName.valueOf(TaskInvocationSakerTaskFactory.TASKNAME_PRINT);
 			SimpleTaskInformation taskinfo = new SimpleTaskInformation(taskname);
-			taskinfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"Prints out the given argument message to the output."));
+			taskinfo.setInformation(
+					SingleFormattedTextContent.createPlaintext("Prints out the given argument message to the output."));
 
 			SimpleTaskParameterInformation pathparam = new SimpleTaskParameterInformation(taskinfo, "");
 			pathparam.setRequired(true);
-			pathparam.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"The message to print to the output."));
+			pathparam.setInformation(SingleFormattedTextContent.createPlaintext("The message to print to the output."));
 			taskinfo.setParameters(ImmutableUtils.singletonList(pathparam));
 			map.put(taskname, taskinfo);
 
@@ -102,13 +99,13 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 		{
 			TaskName taskname = TaskName.valueOf(TaskInvocationSakerTaskFactory.TASKNAME_ABORT);
 			SimpleTaskInformation taskinfo = new SimpleTaskInformation(taskname);
-			taskinfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"Aborts the build execution with the specified parameter message."));
+			taskinfo.setInformation(SingleFormattedTextContent
+					.createPlaintext("Aborts the build execution with the specified parameter message."));
 
 			SimpleTaskParameterInformation messageparam = new SimpleTaskParameterInformation(taskinfo, "Message");
 			messageparam.setAliases(ImmutableUtils.singletonSet(""));
-			messageparam.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"Optional message to abort the build execution with."));
+			messageparam.setInformation(
+					SingleFormattedTextContent.createPlaintext("Optional message to abort the build execution with."));
 			taskinfo.setParameters(ImmutableUtils.singletonList(messageparam));
 			map.put(taskname, taskinfo);
 
@@ -117,8 +114,8 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 		{
 			TaskName taskname = TaskName.valueOf(TaskInvocationSakerTaskFactory.TASKNAME_INCLUDE);
 			SimpleTaskInformation taskinfo = new SimpleTaskInformation(taskname);
-			taskinfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"Includes the specified build target in the current build execution.\n"
+			taskinfo.setInformation(SingleFormattedTextContent
+					.createPlaintext("Includes the specified build target in the current build execution.\n"
 							+ "All parameters apart from Target, Path and "
 							+ IncludeTaskFactory.PARAMETER_WORKING_DIRECTORY
 							+ " will be passed as input to the specied build target."));
@@ -128,14 +125,14 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 			targetparam.setAliases(ImmutableUtils.singletonSet(""));
 			targetparam.setRequired(true);
 			targetparam.setTypeInformation(new SimpleTypeInformation(TypeInformationKind.BUILD_TARGET));
-			targetparam.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"The name of the build target to invoke."));
+			targetparam.setInformation(
+					SingleFormattedTextContent.createPlaintext("The name of the build target to invoke."));
 
 			SimpleTaskParameterInformation pathparam = new SimpleTaskParameterInformation(taskinfo,
 					IncludeTaskFactory.PARAMETER_PATH);
 			pathparam.setAliases(Collections.emptySet());
-			pathparam.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"The path to the build file containing the target.\n"
+			pathparam.setInformation(
+					SingleFormattedTextContent.createPlaintext("The path to the build file containing the target.\n"
 							+ "If not specified, the Target parameter is interpreted to be in the same build script as this task invocation.\n"
 							+ "If a relative path is specified, it is resolved against the enclosing directory of this build script, not "
 							+ "against the " + IncludeTaskFactory.PARAMETER_WORKING_DIRECTORY + " argument."));
@@ -143,15 +140,15 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 			SimpleTaskParameterInformation workingdirparam = new SimpleTaskParameterInformation(taskinfo,
 					IncludeTaskFactory.PARAMETER_WORKING_DIRECTORY);
 			workingdirparam.setAliases(Collections.emptySet());
-			workingdirparam.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"The working directory to use when invoking the target.\n"
+			workingdirparam.setInformation(SingleFormattedTextContent
+					.createPlaintext("The working directory to use when invoking the target.\n"
 							+ "The specified build target will be invoked as if it executes in the specified working directory. If not specified "
 							+ "then the working directory will be the enclosing directory of the build script."));
 
 			SimpleTaskParameterInformation othersparam = new SimpleTaskParameterInformation(taskinfo, "*");
 			othersparam.setAliases(Collections.emptySet());
-			othersparam.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"Arbitrary parameter to pass to the invoked target.\n"
+			othersparam.setInformation(
+					SingleFormattedTextContent.createPlaintext("Arbitrary parameter to pass to the invoked target.\n"
 							+ "The parameter is directly passed to the invoked build target as an input."));
 
 			taskinfo.setParameters(
@@ -161,24 +158,23 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 			SimpleTypeInformation returninfo = new SimpleTypeInformation(TypeInformationKind.MAP);
 			returninfo.setTypeQualifiedName(BuildTargetTaskResult.class.getCanonicalName());
 			returninfo.setTypeSimpleName(BuildTargetTaskResult.class.getSimpleName());
-			returninfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"The result of a build target invocation.\n"
+			returninfo.setInformation(
+					SingleFormattedTextContent.createPlaintext("The result of a build target invocation.\n"
 							+ "Each field is an output value specified by the included build target."));
 			taskinfo.setReturnType(returninfo);
 		}
 		{
 			TaskName taskname = TaskName.valueOf(TaskInvocationSakerTaskFactory.TASKNAME_VAR);
 			SimpleTaskInformation taskinfo = new SimpleTaskInformation(taskname);
-			taskinfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"Dereferences a variable with the given name.\n"
+			taskinfo.setInformation(
+					SingleFormattedTextContent.createPlaintext("Dereferences a variable with the given name.\n"
 							+ "The variable is constrained to the enclosing build target scope. If the var() task is used in the "
 							+ "global scope, then only the variables defined in the global scope are accessible.\n"
 							+ "Variables in the global scope are NOT accessible within build targets."));
 
 			SimpleTaskParameterInformation varnameparam = new SimpleTaskParameterInformation(taskinfo, "");
 			varnameparam.setRequired(true);
-			varnameparam.setInformation(
-					new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT, DEREFERENCE_VAR_PARAM_INFO));
+			varnameparam.setInformation(SingleFormattedTextContent.createPlaintext(DEREFERENCE_VAR_PARAM_INFO));
 			SimpleTypeInformation typeinfo = new SimpleTypeInformation(TypeInformationKind.STRING);
 			typeinfo.setInformation(varnameparam.getInformation());
 			varnameparam.setTypeInformation(typeinfo);
@@ -187,23 +183,22 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 			map.put(taskname, taskinfo);
 
 			SimpleTypeInformation returninfo = new SimpleTypeInformation(TypeInformationKind.OBJECT);
-			returninfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"Reference to a variable in the enclosing build target scope."));
+			returninfo.setInformation(SingleFormattedTextContent
+					.createPlaintext("Reference to a variable in the enclosing build target scope."));
 			taskinfo.setReturnType(returninfo);
 		}
 		{
 			TaskName taskname = TaskName.valueOf(TaskInvocationSakerTaskFactory.TASKNAME_STATIC);
 			SimpleTaskInformation taskinfo = new SimpleTaskInformation(taskname);
-			taskinfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"Dereferences a static variable with the given name.\n"
+			taskinfo.setInformation(
+					SingleFormattedTextContent.createPlaintext("Dereferences a static variable with the given name.\n"
 							+ "A static variable is private to the enclosing build script. Static variables are "
 							+ "shared between build targets of the same build script file. This sharing includes the static "
 							+ "variables defined in the global scope as well."));
 
 			SimpleTaskParameterInformation varnameparam = new SimpleTaskParameterInformation(taskinfo, "");
 			varnameparam.setRequired(true);
-			varnameparam.setInformation(
-					new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT, DEREFERENCE_VAR_PARAM_INFO));
+			varnameparam.setInformation(SingleFormattedTextContent.createPlaintext(DEREFERENCE_VAR_PARAM_INFO));
 			SimpleTypeInformation typeinfo = new SimpleTypeInformation(TypeInformationKind.STRING);
 			typeinfo.setInformation(varnameparam.getInformation());
 			varnameparam.setTypeInformation(typeinfo);
@@ -212,15 +207,15 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 			map.put(taskname, taskinfo);
 
 			SimpleTypeInformation returninfo = new SimpleTypeInformation(TypeInformationKind.OBJECT);
-			returninfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"Reference to a static variable in the enclosing build script scope."));
+			returninfo.setInformation(SingleFormattedTextContent
+					.createPlaintext("Reference to a static variable in the enclosing build script scope."));
 			taskinfo.setReturnType(returninfo);
 		}
 		{
 			TaskName taskname = TaskName.valueOf(TaskInvocationSakerTaskFactory.TASKNAME_GLOBAL);
 			SimpleTaskInformation taskinfo = new SimpleTaskInformation(taskname);
-			taskinfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"Dereferences a global variable with the given name.\n"
+			taskinfo.setInformation(
+					SingleFormattedTextContent.createPlaintext("Dereferences a global variable with the given name.\n"
 							+ "A global variable is shared between ALL build scripts. This includes build scripts written in "
 							+ "other languages.\n"
 							+ "Note that global variables are NOT the same as variables or static variables used in the "
@@ -228,8 +223,7 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 
 			SimpleTaskParameterInformation varnameparam = new SimpleTaskParameterInformation(taskinfo, "");
 			varnameparam.setRequired(true);
-			varnameparam.setInformation(
-					new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT, DEREFERENCE_VAR_PARAM_INFO));
+			varnameparam.setInformation(SingleFormattedTextContent.createPlaintext(DEREFERENCE_VAR_PARAM_INFO));
 			SimpleTypeInformation typeinfo = new SimpleTypeInformation(TypeInformationKind.STRING);
 			typeinfo.setInformation(varnameparam.getInformation());
 			varnameparam.setTypeInformation(typeinfo);
@@ -238,15 +232,14 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 			map.put(taskname, taskinfo);
 
 			SimpleTypeInformation returninfo = new SimpleTypeInformation(TypeInformationKind.OBJECT);
-			returninfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"Reference to a global variable."));
+			returninfo.setInformation(SingleFormattedTextContent.createPlaintext("Reference to a global variable."));
 			taskinfo.setReturnType(returninfo);
 		}
 		{
 			TaskName taskname = TaskName.valueOf(TaskInvocationSakerTaskFactory.TASKNAME_SEQUENCE);
 			SimpleTaskInformation taskinfo = new SimpleTaskInformation(taskname);
-			taskinfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"Executes the parameter tasks after each other.\n"
+			taskinfo.setInformation(
+					SingleFormattedTextContent.createPlaintext("Executes the parameter tasks after each other.\n"
 							+ "The task takes a list of expressions as its argument, and will execute them in order. After a given expression "
 							+ "is evaluated, the next expression will be evaluated, and so on.\n"
 							+ "Note that this task DOES NOT guarantee that the expressions are evaluated in order. If the same "
@@ -255,9 +248,8 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 			SimpleTaskParameterInformation tasksparam = new SimpleTaskParameterInformation(taskinfo, "Tasks");
 			tasksparam.setAliases(ImmutableUtils.singletonSet(""));
 			tasksparam.setRequired(true);
-			tasksparam.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"A list of expressions to execute.\n"
-							+ "The task should be used by directly passing an [a, b, c, ...] expression list as its argument."));
+			tasksparam.setInformation(SingleFormattedTextContent.createPlaintext("A list of expressions to execute.\n"
+					+ "The task should be used by directly passing an [a, b, c, ...] expression list as its argument."));
 			SimpleTypeInformation typeinfo = new SimpleTypeInformation(TypeInformationKind.COLLECTION);
 			typeinfo.setElementTypes(ImmutableUtils.singletonList(null));
 			typeinfo.setInformation(tasksparam.getInformation());
@@ -268,8 +260,8 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 
 			SimpleTypeInformation returninfo = new SimpleTypeInformation(TypeInformationKind.COLLECTION);
 			returninfo.setElementTypes(ImmutableUtils.singletonList(null));
-			returninfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-					"A list of the results of each invoked task by the sequence() task.\n"
+			returninfo.setInformation(SingleFormattedTextContent
+					.createPlaintext("A list of the results of each invoked task by the sequence() task.\n"
 							+ "Each entry in the list is the result of the expression at the corresponding index of the input list."));
 			taskinfo.setReturnType(returninfo);
 		}
@@ -279,8 +271,8 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 	}
 	static {
 		SimpleTaskInformation taskinfo = new SimpleTaskInformation(SakerParsedModel.TASK_NAME_DEFAULTS);
-		taskinfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-				"Declares default parameters for the associated task invocations.\n" + "The "
+		taskinfo.setInformation(SingleFormattedTextContent
+				.createPlaintext("Declares default parameters for the associated task invocations.\n" + "The "
 						+ TaskInvocationSakerTaskFactory.TASKNAME_DEFAULTS
 						+ "() task can be used in the defaults file to set the default inputs "
 						+ "for the specified parameters.\n"
@@ -289,8 +281,8 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 						+ TaskInvocationSakerTaskFactory.TASKNAME_DEFAULTS
 						+ "() task can only be used as a top level declaration in the defaults file."));
 		SimpleTaskParameterInformation paraminfo = new SimpleTaskParameterInformation(taskinfo, "");
-		paraminfo.setInformation(new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-				"One or more task names for which the default parameters are defined for."));
+		paraminfo.setInformation(SingleFormattedTextContent
+				.createPlaintext("One or more task names for which the default parameters are defined for."));
 		SimpleTypeInformation paramtype = new SimpleTypeInformation(TypeInformationKind.COLLECTION);
 		paramtype.setElementTypes(
 				ImmutableUtils.singletonList(new SimpleTypeInformation(TypeInformationKind.BUILD_TASK_NAME)));
@@ -338,5 +330,4 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 		}
 		return Collections.emptyNavigableMap();
 	}
-
 }

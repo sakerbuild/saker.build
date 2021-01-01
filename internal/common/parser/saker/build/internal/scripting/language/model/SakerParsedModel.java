@@ -112,19 +112,18 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	private static final NavigableSet<String> STATEMENT_NAMES_IN_OUT_PARAMETERS = ImmutableUtils
 			.makeImmutableNavigableSet(new String[] { "out_parameter", "in_parameter" });
 
-	private static final SingleFormattedTextContent BOOLEAN_FALSE_INFORMATION_CONTENT = new SingleFormattedTextContent(
-			FormattedTextContent.FORMAT_PLAINTEXT, "Represents the boolean value false.");
+	private static final FormattedTextContent BOOLEAN_FALSE_INFORMATION_CONTENT = SingleFormattedTextContent
+			.createPlaintext("Represents the boolean value false.");
 
-	private static final SingleFormattedTextContent BOOLEAN_TRUE_INFORMATION_CONTENT = new SingleFormattedTextContent(
-			FormattedTextContent.FORMAT_PLAINTEXT, "Represents the boolean value true.");
+	private static final FormattedTextContent BOOLEAN_TRUE_INFORMATION_CONTENT = SingleFormattedTextContent
+			.createPlaintext("Represents the boolean value true.");
 
 	private static final NavigableSet<String> EXTERNAL_LITERAL_RECEIVER_TYPE_KINDS = ImmutableUtils
-			.makeImmutableNavigableSet(
-					new String[] { TypeInformationKind.LITERAL, TypeInformationKind.OBJECT,
-							TypeInformationKind.OBJECT_LITERAL, TypeInformationKind.ENVIRONMENT_USER_PARAMETER,
-							TypeInformationKind.EXECUTION_USER_PARAMETER, TypeInformationKind.FILE_PATH,
-							TypeInformationKind.NUMBER, TypeInformationKind.PATH, TypeInformationKind.STRING },
-					String::compareToIgnoreCase);
+			.makeImmutableNavigableSet(new String[] { TypeInformationKind.LITERAL, TypeInformationKind.OBJECT,
+					TypeInformationKind.OBJECT_LITERAL, TypeInformationKind.ENVIRONMENT_USER_PARAMETER,
+					TypeInformationKind.EXECUTION_USER_PARAMETER, TypeInformationKind.FILE_PATH,
+					TypeInformationKind.NUMBER, TypeInformationKind.PATH, TypeInformationKind.STRING,
+					TypeInformationKind.SYSTEM_PROPERTY, }, String::compareToIgnoreCase);
 
 	private static final ScriptTokenInformation EMPTY_TOKEN_INFORMATION = () -> null;
 
@@ -170,10 +169,8 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	private static final Map<String, SimpleTextPartition> KEYWORD_LITERALS;
 	static {
 		KEYWORD_LITERALS = new TreeMap<>();
-		KEYWORD_LITERALS.put("null",
-				new SimpleTextPartition(createLiteralTitle("null"), null,
-						new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-								"The null literal representing the absence of a value.")));
+		KEYWORD_LITERALS.put("null", new SimpleTextPartition(createLiteralTitle("null"), null,
+				SingleFormattedTextContent.createPlaintext("The null literal representing the absence of a value.")));
 
 		KEYWORD_LITERALS.put("true",
 				new SimpleTextPartition(createLiteralTitle("true"), null, BOOLEAN_TRUE_INFORMATION_CONTENT));
@@ -2695,7 +2692,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		SimpleTextPartition partition = new SimpleTextPartition(
 				createBuildTargetTitle(derived, derived.getScriptParsingOptions().getScriptPath(),
 						ImmutableUtils.singletonNavigableSet(targetname)),
-				null, new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT, docsb.toString()));
+				null, SingleFormattedTextContent.createPlaintext(docsb.toString()));
 		partition.setSchemaIdentifier(INFORMATION_SCHEMA_TASK);
 		partition.setSchemaMetaData(ImmutableUtils.singletonNavigableMap(PROPOSAL_META_DATA_TASK_TYPE,
 				PROPOSAL_META_DATA_TASK_SIMPLIFIED_INCLUDE));
@@ -2812,7 +2809,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		}
 		StringBuilder sb = new StringBuilder();
 		appendCommentBasedFormattedTextContent(comments, sb);
-		return new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT, sb.toString());
+		return SingleFormattedTextContent.createPlaintext(sb.toString());
 	}
 
 	private static void appendCommentBasedFormattedTextContent(List<Statement> comments, StringBuilder sb) {
@@ -3268,9 +3265,8 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		addVariableTokenInformationPartitions(derived, expres, partitions);
 
 		SimpleTextPartition partition = new SimpleTextPartition(createParameterTitle("Name", true),
-				createTaskTitle(vartask.getTaskName().toString()),
-				new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-						BuiltinExternalScriptInformationProvider.DEREFERENCE_VAR_PARAM_INFO));
+				createTaskTitle(vartask.getTaskName().toString()), SingleFormattedTextContent
+						.createPlaintext(BuiltinExternalScriptInformationProvider.DEREFERENCE_VAR_PARAM_INFO));
 		partition.setSchemaIdentifier(INFORMATION_SCHEMA_TASK_PARAMETER);
 		partitions.accept(partition);
 		return ImmutableUtils.makeImmutableList(partitionsset);
@@ -3418,7 +3414,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			executionparameterinfo = "Not present. (" + parametername + ")";
 		}
 		SimpleTextPartition partition = new SimpleTextPartition("Execution user parameter", parametername,
-				new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT, executionparameterinfo));
+				SingleFormattedTextContent.createPlaintext(executionparameterinfo));
 		partition.setSchemaIdentifier(INFORMATION_SCHEMA_USER_PARAMETER);
 		return partition;
 	}
@@ -5107,8 +5103,8 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 						paramname);
 				simpleproposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_USER_PARAMETER);
 				SimpleTextPartition partition = new SimpleTextPartition("Execution user parameter: " + paramname, null,
-						new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT,
-								"Execution user parameter with value: " + entry.getValue()));
+						SingleFormattedTextContent
+								.createPlaintext("Execution user parameter with value: " + entry.getValue()));
 				partition.setSchemaIdentifier(INFORMATION_SCHEMA_USER_PARAMETER);
 				simpleproposal.setInformation(partitioned(partition));
 				result.add(simpleproposal);

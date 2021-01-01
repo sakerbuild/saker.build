@@ -141,6 +141,13 @@ public final class TypeInformationKind {
 	 * @since saker.build 0.8.12
 	 */
 	public static final String BUILD_TASK_NAME = "BUILD_TASK_NAME";
+	/**
+	 * Type representing a name of a system property.
+	 * 
+	 * @see System#getProperties()
+	 * @since saker.build 0.8.16
+	 */
+	public static final String SYSTEM_PROPERTY = "SYSTEM_PROPERTY";
 
 	private TypeInformationKind() {
 		throw new UnsupportedOperationException();
@@ -164,6 +171,7 @@ public final class TypeInformationKind {
 		LITERAL_TYPES.add(EXECUTION_USER_PARAMETER);
 		LITERAL_TYPES.add(ENVIRONMENT_USER_PARAMETER);
 		LITERAL_TYPES.add(BUILD_TASK_NAME);
+		LITERAL_TYPES.add(SYSTEM_PROPERTY);
 	}
 
 	/**

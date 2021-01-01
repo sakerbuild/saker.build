@@ -47,7 +47,7 @@ public class TestExternalScriptInformationProvider implements ExternalScriptInfo
 	private static final String TEST_LITERALS_QUALIFIED_NAME = "test.external.literal.Literal";
 
 	private static FormattedTextContent createPlainFormattedTextContent(String content) {
-		return new SingleFormattedTextContent(FormattedTextContent.FORMAT_PLAINTEXT, content);
+		return SingleFormattedTextContent.createPlaintext(content);
 	}
 
 	private static final NavigableMap<TaskName, TaskInformation> taskInfos = new TreeMap<>();
@@ -234,6 +234,23 @@ public class TestExternalScriptInformationProvider implements ExternalScriptInfo
 			SimpleTaskParameterInformation param = new SimpleTaskParameterInformation(taskinfo, "");
 			param.setInformation(createPlainFormattedTextContent(taskdoc + "_" + param.getParameterName()));
 			param.setTypeInformation(new SimpleTypeInformation(TypeInformationKind.ENVIRONMENT_USER_PARAMETER));
+			parameters.add(param);
+			taskinfo.setParameters(parameters);
+
+			taskInfos.put(taskname, taskinfo);
+		}
+
+		{
+			TaskName taskname = TaskName.valueOf("sys.prop");
+			SimpleTaskInformation taskinfo = new SimpleTaskInformation(taskname);
+			String taskdoc = "doc_" + taskname;
+			taskinfo.setInformation(createPlainFormattedTextContent(taskdoc));
+
+			Collection<TaskParameterInformation> parameters = new ArrayList<>();
+			SimpleTaskParameterInformation param = new SimpleTaskParameterInformation(taskinfo, "PropName");
+			param.setAliases(Collections.singleton(""));
+			param.setInformation(createPlainFormattedTextContent(taskdoc + "_" + param.getParameterName()));
+			param.setTypeInformation(new SimpleTypeInformation(TypeInformationKind.SYSTEM_PROPERTY));
 			parameters.add(param);
 			taskinfo.setParameters(parameters);
 
