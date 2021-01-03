@@ -74,3 +74,7 @@ steps:
   displayName: 'Dogfood export'
 - script: cmp build/saker.jar.create/saker.build.jar df_build/saker.jar.create/saker.build.jar
   displayName: 'Compare dogfood export outputs'
+- script: |
+    cd test/cmdline-integration
+    bash run-tests.sh ../../build/saker.jar.create/saker.build.jar
+  displayName: 'Run command line integration tests'
