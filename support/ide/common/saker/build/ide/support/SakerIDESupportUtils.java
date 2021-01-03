@@ -310,7 +310,7 @@ public class SakerIDESupportUtils {
 		try {
 			return createValidationErrorMessageImpl(err);
 		} catch (Exception e) {
-			return "Failed to construct error message: " + e;
+			return "Failed to construct error message: " + e + " for: " + err;
 		}
 	}
 
@@ -877,7 +877,15 @@ public class SakerIDESupportUtils {
 			}
 
 			default: {
-				return "Unrecognized error: " + type + " : " + err.relatedSubject;
+				StringBuilder sb = new StringBuilder();
+				sb.append("Unrecognized error: ");
+				sb.append(type);
+				Object subject = err.relatedSubject;
+				if (subject != null) {
+					sb.append(": ");
+					sb.append(subject);
+				}
+				return sb.toString();
 			}
 		}
 	}

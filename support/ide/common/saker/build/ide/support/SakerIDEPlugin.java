@@ -24,7 +24,6 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -38,9 +37,15 @@ import java.util.ServiceConfigurationError;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 
 import javax.net.ServerSocketFactory;
+import javax.net.SocketFactory;
+import javax.net.ssl.SSLContext;
 
 import saker.build.daemon.DaemonEnvironment;
 import saker.build.daemon.DaemonLaunchParameters;
@@ -92,7 +97,9 @@ public final class SakerIDEPlugin implements Closeable {
 
 	private Path pluginConfigurationFilePath;
 
-	private final Object configurationChangeLock = new Object();
+	private final ReadWriteLock configurationChangeReadWriteLock = new ReentrantReadWriteLock();
+	private final Lock configurationChangeReadLock = configurationChangeReadWriteLock.readLock();
+	private final Lock configurationChangeWriteLock = configurationChangeReadWriteLock.writeLock();
 
 	private PluginEnvironmentState pluginDaemonEnvironment = PLUGIN_ENVIRONMENT_STATE_NOT_INITIALIZED;
 
@@ -142,14 +149,33 @@ public final class SakerIDEPlugin implements Closeable {
 		pluginResourceListeners.remove(listener);
 	}
 
-	public void initialize(Path sakerJarPath, Path plugindirectory) throws IOException {
+	/**
+	 * Initializes this plugin instance.
+	 * <p>
+	 * This method does not fail. (Unless conditions specified in the thrown types are satisfied.)
+	 * 
+	 * @param sakerJarPath
+	 *            The JAR path to the saker build system release.
+	 * @param plugindirectory
+	 *            The plugin directory where the plugin can store its data.
+	 * @throws NullPointerException
+	 *             If any of the arguments are <code>null</code>.
+	 * @throws IllegalStateException
+	 *             If the instance is already initialized.
+	 */
+	public void initialize(Path sakerJarPath, Path plugindirectory) throws NullPointerException, IllegalStateException {
 		Objects.requireNonNull(sakerJarPath, "saker JAR path");
 		Objects.requireNonNull(plugindirectory, "plugin directory");
-		synchronized (configurationChangeLock) {
+		configurationChangeWriteLock.lock();
+		try {
 			if (pluginDirectory != null) {
 				throw new IllegalStateException("Plugin already initialized.");
 			}
-			NativeLibs.init(plugindirectory.resolve("nativelibs"));
+			try {
+				NativeLibs.init(plugindirectory.resolve("nativelibs"));
+			} catch (IOException e) {
+				displayException(e);
+			}
 			//the threads should be daemon
 			workPool = ThreadUtils.newDynamicWorkPool(new ThreadGroup("Saker.build plugin worker"), "Worker-", null,
 					true);
@@ -167,38 +193,81 @@ public final class SakerIDEPlugin implements Closeable {
 				displayException(e);
 				pluginProperties = SimpleIDEPluginProperties.empty();
 			}
+		} finally {
+			configurationChangeWriteLock.unlock();
 		}
 	}
 
-	public void start(DaemonLaunchParameters daemonparams) throws IOException {
-		synchronized (configurationChangeLock) {
+	public void start(DaemonLaunchParameters daemonparams, SSLContext sslcontext, SakerPath keystorepath)
+			throws IOException, IllegalStateException {
+		ServerSocketFactory serversocketfactory = null;
+		SocketFactory socketfactory = null;
+		if (sslcontext != null) {
+			serversocketfactory = sslcontext.getServerSocketFactory();
+			socketfactory = sslcontext.getSocketFactory();
+		}
+		startImpl(daemonparams, keystorepath, serversocketfactory, socketfactory);
+	}
+
+	private void startImpl(DaemonLaunchParameters daemonparams, SakerPath keystorepath,
+			ServerSocketFactory serversocketfactory, SocketFactory socketfactory)
+			throws IOException, IllegalStateException {
+		LocalDaemonEnvironment ndaemonenv = null;
+		configurationChangeWriteLock.lock();
+		Lock tounlock = configurationChangeWriteLock;
+		try {
 			if (closed) {
 				return;
 			}
 			if (this.pluginDaemonEnvironment != PLUGIN_ENVIRONMENT_STATE_NOT_INITIALIZED) {
 				throw new IllegalStateException("Already started.");
 			}
-			LocalDaemonEnvironment ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, daemonparams, null);
+
+			ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, daemonparams, null);
 			LocalDaemonEnvironment localdaemonenvtoclose = ndaemonenv;
+			ndaemonenv.setServerSocketFactory(serversocketfactory);
+			ndaemonenv.setConnectionSocketFactory(socketfactory);
+			ndaemonenv.setSslKeystorePath(keystorepath);
+
+			PluginEnvironmentState npluginstate = null;
 			try {
-				ndaemonenv.setServerSocketFactory(ServerSocketFactory.getDefault());
 				ndaemonenv.start();
-				this.pluginDaemonEnvironment = new PluginEnvironmentState(ndaemonenv);
+				npluginstate = new PluginEnvironmentState(ndaemonenv);
 				localdaemonenvtoclose = null;
-			} catch (Exception | StackOverflowError | AssertionError | LinkageError | ServiceConfigurationError e) {
+			} catch (Throwable e) {
 				ndaemonenv = null;
-				this.pluginDaemonEnvironment = new PluginEnvironmentState(e);
+				npluginstate = new PluginEnvironmentState(e);
 				displayException(e);
 				throw e;
 			} finally {
 				IOUtils.close(localdaemonenvtoclose);
+				if (npluginstate != null) {
+					//this should not ever be null, as it is always assigned even in case of exception,
+					//but check anyway
+					npluginstate.serverSocketFactory = serversocketfactory;
+					npluginstate.socketFactory = socketfactory;
+					npluginstate.keyStorePath = keystorepath;
+				}
+				this.pluginDaemonEnvironment = npluginstate;
 			}
 			if (ndaemonenv != null) {
+				//downgrade to read lock when calling listeners
+				configurationChangeReadLock.lock();
+				tounlock = configurationChangeReadLock;
+				configurationChangeWriteLock.unlock();
+
 				SakerEnvironmentImpl openedenv = ndaemonenv.getSakerEnvironment();
 				callListeners(ImmutableUtils.makeImmutableList(pluginResourceListeners),
 						l -> l.environmentCreated(openedenv));
 			}
+		} finally {
+			tounlock.unlock();
 		}
+	}
+
+	@Deprecated
+	public void start(DaemonLaunchParameters daemonparams) throws IOException {
+		start(daemonparams, null, null);
 	}
 
 	public Map<String, RemoteDaemonConnection> connectToDaemonsFromPluginEnvironment(
@@ -225,50 +294,47 @@ public final class SakerIDEPlugin implements Closeable {
 			}
 			result.put(connname, null);
 		}
-		int[] rescounter = { result.size() };
+		Semaphore sem = new Semaphore(0);
+		int size = result.size();
 		IOException[] exc = { null };
-		synchronized (rescounter) {
-			for (DaemonConnectionIDEProperty prop : connectionproperties) {
-				workPool.offer(() -> {
-					try {
-						InetSocketAddress socketaddress = NetworkUtils.parseInetSocketAddress(prop.getNetAddress(),
-								DaemonLaunchParameters.DEFAULT_PORT);
+		for (DaemonConnectionIDEProperty prop : connectionproperties) {
+			workPool.offer(() -> {
+				try {
+					InetSocketAddress socketaddress = NetworkUtils.parseInetSocketAddress(prop.getNetAddress(),
+							DaemonLaunchParameters.DEFAULT_PORT);
 
-						RemoteDaemonConnection connection = daemonenv.connectTo(socketaddress);
-						result.put(prop.getConnectionName(), connection);
-					} catch (IOException e) {
-						synchronized (exc) {
-							exc[0] = IOUtils.addExc(exc[0], e);
-						}
-						this.displayException(e);
-					} catch (Throwable e) {
-						synchronized (exc) {
-							exc[0] = IOUtils.addExc(exc[0], e);
-						}
-						this.displayException(e);
-					} finally {
-						synchronized (rescounter) {
-							rescounter[0]--;
-							rescounter.notify();
-						}
+					RemoteDaemonConnection connection = daemonenv.connectTo(socketaddress);
+					result.put(prop.getConnectionName(), connection);
+				} catch (IOException e) {
+					synchronized (exc) {
+						exc[0] = IOUtils.addExc(exc[0], e);
 					}
-				});
-			}
-			while (rescounter[0] > 0) {
-				rescounter.wait();
-			}
+					this.displayException(e);
+				} catch (Throwable e) {
+					synchronized (exc) {
+						exc[0] = IOUtils.addExc(exc[0], e);
+					}
+					this.displayException(e);
+				} finally {
+					sem.release();
+				}
+			});
 		}
+		sem.acquire(size);
 		IOUtils.throwExc(exc[0]);
 		return result;
 	}
 
 	public final DaemonEnvironment getPluginDaemonEnvironment() throws IOException {
-		synchronized (configurationChangeLock) {
-			return getPluginDaemonEnvironmentLocked();
+		configurationChangeReadLock.lock();
+		try {
+			return getPluginDaemonEnvironmentReadLocked();
+		} finally {
+			configurationChangeReadLock.unlock();
 		}
 	}
 
-	private LocalDaemonEnvironment getPluginDaemonEnvironmentLocked() throws IOException {
+	private LocalDaemonEnvironment getPluginDaemonEnvironmentReadLocked() throws IOException {
 		PluginEnvironmentState envstate = this.pluginDaemonEnvironment;
 		LocalDaemonEnvironment env = envstate.environment;
 		if (env != null) {
@@ -278,8 +344,11 @@ public final class SakerIDEPlugin implements Closeable {
 	}
 
 	public final SakerEnvironmentImpl getPluginEnvironment() throws IOException {
-		synchronized (configurationChangeLock) {
-			return getPluginDaemonEnvironmentLocked().getSakerEnvironment();
+		configurationChangeReadLock.lock();
+		try {
+			return getPluginDaemonEnvironmentReadLocked().getSakerEnvironment();
+		} finally {
+			configurationChangeReadLock.unlock();
 		}
 	}
 
@@ -312,7 +381,8 @@ public final class SakerIDEPlugin implements Closeable {
 	@Override
 	public void close() throws IOException {
 		IOException exc = null;
-		synchronized (configurationChangeLock) {
+		configurationChangeWriteLock.lock();
+		try {
 			closed = true;
 			try {
 				closeProjects();
@@ -320,6 +390,8 @@ public final class SakerIDEPlugin implements Closeable {
 				exc = IOUtils.addExc(exc, e);
 			}
 			exc = IOUtils.closeExc(exc, pluginDaemonEnvironment.environment);
+		} finally {
+			configurationChangeWriteLock.unlock();
 		}
 		try {
 			workPool.closeInterruptible();
@@ -348,31 +420,52 @@ public final class SakerIDEPlugin implements Closeable {
 	public final void setIDEPluginProperties(IDEPluginProperties properties) {
 		properties = properties == null ? SimpleIDEPluginProperties.empty()
 				: SimpleIDEPluginProperties.builder(properties).build();
-		synchronized (configurationChangeLock) {
+		configurationChangeWriteLock.lock();
+		try {
 			if (this.pluginProperties.equals(properties)) {
 				return;
 			}
 			this.pluginProperties = properties;
 			writePluginPropertiesFile(properties);
+		} finally {
+			configurationChangeWriteLock.unlock();
 		}
 	}
 
 	public void updateForPluginProperties(IDEPluginProperties properties) {
+		updateForPluginPropertiesImpl(properties, null, null, false);
+	}
+
+	public void updateForPluginProperties(IDEPluginProperties properties, SSLContext sslcontext,
+			SakerPath keystorepath) {
+		updateForPluginPropertiesImpl(properties, sslcontext, keystorepath, true);
+	}
+
+	private void updateForPluginPropertiesImpl(IDEPluginProperties properties, SSLContext sslcontext,
+			SakerPath keystorepath, boolean updatessl) {
 		properties = properties == null ? SimpleIDEPluginProperties.empty()
 				: SimpleIDEPluginProperties.builder(properties).build();
-		synchronized (configurationChangeLock) {
+		configurationChangeWriteLock.lock();
+		Lock tounlock = configurationChangeWriteLock;
+		try {
 			DaemonLaunchParameters newlaunchparams = createDaemonLaunchParameters(properties);
 			LocalDaemonEnvironment plugindaemonenv = this.pluginDaemonEnvironment.environment;
 			if (plugindaemonenv == null || !newlaunchparams.equals(plugindaemonenv.getLaunchParameters())) {
-				reloadPluginDaemonLocked(newlaunchparams);
+				tounlock = null;
+				//method will unlock
+				reloadPluginDaemonWriteLocked(newlaunchparams, sslcontext, keystorepath, updatessl);
+			}
+		} finally {
+			if (tounlock != null) {
+				tounlock.unlock();
 			}
 		}
 	}
 
 	public void forceReloadPluginDaemon(DaemonLaunchParameters newlaunchparams) {
-		synchronized (configurationChangeLock) {
-			reloadPluginDaemonLocked(newlaunchparams);
-		}
+		configurationChangeWriteLock.lock();
+		reloadPluginDaemonWriteLocked(newlaunchparams, null, null, false);
+
 	}
 
 	private <L> int callListeners(Iterable<L> listeners, Consumer<? super L> caller) {
@@ -388,42 +481,93 @@ public final class SakerIDEPlugin implements Closeable {
 		return c;
 	}
 
-	private void reloadPluginDaemonLocked(DaemonLaunchParameters newlaunchparams) {
-		List<PluginResourceListener> pluginlisteners = ImmutableUtils.makeImmutableList(pluginResourceListeners);
-
-		LocalDaemonEnvironment currentdaemonenv = this.pluginDaemonEnvironment.environment;
-		if (currentdaemonenv != null) {
-			SakerEnvironmentImpl closingenv = currentdaemonenv.getSakerEnvironment();
-			try {
-				callListeners(pluginlisteners, l -> l.environmentClosing(closingenv));
-				currentdaemonenv.close();
-			} finally {
-				this.pluginDaemonEnvironment = new PluginEnvironmentState(
-						new IllegalStateException("Plugin build environment closed."));
-			}
-		}
-
-		LocalDaemonEnvironment ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, newlaunchparams, null);
-		LocalDaemonEnvironment localdaemonenvtoclose = ndaemonenv;
+	//This method is responsible for unlocking the write lock
+	private void reloadPluginDaemonWriteLocked(DaemonLaunchParameters newlaunchparams, SSLContext sslcontext,
+			SakerPath keystorepath, boolean updatessl) {
+		Lock tounlock = configurationChangeWriteLock;
 		try {
-			ndaemonenv.start();
-			this.pluginDaemonEnvironment = new PluginEnvironmentState(ndaemonenv);
-			localdaemonenvtoclose = null;
-		} catch (Exception | StackOverflowError | AssertionError | LinkageError | ServiceConfigurationError e) {
-			this.pluginDaemonEnvironment = new PluginEnvironmentState(e);
-			ndaemonenv = null;
-			displayException(e);
-			return;
-		} finally {
-			try {
-				IOUtils.close(localdaemonenvtoclose);
-			} catch (IOException e) {
-				displayException(e);
+			List<PluginResourceListener> pluginlisteners = ImmutableUtils.makeImmutableList(pluginResourceListeners);
+
+			PluginEnvironmentState currentenvironmentstate = this.pluginDaemonEnvironment;
+			LocalDaemonEnvironment currentdaemonenv = currentenvironmentstate.environment;
+			if (currentdaemonenv != null) {
+				SakerEnvironmentImpl closingenv = currentdaemonenv.getSakerEnvironment();
+				try {
+					callListeners(pluginlisteners, l -> l.environmentClosing(closingenv));
+					currentdaemonenv.close();
+				} finally {
+					PluginEnvironmentState npluginstate = new PluginEnvironmentState(
+							new IllegalStateException("Plugin build environment closed."));
+					if (updatessl) {
+						npluginstate.serverSocketFactory = (sslcontext == null ? null
+								: sslcontext.getServerSocketFactory());
+						npluginstate.socketFactory = (sslcontext == null ? null : sslcontext.getSocketFactory());
+						npluginstate.keyStorePath = (keystorepath);
+					} else {
+						npluginstate.copySSLFields(currentenvironmentstate);
+					}
+					this.pluginDaemonEnvironment = npluginstate;
+				}
 			}
-		}
-		if (ndaemonenv != null) {
-			SakerEnvironmentImpl openedenv = ndaemonenv.getSakerEnvironment();
-			callListeners(pluginlisteners, l -> l.environmentCreated(openedenv));
+
+			LocalDaemonEnvironment ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, newlaunchparams, null);
+			if (updatessl) {
+				ndaemonenv.setServerSocketFactory(sslcontext == null ? null : sslcontext.getServerSocketFactory());
+				ndaemonenv.setConnectionSocketFactory(sslcontext == null ? null : sslcontext.getSocketFactory());
+				ndaemonenv.setSslKeystorePath(keystorepath);
+			} else {
+				ndaemonenv.setServerSocketFactory(currentenvironmentstate.serverSocketFactory);
+				ndaemonenv.setConnectionSocketFactory(currentenvironmentstate.socketFactory);
+				ndaemonenv.setSslKeystorePath(currentenvironmentstate.keyStorePath);
+			}
+
+			LocalDaemonEnvironment localdaemonenvtoclose = ndaemonenv;
+			PluginEnvironmentState npluginstate = null;
+			try {
+				ndaemonenv.start();
+				npluginstate = new PluginEnvironmentState(ndaemonenv);
+				localdaemonenvtoclose = null;
+			} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError | AssertionError
+					| Exception e) {
+				npluginstate = new PluginEnvironmentState(e);
+				ndaemonenv = null;
+				displayException(e);
+				return;
+			} catch (Throwable e) {
+				npluginstate = new PluginEnvironmentState(e);
+				ndaemonenv = null;
+				displayException(e);
+				throw e;
+			} finally {
+				if (npluginstate != null) {
+					if (updatessl) {
+						npluginstate.serverSocketFactory = (sslcontext == null ? null
+								: sslcontext.getServerSocketFactory());
+						npluginstate.socketFactory = (sslcontext == null ? null : sslcontext.getSocketFactory());
+						npluginstate.keyStorePath = (keystorepath);
+					} else {
+						npluginstate.copySSLFields(currentenvironmentstate);
+					}
+					this.pluginDaemonEnvironment = npluginstate;
+				}
+
+				try {
+					IOUtils.close(localdaemonenvtoclose);
+				} catch (IOException e) {
+					displayException(e);
+				}
+			}
+			if (ndaemonenv != null) {
+				//downgrade to read lock when calling listeners
+				configurationChangeReadLock.lock();
+				tounlock = configurationChangeReadLock;
+				configurationChangeWriteLock.unlock();
+
+				SakerEnvironmentImpl openedenv = ndaemonenv.getSakerEnvironment();
+				callListeners(pluginlisteners, l -> l.environmentCreated(openedenv));
+			}
+		} finally {
+			tounlock.unlock();
 		}
 	}
 
@@ -510,7 +654,7 @@ public final class SakerIDEPlugin implements Closeable {
 	private void closeProjects() throws IOException {
 		List<SakerIDEProject> copiedprojects;
 		synchronized (projectsLock) {
-			copiedprojects = new ArrayList<>(projects.values());
+			copiedprojects = ImmutableUtils.makeImmutableList(projects.values());
 			projects.clear();
 		}
 		IOException exc = null;
@@ -546,6 +690,9 @@ public final class SakerIDEPlugin implements Closeable {
 	private static final class PluginEnvironmentState {
 		protected final LocalDaemonEnvironment environment;
 		protected final Throwable initializationException;
+		protected SocketFactory socketFactory;
+		protected ServerSocketFactory serverSocketFactory;
+		protected SakerPath keyStorePath;
 
 		public PluginEnvironmentState(LocalDaemonEnvironment environment) {
 			this.environment = environment;
@@ -555,6 +702,12 @@ public final class SakerIDEPlugin implements Closeable {
 		public PluginEnvironmentState(Throwable initializationException) {
 			this.environment = null;
 			this.initializationException = initializationException;
+		}
+
+		public void copySSLFields(PluginEnvironmentState state) {
+			this.socketFactory = state.socketFactory;
+			this.serverSocketFactory = state.serverSocketFactory;
+			this.keyStorePath = state.keyStorePath;
 		}
 	}
 }

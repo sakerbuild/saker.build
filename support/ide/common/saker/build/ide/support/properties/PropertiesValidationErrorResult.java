@@ -57,7 +57,16 @@ public final class PropertiesValidationErrorResult {
 
 	@Override
 	public String toString() {
-		return getClass().getSimpleName() + "[errorType=" + errorType + ", relatedSubject=" + relatedSubject + "]";
+		StringBuilder sb = new StringBuilder();
+		sb.append(getClass().getSimpleName());
+		sb.append("[errorType=");
+		sb.append(errorType);
+		if (relatedSubject != null) {
+			sb.append(", relatedSubject=");
+			sb.append(relatedSubject);
+		}
+		sb.append("]");
+		return sb.toString();
 	}
 
 }

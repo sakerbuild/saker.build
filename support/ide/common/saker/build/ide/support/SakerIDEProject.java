@@ -42,6 +42,8 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
 import saker.build.daemon.BuildExecutionInvoker;
@@ -233,7 +235,7 @@ public final class SakerIDEProject {
 	private final SakerIDEPlugin plugin;
 	private Path projectPath;
 
-	private final Object configurationChangeLock = new Object();
+	private final Lock configurationChangeLock = new ReentrantLock();
 	private ProjectIDEConfigurationCollection configurationCollection;
 	private ValidatedProjectProperties ideProjectProperties;
 	private volatile ProjectCacheHandle retrievedProjectHandle;
@@ -1180,12 +1182,15 @@ public final class SakerIDEProject {
 		if (configurationCollection == null) {
 			configurationCollection = new ProjectIDEConfigurationCollection();
 		}
-		synchronized (configurationChangeLock) {
+		configurationChangeLock.lock();
+		try {
 			if (configurationCollection.equals(this.configurationCollection)) {
 				return;
 			}
 			this.configurationCollection = configurationCollection;
 			persistIDEConfigsFile();
+		} finally {
+			configurationChangeLock.unlock();
 		}
 	}
 
@@ -1327,12 +1332,15 @@ public final class SakerIDEProject {
 	public final void setIDEProjectProperties(IDEProjectProperties properties) {
 		properties = properties == null ? SimpleIDEProjectProperties.getDefaultsInstance()
 				: SimpleIDEProjectProperties.copy(properties);
-		synchronized (configurationChangeLock) {
+		configurationChangeLock.lock();
+		try {
 			if (properties.equals(this.ideProjectProperties.properties)) {
 				return;
 			}
 			this.ideProjectProperties = createValidatedProjectProperties(properties);
 			persistIDEProjectPropertiesFile();
+		} finally {
+			configurationChangeLock.unlock();
 		}
 	}
 
