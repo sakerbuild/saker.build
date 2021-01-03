@@ -69,7 +69,8 @@ public class LaunchConfigUtils {
 
 	/**
 	 * @param inoutkeystorepass
-	 *            If contains a <code>null</code> value, passwords will be attempted to be guessed.
+	 *            If contains a <code>null</code> value, passwords will be attempted to be guessed. The actual password
+	 *            is returned in <code>inoutkeystorepass[0]</code>.
 	 */
 	public static KeyStore openKeystore(String filename, Path path, char[][] inoutkeystorepass)
 			throws KeyStoreException {
@@ -120,11 +121,12 @@ public class LaunchConfigUtils {
 					int idx = 0;
 					while (idx < fnwithoutext.length()) {
 						String pass = fnwithoutext.substring(idx);
-						inoutkeystorepass[0] = pass.toCharArray();
+						char[] passarray = pass.toCharArray();
 						try {
 							//seek back to start
 							fc.position(0);
 							ks.load(is, inoutkeystorepass[0]);
+							inoutkeystorepass[0] = passarray;
 							return ks;
 						} catch (NoSuchAlgorithmException | CertificateException | IOException e) {
 							//Keystore.load may throw IOException in case of incorrect password

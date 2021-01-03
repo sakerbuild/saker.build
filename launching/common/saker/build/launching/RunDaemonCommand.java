@@ -37,6 +37,7 @@ import saker.build.util.config.JVMSynchronizationObjects;
 import sipka.cmdline.api.Flag;
 import sipka.cmdline.api.Parameter;
 import sipka.cmdline.api.ParameterContext;
+import sipka.cmdline.runtime.MissingArgumentException;
 
 /**
  * <pre>
@@ -134,9 +135,8 @@ public class RunDaemonCommand {
 			daemonenv.setSslKeystorePath(authParams.getAuthKeystorePath());
 			if (!ObjectUtils.isNullOrEmpty(startParams.connectClientParam)) {
 				if (!launchparams.isActsAsCluster()) {
-					throw new IllegalArgumentException(
-							"Cannot connect to daemon as client without acting as cluster. (Use "
-									+ GeneralDaemonParams.PARAM_NAME_CLUSTER_ENABLE + ")");
+					throw new MissingArgumentException("Cannot connect to daemon as client without acting as cluster.",
+							GeneralDaemonParams.PARAM_NAME_CLUSTER_ENABLE);
 				}
 				Set<AddressResolver> serveraddresses = new LinkedHashSet<>();
 				ThreadUtils.runParallelItems(startParams.connectClientParam, addr -> {
