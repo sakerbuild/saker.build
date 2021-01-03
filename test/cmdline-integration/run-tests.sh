@@ -6,7 +6,7 @@ killall -q java
 for f in **/*Test.sh
 do
 	echo "Run test $f"
-	(cd $(dirname $f) && bash $f)
+	(cd $(dirname $f) && bash $(basename $f))
 	retVal=$?
 	# kill possible leftover processes
 	killall -q java
