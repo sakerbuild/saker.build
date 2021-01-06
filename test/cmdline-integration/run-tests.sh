@@ -5,14 +5,17 @@ killall -q java
 
 for f in **/*Test.sh
 do
-	echo "Run test $f"
+	echo "---------- Run test $f"
 	(cd $(dirname $f) && bash $(basename $f))
 	retVal=$?
-	# kill possible leftover processes
+	# kill possible leftover processes before the test
 	killall -q java
 	if [ $retVal -ne 0 ]; then
-	    echo "  Test failed: $f"
+	    echo "---------- Test failed: $f"
 		exit $retVal
 	fi
-	echo "  Test success: $f"
+	# kill possible leftover processes after the test
+	killall -q java
+	echo "---------- Test success: $f"
+	echo ""
 done
