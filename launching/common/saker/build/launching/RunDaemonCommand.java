@@ -153,18 +153,22 @@ public class RunDaemonCommand {
 				useserverport = serverport < 0 ? DaemonLaunchParameters.DEFAULT_PORT : serverport;
 			}
 
-			if (useserverport != null) {
-				System.out.println(FIRST_LINE_WITH_PORT_PREFIX + useserverport + FIRST_LINE_WITH_PORT_SUFFIX);
-			} else {
+			if (useserverport == null) {
 				if (ObjectUtils.isNullOrEmpty(startParams.connectClientParam)) {
 					throw new IllegalArgumentException("Invalid daemon start parameters. "
 							+ "Daemon doesn't accept connections, or connects to servers. It has no purpose. "
 							+ "Specify -port or -connect-client parameters.");
 				}
-				System.out.println(FIRST_LINE_NON_SERVER_DAEMON);
 			}
 
 			daemonenv.start();
+
+			//print this AFTER the daemon is started, so the starter process can already connect
+			if (useserverport != null) {
+				System.out.println(FIRST_LINE_WITH_PORT_PREFIX + useserverport + FIRST_LINE_WITH_PORT_SUFFIX);
+			} else {
+				System.out.println(FIRST_LINE_NON_SERVER_DAEMON);
+			}
 
 			SocketAddress serveraddr = daemonenv.getServerSocketAddress();
 			if (serveraddr != null) {

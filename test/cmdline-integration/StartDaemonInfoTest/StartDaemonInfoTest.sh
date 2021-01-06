@@ -1,5 +1,5 @@
 java -jar $SAKER_BUILD_JAR_PATH daemon start
-if ! $? ; then 
+if [ $? -ne 0 ] ; then 
 	echo "FAIL: Failed to start daemon"
 	exit 1
 fi
