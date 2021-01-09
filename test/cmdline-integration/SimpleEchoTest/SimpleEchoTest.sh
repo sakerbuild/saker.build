@@ -1,6 +1,8 @@
 # display commands
 set -x
-
+# exit status should be from the first failed command in a pipe
+set -o pipefail
+# all commands should succeed
 set -e
 
 java -jar $SAKER_BUILD_JAR_PATH | tee build_output.txt

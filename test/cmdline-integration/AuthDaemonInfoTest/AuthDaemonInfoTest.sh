@@ -1,5 +1,7 @@
 # display commands
 set -x
+# exit status should be from the first failed command in a pipe
+set -o pipefail
 
 # all commands should succeed
 set -e

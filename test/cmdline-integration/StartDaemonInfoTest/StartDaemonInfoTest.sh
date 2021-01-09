@@ -1,5 +1,7 @@
 # display commands
 set -x
+# exit status should be from the first failed command in a pipe
+set -o pipefail
 
 java -jar $SAKER_BUILD_JAR_PATH daemon start
 if [ $? -ne 0 ] ; then 
