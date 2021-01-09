@@ -279,7 +279,7 @@ public class StartDaemonCommand {
 									.getBytes(StandardCharsets.UTF_8));
 							commands.add("@!delete!@" + cmdfilepath);
 						} finally {
-							cmdfilechannel.close();
+							IOUtils.close(cmdfilechannel);
 						}
 					}
 				}
