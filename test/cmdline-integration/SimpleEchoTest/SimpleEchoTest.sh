@@ -1,3 +1,6 @@
+# display commands
+set -x
+
 set -e
 
 java -jar $SAKER_BUILD_JAR_PATH | tee build_output.txt
