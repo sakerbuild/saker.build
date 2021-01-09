@@ -44,10 +44,6 @@ fi
 # test the unsigned keystore, it shouldn't be accepted
 set +e
 java -jar $SAKER_BUILD_JAR_PATH daemon info -auth-keystore client.jks -auth-storepass testtest | tee proc_output.txt
-if [ $? = 0 ] ; then 
-	echo "FAIL: Shouldn't be able to connect to daemon"
-	exit 1
-fi
 # SSLHandshakeException is expected
 if ! grep -q "SSLHandshakeException" proc_output.txt; then
 	echo "FAIL: Didn't receive SSLHandshakeException."
