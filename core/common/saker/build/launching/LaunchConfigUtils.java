@@ -125,7 +125,7 @@ public class LaunchConfigUtils {
 						try {
 							//seek back to start
 							fc.position(0);
-							ks.load(is, inoutkeystorepass[0]);
+							ks.load(is, passarray);
 							inoutkeystorepass[0] = passarray;
 							return ks;
 						} catch (NoSuchAlgorithmException | CertificateException | IOException e) {

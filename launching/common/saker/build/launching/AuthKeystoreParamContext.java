@@ -165,6 +165,7 @@ public class AuthKeystoreParamContext {
 			return null;
 		}
 		authKeystore = LaunchingUtils.absolutize(authKeystore);
+		//don't try guessing the password, if the user explicitly specified the keystore, we can only use the explicitly specified passwords 
 		return LaunchingUtils.getSSLContext(PARAM_AUTH_KEYSTORE, authKeystore,
 				ImmutableUtils.singletonList(authStorePassword), ImmutableUtils.singletonList(authKeyPassword));
 	}
@@ -185,14 +186,14 @@ public class AuthKeystoreParamContext {
 							if (conninfo.getPort() != port) {
 								continue;
 							}
-							String kspath = conninfo.getSslKeystorePath();
-							if (ObjectUtils.isNullOrEmpty(kspath)) {
+							String kspathstr = conninfo.getSslKeystorePath();
+							if (ObjectUtils.isNullOrEmpty(kspathstr)) {
 								//no keystore found for daemon
 								break;
 							}
 							//attempt both guessing the password, and using the passed ones if any
 							SocketFactory result = LaunchingUtils.getSocketFactory(PARAM_AUTH_KEYSTORE,
-									SakerPath.valueOf(kspath), ObjectUtils.newHashSet(null, authStorePassword),
+									SakerPath.valueOf(kspathstr), ObjectUtils.newHashSet(null, authStorePassword),
 									ObjectUtils.newHashSet(null, authKeyPassword));
 							if (outinfo != null) {
 								outinfo[0] = conninfo;

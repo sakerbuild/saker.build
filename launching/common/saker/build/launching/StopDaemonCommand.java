@@ -51,7 +51,7 @@ public class StopDaemonCommand {
 		try (RemoteDaemonConnection connection = RemoteDaemonConnection.connect(socketfactory, address)) {
 			connection.getDaemonEnvironment().close();
 		} catch (Exception e) {
-			throw new IOException("Failed to close daemon at: " + address, e);
+			throw new IOException("Failed to stop daemon at: " + address, e);
 		}
 		System.out.println("Build daemon at " + address + " has been stopped.");
 	}

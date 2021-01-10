@@ -70,6 +70,10 @@ steps:
     pathtoPublish: build/saker.jar.create/
     artifactName: 'export_jars_$(J_JAVA_MAJOR)'
     parallel: true
+- script: |
+    cd test/cmdline-integration
+    bash run-tests.sh ../../build/saker.jar.create/saker.build.jar
+  displayName: 'Run command line integration tests'
 - script: java -jar saker.build.jar -bd df_build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64);$(JAVA_HOME_15_X64)" exportall
   displayName: 'Dogfood export'
 - script: cmp build/saker.jar.create/saker.build.jar df_build/saker.jar.create/saker.build.jar
