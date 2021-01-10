@@ -208,8 +208,12 @@ public class StartDaemonCommand {
 				String sslkspathstr = runninginfo.getSslKeystorePath();
 				if (!ObjectUtils.isNullOrEmpty(sslkspathstr)) {
 					try {
-						connectsocketfactory = LaunchingUtils
-								.createSSLContext(SakerPath.valueOf(sslkspathstr), null, null, null).getSocketFactory();
+						SakerPath keystorepath = SakerPath.valueOf(sslkspathstr);
+						if (authparams == null) {
+							connectsocketfactory = LaunchingUtils.createSSLContext(keystorepath).getSocketFactory();
+						} else {
+							connectsocketfactory = authparams.getSocketFactoryForDefaultedKeystore(keystorepath);
+						}
 					} catch (Exception e) {
 						socketfactoryexc = e;
 					}

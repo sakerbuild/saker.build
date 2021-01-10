@@ -41,6 +41,39 @@ if ! grep -q "Daemon uses keystore for authentication" proc_output.txt; then
 	exit 1
 fi
 
+# test the ca keystore (same as the one the daemon uses), but only specify password, the keystore location is retrieved from the daemon lock file
+java -jar $SAKER_BUILD_JAR_PATH daemon info -auth-storepass testtest | tee proc_output.txt
+if ! grep -q "Daemon running at" proc_output.txt; then
+	echo "FAIL: Running daemon was not found."
+	exit 1
+fi
+if ! grep -q "Daemon uses keystore for authentication" proc_output.txt; then
+	echo "FAIL: Daemon doesn't report keystore."
+	exit 1
+fi
+
+# test the ca keystore (same as the one the daemon uses), but only specify password, the keystore location is retrieved from the daemon lock file, with localhost address
+java -jar $SAKER_BUILD_JAR_PATH daemon info -address localhost -auth-storepass testtest | tee proc_output.txt
+if ! grep -q "Daemon running at" proc_output.txt; then
+	echo "FAIL: Running daemon was not found."
+	exit 1
+fi
+if ! grep -q "Daemon uses keystore for authentication" proc_output.txt; then
+	echo "FAIL: Daemon doesn't report keystore."
+	exit 1
+fi
+
+# test the ca keystore (same as the one the daemon uses), but only specify password, the keystore location is retrieved from the daemon lock file, with 127.0.0.1 address
+java -jar $SAKER_BUILD_JAR_PATH daemon info -address 127.0.0.1 -auth-storepass testtest | tee proc_output.txt
+if ! grep -q "Daemon running at" proc_output.txt; then
+	echo "FAIL: Running daemon was not found."
+	exit 1
+fi
+if ! grep -q "Daemon uses keystore for authentication" proc_output.txt; then
+	echo "FAIL: Daemon doesn't report keystore."
+	exit 1
+fi
+
 # test the unsigned keystore, it shouldn't be accepted
 set +e
 java -jar $SAKER_BUILD_JAR_PATH daemon info -auth-keystore client.jks -auth-storepass testtest 2>&1 | tee proc_output.txt

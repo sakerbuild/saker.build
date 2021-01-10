@@ -23,8 +23,8 @@ import java.util.List;
 import javax.net.SocketFactory;
 
 import saker.build.daemon.LocalDaemonEnvironment;
-import saker.build.daemon.RemoteDaemonConnection;
 import saker.build.daemon.LocalDaemonEnvironment.RunningDaemonConnectionInfo;
+import saker.build.daemon.RemoteDaemonConnection;
 import saker.build.file.path.SakerPath;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;

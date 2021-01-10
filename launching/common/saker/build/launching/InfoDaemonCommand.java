@@ -26,7 +26,6 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import javax.net.SocketFactory;
-import javax.net.ssl.SSLContext;
 
 import saker.build.daemon.DaemonLaunchParameters;
 import saker.build.daemon.LocalDaemonEnvironment;
@@ -83,30 +82,29 @@ public class InfoDaemonCommand {
 			System.out.println("No daemon running on the local machine.");
 			return;
 		}
-		SocketFactory socketfactory = authParams.getSocketFactory();
 		try (ThreadWorkPool pool = ThreadUtils.newDynamicWorkPool()) {
 			for (RunningDaemonConnectionInfo conninfo : connectioninfos) {
 				pool.offer(() -> {
-					printDaemonInformationOfDaemon(conninfo, iolock, socketfactory);
+					printDaemonInformationOfDaemon(conninfo, iolock);
 				});
 			}
 		}
 	}
 
-	private static void printDaemonInformationOfDaemon(RunningDaemonConnectionInfo conninfo, ReentrantLock iolock,
-			SocketFactory socketfactory) {
+	private void printDaemonInformationOfDaemon(RunningDaemonConnectionInfo conninfo, ReentrantLock iolock) {
 		String sslkspathstr = conninfo.getSslKeystorePath();
 		Exception keystoreautoopenexception = null;
+		SocketFactory socketfactory;
 		if (ObjectUtils.isNullOrEmpty(sslkspathstr)) {
 			//don't use an ssl socket factory even if specified, as the daemon doesn't use it
 			socketfactory = null;
-		} else if (socketfactory == null) {
+		} else {
 			//use file system instead of Paths.get so we don't use other funky uris or things.
 			try {
-				SSLContext sc = LaunchingUtils.createSSLContext(SakerPath.valueOf(sslkspathstr), null, null, null);
-				socketfactory = sc.getSocketFactory();
+				socketfactory = authParams.getSocketFactoryForDefaultedKeystore(SakerPath.valueOf(sslkspathstr));
 			} catch (Exception e) {
 				keystoreautoopenexception = e;
+				socketfactory = null;
 			}
 		}
 		printDaemonInformationOfDaemon(

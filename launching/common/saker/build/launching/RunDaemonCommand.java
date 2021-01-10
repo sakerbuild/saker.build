@@ -27,8 +27,8 @@ import javax.net.ssl.SSLContext;
 
 import saker.build.daemon.DaemonLaunchParameters;
 import saker.build.daemon.DaemonOutputController.StreamToken;
-import saker.build.daemon.LocalDaemonEnvironment.AddressResolver;
 import saker.build.daemon.LocalDaemonEnvironment;
+import saker.build.daemon.LocalDaemonEnvironment.AddressResolver;
 import saker.build.daemon.WeakRefDaemonOutputController;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.IOUtils;

@@ -52,6 +52,28 @@ if ! grep -q "Daemon uses keystore for authentication" proc_output.txt; then
 	exit 1
 fi
 
+# should work with specifying the localhost address
+java -jar $SAKER_BUILD_JAR_PATH daemon info -address localhost | tee proc_output.txt
+if ! grep -q "Daemon running at" proc_output.txt; then
+	echo "FAIL: Running daemon was not found."
+	exit 1
+fi
+if ! grep -q "Daemon uses keystore for authentication" proc_output.txt; then
+	echo "FAIL: Daemon doesn't report keystore."
+	exit 1
+fi
+
+# should work with specifying the 127.0.0.1 address
+java -jar $SAKER_BUILD_JAR_PATH daemon info -address 127.0.0.1 | tee proc_output.txt
+if ! grep -q "Daemon running at" proc_output.txt; then
+	echo "FAIL: Running daemon was not found."
+	exit 1
+fi
+if ! grep -q "Daemon uses keystore for authentication" proc_output.txt; then
+	echo "FAIL: Daemon doesn't report keystore."
+	exit 1
+fi
+
 # test the unsigned keystore, it shouldn't be accepted
 set +e
 java -jar $SAKER_BUILD_JAR_PATH daemon info -auth-keystore client_testtest.jks 2>&1 | tee proc_output.txt
