@@ -190,6 +190,10 @@ public class LaunchingUtils {
 		return createSSLContext(keystorepath, paramname, storepasswords, keypasswords);
 	}
 
+	public static SSLContext createSSLContext(SakerPath keystorepath) throws IllegalArgumentException {
+		return createSSLContext(keystorepath, null, null, null);
+	}
+
 	public static SSLContext createSSLContext(SakerPath path, String paramname, Collection<String> storepasswords,
 			Collection<String> keypasswords) throws IllegalArgumentException {
 		String fn = path.getFileName();
