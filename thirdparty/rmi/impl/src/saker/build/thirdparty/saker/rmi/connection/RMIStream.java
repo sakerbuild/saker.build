@@ -3358,10 +3358,8 @@ final class RMIStream implements Closeable {
 					try {
 						return hierarchyclass.getMethod(methodName, paramtypeclasses);
 					} catch (NoSuchMethodException | SecurityException e) {
-						throw new RMIObjectTransferFailureException(
-								"Method not found: " + hierarchyclass + "." + declaringClass.getClassName() + "("
-										+ StringUtils.toStringJoin(", ", parameterTypes) + ")",
-								e);
+						throw new RMIObjectTransferFailureException("Method not found: " + hierarchyclass + "."
+								+ methodName + "(" + StringUtils.toStringJoin(", ", parameterTypes) + ")", e);
 					}
 				}
 			}
