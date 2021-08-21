@@ -126,8 +126,8 @@ public class SakerDataCache implements Closeable {
 	}
 
 	private static final class CacheGCThread extends Thread {
-		private final ReferenceQueue<Object> queue;
-		private final Reference<? extends SakerDataCache> cacheReference;
+		protected final ReferenceQueue<Object> queue;
+		protected final Reference<? extends SakerDataCache> cacheReference;
 
 		public CacheGCThread(ThreadGroup tg, ReferenceQueue<Object> queue,
 				Reference<? extends SakerDataCache> cacheReference) {
@@ -452,12 +452,16 @@ public class SakerDataCache implements Closeable {
 				exc = IOUtils.addExc(exc, e);
 			}
 			while (true) {
-				CommonReference<?, ?> polled = (CommonReference<?, ?>) queue.poll();
+				Reference<? extends Object> polled = queue.poll();
+				if (polled == t.cacheReference) {
+					continue;
+				}
 				if (polled == null) {
 					break;
 				}
+				CommonReference<?, ?> commonref = (CommonReference<?, ?>) polled;
 				try {
-					polled.freeResource();
+					commonref.freeResource();
 				} catch (Exception e) {
 					exc = IOUtils.addExc(exc, e);
 				}
