@@ -2459,7 +2459,8 @@ public class TaskExecutionManager {
 		static final int STATE_INITIAL = 0;
 		static final int STATE_WAITING = 1;
 		static final int STATE_NOTIFIED = 2;
-		static final int STATE_FINISHED = 3;
+		static final int STATE_CHECKING_NOTIFICATION = 3;
+		static final int STATE_FINISHED = 4;
 
 		static final AtomicIntegerFieldUpdater<TaskExecutionManager.WaiterThreadHandle> AIFU_state = AtomicIntegerFieldUpdater
 				.newUpdater(TaskExecutionManager.WaiterThreadHandle.class, "state");
@@ -2497,6 +2498,14 @@ public class TaskExecutionManager {
 						LockSupport.unpark(get());
 						return true;
 					}
+					case STATE_CHECKING_NOTIFICATION: {
+						//update state to make sure that the waiter rechecks the condition before setting the waiting thread state
+						if (AIFU_state.compareAndSet(this, STATE_CHECKING_NOTIFICATION, STATE_NOTIFIED)) {
+							LockSupport.unpark(get());
+							return true;
+						}
+						break;
+					}
 					case STATE_FINISHED: {
 						//no need to unpark, already finished
 						return false;
@@ -2527,6 +2536,12 @@ public class TaskExecutionManager {
 					}
 					case STATE_NOTIFIED: {
 						if (AIFU_state.compareAndSet(this, STATE_NOTIFIED, STATE_FINISHED)) {
+							return;
+						}
+						break;
+					}
+					case STATE_CHECKING_NOTIFICATION: {
+						if (AIFU_state.compareAndSet(this, STATE_CHECKING_NOTIFICATION, STATE_FINISHED)) {
 							return;
 						}
 						break;
@@ -3767,18 +3782,24 @@ public class TaskExecutionManager {
 						}
 						case WaiterThreadHandle.STATE_NOTIFIED: {
 							//the handle was notified. check condition, and set back the state to waiting if fails
+							if (!WaiterThreadHandle.AIFU_state.compareAndSet(waiter, WaiterThreadHandle.STATE_NOTIFIED,
+									WaiterThreadHandle.STATE_CHECKING_NOTIFICATION)) {
+								//try again
+								break;
+							}
 							if (condition.getAsBoolean()) {
 								//condition satisfied, finish
 								waiter.state = WaiterThreadHandle.STATE_FINISHED;
 								return;
 							}
-							if (WaiterThreadHandle.AIFU_state.compareAndSet(waiter, WaiterThreadHandle.STATE_NOTIFIED,
-									WaiterThreadHandle.STATE_WAITING)) {
+							if (WaiterThreadHandle.AIFU_state.compareAndSet(waiter,
+									WaiterThreadHandle.STATE_CHECKING_NOTIFICATION, WaiterThreadHandle.STATE_WAITING)) {
 								wtc = execmanager.addWaitingThreadCount(1);
 								break state_updater_loop;
 							}
 							break;
 						}
+						case WaiterThreadHandle.STATE_CHECKING_NOTIFICATION: //can't happen
 						case WaiterThreadHandle.STATE_FINISHED: //can't happen
 						default: {
 							throw new AssertionError(s);
@@ -3853,18 +3874,11 @@ public class TaskExecutionManager {
 			}
 		}
 
-		protected boolean unparkAllWaitingThreads(TaskExecutionManager execmanager) {
-			boolean result = false;
-			for (Iterator<WaiterThreadHandle> it = waitingThreads.iterator(); it.hasNext();) {
-				WaiterThreadHandle t = it.next();
-				if (!t.unparkNotify(execmanager)) {
-					//thread handle finished
-					it.remove();
-				} else {
-					result = true;
-				}
+		protected void unparkAllWaitingThreads(TaskExecutionManager execmanager) {
+			ConcurrentLinkedQueue<WaiterThreadHandle> threadqueue = waitingThreads;
+			for (WaiterThreadHandle t; (t = threadqueue.poll()) != null;) {
+				t.unparkNotify(execmanager);
 			}
-			return result;
 		}
 
 		protected boolean unparkOneWaitingThread(TaskExecutionManager execmanager) {
@@ -4387,7 +4401,12 @@ public class TaskExecutionManager {
 		while (true) {
 			WaitingThreadCounter wtc = this.waitingThreadCounter;
 			if (wtc == WAITING_THREAD_COUNTER_DEADLOCKED) {
-				return wtc;
+				//this shouldn't happen
+				//as if we attempt to add a new running thread, then the execution mustn't have deadlocked, as there must be
+				//at least one thread running, which causes this new running thread to be spawned.
+				//(Sidenote: this can happen however, if a task ignores the deadlocked exception, and attempts to continue execution.)
+				throw new IllegalStateException(
+						"Attempting to add running thread to already deadlocked build execuion.");
 			}
 			WaitingThreadCounter nwtc = wtc.addRunning(count);
 			if (ARFU_waitingThreadCounter.compareAndSet(this, wtc, nwtc)) {
