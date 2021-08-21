@@ -467,6 +467,9 @@ testjava14(){
 testjava15(){
 	test(jre: saker.java.sdk(15))
 }
+testjava16(){
+	test(jre: saker.java.sdk(16))
+}
 testwatcher(
 ) {
 	include(
