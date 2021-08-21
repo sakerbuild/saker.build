@@ -198,10 +198,10 @@ public class SakerJavaTestingInvoker extends BasicInstrumentationJavaTestInvoker
 			while (true) {
 				AutoCloseable c;
 				synchronized (SakerJavaTestingInvoker.class) {
-					if (closeables.isEmpty()) {
+					c = closeables.pollLast();
+					if (c == null) {
 						break;
 					}
-					c = closeables.pollLast();
 				}
 				try {
 					c.close();
