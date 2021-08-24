@@ -22,6 +22,7 @@ import java.io.Serializable;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.ref.Reference;
 import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.Array;
@@ -67,5 +68,9 @@ class Reflector {
 
 	public static Class<?> lookupAccessClass(MethodHandles.Lookup lookup, Class<?> type) throws IllegalAccessException {
 		return lookup.accessClass(type);
+	}
+
+	public static void reachabilityFence(Object o) {
+		Reference.reachabilityFence(o);
 	}
 }

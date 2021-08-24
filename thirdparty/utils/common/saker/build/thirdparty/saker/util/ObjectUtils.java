@@ -58,6 +58,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.ToIntBiFunction;
 
+import saker.build.thirdparty.saker.util.Reflector;
 import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.function.TriConsumer;
 import saker.build.thirdparty.saker.util.function.TriPredicate;
@@ -5316,6 +5317,20 @@ public class ObjectUtils {
 	public static RuntimeException sneakyThrow(Throwable t) {
 		sneakyThrowImpl(t);
 		return null;
+	}
+
+	/**
+	 * Backports {@link Reference}{@code .reachabilityFence(Object)} to Java 8.
+	 * <p>
+	 * This method does nothing at all with the argument object.
+	 * <p>
+	 * On Java 8, it is simply an empty method. On Java 9+ it calls {@link Reference}{@code .reachabilityFence(Object)}.
+	 * 
+	 * @param o
+	 *            An object reference.
+	 */
+	public static void reachabilityFence(Object o) {
+		Reflector.reachabilityFence(o);
 	}
 
 	/**

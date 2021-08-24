@@ -25,6 +25,7 @@ import saker.apiextract.api.ExcludeApi;
 import saker.build.thirdparty.saker.rmi.exception.RMICallFailedException;
 import saker.build.thirdparty.saker.rmi.exception.RMICallForbiddenException;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
 
 /**
@@ -138,9 +139,9 @@ public abstract class RemoteProxyObject {
 	}
 
 	static final void reachabilityFence(@SuppressWarnings("unused") Object o) {
-		//see Reference.reachabilityFence on JDK 9
 		//this method is called in functions that work with remote proxy objects. As their garbage collection
 		//can cause remote references to be released, it needs to be called after the network requests.
+		ObjectUtils.reachabilityFence(o);
 	}
 
 	protected static final class RMICacheHelper {

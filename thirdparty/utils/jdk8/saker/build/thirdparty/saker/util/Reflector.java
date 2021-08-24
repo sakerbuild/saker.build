@@ -40,4 +40,10 @@ class Reflector {
 	public static Class<?> lookupAccessClass(MethodHandles.Lookup lookup, Class<?> type) {
 		return type;
 	}
+
+	public static void reachabilityFence(Object o) {
+		//called from ObjectUtils, ignore on Java 8, probably fine
+		//see: 	https://github.com/apache/datasketches-memory/issues/91
+		//		http://mail.openjdk.java.net/pipermail/core-libs-dev/2018-February/051312.html
+	}
 }

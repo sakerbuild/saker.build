@@ -110,6 +110,8 @@ public class RMIServer implements AutoCloseable {
 	private volatile int state = STATE_UNSTARTED;
 	private volatile ThreadWorkPool serverThreadWorkPool;
 
+	private int connectionTimeout = DEFAULT_CONNECTION_TIMEOUT_MS;
+
 	/**
 	 * Creates a new server instance with the given arguments.
 	 * 
@@ -222,6 +224,28 @@ public class RMIServer implements AutoCloseable {
 	public final void acceptConnections(ThreadGroup threadpoolthreadgroup) {
 		ThreadWorkPool tpool = startServerOperationStates(threadpoolthreadgroup);
 		acceptConnectionsImpl(tpool);
+	}
+
+	/**
+	 * Sets the connection timeout for the accepted sockets.
+	 * <p>
+	 * This is the timeout in milliseconds for read operations on the accepted sockets. Negative value means that an
+	 * implementation dependent default value is used.
+	 * <p>
+	 * Zero means infinite timeout, and also means that the {@link RMIServer} code won't call
+	 * {@link Socket#setSoTimeout(int)} during initialization. In this case subclasses can set the timeout dynamically
+	 * in {@link #validateSocket(Socket)}.
+	 * 
+	 * @param connectionTimeout
+	 *            The connection read timeout in milliseconds.
+	 * @since saker.rmi 0.8.2
+	 */
+	public void setConnectionTimeout(int connectionTimeout) {
+		if (connectionTimeout < 0) {
+			this.connectionTimeout = DEFAULT_CONNECTION_TIMEOUT_MS;
+		} else {
+			this.connectionTimeout = connectionTimeout;
+		}
 	}
 
 	/**
@@ -802,7 +826,8 @@ public class RMIServer implements AutoCloseable {
 
 			UUID uuid = new UUID(mostsig, leastsig);
 			sockclose = null;
-			StreamConnector streamconnector = new StreamConnector(useversion, uuid, socketfactory, address);
+			StreamConnector streamconnector = new StreamConnector(useversion, uuid, socketfactory, address,
+					connectiontimeout);
 			return new RMIConnection(options, new StreamPair(sockin, sockout), useversion, streamconnector);
 		} catch (IOException e) {
 			exc = e;
@@ -854,7 +879,9 @@ public class RMIServer implements AutoCloseable {
 			validateSocket(accepted);
 			initSocketOptions(accepted);
 
-			accepted.setSoTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
+			if (connectionTimeout > 0) {
+				accepted.setSoTimeout(connectionTimeout);
+			}
 			InputStream socketis = accepted.getInputStream();
 			OutputStream socketos = accepted.getOutputStream();
 
@@ -1055,11 +1082,15 @@ public class RMIServer implements AutoCloseable {
 		private final SocketFactory socketFactory;
 		private final SocketAddress address;
 
-		private StreamConnector(short useversion, UUID uuid, SocketFactory socketfactory, SocketAddress address) {
+		private final int handshakeTimeout;
+
+		private StreamConnector(short useversion, UUID uuid, SocketFactory socketfactory, SocketAddress address,
+				int handshakeTimeout) {
 			this.useVersion = useversion;
 			this.uuid = uuid;
 			this.socketFactory = socketfactory;
 			this.address = address;
+			this.handshakeTimeout = handshakeTimeout;
 		}
 
 		@Override
@@ -1078,8 +1109,8 @@ public class RMIServer implements AutoCloseable {
 
 				RMIServer.initSocketOptions(sock);
 
-				sock.setSoTimeout(RMIServer.DEFAULT_CONNECTION_TIMEOUT_MS);
-				sock.connect(address, RMIServer.DEFAULT_CONNECTION_TIMEOUT_MS);
+				sock.setSoTimeout(handshakeTimeout);
+				sock.connect(address, handshakeTimeout);
 
 				OutputStream ssockout = sock.getOutputStream();
 				InputStream ssockin = sock.getInputStream();

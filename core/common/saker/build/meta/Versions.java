@@ -112,7 +112,7 @@ public class Versions {
 	 * @since saker.build 0.8.1
 	 */
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
-	public static final int THIRDPARTY_SAKER_UTIL_VERSION_PATCH = 1;
+	public static final int THIRDPARTY_SAKER_UTIL_VERSION_PATCH = 3;
 	/**
 	 * The full version of the saker.util library that is included under the <code>saker.build.thirdparty</code> package
 	 * string in the format of
@@ -171,7 +171,7 @@ public class Versions {
 	 * @since saker.build 0.8.1
 	 */
 	@PublicApi(unconstantize = DefaultableBoolean.TRUE)
-	public static final int THIRDPARTY_SAKER_RMI_VERSION_PATCH = 1;
+	public static final int THIRDPARTY_SAKER_RMI_VERSION_PATCH = 2;
 	/**
 	 * The full version of the saker.rmi library that is included under the <code>saker.build.thirdparty</code> package
 	 * string in the format of
