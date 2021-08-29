@@ -1,5 +1,5 @@
 # UPDATE saker.build.meta.Versions when updating this version value
-global(saker.build.VERSION) = "0.8.16"
+global(saker.build.VERSION) = "0.8.17"
 
 global(VERSION_saker.apiextract) = "0.8.1"
 global(VERSION_sipka.syntax.parser) = "0.8.2"
