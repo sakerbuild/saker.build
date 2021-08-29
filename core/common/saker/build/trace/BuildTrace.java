@@ -29,7 +29,6 @@ import saker.build.runtime.environment.EnvironmentProperty;
 import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.task.Task;
 import saker.build.task.TaskContext;
-import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.function.ThrowingRunnable;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
@@ -185,6 +184,8 @@ public final class BuildTrace {
 	 * <p>
 	 * If the current task is an inner task, the display informations will be set for that instead of the enclosing
 	 * task.
+	 * <p>
+	 * Use <code>null</code> parameters to clear the display information.
 	 * 
 	 * @param timelinelabel
 	 *            The label for the timeline view or <code>null</code>.
@@ -192,9 +193,6 @@ public final class BuildTrace {
 	 *            The title of the task or <code>null</code>.
 	 */
 	public static void setDisplayInformation(String timelinelabel, String title) {
-		if (ObjectUtils.isNullOrEmpty(timelinelabel) && ObjectUtils.isNullOrEmpty(title)) {
-			return;
-		}
 		try {
 			InternalTaskBuildTrace tt = getTaskTrace();
 			tt.setDisplayInformation(timelinelabel, title);
@@ -210,12 +208,10 @@ public final class BuildTrace {
 	 * information to the user based on them.
 	 * 
 	 * @param classification
-	 *            The task classification. See the <code>CLASSIFICATION_*</code> constants in this class.
+	 *            The task classification. See the <code>CLASSIFICATION_*</code> constants in this class. Pass
+	 *            <code>null</code> to clear it.
 	 */
 	public static void classifyTask(String classification) {
-		if (ObjectUtils.isNullOrEmpty(classification)) {
-			return;
-		}
 		try {
 			InternalTaskBuildTrace tt = getTaskTrace();
 			tt.classifyTask(classification);

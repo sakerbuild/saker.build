@@ -1959,7 +1959,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		@Override
 		public void setDisplayInformation(String timelinelabel, String title) {
-			traceInfo.displayInformation = new TaskDisplayInformation(timelinelabel, title);
+			if (ObjectUtils.isNullOrEmpty(timelinelabel) && ObjectUtils.isNullOrEmpty(title)) {
+				//clear it
+				traceInfo.displayInformation = null;
+			} else {
+				traceInfo.displayInformation = new TaskDisplayInformation(timelinelabel, title);
+			}
 		}
 
 		@Override
@@ -2180,7 +2185,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 			@Override
 			public void setDisplayInformation(String timelinelabel, String title) {
-				this.displayInformation = new TaskDisplayInformation(timelinelabel, title);
+				if (ObjectUtils.isNullOrEmpty(timelinelabel) && ObjectUtils.isNullOrEmpty(title)) {
+					//clear it
+					this.displayInformation = null;
+				} else {
+					this.displayInformation = new TaskDisplayInformation(timelinelabel, title);
+				}
 			}
 
 			@Override
