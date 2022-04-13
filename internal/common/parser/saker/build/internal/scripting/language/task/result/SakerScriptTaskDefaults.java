@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Map.Entry;
+import java.util.Collections;
 import java.util.NavigableMap;
 import java.util.Set;
 import java.util.TreeMap;
@@ -25,11 +26,16 @@ import saker.build.thirdparty.saker.util.io.SerialUtils;
 public class SakerScriptTaskDefaults implements Externalizable {
 	private static final long serialVersionUID = 1L;
 
-	public static final SakerScriptTaskDefaults EMPTY_INSTANCE = new SakerScriptTaskDefaults();
+	public static final SakerScriptTaskDefaults EMPTY_INSTANCE = new SakerScriptTaskDefaults(
+			Collections.emptyNavigableMap());
 
 	private NavigableMap<TaskName, NavigableMap<String, TaskIdentifier>> defaults = new TreeMap<>();
 
 	public SakerScriptTaskDefaults() {
+	}
+
+	public SakerScriptTaskDefaults(NavigableMap<TaskName, NavigableMap<String, TaskIdentifier>> defaults) {
+		this.defaults = defaults;
 	}
 
 	public static SakerScriptTaskDefaults createAndStartParameterTasks(TaskContext taskcontext,
