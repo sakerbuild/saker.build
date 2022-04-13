@@ -240,7 +240,7 @@ public interface TaskExecutionUtilities {
 	}
 
 	/**
-	 * Builk method for calling
+	 * Bulk method for calling
 	 * {@link #collectFilesReportInputFileAndAdditionDependency(Object, FileCollectionStrategy)}.
 	 * <p>
 	 * This method collects the files for all the addition dependencies, and aggregates them into a single result map.
