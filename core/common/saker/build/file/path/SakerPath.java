@@ -79,6 +79,8 @@ import saker.build.thirdparty.saker.util.io.SerialUtils;
  * </ul>
  */
 public final class SakerPath implements Comparable<SakerPath>, Externalizable, Cloneable {
+	private static final String[] STRING_ARRAY_PARENT_ONLY = new String[] { ".." };
+
 	private static final long serialVersionUID = 1L;
 
 	/**
@@ -97,7 +99,7 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 	/**
 	 * Single instance for a relative parent path.
 	 */
-	public static final SakerPath PARENT = new SakerPath(null, new String[] { ".." });
+	public static final SakerPath PARENT = new SakerPath(null, STRING_ARRAY_PARENT_ONLY);
 	/**
 	 * Single instance for the first absolute path that is ordered by the {@link Comparable} contract of this class.
 	 * <p>
@@ -599,16 +601,25 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 	 */
 	public SakerPath getParent() {
 		if (isAbsolute()) {
-			if (names.length == 0) {
-				return null;
+			switch (names.length) {
+				case 0: {
+					return null;
+				}
+				case 1: {
+					return new SakerPath(root, ObjectUtils.EMPTY_STRING_ARRAY);
+				}
+				default: {
+					String[] nlist = Arrays.copyOfRange(names, 0, names.length - 1);
+					return new SakerPath(root, nlist);
+				}
 			}
-			String[] nlist = Arrays.copyOfRange(names, 0, names.length - 1);
-			return new SakerPath(root, nlist);
 		}
+		
 		//relative path
-		List<String> nlist = ObjectUtils.newArrayList(names);
-		resolveRelativeParent(nlist);
-		return new SakerPath(null, nlist.toArray(ObjectUtils.EMPTY_STRING_ARRAY));
+		return new SakerPath(null, resolveRelativeParent(names));
+//		List<String> nlist = ObjectUtils.newArrayList(names);
+//		resolveRelativeParent(nlist);
+//		return new SakerPath(null, nlist.toArray(ObjectUtils.EMPTY_STRING_ARRAY));
 	}
 
 	/**
@@ -1761,14 +1772,32 @@ public final class SakerPath implements Comparable<SakerPath>, Externalizable, C
 		return true;
 	}
 
+	private static String[] resolveRelativeParent(String[] subject) {
+		if (subject.length == 0) {
+			return STRING_ARRAY_PARENT_ONLY;
+		}
+		int lastidx = subject.length - 1;
+		if (!"..".equals(subject[lastidx])) {
+			//the last path can be removed instead of appending ".."
+			String[] result = new String[lastidx];
+			System.arraycopy(subject, 0, result, 0, lastidx);
+			return result;
+		}
+		String[] result = new String[subject.length + 1];
+		System.arraycopy(subject, 0, result, 0, subject.length);
+		result[subject.length] = "..";
+		return result;
+	}
+
 	private static void resolveRelativeParent(List<String> subject) {
 		if (subject.isEmpty()) {
 			subject.add("..");
 			return;
 		}
-		if (!"..".equals(subject.get(subject.size() - 1))) {
+		int lastidx = subject.size() - 1;
+		if (!"..".equals(subject.get(lastidx))) {
 			//the last path can be removed instead of appending ".."
-			subject.remove(subject.size() - 1);
+			subject.remove(lastidx);
 			return;
 		}
 		subject.add("..");
