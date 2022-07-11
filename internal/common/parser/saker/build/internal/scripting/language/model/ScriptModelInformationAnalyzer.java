@@ -93,9 +93,6 @@ public class ScriptModelInformationAnalyzer {
 			}
 		}
 		ExpressionReceiverBase baserectypes = getBaseReceiverExpression(derived, expstm, parentcontexts);
-		if (baserectypes.expressionStatement == null) {
-			return baserectypes.receiverTypes;
-		}
 		return getExpressionReceiverTypeWithReceiverBase(derived, expstm, baserectypes);
 	}
 
@@ -103,10 +100,19 @@ public class ScriptModelInformationAnalyzer {
 			Statement expstm, ExpressionReceiverBase baserectypes) {
 		StatementTypeInformation result = getExpressionReceiverTypeImpl(derived, expstm, baserectypes);
 		if (result == null) {
-			throw new UnsupportedOperationException(expstm.getName() + " - " + expstm.getRawValue() + " - "
-					+ expstm.getPosition() + " with base rec: " + baserectypes.expressionStatement.getName() + " - "
-					+ baserectypes.expressionStatement.getRawValue());
-//			return Collections.emptySet();
+			StringBuilder sb = new StringBuilder();
+			sb.append(expstm.getName());
+			sb.append(" - ");
+			sb.append(expstm.getRawValue());
+			sb.append(" - ");
+			sb.append(expstm.getPosition());
+			if (baserectypes.expressionStatement != null) {
+				sb.append(" with base rec: ");
+				sb.append(baserectypes.expressionStatement.getName());
+				sb.append(" - ");
+				sb.append(baserectypes.expressionStatement.getRawValue());
+			}
+			throw new UnsupportedOperationException(sb.toString());
 		}
 		return returnReceiverTypesWithAssociatedResolved(result, derived);
 	}
@@ -686,18 +692,21 @@ public class ScriptModelInformationAnalyzer {
 
 	private StatementTypeInformation getExpressionReceiverTypeImpl(DerivedData derived, Statement expstm,
 			ExpressionReceiverBase baserectypes) {
+		ModelReceiverTypeFlattenedStatementVisitor visitor = new ModelReceiverTypeFlattenedStatementVisitor(this,
+				derived, baserectypes.receiverTypes, baserectypes.associatedReceiverTypes);
+		if (baserectypes.expressionStatement == null) {
+			visitor.visitMissing(expstm);
+			return statementTypeInformations.get(expstm);
+		}
 		switch (baserectypes.expressionStatement.getName()) {
 			case "out_parameter":
 			case "in_parameter": {
-				new ModelReceiverTypeFlattenedStatementVisitor(this, derived, baserectypes.receiverTypes,
-						baserectypes.associatedReceiverTypes)
-								.visitTargetParameterStatement(baserectypes.expressionStatement);
+				visitor.visitTargetParameterStatement(baserectypes.expressionStatement);
 				return statementTypeInformations.get(expstm);
 			}
 			default: {
 				SakerScriptTargetConfigurationReader.visitFlattenExpressionStatements(baserectypes.expressionStatement,
-						new ModelReceiverTypeFlattenedStatementVisitor(this, derived, baserectypes.receiverTypes,
-								baserectypes.associatedReceiverTypes));
+						visitor);
 				return statementTypeInformations.get(expstm);
 			}
 		}

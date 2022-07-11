@@ -1,0 +1,10 @@
+target1(
+	in enumval
+) {
+	example.task(EnumParam1: $enumval)
+}
+
+build {
+	target1(enumval: F)
+	target1(enumval: )
+}

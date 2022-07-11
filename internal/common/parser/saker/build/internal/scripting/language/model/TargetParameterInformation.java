@@ -67,9 +67,10 @@ public class TargetParameterInformation implements InformationHolder {
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
-		result = prime * result + ((information == null) ? 0 : information.hashCode());
-		result = prime * result + type;
+		//these fields will be generally enaough for the hashcode
+		result = prime * result + ((scriptPath == null) ? 0 : scriptPath.hashCode());
 		result = prime * result + ((name == null) ? 0 : name.hashCode());
+		result = prime * result + type;
 		return result;
 	}
 
@@ -87,12 +88,22 @@ public class TargetParameterInformation implements InformationHolder {
 				return false;
 		} else if (!information.equals(other.information))
 			return false;
-		if (type != other.type)
-			return false;
 		if (name == null) {
 			if (other.name != null)
 				return false;
 		} else if (!name.equals(other.name))
+			return false;
+		if (scriptPath == null) {
+			if (other.scriptPath != null)
+				return false;
+		} else if (!scriptPath.equals(other.scriptPath))
+			return false;
+		if (targetName == null) {
+			if (other.targetName != null)
+				return false;
+		} else if (!targetName.equals(other.targetName))
+			return false;
+		if (type != other.type)
 			return false;
 		return true;
 	}
