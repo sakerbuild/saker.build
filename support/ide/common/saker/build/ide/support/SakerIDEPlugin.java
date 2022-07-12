@@ -60,6 +60,7 @@ import saker.build.ide.support.persist.XMLStructuredWriter;
 import saker.build.ide.support.properties.DaemonConnectionIDEProperty;
 import saker.build.ide.support.properties.IDEPluginProperties;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
+import saker.build.runtime.execution.SakerLog;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.IOUtils;
@@ -174,7 +175,7 @@ public final class SakerIDEPlugin implements Closeable {
 			try {
 				NativeLibs.init(plugindirectory.resolve("nativelibs"));
 			} catch (IOException e) {
-				displayException(e);
+				displayException(SakerLog.SEVERITY_ERROR, "Failed to initialize native libraries.", e);
 			}
 			//the threads should be daemon
 			workPool = ThreadUtils.newDynamicWorkPool(new ThreadGroup("Saker.build plugin worker"), "Worker-", null,
@@ -190,7 +191,7 @@ public final class SakerIDEPlugin implements Closeable {
 				}
 			} catch (NoSuchFileException e) {
 			} catch (IOException e) {
-				displayException(e);
+				displayException(SakerLog.SEVERITY_ERROR, "Failed to load plugin configuration.", e);
 				pluginProperties = SimpleIDEPluginProperties.empty();
 			}
 		} finally {
@@ -235,9 +236,13 @@ public final class SakerIDEPlugin implements Closeable {
 				npluginstate = new PluginEnvironmentState(ndaemonenv);
 				localdaemonenvtoclose = null;
 			} catch (Throwable e) {
-				ndaemonenv = null;
-				npluginstate = new PluginEnvironmentState(e);
-				displayException(e);
+				try {
+					ndaemonenv = null;
+					npluginstate = new PluginEnvironmentState(e);
+					displayException(SakerLog.SEVERITY_ERROR, "Failed to start daemon environment.", e);
+				} catch (Throwable e2) {
+					e.addSuppressed(e2);
+				}
 				throw e;
 			} finally {
 				IOUtils.close(localdaemonenvtoclose);
@@ -299,8 +304,10 @@ public final class SakerIDEPlugin implements Closeable {
 		IOException[] exc = { null };
 		for (DaemonConnectionIDEProperty prop : connectionproperties) {
 			workPool.offer(() -> {
+				String netaddress = null;
 				try {
-					InetSocketAddress socketaddress = NetworkUtils.parseInetSocketAddress(prop.getNetAddress(),
+					netaddress = prop.getNetAddress();
+					InetSocketAddress socketaddress = NetworkUtils.parseInetSocketAddress(netaddress,
 							DaemonLaunchParameters.DEFAULT_PORT);
 
 					RemoteDaemonConnection connection = daemonenv.connectTo(socketaddress);
@@ -309,12 +316,12 @@ public final class SakerIDEPlugin implements Closeable {
 					synchronized (exc) {
 						exc[0] = IOUtils.addExc(exc[0], e);
 					}
-					this.displayException(e);
+					this.displayException(SakerLog.SEVERITY_ERROR, "Failed to connect to daemon at: " + netaddress, e);
 				} catch (Throwable e) {
 					synchronized (exc) {
 						exc[0] = IOUtils.addExc(exc[0], e);
 					}
-					this.displayException(e);
+					this.displayException(SakerLog.SEVERITY_ERROR, "Failed to connect to daemon at: " + netaddress, e);
 				} finally {
 					sem.release();
 				}
@@ -405,9 +412,18 @@ public final class SakerIDEPlugin implements Closeable {
 		IOUtils.throwExc(exc);
 	}
 
+	@Deprecated
 	public void displayException(Throwable e) {
 		int callcount = callListeners(ImmutableUtils.makeImmutableList(exceptionDisplayers),
 				d -> d.displayException(e));
+		if (callcount == 0) {
+			e.printStackTrace();
+		}
+	}
+
+	public void displayException(int severity, String message, Throwable e) {
+		int callcount = callListeners(ImmutableUtils.makeImmutableList(exceptionDisplayers),
+				d -> d.displayException(severity, message, e));
 		if (callcount == 0) {
 			e.printStackTrace();
 		}
@@ -475,7 +491,8 @@ public final class SakerIDEPlugin implements Closeable {
 			try {
 				caller.accept(l);
 			} catch (Exception e) {
-				displayException(e);
+				displayException(SakerLog.SEVERITY_WARNING,
+						"Failed to call event listener: " + ObjectUtils.classNameOf(l), e);
 			}
 		}
 		return c;
@@ -531,12 +548,16 @@ public final class SakerIDEPlugin implements Closeable {
 					| Exception e) {
 				npluginstate = new PluginEnvironmentState(e);
 				ndaemonenv = null;
-				displayException(e);
+				displayException(SakerLog.SEVERITY_ERROR, "Failed to start plugin daemon environment.", e);
 				return;
 			} catch (Throwable e) {
-				npluginstate = new PluginEnvironmentState(e);
-				ndaemonenv = null;
-				displayException(e);
+				try {
+					ndaemonenv = null;
+					npluginstate = new PluginEnvironmentState(e);
+					displayException(SakerLog.SEVERITY_ERROR, "Failed to start plugin daemon environment.", e);
+				} catch (Throwable e2) {
+					e.addSuppressed(e2);
+				}
 				throw e;
 			} finally {
 				if (npluginstate != null) {
@@ -554,7 +575,7 @@ public final class SakerIDEPlugin implements Closeable {
 				try {
 					IOUtils.close(localdaemonenvtoclose);
 				} catch (IOException e) {
-					displayException(e);
+					displayException(SakerLog.SEVERITY_WARNING, "Failed to close daemon environment.", e);
 				}
 			}
 			if (ndaemonenv != null) {
@@ -636,18 +657,15 @@ public final class SakerIDEPlugin implements Closeable {
 	private void writePluginPropertiesFile(IDEPluginProperties pluginConfiguration) {
 		Path propfilepath = pluginConfigurationFilePath;
 		Path tempfilepath = propfilepath.resolveSibling(IDE_PLUGIN_PROPERTIES_FILE_NAME + ".temp");
-		try (OutputStream os = Files.newOutputStream(tempfilepath);
-				XMLStructuredWriter writer = new XMLStructuredWriter(os);
-				StructuredObjectOutput objwriter = writer.writeObject(CONFIG_FILE_ROOT_OBJECT_NAME)) {
-			IDEPersistenceUtils.writeIDEPluginProperties(objwriter, pluginConfiguration);
-		} catch (Exception e) {
-			displayException(e);
-			return;
-		}
 		try {
+			try (OutputStream os = Files.newOutputStream(tempfilepath);
+					XMLStructuredWriter writer = new XMLStructuredWriter(os);
+					StructuredObjectOutput objwriter = writer.writeObject(CONFIG_FILE_ROOT_OBJECT_NAME)) {
+				IDEPersistenceUtils.writeIDEPluginProperties(objwriter, pluginConfiguration);
+			}
 			Files.move(tempfilepath, propfilepath, StandardCopyOption.REPLACE_EXISTING);
-		} catch (IOException e) {
-			displayException(e);
+		} catch (Exception e) {
+			displayException(SakerLog.SEVERITY_ERROR, "Failed to write plugin configuration.", e);
 		}
 	}
 
@@ -666,25 +684,6 @@ public final class SakerIDEPlugin implements Closeable {
 			}
 		}
 		IOUtils.throwExc(exc);
-	}
-
-	static final class ExceptionDisplayForEachConsumer implements Consumer<ExceptionDisplayer> {
-		private final Throwable e;
-		private boolean called;
-
-		public ExceptionDisplayForEachConsumer(Throwable e) {
-			this.e = e;
-		}
-
-		@Override
-		public void accept(ExceptionDisplayer d) {
-			d.displayException(e);
-			called = true;
-		}
-
-		public boolean isCalled() {
-			return called;
-		}
 	}
 
 	private static final class PluginEnvironmentState {

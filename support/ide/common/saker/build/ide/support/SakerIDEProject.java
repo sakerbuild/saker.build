@@ -103,6 +103,7 @@ import saker.build.runtime.environment.RepositoryManager;
 import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionParametersImpl;
+import saker.build.runtime.execution.SakerLog;
 import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation;
 import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation.ConnectionInformation;
 import saker.build.runtime.params.BuiltinScriptAccessorServiceEnumerator;
@@ -931,44 +932,38 @@ public final class SakerIDEProject {
 	private void persistIDEConfigsFile() {
 		Path propfilepath = projectPath.resolve(IDE_CONFIG_FILE_NAME);
 		Path tempfilepath = propfilepath.resolveSibling(IDE_CONFIG_FILE_NAME + ".temp");
-		try (OutputStream os = Files.newOutputStream(tempfilepath);
-				XMLStructuredWriter writer = new XMLStructuredWriter(os);
-				StructuredObjectOutput objwriter = writer.writeObject(IDE_CONFIG_FILE_ROOT_OBJECT_NAME)) {
-			try (StructuredArrayObjectOutput ideconfigsarraywriter = objwriter.writeArray("ide-configurations")) {
-				for (IDEConfiguration ideconfig : configurationCollection.getConfigurations()) {
-					try (StructuredObjectOutput ideconfigobjwriter = ideconfigsarraywriter.writeObject()) {
-						IDEPersistenceUtils.writeIDEConfiguration(ideconfigobjwriter, ideconfig);
+		try {
+			try (OutputStream os = Files.newOutputStream(tempfilepath);
+					XMLStructuredWriter writer = new XMLStructuredWriter(os);
+					StructuredObjectOutput objwriter = writer.writeObject(IDE_CONFIG_FILE_ROOT_OBJECT_NAME)) {
+				try (StructuredArrayObjectOutput ideconfigsarraywriter = objwriter.writeArray("ide-configurations")) {
+					for (IDEConfiguration ideconfig : configurationCollection.getConfigurations()) {
+						try (StructuredObjectOutput ideconfigobjwriter = ideconfigsarraywriter.writeObject()) {
+							IDEPersistenceUtils.writeIDEConfiguration(ideconfigobjwriter, ideconfig);
+						}
 					}
 				}
 			}
-		} catch (Exception e) {
-			displayException(e);
-			return;
-		}
-		try {
 			Files.move(tempfilepath, propfilepath, StandardCopyOption.REPLACE_EXISTING);
-		} catch (IOException e) {
-			displayException(e);
+		} catch (Exception e) {
+			displayException(SakerLog.SEVERITY_ERROR, "Failed to write IDE configurations.", e);
 		}
 	}
 
 	private void persistIDEProjectPropertiesFile() {
 		Path propfilepath = projectPath.resolve(PROPERTIES_FILE_NAME);
 		Path tempfilepath = propfilepath.resolveSibling(PROPERTIES_FILE_NAME + ".temp");
-		try (OutputStream os = Files.newOutputStream(tempfilepath);
-				XMLStructuredWriter writer = new XMLStructuredWriter(os);
-				StructuredObjectOutput objwriter = writer.writeObject(CONFIG_FILE_ROOT_OBJECT_NAME)) {
-			try (StructuredObjectOutput propertieswriter = objwriter.writeObject("project-properties")) {
-				IDEPersistenceUtils.writeIDEProjectProperties(propertieswriter, ideProjectProperties.properties);
-			}
-		} catch (Exception e) {
-			displayException(e);
-			return;
-		}
 		try {
+			try (OutputStream os = Files.newOutputStream(tempfilepath);
+					XMLStructuredWriter writer = new XMLStructuredWriter(os);
+					StructuredObjectOutput objwriter = writer.writeObject(CONFIG_FILE_ROOT_OBJECT_NAME)) {
+				try (StructuredObjectOutput propertieswriter = objwriter.writeObject("project-properties")) {
+					IDEPersistenceUtils.writeIDEProjectProperties(propertieswriter, ideProjectProperties.properties);
+				}
+			}
 			Files.move(tempfilepath, propfilepath, StandardCopyOption.REPLACE_EXISTING);
-		} catch (IOException e) {
-			displayException(e);
+		} catch (Exception e) {
+			displayException(SakerLog.SEVERITY_ERROR, "Failed to write project configuration.", e);
 		}
 	}
 
@@ -1009,7 +1004,7 @@ public final class SakerIDEProject {
 			try {
 				scriptingBuildRepositoryLoader.close();
 			} catch (InterruptedException e) {
-				displayException(e);
+				displayException(SakerLog.SEVERITY_ERROR, "Failed to close scripting build repository.", e);
 			}
 			scriptingBuildRepositoryLoader = new ThreadedResourceLoader<>();
 		}
@@ -1023,7 +1018,7 @@ public final class SakerIDEProject {
 			IOException e = IOUtils.closeExc(scriptingEnvironment);
 			scriptingEnvironment = null;
 			if (e != null) {
-				displayException(e);
+				displayException(SakerLog.SEVERITY_WARNING, "Failed to close scripting environment.", e);
 			}
 			this.scriptingEnvironmentExecutionCache = createScriptingEnvironmentExecutionCacheSupplier(environment);
 			BasicScriptModellingEnvironment nenv = createScriptingEnvironmentLocked(environment);
@@ -1057,7 +1052,7 @@ public final class SakerIDEProject {
 				scriptenvconfig = createScriptEnvironmentConfiguration(properties.properties);
 				scriptingEnvironmentConfigurationProperties = properties.properties;
 			} catch (Exception e) {
-				displayException(e);
+				displayException(SakerLog.SEVERITY_ERROR, "Failed to create script environment configuration.", e);
 				//create some default script configuration so we can create the modelling environment
 				return null;
 			}
@@ -1066,7 +1061,7 @@ public final class SakerIDEProject {
 			//    we don't want to spam the user with exceptions regarding the script modelling
 			return new BasicScriptModellingEnvironment(plugin, scriptenvconfig, environment);
 		} catch (Exception e) {
-			displayException(e);
+			displayException(SakerLog.SEVERITY_ERROR, "Failed to create scripting environment.", e);
 			return null;
 		}
 	}
@@ -1101,9 +1096,18 @@ public final class SakerIDEProject {
 		}
 	}
 
+	@Deprecated
 	public void displayException(Throwable e) {
 		int callcount = callListeners(ImmutableUtils.makeImmutableList(exceptionDisplayers),
 				d -> d.displayException(e));
+		if (callcount == 0) {
+			e.printStackTrace();
+		}
+	}
+
+	public void displayException(int severity, String message, Throwable e) {
+		int callcount = callListeners(ImmutableUtils.makeImmutableList(exceptionDisplayers),
+				d -> d.displayException(severity, message, e));
 		if (callcount == 0) {
 			e.printStackTrace();
 		}
@@ -1116,7 +1120,8 @@ public final class SakerIDEProject {
 			try {
 				caller.accept(l);
 			} catch (Exception e) {
-				displayException(e);
+				displayException(SakerLog.SEVERITY_WARNING,
+						"Failed to call event listener: " + ObjectUtils.classNameOf(l), e);
 			}
 		}
 		return c;
@@ -1348,15 +1353,24 @@ public final class SakerIDEProject {
 		properties = properties == null ? SimpleIDEProjectProperties.getDefaultsInstance()
 				: SimpleIDEProjectProperties.copy(properties);
 		synchronized (scriptEnvironmentAccessLock) {
-			if (this.scriptingEnvironment != null) {
-				if (!Objects.equals(scriptingEnvironmentConfigurationProperties, properties)) {
-					try {
-						scriptingEnvironment.setConfiguration(createScriptEnvironmentConfiguration(properties));
-						scriptingEnvironmentConfigurationProperties = properties;
-					} catch (Exception e) {
-						displayException(e);
-					}
-				}
+			if (this.scriptingEnvironment == null) {
+				return;
+			}
+			if (Objects.equals(scriptingEnvironmentConfigurationProperties, properties)) {
+				return;
+			}
+			SimpleScriptModellingEnvironmentConfiguration scriptenvconfig;
+			try {
+				scriptenvconfig = createScriptEnvironmentConfiguration(properties);
+			} catch (Exception e) {
+				displayException(SakerLog.SEVERITY_ERROR, "Failed to create scripting environment configuration.", e);
+				return;
+			}
+			try {
+				scriptingEnvironment.setConfiguration(scriptenvconfig);
+				scriptingEnvironmentConfigurationProperties = properties;
+			} catch (Exception e) {
+				displayException(SakerLog.SEVERITY_ERROR, "Failed to configure scripting environment.", e);
 			}
 		}
 	}
@@ -1447,7 +1461,7 @@ public final class SakerIDEProject {
 					}
 				}
 			}, loadexc -> {
-				displayException(loadexc);
+				displayException(SakerLog.SEVERITY_ERROR, "Failed to load scripting build repository.", loadexc);
 			});
 		}
 
@@ -1461,7 +1475,7 @@ public final class SakerIDEProject {
 		try {
 			return createRepositoryConfiguration(properties);
 		} catch (Exception e) {
-			displayException(e);
+			displayException(SakerLog.SEVERITY_ERROR, "Failed to create repository configuration.", e);
 			return null;
 		}
 	}
@@ -1470,7 +1484,7 @@ public final class SakerIDEProject {
 		try {
 			return createScriptConfiguration(properties);
 		} catch (Exception e) {
-			displayException(e);
+			displayException(SakerLog.SEVERITY_ERROR, "Failed to create scripting configuration.", e);
 			return null;
 		}
 	}
@@ -1499,19 +1513,23 @@ public final class SakerIDEProject {
 			if (!ObjectUtils.isNullOrEmpty(mounts)) {
 				for (ProviderMountIDEProperty mount : mounts) {
 					String normalizedmountroot;
-					try {
-						normalizedmountroot = SakerPath.normalizeRoot(mount.getRoot());
-					} catch (Exception e) {
-						displayException(e);
-						//can't deal with invalid roots
-						continue;
+					{
+						String mountroot = mount.getRoot();
+						try {
+							normalizedmountroot = SakerPath.normalizeRoot(mountroot);
+						} catch (Exception e) {
+							displayException(SakerLog.SEVERITY_ERROR, "Failed to normalize mounted root: " + mountroot,
+									e);
+							//can't deal with invalid roots
+							continue;
+						}
 					}
 					MountPathIDEProperty mountprop = mount.getMountPathProperty();
 					ProviderHolderPathKey mountpathkey;
 					try {
 						mountpathkey = getMountPathPropertyPathKey(mountprop, daemonconnections);
 					} catch (Exception e) {
-						displayException(e);
+						displayException(SakerLog.SEVERITY_ERROR, "Failed to mount path.", e);
 						//failed to resolve the mount provider and path key, fall back to pseudo provider
 						mountpathkey = SakerPathFiles.getPathKey(SCRIPTING_PSEUDO_EMPTY_FILE_PROVIDER,
 								SCRIPTING_PSEUDO_PATH);
@@ -1523,7 +1541,7 @@ public final class SakerIDEProject {
 			}
 			return pathconfigbuilder.build();
 		} catch (Exception e) {
-			displayException(e);
+			displayException(SakerLog.SEVERITY_ERROR, "Failed to create path configuration.", e);
 			return null;
 		}
 	}
@@ -1707,7 +1725,7 @@ public final class SakerIDEProject {
 			try {
 				return super.loadRepositoryFromManager(repositorymanager, repolocation, enumerator);
 			} catch (Exception e) {
-				displayException(e);
+				displayException(SakerLog.SEVERITY_ERROR, "Failed to load repository.", e);
 				return null;
 			}
 		}

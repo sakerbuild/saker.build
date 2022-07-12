@@ -37,6 +37,7 @@ import saker.build.ide.support.SakerIDEPlugin.PluginResourceListener;
 import saker.build.ide.support.SakerIDEProject;
 import saker.build.ide.support.SakerIDEProject.ProjectResourceListener;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
+import saker.build.runtime.execution.SakerLog;
 import saker.build.scripting.ScriptParsingFailedException;
 import saker.build.scripting.model.PartitionedTextContent;
 import saker.build.scripting.model.ScriptModellingEnvironment;
@@ -244,7 +245,8 @@ public class ScriptEditorModel implements Closeable {
 			try {
 				l.modelUpdated(model);
 			} catch (Exception e) {
-				project.displayException(e);
+				project.displayException(SakerLog.SEVERITY_WARNING,
+						"Failed to call script model listener: " + ObjectUtils.classNameOf(l), e);
 			}
 		}
 	}
@@ -775,7 +777,8 @@ public class ScriptEditorModel implements Closeable {
 						} finally {
 							//always display exception, even if we've continued
 							//but do this after the locking, as we don't want to delay that
-							editor.project.displayException(e);
+							editor.project.displayException(SakerLog.SEVERITY_ERROR,
+									"Failed to update scripting model.", e);
 						}
 						break;
 					}
@@ -807,7 +810,7 @@ public class ScriptEditorModel implements Closeable {
 					this.wait(1000);
 				}
 			} catch (InterruptedException e) {
-				editor.project.displayException(e);
+				editor.project.displayException(SakerLog.SEVERITY_WARNING, "Updating script state was interrupted.", e);
 				throw new RuntimeException(e);
 			}
 		}

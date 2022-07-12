@@ -43,6 +43,15 @@ public class ThreadedResourceLoader<T> {
 						fail.accept(e);
 					}
 					return;
+				} catch (Throwable e) {
+					if (fail != null) {
+						try {
+							fail.accept(e);
+						} catch (Throwable e2) {
+							e.addSuppressed(e2);
+						}
+					}
+					return;
 				}
 				success.accept(result);
 			}, "Resource loader");

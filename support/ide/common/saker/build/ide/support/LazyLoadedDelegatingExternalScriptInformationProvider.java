@@ -18,6 +18,7 @@ package saker.build.ide.support;
 import java.util.Collection;
 import java.util.Map;
 
+import saker.build.runtime.execution.SakerLog;
 import saker.build.scripting.model.info.ExternalScriptInformationProvider;
 import saker.build.scripting.model.info.LiteralInformation;
 import saker.build.scripting.model.info.TaskInformation;
@@ -44,7 +45,7 @@ class LazyLoadedDelegatingExternalScriptInformationProvider implements ExternalS
 			try {
 				return p.getTasks(tasknamekeyword);
 			} catch (Exception e) {
-				project.displayException(e);
+				project.displayException(SakerLog.SEVERITY_WARNING, "Failed to query tasks for keyword.", e);
 			}
 		}
 		return ExternalScriptInformationProvider.super.getTasks(tasknamekeyword);
@@ -57,7 +58,7 @@ class LazyLoadedDelegatingExternalScriptInformationProvider implements ExternalS
 			try {
 				return p.getTaskInformation(taskname);
 			} catch (Exception e) {
-				project.displayException(e);
+				project.displayException(SakerLog.SEVERITY_WARNING, "Failed to load task information.", e);
 			}
 		}
 		return ExternalScriptInformationProvider.super.getTaskInformation(taskname);
@@ -71,7 +72,7 @@ class LazyLoadedDelegatingExternalScriptInformationProvider implements ExternalS
 			try {
 				return p.getTaskParameterInformation(taskname, parametername);
 			} catch (Exception e) {
-				project.displayException(e);
+				project.displayException(SakerLog.SEVERITY_WARNING, "Failed to load task parameter information.", e);
 			}
 		}
 		return ExternalScriptInformationProvider.super.getTaskParameterInformation(taskname, parametername);
@@ -84,7 +85,7 @@ class LazyLoadedDelegatingExternalScriptInformationProvider implements ExternalS
 			try {
 				return p.getLiterals(literalkeyword, typecontext);
 			} catch (Exception e) {
-				project.displayException(e);
+				project.displayException(SakerLog.SEVERITY_WARNING, "Failed to match literals.", e);
 			}
 		}
 		return ExternalScriptInformationProvider.super.getLiterals(literalkeyword, typecontext);
@@ -97,7 +98,7 @@ class LazyLoadedDelegatingExternalScriptInformationProvider implements ExternalS
 			try {
 				return p.getLiteralInformation(literal, typecontext);
 			} catch (Exception e) {
-				project.displayException(e);
+				project.displayException(SakerLog.SEVERITY_WARNING, "Failed to load literal information.", e);
 			}
 		}
 		return ExternalScriptInformationProvider.super.getLiteralInformation(literal, typecontext);

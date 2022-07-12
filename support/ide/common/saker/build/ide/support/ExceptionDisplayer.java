@@ -15,6 +15,38 @@
  */
 package saker.build.ide.support;
 
+import saker.build.runtime.execution.SakerLog;
+
+/**
+ * Interface for displaying an exception to the user.
+ * <p>
+ * The presentation of the exceptions are implementation dependent, and can differ for each client plugin implemention.
+ */
 public interface ExceptionDisplayer {
+	/**
+	 * Displays the argument exception.
+	 * 
+	 * @param exc
+	 *            The exception.
+	 */
 	public void displayException(Throwable exc);
+
+	/**
+	 * Displays the argument exception with the given severity and message.
+	 * <p>
+	 * The default implementation calls {@link #displayException(Throwable)}.
+	 * 
+	 * @param severity
+	 *            The severity as declared in the <code>SEVERITY_*</code> constants in {@link SakerLog}.
+	 * @param message
+	 *            Optional message that describes the operation that failed, may be <code>null</code>.
+	 * @param exc
+	 *            The exception.
+	 * @see SakerLog#SEVERITY_ERROR
+	 * @see SakerLog#SEVERITY_WARNING
+	 * @see SakerLog#SEVERITY_INFO
+	 */
+	public default void displayException(int severity, String message, Throwable exc) {
+		displayException(exc);
+	}
 }
