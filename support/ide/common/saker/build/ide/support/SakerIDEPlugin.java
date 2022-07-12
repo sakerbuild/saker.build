@@ -239,10 +239,10 @@ public final class SakerIDEPlugin implements Closeable {
 				try {
 					ndaemonenv = null;
 					npluginstate = new PluginEnvironmentState(e);
-					displayException(SakerLog.SEVERITY_ERROR, "Failed to start daemon environment.", e);
 				} catch (Throwable e2) {
 					e.addSuppressed(e2);
 				}
+				//the exception is thrown, no need to call the display exception hooks here
 				throw e;
 			} finally {
 				IOUtils.close(localdaemonenvtoclose);
@@ -312,7 +312,8 @@ public final class SakerIDEPlugin implements Closeable {
 
 					RemoteDaemonConnection connection = daemonenv.connectTo(socketaddress);
 					result.put(prop.getConnectionName(), connection);
-				} catch (IOException e) {
+				} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError
+						| AssertionError | Exception e) {
 					synchronized (exc) {
 						exc[0] = IOUtils.addExc(exc[0], e);
 					}
@@ -321,7 +322,13 @@ public final class SakerIDEPlugin implements Closeable {
 					synchronized (exc) {
 						exc[0] = IOUtils.addExc(exc[0], e);
 					}
-					this.displayException(SakerLog.SEVERITY_ERROR, "Failed to connect to daemon at: " + netaddress, e);
+					try {
+						this.displayException(SakerLog.SEVERITY_ERROR, "Failed to connect to daemon at: " + netaddress,
+								e);
+					} catch (Throwable e2) {
+						e.addSuppressed(e2);
+					}
+					throw e;
 				} finally {
 					sem.release();
 				}
@@ -412,15 +419,6 @@ public final class SakerIDEPlugin implements Closeable {
 		IOUtils.throwExc(exc);
 	}
 
-	@Deprecated
-	public void displayException(Throwable e) {
-		int callcount = callListeners(ImmutableUtils.makeImmutableList(exceptionDisplayers),
-				d -> d.displayException(e));
-		if (callcount == 0) {
-			e.printStackTrace();
-		}
-	}
-
 	public void displayException(int severity, String message, Throwable e) {
 		int callcount = callListeners(ImmutableUtils.makeImmutableList(exceptionDisplayers),
 				d -> d.displayException(severity, message, e));
@@ -433,7 +431,7 @@ public final class SakerIDEPlugin implements Closeable {
 		return pluginProperties;
 	}
 
-	public final void setIDEPluginProperties(IDEPluginProperties properties) {
+	public final void setIDEPluginProperties(IDEPluginProperties properties) throws IOException {
 		properties = properties == null ? SimpleIDEPluginProperties.empty()
 				: SimpleIDEPluginProperties.builder(properties).build();
 		configurationChangeWriteLock.lock();
@@ -441,8 +439,8 @@ public final class SakerIDEPlugin implements Closeable {
 			if (this.pluginProperties.equals(properties)) {
 				return;
 			}
-			this.pluginProperties = properties;
 			writePluginPropertiesFile(properties);
+			this.pluginProperties = properties;
 		} finally {
 			configurationChangeWriteLock.unlock();
 		}
@@ -461,10 +459,11 @@ public final class SakerIDEPlugin implements Closeable {
 			SakerPath keystorepath, boolean updatessl) {
 		properties = properties == null ? SimpleIDEPluginProperties.empty()
 				: SimpleIDEPluginProperties.builder(properties).build();
+		DaemonLaunchParameters newlaunchparams = createDaemonLaunchParameters(properties);
+
 		configurationChangeWriteLock.lock();
 		Lock tounlock = configurationChangeWriteLock;
 		try {
-			DaemonLaunchParameters newlaunchparams = createDaemonLaunchParameters(properties);
 			LocalDaemonEnvironment plugindaemonenv = this.pluginDaemonEnvironment.environment;
 			if (plugindaemonenv == null || !newlaunchparams.equals(plugindaemonenv.getLaunchParameters())) {
 				tounlock = null;
@@ -528,15 +527,21 @@ public final class SakerIDEPlugin implements Closeable {
 			}
 
 			LocalDaemonEnvironment ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, newlaunchparams, null);
+			ServerSocketFactory usedserversocketfactory;
+			SocketFactory usedsocketfactory;
+			SakerPath usedkeystorepath;
 			if (updatessl) {
-				ndaemonenv.setServerSocketFactory(sslcontext == null ? null : sslcontext.getServerSocketFactory());
-				ndaemonenv.setConnectionSocketFactory(sslcontext == null ? null : sslcontext.getSocketFactory());
-				ndaemonenv.setSslKeystorePath(keystorepath);
+				usedserversocketfactory = sslcontext == null ? null : sslcontext.getServerSocketFactory();
+				usedsocketfactory = sslcontext == null ? null : sslcontext.getSocketFactory();
+				usedkeystorepath = keystorepath;
 			} else {
-				ndaemonenv.setServerSocketFactory(currentenvironmentstate.serverSocketFactory);
-				ndaemonenv.setConnectionSocketFactory(currentenvironmentstate.socketFactory);
-				ndaemonenv.setSslKeystorePath(currentenvironmentstate.keyStorePath);
+				usedserversocketfactory = currentenvironmentstate.serverSocketFactory;
+				usedsocketfactory = currentenvironmentstate.socketFactory;
+				usedkeystorepath = currentenvironmentstate.keyStorePath;
 			}
+			ndaemonenv.setServerSocketFactory(usedserversocketfactory);
+			ndaemonenv.setConnectionSocketFactory(usedsocketfactory);
+			ndaemonenv.setSslKeystorePath(usedkeystorepath);
 
 			LocalDaemonEnvironment localdaemonenvtoclose = ndaemonenv;
 			PluginEnvironmentState npluginstate = null;
@@ -551,30 +556,22 @@ public final class SakerIDEPlugin implements Closeable {
 				displayException(SakerLog.SEVERITY_ERROR, "Failed to start plugin daemon environment.", e);
 				return;
 			} catch (Throwable e) {
-				try {
-					ndaemonenv = null;
-					npluginstate = new PluginEnvironmentState(e);
-					displayException(SakerLog.SEVERITY_ERROR, "Failed to start plugin daemon environment.", e);
-				} catch (Throwable e2) {
-					e.addSuppressed(e2);
-				}
+				ndaemonenv = null;
+				npluginstate = new PluginEnvironmentState(e);
+				//no need to display the exception here, as the exception is thrown
 				throw e;
 			} finally {
 				if (npluginstate != null) {
-					if (updatessl) {
-						npluginstate.serverSocketFactory = (sslcontext == null ? null
-								: sslcontext.getServerSocketFactory());
-						npluginstate.socketFactory = (sslcontext == null ? null : sslcontext.getSocketFactory());
-						npluginstate.keyStorePath = (keystorepath);
-					} else {
-						npluginstate.copySSLFields(currentenvironmentstate);
-					}
+					npluginstate.serverSocketFactory = usedserversocketfactory;
+					npluginstate.socketFactory = usedsocketfactory;
+					npluginstate.keyStorePath = usedkeystorepath;
 					this.pluginDaemonEnvironment = npluginstate;
 				}
 
 				try {
 					IOUtils.close(localdaemonenvtoclose);
-				} catch (IOException e) {
+				} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError
+						| AssertionError | Exception e) {
 					displayException(SakerLog.SEVERITY_WARNING, "Failed to close daemon environment.", e);
 				}
 			}
@@ -654,19 +651,15 @@ public final class SakerIDEPlugin implements Closeable {
 		return daemonparams;
 	}
 
-	private void writePluginPropertiesFile(IDEPluginProperties pluginConfiguration) {
+	private void writePluginPropertiesFile(IDEPluginProperties pluginConfiguration) throws IOException {
 		Path propfilepath = pluginConfigurationFilePath;
 		Path tempfilepath = propfilepath.resolveSibling(IDE_PLUGIN_PROPERTIES_FILE_NAME + ".temp");
-		try {
-			try (OutputStream os = Files.newOutputStream(tempfilepath);
-					XMLStructuredWriter writer = new XMLStructuredWriter(os);
-					StructuredObjectOutput objwriter = writer.writeObject(CONFIG_FILE_ROOT_OBJECT_NAME)) {
-				IDEPersistenceUtils.writeIDEPluginProperties(objwriter, pluginConfiguration);
-			}
-			Files.move(tempfilepath, propfilepath, StandardCopyOption.REPLACE_EXISTING);
-		} catch (Exception e) {
-			displayException(SakerLog.SEVERITY_ERROR, "Failed to write plugin configuration.", e);
+		try (OutputStream os = Files.newOutputStream(tempfilepath);
+				XMLStructuredWriter writer = new XMLStructuredWriter(os);
+				StructuredObjectOutput objwriter = writer.writeObject(CONFIG_FILE_ROOT_OBJECT_NAME)) {
+			IDEPersistenceUtils.writeIDEPluginProperties(objwriter, pluginConfiguration);
 		}
+		Files.move(tempfilepath, propfilepath, StandardCopyOption.REPLACE_EXISTING);
 	}
 
 	private void closeProjects() throws IOException {

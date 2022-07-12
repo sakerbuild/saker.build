@@ -26,6 +26,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.ServiceConfigurationError;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.Semaphore;
@@ -117,7 +118,7 @@ public class ScriptEditorModel implements Closeable {
 		}
 	}
 
-	public ScriptSyntaxModel getUpToDateModel() {
+	public ScriptSyntaxModel getUpToDateModel() throws InterruptedException {
 		ModelReference model = this.model;
 		if (model == null) {
 			return null;
@@ -134,7 +135,13 @@ public class ScriptEditorModel implements Closeable {
 	}
 
 	public ScriptTokenInformation getTokenInformationAtPosition(int start, int length) {
-		ScriptSyntaxModel m = getUpToDateModel();
+		ScriptSyntaxModel m;
+		try {
+			m = getUpToDateModel();
+		} catch (InterruptedException e) {
+			project.displayException(SakerLog.SEVERITY_WARNING, "Updating script state was interrupted.", e);
+			return null;
+		}
 		if (m == null) {
 			return null;
 		}
@@ -754,7 +761,8 @@ public class ScriptEditorModel implements Closeable {
 								break;
 							}
 						}
-					} catch (Throwable e) {
+					} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError
+							| AssertionError | Exception e) {
 						//there were some exception that is not due to read or parsing errors
 						//maybe script modifications are out of range or inconsistent? or model implementation error
 						//anyhow, if we performed an update now, do a create next time, and continue
@@ -798,24 +806,19 @@ public class ScriptEditorModel implements Closeable {
 			thread.start();
 		}
 
-		private void waitUpdaterThread() {
-			try {
-				while (this.updaterThread != null) {
-					if (this.updaterThread.getState() == State.TERMINATED) {
-						//some fatal error in thread, maybe it failed to null out
-						this.updaterThread = null;
-						break;
-					}
-					//some timeout to be more error tolerant
-					this.wait(1000);
+		private void waitUpdaterThread() throws InterruptedException {
+			while (this.updaterThread != null) {
+				if (this.updaterThread.getState() == State.TERMINATED) {
+					//some fatal error in thread, maybe it failed to null out
+					this.updaterThread = null;
+					break;
 				}
-			} catch (InterruptedException e) {
-				editor.project.displayException(SakerLog.SEVERITY_WARNING, "Updating script state was interrupted.", e);
-				throw new RuntimeException(e);
+				//some timeout to be more error tolerant
+				this.wait(1000);
 			}
 		}
 
-		public synchronized ScriptSyntaxModel getUpToDateModel() {
+		public synchronized ScriptSyntaxModel getUpToDateModel() throws InterruptedException {
 			if (this.postedUpdateCounter != this.processedUpdateCounter) {
 				waitUpdaterThread();
 			}

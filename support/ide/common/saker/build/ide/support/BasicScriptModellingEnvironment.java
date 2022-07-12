@@ -37,6 +37,7 @@ import saker.build.file.provider.FileProviderKey;
 import saker.build.file.provider.SakerFileProvider;
 import saker.build.file.provider.SakerPathFiles;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
+import saker.build.runtime.execution.SakerLog;
 import saker.build.runtime.execution.ScriptAccessorClassPathCacheKey;
 import saker.build.runtime.execution.ScriptAccessorClassPathData;
 import saker.build.runtime.params.ExecutionPathConfiguration;
@@ -119,7 +120,11 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 			configurationVersionKey = new Object();
 
 			uninstallWatchers();
-			IOUtils.closePrint(accessorKeyModellingEngines.values());
+			try {
+				IOUtils.close(accessorKeyModellingEngines.values());
+			} catch (IOException e) {
+				plugin.displayException(SakerLog.SEVERITY_WARNING, "Failed to close script modelling engines.", e);
+			}
 			accessorKeyModellingEngines.clear();
 			models.clear();
 
@@ -266,7 +271,7 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 			closed = true;
 			IOException exc = null;
 			uninstallWatchers();
-			IOUtils.closeExc(exc, accessorKeyModellingEngines.values());
+			exc = IOUtils.closeExc(exc, accessorKeyModellingEngines.values());
 			accessorKeyModellingEngines.clear();
 			models.clear();
 			IOUtils.throwExc(exc);

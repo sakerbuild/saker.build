@@ -929,42 +929,34 @@ public final class SakerIDEProject {
 		}
 	}
 
-	private void persistIDEConfigsFile() {
+	private void persistIDEConfigsFile() throws IOException {
 		Path propfilepath = projectPath.resolve(IDE_CONFIG_FILE_NAME);
 		Path tempfilepath = propfilepath.resolveSibling(IDE_CONFIG_FILE_NAME + ".temp");
-		try {
-			try (OutputStream os = Files.newOutputStream(tempfilepath);
-					XMLStructuredWriter writer = new XMLStructuredWriter(os);
-					StructuredObjectOutput objwriter = writer.writeObject(IDE_CONFIG_FILE_ROOT_OBJECT_NAME)) {
-				try (StructuredArrayObjectOutput ideconfigsarraywriter = objwriter.writeArray("ide-configurations")) {
-					for (IDEConfiguration ideconfig : configurationCollection.getConfigurations()) {
-						try (StructuredObjectOutput ideconfigobjwriter = ideconfigsarraywriter.writeObject()) {
-							IDEPersistenceUtils.writeIDEConfiguration(ideconfigobjwriter, ideconfig);
-						}
+		try (OutputStream os = Files.newOutputStream(tempfilepath);
+				XMLStructuredWriter writer = new XMLStructuredWriter(os);
+				StructuredObjectOutput objwriter = writer.writeObject(IDE_CONFIG_FILE_ROOT_OBJECT_NAME)) {
+			try (StructuredArrayObjectOutput ideconfigsarraywriter = objwriter.writeArray("ide-configurations")) {
+				for (IDEConfiguration ideconfig : configurationCollection.getConfigurations()) {
+					try (StructuredObjectOutput ideconfigobjwriter = ideconfigsarraywriter.writeObject()) {
+						IDEPersistenceUtils.writeIDEConfiguration(ideconfigobjwriter, ideconfig);
 					}
 				}
 			}
-			Files.move(tempfilepath, propfilepath, StandardCopyOption.REPLACE_EXISTING);
-		} catch (Exception e) {
-			displayException(SakerLog.SEVERITY_ERROR, "Failed to write IDE configurations.", e);
 		}
+		Files.move(tempfilepath, propfilepath, StandardCopyOption.REPLACE_EXISTING);
 	}
 
-	private void persistIDEProjectPropertiesFile() {
+	private void persistIDEProjectPropertiesFile() throws IOException {
 		Path propfilepath = projectPath.resolve(PROPERTIES_FILE_NAME);
 		Path tempfilepath = propfilepath.resolveSibling(PROPERTIES_FILE_NAME + ".temp");
-		try {
-			try (OutputStream os = Files.newOutputStream(tempfilepath);
-					XMLStructuredWriter writer = new XMLStructuredWriter(os);
-					StructuredObjectOutput objwriter = writer.writeObject(CONFIG_FILE_ROOT_OBJECT_NAME)) {
-				try (StructuredObjectOutput propertieswriter = objwriter.writeObject("project-properties")) {
-					IDEPersistenceUtils.writeIDEProjectProperties(propertieswriter, ideProjectProperties.properties);
-				}
+		try (OutputStream os = Files.newOutputStream(tempfilepath);
+				XMLStructuredWriter writer = new XMLStructuredWriter(os);
+				StructuredObjectOutput objwriter = writer.writeObject(CONFIG_FILE_ROOT_OBJECT_NAME)) {
+			try (StructuredObjectOutput propertieswriter = objwriter.writeObject("project-properties")) {
+				IDEPersistenceUtils.writeIDEProjectProperties(propertieswriter, ideProjectProperties.properties);
 			}
-			Files.move(tempfilepath, propfilepath, StandardCopyOption.REPLACE_EXISTING);
-		} catch (Exception e) {
-			displayException(SakerLog.SEVERITY_ERROR, "Failed to write project configuration.", e);
 		}
+		Files.move(tempfilepath, propfilepath, StandardCopyOption.REPLACE_EXISTING);
 	}
 
 	public final NavigableSet<SakerPath> getTrackedScriptPaths() {
@@ -1053,7 +1045,7 @@ public final class SakerIDEProject {
 				scriptingEnvironmentConfigurationProperties = properties.properties;
 			} catch (Exception e) {
 				displayException(SakerLog.SEVERITY_ERROR, "Failed to create script environment configuration.", e);
-				//create some default script configuration so we can create the modelling environment
+				//TODO create some default script configuration so we can create the modelling environment
 				return null;
 			}
 			//Note: we could override createModelForPath and display any exceptions in regards
@@ -1093,15 +1085,6 @@ public final class SakerIDEProject {
 				}
 			}
 			IOUtils.throwExc(exc);
-		}
-	}
-
-	@Deprecated
-	public void displayException(Throwable e) {
-		int callcount = callListeners(ImmutableUtils.makeImmutableList(exceptionDisplayers),
-				d -> d.displayException(e));
-		if (callcount == 0) {
-			e.printStackTrace();
 		}
 	}
 
@@ -1183,7 +1166,8 @@ public final class SakerIDEProject {
 		return configurationCollection;
 	}
 
-	public final void setProjectIDEConfigurationCollection(ProjectIDEConfigurationCollection configurationCollection) {
+	public final void setProjectIDEConfigurationCollection(ProjectIDEConfigurationCollection configurationCollection)
+			throws IOException {
 		if (configurationCollection == null) {
 			configurationCollection = new ProjectIDEConfigurationCollection();
 		}
@@ -1192,8 +1176,8 @@ public final class SakerIDEProject {
 			if (configurationCollection.equals(this.configurationCollection)) {
 				return;
 			}
-			this.configurationCollection = configurationCollection;
 			persistIDEConfigsFile();
+			this.configurationCollection = configurationCollection;
 		} finally {
 			configurationChangeLock.unlock();
 		}
@@ -1334,7 +1318,7 @@ public final class SakerIDEProject {
 		return null;
 	}
 
-	public final void setIDEProjectProperties(IDEProjectProperties properties) {
+	public final void setIDEProjectProperties(IDEProjectProperties properties) throws IOException {
 		properties = properties == null ? SimpleIDEProjectProperties.getDefaultsInstance()
 				: SimpleIDEProjectProperties.copy(properties);
 		configurationChangeLock.lock();
@@ -1342,8 +1326,8 @@ public final class SakerIDEProject {
 			if (properties.equals(this.ideProjectProperties.properties)) {
 				return;
 			}
-			this.ideProjectProperties = createValidatedProjectProperties(properties);
 			persistIDEProjectPropertiesFile();
+			this.ideProjectProperties = createValidatedProjectProperties(properties);
 		} finally {
 			configurationChangeLock.unlock();
 		}
@@ -1612,8 +1596,8 @@ public final class SakerIDEProject {
 			for (ScriptConfigurationIDEProperty sc : scriptconfigs) {
 				ClassPathLocationIDEProperty scclasspath = sc.getClassPathLocation();
 
-				ScriptProviderLocation scriptproviderlocation = scclasspath
-						.accept(new ScriptProviderLocationResolverVisitor(properties, sc), null);
+				ScriptProviderLocation scriptproviderlocation = new ScriptProviderLocationResolverVisitor(properties,
+						sc).visit(scclasspath);
 
 				builder.addConfig(WildcardPath.valueOf(sc.getScriptsWildcard()), new ScriptOptionsConfig(
 						SakerIDEPlugin.entrySetToMap(sc.getScriptOptions()), scriptproviderlocation));
@@ -1634,7 +1618,7 @@ public final class SakerIDEProject {
 			for (RepositoryIDEProperty repo : repositories) {
 				ClassPathLocationIDEProperty repocploc = repo.getClassPathLocation();
 				ClassPathServiceEnumeratorIDEProperty reposerviceenumerator = repo.getServiceEnumerator();
-				ClassPathLocation cploc = repocploc.accept(new ClassPathLocationResolverVisitor(properties), null);
+				ClassPathLocation cploc = new ClassPathLocationResolverVisitor(properties).visit(repocploc);
 				ClassPathServiceEnumerator<? extends SakerRepositoryFactory> serviceenumerator = reposerviceenumerator
 						.accept(new SubClassingServiceEnumeratorResolverVisitor<>(
 								SakerEnvironment.class.getClassLoader(), SakerRepositoryFactory.class), null);
@@ -1725,7 +1709,7 @@ public final class SakerIDEProject {
 			try {
 				return super.loadRepositoryFromManager(repositorymanager, repolocation, enumerator);
 			} catch (Exception e) {
-				displayException(SakerLog.SEVERITY_ERROR, "Failed to load repository.", e);
+				displayException(SakerLog.SEVERITY_ERROR, "Failed to load repository for scripting environment.", e);
 				return null;
 			}
 		}
@@ -1786,6 +1770,11 @@ public final class SakerIDEProject {
 			this.scriptProperty = scriptProperty;
 		}
 
+		//throws IOException because it's sneakily thrown
+		public ScriptProviderLocation visit(ClassPathLocationIDEProperty property) throws IOException {
+			return property.accept(this, null);
+		}
+
 		@Override
 		public ScriptProviderLocation visit(JarClassPathLocationIDEProperty property, Void param) {
 			ClassPathLocation cplocation = new ClassPathLocationResolverVisitor(properties).visit(property, param);
@@ -1829,6 +1818,11 @@ public final class SakerIDEProject {
 
 		public ClassPathLocationResolverVisitor(IDEProjectProperties properties) {
 			this.properties = properties;
+		}
+
+		//throws IOException because it's sneakily thrown
+		public ClassPathLocation visit(ClassPathLocationIDEProperty property) throws IOException {
+			return property.accept(this, null);
 		}
 
 		@Override
