@@ -2296,6 +2296,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 													SimpleTextPartition partition = createTargetInputParameterTextPartition(
 															paramname, includedderived, tasktargetstm, doc);
 													partitions.add(partition);
+
+													addTargetParameterPartitions(derived, inparamloc.parentContexts,
+															inparamloc.statement, paramname, nonNullAdder(partitions));
 												}
 											}
 										}
@@ -2733,7 +2736,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		return partition;
 	}
 
-	private void addTargetParameterPartitions(DerivedData derived, ArrayDeque<? extends Statement> copyparentstatements,
+	private void addTargetParameterPartitions(DerivedData derived, Iterable<? extends Statement> copyparentstatements,
 			Statement paramstm, String paramname, Consumer<? super TextPartition> partitions) {
 		ScriptModelInformationAnalyzer analyzer = new ScriptModelInformationAnalyzer(modellingEnvironment);
 		Collection<? extends TypedModelInformation> restypes = analyzer.getExpressionResultType(derived, paramstm,
@@ -4472,7 +4475,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				if (expressionstm != null && (!"expression_placeholder".equals(stmname)
 						|| !isInvokedOnLineBefore(offset, stm, expressionstm))) {
 					//there is already an expression in this placeholder
-					//and the asisstance is invoked on the same line
+					//and the assistance is invoked on the same line
 					//no proposals
 					break;
 				}

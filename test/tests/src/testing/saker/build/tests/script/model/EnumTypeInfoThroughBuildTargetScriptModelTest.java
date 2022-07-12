@@ -33,5 +33,10 @@ public class EnumTypeInfoThroughBuildTargetScriptModelTest extends ScriptModelTe
 				"FOURTH");
 		assertProposals(model, endIndexOf(filedata, "target1(enumval: )") - 1).assertPresentOrder("FIFTH", "FIRST",
 				"FOURTH", "SECOND", "SEVENTH", "SIXTH", "THIRD");
+
+		assertEquals(getInformationsAtOffset(model, indexOf(filedata, "target1(enumval: )") + 10),
+				setOf("doc_example.task_EnumParam1", "doc_example.task_EnumParam1_enumtype"));
+		assertEquals(getInformationsAtOffset(model, indexOf(filedata, "target1(enumval: F)") + 10),
+				setOf("doc_example.task_EnumParam1", "doc_example.task_EnumParam1_enumtype"));
 	}
 }
