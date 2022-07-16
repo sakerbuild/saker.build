@@ -75,12 +75,12 @@ import saker.build.util.exc.ExceptionView;
 public class SakerLog {
 	private static final BiConsumer<SakerLog, Object> DEFAULT_PRINTER = (sl, message) -> {
 		TaskContext tc = TaskContextReference.current();
-		String s = sl.constructMessage(message);
+		StringBuilder s = sl.constructMessage(message);
 		if (tc != null) {
 			if (sl.verbose) {
 				verbosePrintToTaskContext(tc, s);
 			} else {
-				tc.println(s);
+				tc.println(s.toString());
 			}
 		} else {
 			System.out.println(s);
@@ -303,8 +303,8 @@ public class SakerLog {
 	public SakerLog out(PrintStream out) throws NullPointerException {
 		Objects.requireNonNull(out, "out");
 		this.printer = (sl, message) -> {
-			String s = sl.constructMessage(message);
-			out.println(s);
+			StringBuilder s = sl.constructMessage(message);
+			out.println(s.toString());
 		};
 		return this;
 	}
@@ -326,11 +326,11 @@ public class SakerLog {
 	public SakerLog out(TaskContext taskcontext) throws NullPointerException {
 		Objects.requireNonNull(taskcontext, "task context");
 		this.printer = (sl, message) -> {
-			String s = sl.constructMessage(message);
+			StringBuilder s = sl.constructMessage(message);
 			if (sl.verbose) {
 				verbosePrintToTaskContext(taskcontext, s);
 			} else {
-				taskcontext.println(s);
+				taskcontext.println(s.toString());
 			}
 		};
 		return this;
@@ -376,7 +376,7 @@ public class SakerLog {
 		flushln(text);
 	}
 
-	private String constructMessage(Object message) {
+	private StringBuilder constructMessage(Object message) {
 		StringBuilder sb = new StringBuilder();
 		if (path != null) {
 			sb.append(path);
@@ -395,7 +395,7 @@ public class SakerLog {
 			sb.append(": ");
 		}
 		constructNonPositionMessage(message, sb);
-		return sb.toString();
+		return sb;
 	}
 
 	private String constructNonPositionMessage(Object message) {
@@ -422,13 +422,15 @@ public class SakerLog {
 		printer.accept(this, message);
 	}
 
-	private static void verbosePrintToTaskContext(TaskContext tc, String s) {
+	/**
+	 * Verbosely prints the argument message, appends a \n character to it.
+	 */
+	private static void verbosePrintToTaskContext(TaskContext tc, StringBuilder s) {
+		s.append('\n');
 		ByteSink out = tc.getStandardOut();
 		//do not use the TaskContext.println to not record the output line
 		try {
-			//XXX do not make two calls, but only a single one
-			out.write(ByteArrayRegion.wrap(s.getBytes(StandardCharsets.UTF_8)));
-			out.write('\n');
+			out.write(ByteArrayRegion.wrap(s.toString().getBytes(StandardCharsets.UTF_8)));
 		} catch (IOException ignored) {
 			//this should not really happen, and signals that there is something wrong with the standard i/o of the build execution
 			tc.getTaskUtilities().reportIgnoredException(ignored);
