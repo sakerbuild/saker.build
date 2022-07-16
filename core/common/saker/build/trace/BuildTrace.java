@@ -46,6 +46,11 @@ import testing.saker.build.flag.TestFlag;
  * being cached, buffered, or otherwise reported in an implementation dependent manner.
  * <p>
  * The methods of this class will <b>never</b> throw any exceptions.
+ * <p>
+ * <b>Note:</b> Functions in this class (unless stated otherwise) rely on internal {@linkplain InheritableThreadLocal
+ * inheritable thread locals} to appropriately record the build trace information. If you spawn new threads that don't
+ * inherit these thread locals then some information may not be properly recorded in the build trace. <br>
+ * <b>Note:</b> This mechanism is planned to be changed in a future release to not require inheritable thread locals.
  * 
  * @since saker.build 0.8.6
  */

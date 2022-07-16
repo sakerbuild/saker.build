@@ -70,6 +70,11 @@ import saker.build.util.exc.ExceptionView;
  * present. Intermediate <code>": "</code> is omitted if no phrase comes after it.
  * <p>
  * This class also contains some utility functions for formatting other logging information.
+ * <p>
+ * <b>Note:</b> Functionality that automatically prints on the {@linkplain TaskContext#getStandardOut() task standard
+ * output} without a specified {@link TaskContext} as the output relies on an internal {@link InheritableThreadLocal
+ * inheritable thread local} variable. If you use your own threading implementation and don't inherit thread locals,
+ * make sure to explicitly call {@link #out(TaskContext)} if you intend to write the output to the task output streams.
  */
 @PublicApi
 public class SakerLog {
