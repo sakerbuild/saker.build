@@ -24,15 +24,56 @@ import testing.saker.build.tests.ExecutionOrderer;
 import testing.saker.build.tests.tasks.factories.ChildTaskStarterTaskFactory;
 import testing.saker.build.tests.tasks.factories.StringTaskFactory;
 
+/**
+ * Task setup:
+ * 
+ * <pre>
+ * 				(starts)
+ * main------------------------------------------->waiter
+ *  | \                                             /
+ *  |  \  (starts)            (starts,waits)        
+ *  |   \------------>blocker----------           /
+ *  |                                  \          
+ *   \ (starts,waits)       (starts)    V       /
+ *    \-------------->plus------------->str<- - (waits)
+ * </pre>
+ * 
+ * waiter will start to wait for str right away. It can only get the result after plus finishes. <br>
+ * blocker won't finish until waiter gets the result of str.
+ */
 @SakerTest
 public class AddAncestorBlockingWaitTaskTest extends CollectingMetricEnvironmentTestCase {
+	//constants are in order they should be encountered.
+	/**
+	 * The {@link WaiterTaskFactory} started.
+	 */
 	private static final String SECTION_WAITER_START = "waiter_start";
-	private static final String SECTION_WAITER_END = "waiter_end";
+	/**
+	 * The {@link BlockerStarterTaskFactory} started.
+	 */
 	private static final String SECTION_BLOCKER_START = "blocker_start";
-	private static final String SECTION_BLOCKER_END = "blocker_end";
+	/**
+	 * {@link BlockerStarterTaskFactory} started its str subtask.
+	 * <p>
+	 * blocker will start to wait for str.
+	 */
 	private static final String SECTION_BLOCKER_STARTED = "blocker_started";
+	/**
+	 * The plus task is getting started
+	 */
 	private static final String SECTION_PLUS_STARTER = "plus_starter";
+	/**
+	 * The plus task has finished, and its result has been waited for by main.
+	 */
 	private static final String SECTION_PLUS_FINISHED = "plus_started";
+	/**
+	 * The str task has ben waited for by waiter.
+	 */
+	private static final String SECTION_WAITER_END = "waiter_end";
+	/**
+	 * After blocker waited for str, it will assert that waiter got its task result from str.
+	 */
+	private static final String SECTION_BLOCKER_END = "blocker_end";
 
 	private static ExecutionOrderer orderer;
 	private static volatile boolean gotStrTaskResultByWaiter = false;

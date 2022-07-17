@@ -179,7 +179,7 @@ import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 import saker.build.util.exc.ExceptionView;
 import testing.saker.build.flag.TestFlag;
 
-public class TaskExecutionManager {
+public final class TaskExecutionManager {
 	private static final TaskExecutionParameters DEFAULT_EXECUTION_PARAMETERS = new TaskExecutionParameters();
 	private static final InnerTaskExecutionParameters DEFAULT_INNER_TASK_EXECUTION_PARAMETERS = new InnerTaskExecutionParameters();
 
@@ -2459,8 +2459,7 @@ public class TaskExecutionManager {
 		static final int STATE_INITIAL = 0;
 		static final int STATE_WAITING = 1;
 		static final int STATE_NOTIFIED = 2;
-		static final int STATE_CHECKING_NOTIFICATION = 3;
-		static final int STATE_FINISHED = 4;
+		static final int STATE_FINISHED = 3;
 
 		static final AtomicIntegerFieldUpdater<TaskExecutionManager.WaiterThreadHandle> AIFU_state = AtomicIntegerFieldUpdater
 				.newUpdater(TaskExecutionManager.WaiterThreadHandle.class, "state");
@@ -2495,16 +2494,11 @@ public class TaskExecutionManager {
 						break;
 					}
 					case STATE_NOTIFIED: {
+						//the thread is already notified, unpark it again, so it will recheck the condition
+						//(at this point, the state might get changed from STATE_NOTIFIED, but that's fine
+						// as the condition will always get checked when the thread is unparked)
 						LockSupport.unpark(get());
 						return true;
-					}
-					case STATE_CHECKING_NOTIFICATION: {
-						//update state to make sure that the waiter rechecks the condition before setting the waiting thread state
-						if (AIFU_state.compareAndSet(this, STATE_CHECKING_NOTIFICATION, STATE_NOTIFIED)) {
-							LockSupport.unpark(get());
-							return true;
-						}
-						break;
 					}
 					case STATE_FINISHED: {
 						//no need to unpark, already finished
@@ -2517,38 +2511,45 @@ public class TaskExecutionManager {
 			}
 		}
 
-		public void finish(TaskExecutionManager execmanager) {
+		/**
+		 * Sets the {@link #state} to {@link #STATE_FINISHED}, and removes/adds a waiting thread count if needed based
+		 * on the state.
+		 * <p>
+		 * This method is to be called when the {@link #state} is {@link #STATE_WAITING}.
+		 * 
+		 * @param wasabouttoaddwaitingthreadcount
+		 *            <code>true</code> if the caller code was about to add a waiting thread count.
+		 */
+		public void finish(TaskExecutionManager execmanager, boolean wasabouttoaddwaitingthreadcount) {
 			while (true) {
 				int s = this.state;
 				switch (s) {
-					case STATE_INITIAL: {
-						if (AIFU_state.compareAndSet(this, STATE_INITIAL, STATE_FINISHED)) {
-							return;
-						}
-						break;
-					}
 					case STATE_WAITING: {
 						if (AIFU_state.compareAndSet(this, STATE_WAITING, STATE_FINISHED)) {
-							execmanager.removeWaitingThreadCount(1);
+							if (!wasabouttoaddwaitingthreadcount) {
+								//the thread was in a waiting state, remove this from the waiting thread count
+								execmanager.removeWaitingThreadCount(1);
+							}
 							return;
 						}
 						break;
 					}
 					case STATE_NOTIFIED: {
 						if (AIFU_state.compareAndSet(this, STATE_NOTIFIED, STATE_FINISHED)) {
+							if (wasabouttoaddwaitingthreadcount) {
+								//the thread got notified again from a WAITING state, and the notifier
+								//already removed this waiting thread count
+								//re-add it so we balance it out
+								execmanager.addWaitingThreadCount(1);
+							}
 							return;
 						}
 						break;
 					}
-					case STATE_CHECKING_NOTIFICATION: {
-						if (AIFU_state.compareAndSet(this, STATE_CHECKING_NOTIFICATION, STATE_FINISHED)) {
-							return;
-						}
-						break;
-					}
-					case STATE_FINISHED: {
-						return;
-					}
+					/*
+					case STATE_INITIAL: // shouldn't be called, the STATE_FINISHED should be directly set
+					case STATE_FINISHED: // shouldn't call finish twice on a single handle
+					*/
 					default: {
 						throw new AssertionError(s);
 					}
@@ -2989,7 +2990,7 @@ public class TaskExecutionManager {
 		private static final AtomicReferenceFieldUpdater<TaskExecutionManager.ManagerTaskFutureImpl, FutureState> ARFU_futureState = AtomicReferenceFieldUpdater
 				.newUpdater(TaskExecutionManager.ManagerTaskFutureImpl.class, FutureState.class, "futureState");
 
-		private volatile FutureState futureState;
+		protected volatile FutureState futureState;
 
 		protected final TaskIdentifier taskId;
 		protected final ConcurrentLinkedQueue<WaiterThreadHandle> waitingThreads = new ConcurrentLinkedQueue<>();
@@ -3001,6 +3002,10 @@ public class TaskExecutionManager {
 		public ManagerTaskFutureImpl(TaskIdentifier taskId) {
 			this.taskId = taskId;
 			this.futureState = FUTURE_STATE_UNSTARTED;
+		}
+
+		protected boolean isResultReady() {
+			return this.futureState.state == STATE_RESULT_READY;
 		}
 
 		protected Object getModificationStamp(TaskExecutorContext<?> context) throws IllegalTaskOperationException {
@@ -3526,7 +3531,7 @@ public class TaskExecutionManager {
 
 			PeekableIterable<ManagerTaskFutureImpl<?>> ancestorsiterable = ancestors.iterable();
 			if (ancestorsiterable.isEmpty()) {
-				//this is a root task, it is waitable without checking ancestors
+				//this is a root task, because no ancestors, and the state is already RESULT_READY, it is waitable without checking ancestors
 				return getTaskResult();
 			}
 			PeekableIterable<ManagerTaskFutureImpl<?>> callerancestorsiterable = callerfuture.ancestors.iterable();
@@ -3539,7 +3544,7 @@ public class TaskExecutionManager {
 			ancestorstates.put(this, thisancestorstate);
 			ancestorstates.put(callerfuture, callerancestorstate);
 
-			//contains ALL ancestors (parents, grandparents, etc...) of the caller
+			//contains ALL ancestors (parents, grandparents, etc...) of the caller, and the caller as well.
 			Set<ManagerTaskFutureImpl<?>> callerancestors;
 			if (!callerancestorsiterable.isEmpty()) {
 				callerancestors = callerfuture.getAllAncestors(callerancestorstate, ancestorstates);
@@ -3584,70 +3589,84 @@ public class TaskExecutionManager {
 			});
 
 			WaiterThreadHandle threadhandle = new WaiterThreadHandle(STATE_RESULT_READY | EVENT_ADD_ANCESTOR);
-			waitCondition(callertaskcontext.getExecutionManager(), threadhandle, ancestorwaitfutures,
-					new BooleanSupplier() {
-						private Set<ManagerTaskFutureImpl<?>> recollectBuffer = new HashSet<>();
+			BooleanSupplier conditionchecker = new BooleanSupplier() {
+				private final Set<ManagerTaskFutureImpl<?>> recollectBuffer = new HashSet<>();
+				private boolean first = true;
 
-						@Override
-						public boolean getAsBoolean() {
-							//loop until there are no more changes detected, as adding waiter threads
-							//    can cause race conditions and missing of updates
-							while (true) {
-								//update all ancestor states with the fresh ancestor iterables, so we have an up to date snapshot
-								boolean hadanyancestorchange = false;
-								for (Entry<ManagerTaskFutureImpl<?>, AncestorWaitAncestorState> entry : ancestorstates
-										.entrySet()) {
-									PeekableIterable<ManagerTaskFutureImpl<?>> niterable = entry.getKey().ancestors
-											.iterable();
-									AncestorWaitAncestorState state = entry.getValue();
-									ManagerTaskFutureImpl<?> currentfirst = niterable.peek();
-									if (currentfirst != state.firstAncestor) {
-										state.firstAncestor = currentfirst;
-										state.ancestorIterable = niterable;
-										hadanyancestorchange = true;
-									}
+				@Override
+				public boolean getAsBoolean() {
+					//don't need to check ancestor changes in the first run, as that is directly
+					//called at the start of waitCondition function
+					//this also prevents that we add the thread handle to a single future.waitingThreads
+					//collection multiple times in the waitCondition function as well as part of the ancestor discovery below
+					if (!first) {
+						//loop until there are no more changes detected, as adding waiter threads
+						//    can cause race conditions and missing of updates
+						while (true) {
+							//update all ancestor states with the fresh ancestor iterables, so we have an up to date snapshot
+							boolean hadanyancestorchange = false;
+							for (Entry<ManagerTaskFutureImpl<?>, AncestorWaitAncestorState> entry : ancestorstates
+									.entrySet()) {
+								PeekableIterable<ManagerTaskFutureImpl<?>> niterable = entry.getKey().ancestors
+										.iterable();
+								AncestorWaitAncestorState state = entry.getValue();
+								ManagerTaskFutureImpl<?> currentfirst = niterable.peek();
+								if (currentfirst != state.firstAncestor) {
+									state.firstAncestor = currentfirst;
+									state.ancestorIterable = niterable;
+									hadanyancestorchange = true;
 								}
-
-								if (!hadanyancestorchange) {
-									//no ancestors changed whatsoever, so this is probably a RESULT_READY notification (or this is not the first loop)
-									break;
-								}
-								recollectBuffer.clear();
-								//recollect all ancestors
-								callerfuture.collectAllAncestors(callerancestorstate, ancestorstates, recollectBuffer);
-								callerancestors.addAll(recollectBuffer);
-
-								//same checking as above
-								for (ManagerTaskFutureImpl<?> aa : thisancestorstate.ancestorIterable) {
-									if (callerancestors.contains(aa)) {
-										return true;
-									}
-								}
-								//some ancestor was added, collect the waither paths again, and add us to the waiting threads of the newly found futures
-								collectAncestorWaiterPaths(callerancestors, thisancestorstate, ancestorstates, wp -> {
-									if (ancestorwaiterpaths.add(wp)) {
-										for (ManagerTaskFutureImpl<?> f : wp) {
-											if (ancestorwaitfutures.add(f)) {
-												f.waitingThreads.add(threadhandle);
-											}
-										}
-									}
-								});
 							}
-							for (Iterable<ManagerTaskFutureImpl<?>> waiterpath : ancestorwaiterpaths) {
-								if (isAllFutureResultReady(waiterpath)) {
+
+							if (!hadanyancestorchange) {
+								//no ancestors changed whatsoever, so this is probably a RESULT_READY notification (or this is not the first loop)
+								break;
+							}
+							recollectBuffer.clear();
+							//recollect all ancestors
+							callerfuture.collectAllAncestors(callerancestorstate, ancestorstates, recollectBuffer);
+							callerancestors.addAll(recollectBuffer);
+
+							//same checking as above
+							for (ManagerTaskFutureImpl<?> aa : thisancestorstate.ancestorIterable) {
+								if (callerancestors.contains(aa)) {
 									return true;
 								}
 							}
-							return false;
+							//some ancestor was added, collect the waiter paths again, and add us to the waiting threads of the newly found futures
+							collectAncestorWaiterPaths(callerancestors, thisancestorstate, ancestorstates, wp -> {
+								if (ancestorwaiterpaths.add(wp)) {
+									for (ManagerTaskFutureImpl<?> f : wp) {
+										if (ancestorwaitfutures.add(f)) {
+											f.waitingThreads.add(threadhandle);
+										}
+									}
+								}
+							});
 						}
-					});
+					} else {
+						first = false;
+					}
+
+					return isAtLeastOneWaitherPathResultReady();
+				}
+
+				private boolean isAtLeastOneWaitherPathResultReady() {
+					for (Iterable<ManagerTaskFutureImpl<?>> waiterpath : ancestorwaiterpaths) {
+						if (isAllFutureResultReady(waiterpath)) {
+							return true;
+						}
+					}
+					return false;
+				}
+			};
+			waitCondition(callertaskcontext.getExecutionManager(), threadhandle, ancestorwaitfutures, conditionchecker);
 			return getTaskResult();
 		}
 
 		private static boolean isAllFutureResultReady(Iterable<? extends ManagerTaskFutureImpl<?>> futures) {
 			for (ManagerTaskFutureImpl<?> fut : futures) {
-				if (fut.futureState.state != STATE_RESULT_READY) {
+				if (!fut.isResultReady()) {
 					return false;
 				}
 			}
@@ -3766,12 +3785,8 @@ public class TaskExecutionManager {
 		}
 
 		private void waitResultPark(TaskExecutionManager execmanager) {
-			waitResultPark(execmanager, new WaiterThreadHandle(STATE_RESULT_READY), STATE_RESULT_READY);
-		}
-
-		private void waitResultPark(TaskExecutionManager execmanager, WaiterThreadHandle waiter, int targetstate) {
-			waitCondition(execmanager, waiter, ImmutableUtils.singletonSet(this),
-					() -> this.futureState.state == targetstate);
+			waitCondition(execmanager, new WaiterThreadHandle(STATE_RESULT_READY), ImmutableUtils.singletonSet(this),
+					this::isResultReady);
 		}
 
 		public static void addWaitingFutureInCondition(ManagerTaskFutureImpl<?> fut, WaiterThreadHandle waiter) {
@@ -3790,7 +3805,8 @@ public class TaskExecutionManager {
 			}
 			//check the condition
 			if (condition.getAsBoolean()) {
-				waiter.finish(execmanager);
+				//set the state directly, as the handle hadn't been used anywere so far
+				waiter.state = WaiterThreadHandle.STATE_FINISHED;
 				return;
 			}
 			//add the current thread as a waiter for the futures
@@ -3803,29 +3819,20 @@ public class TaskExecutionManager {
 			futures = null;
 
 			//store the first future in case we need it in the thrown exception
-			ManagerTaskFutureImpl<?> firstfuture;
-			{
-				ManagerTaskFutureImpl<?> fut = initit.next();
-				firstfuture = fut;
-				while (true) {
-					fut.waitingThreads.add(waiter);
-					if (!initit.hasNext()) {
-						break;
-					}
-					fut = initit.next();
+			ManagerTaskFutureImpl<?> firstfuture = initit.next();
+			for (ManagerTaskFutureImpl<?> fut = firstfuture;; fut = initit.next()) {
+				fut.waitingThreads.add(waiter);
+				if (!initit.hasNext()) {
+					break;
 				}
 			}
 
-			//check the condition again in case it has changed while we were adding the waiting threads and don't get notified
-			if (condition.getAsBoolean()) {
-				waiter.finish(execmanager);
-				return;
-			}
+			// we don't need to check the condition here again, as we will check it again before we park the thread
 
 			Thread currentthread = waiter.get();
 			//go ahead with locking, deadlock detecting, and others
 			while (true) {
-				WaitingThreadCounter wtc;
+				final boolean addwaitingthread;
 				state_updater_loop:
 				while (true) {
 					int s = waiter.state;
@@ -3833,53 +3840,69 @@ public class TaskExecutionManager {
 						case WaiterThreadHandle.STATE_INITIAL: {
 							if (WaiterThreadHandle.AIFU_state.compareAndSet(waiter, WaiterThreadHandle.STATE_INITIAL,
 									WaiterThreadHandle.STATE_WAITING)) {
-								wtc = execmanager.addWaitingThreadCount(1);
+								addwaitingthread = true;
 								break state_updater_loop;
 							}
 							break;
 						}
 						case WaiterThreadHandle.STATE_WAITING: {
-							//already waiting
-							wtc = execmanager.waitingThreadCounter;
+							//already waiting, but was unparked
+							//could be because of deadlock, or was just woken up
+							//will check the condition below again
+							addwaitingthread = false;
 							break state_updater_loop;
 						}
 						case WaiterThreadHandle.STATE_NOTIFIED: {
-							//the handle was notified. check condition, and set back the state to waiting if fails
-							if (!WaiterThreadHandle.AIFU_state.compareAndSet(waiter, WaiterThreadHandle.STATE_NOTIFIED,
-									WaiterThreadHandle.STATE_CHECKING_NOTIFICATION)) {
-								//try again
-								break;
-							}
-							if (condition.getAsBoolean()) {
-								//condition satisfied, finish
-								waiter.state = WaiterThreadHandle.STATE_FINISHED;
-								return;
-							}
-							if (WaiterThreadHandle.AIFU_state.compareAndSet(waiter,
-									WaiterThreadHandle.STATE_CHECKING_NOTIFICATION, WaiterThreadHandle.STATE_WAITING)) {
-								wtc = execmanager.addWaitingThreadCount(1);
+							//the handle was notified. check condition below, and set back the state to waiting if fails
+							if (WaiterThreadHandle.AIFU_state.compareAndSet(waiter, WaiterThreadHandle.STATE_NOTIFIED,
+									WaiterThreadHandle.STATE_WAITING)) {
+								addwaitingthread = true;
 								break state_updater_loop;
 							}
 							break;
 						}
-						case WaiterThreadHandle.STATE_CHECKING_NOTIFICATION: //can't happen
+						/*
 						case WaiterThreadHandle.STATE_FINISHED: //can't happen
+						*/
 						default: {
 							throw new AssertionError(s);
 						}
 					}
 				}
-				//we need to check the condition AFTER we've retrieved the waiting thread count
-				//    this is in order to avoid the concurrency issue when this thread gets unscheduled
-				//    just before retrieving the waiting thread count, then another thread notifies this and exists
-				//    and we get the WTC. this would cause us to forget to check the condition, and use a WTC 
-				//    without the condition check
-				if (condition.getAsBoolean()) {
-					waiter.finish(execmanager);
-					return;
+
+				//we are in WAITING state here
+				WaitingThreadCounter wtc;
+				if (addwaitingthread) {
+					//check the condition again before adding the waiting thread count
+					//we don't want to increase the waiting thread count before checking the condition, as that could
+					//cause a deadlock to be detected in other threads even if the condition is satisfied
+
+					if (condition.getAsBoolean()) {
+						waiter.finish(execmanager, true);
+						return;
+					}
+					//add the waiting thread count
+					//we don't need to check the condition again,
+					//    if something related to the condition changed, then we get notified
+					//    and the waiting thread count is decreased before the notification
+					//    which prevents the deadlock.
+					//    we check that notification right away in the next loop
+					wtc = execmanager.addWaitingThreadCount(1);
+				} else {
+					wtc = execmanager.waitingThreadCounter;
+					//simply check the condition
+					//we need to check the condition AFTER we've retrieved the waiting thread count
+					//    this is in order to avoid the concurrency issue when this thread gets unscheduled
+					//    just before retrieving the waiting thread count, then another thread notifies this and exists
+					//    and we get the WTC. this would cause us to forget to check the condition, and use a WTC 
+					//    without the condition check
+					if (condition.getAsBoolean()) {
+						waiter.finish(execmanager, false);
+						return;
+					}
 				}
 				if (wtc == WAITING_THREAD_COUNTER_DEADLOCKED) {
-					waiter.finish(execmanager);
+					waiter.finish(execmanager, false);
 					throw ExceptionAccessInternal
 							.createTaskExecutionDeadlockedException(firstfuture.getTaskIdentifier());
 				}
@@ -3892,7 +3915,7 @@ public class TaskExecutionManager {
 				}
 				if (wtc.waitingThreadCount == activecount) {
 					if (execmanager.deadlocked(wtc)) {
-						waiter.finish(execmanager);
+						waiter.finish(execmanager, false);
 						throw ExceptionAccessInternal
 								.createTaskExecutionDeadlockedException(firstfuture.getTaskIdentifier());
 					}
@@ -3900,7 +3923,7 @@ public class TaskExecutionManager {
 					//    continue and check again later
 				}
 				if (currentthread.isInterrupted()) {
-					waiter.finish(execmanager);
+					waiter.finish(execmanager, false);
 					throw ExceptionAccessInternal
 							.createTaskResultWaitingInterruptedException(firstfuture.getTaskIdentifier());
 				}
@@ -4060,7 +4083,10 @@ public class TaskExecutionManager {
 	private static final WaitingThreadCounter WAITING_THREAD_COUNTER_DEADLOCKED = new WaitingThreadCounter(0, 0);
 	private static final WaitingThreadCounter WAITING_THREAD_COUNTER_ZERO = new WaitingThreadCounter(0, 0);
 
-	protected static class WaitingThreadCounter {
+	/**
+	 * Holder object that contains the currently running and waiting thread counts.
+	 */
+	protected static final class WaitingThreadCounter {
 		public final int runningThreadCount;
 		public final int waitingThreadCount;
 
@@ -4594,7 +4620,7 @@ public class TaskExecutionManager {
 		taskThreads.add(excthread);
 	}
 
-	private <R> ManagerTaskFutureImpl<R> executeImpl(TaskFactory<R> factory, TaskIdentifier taskid,
+	protected <R> ManagerTaskFutureImpl<R> executeImpl(TaskFactory<R> factory, TaskIdentifier taskid,
 			ExecutionContextImpl context, TaskExecutionResult<?> createdby, TaskExecutionParameters parameters,
 			TaskExecutorContext<?> currentexecutorcontext) {
 		TaskInvocationConfiguration capabilities = getTaskInvocationConfiguration(factory);
@@ -4774,7 +4800,7 @@ public class TaskExecutionManager {
 		}
 	}
 
-	private <R> ManagerTaskFutureImpl<R> startImpl(TaskFactory<R> factory, TaskIdentifier taskid,
+	protected <R> ManagerTaskFutureImpl<R> startImpl(TaskFactory<R> factory, TaskIdentifier taskid,
 			ExecutionContextImpl context, TaskExecutionResult<?> createdby, TaskExecutionParameters parameters,
 			TaskExecutorContext<?> currentexecutorcontext) {
 		TaskInvocationConfiguration capabilities = getTaskInvocationConfiguration(factory);
