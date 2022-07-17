@@ -3487,15 +3487,31 @@ public class TaskExecutionManager {
 			}
 		}
 
-		private static class AncestorWaitAncestorState {
-			ManagerTaskFutureImpl<?> firstAncestor;
-			PeekableIterable<ManagerTaskFutureImpl<?>> ancestorIterable;
+		/**
+		 * A snapshot of the ancestors of a task future.
+		 */
+		private static final class AncestorWaitAncestorState {
+			/**
+			 * The first element in {@link #ancestorIterable}
+			 * 
+			 * @see PeekableIterable#peek()
+			 */
+			public ManagerTaskFutureImpl<?> firstAncestor;
+			/**
+			 * The iterable of the direct ancestors of the future.
+			 * 
+			 * @see ManagerTaskFutureImpl#ancestors
+			 */
+			public PeekableIterable<ManagerTaskFutureImpl<?>> ancestorIterable;
 
 			public AncestorWaitAncestorState(PeekableIterable<ManagerTaskFutureImpl<?>> ancestorIterable) {
 				this.ancestorIterable = ancestorIterable;
 				this.firstAncestor = ancestorIterable.peek();
 			}
 
+			public AncestorWaitAncestorState(ManagerTaskFutureImpl<?> future) {
+				this(future.ancestors.iterable());
+			}
 		}
 
 		private TaskResultHolder<R> getTaskResultForContextWaitAncestors(TaskExecutorContext<?> callertaskcontext) {
@@ -3515,6 +3531,7 @@ public class TaskExecutionManager {
 			}
 			PeekableIterable<ManagerTaskFutureImpl<?>> callerancestorsiterable = callerfuture.ancestors.iterable();
 
+			//a collection of all known futures and their current ancestor states
 			Map<ManagerTaskFutureImpl<?>, AncestorWaitAncestorState> ancestorstates = new HashMap<>();
 			AncestorWaitAncestorState callerancestorstate = new AncestorWaitAncestorState(callerancestorsiterable);
 			AncestorWaitAncestorState thisancestorstate = new AncestorWaitAncestorState(ancestorsiterable);
@@ -3522,6 +3539,7 @@ public class TaskExecutionManager {
 			ancestorstates.put(this, thisancestorstate);
 			ancestorstates.put(callerfuture, callerancestorstate);
 
+			//contains ALL ancestors (parents, grandparents, etc...) of the caller
 			Set<ManagerTaskFutureImpl<?>> callerancestors;
 			if (!callerancestorsiterable.isEmpty()) {
 				callerancestors = callerfuture.getAllAncestors(callerancestorstate, ancestorstates);
@@ -3533,8 +3551,10 @@ public class TaskExecutionManager {
 				callerancestors = new HashSet<>();
 				callerancestors.add(callerfuture);
 			}
+			//iterate over the direct ancestors of the WAITED task
+			//this basically checks is 0 length waiter paths exist. if so, then we're done.
 			for (ManagerTaskFutureImpl<?> a : ancestorsiterable) {
-				//the waited is a direct children of an ancestor of the waiter
+				//the waited is a direct child of an ancestor of the waiter
 				//there exists a task A which directly created the waited task W
 				//    the waiter task X can wait for W as they have a common ancestor
 				//    and W doesn't have any intermediate ancestors on the way to A
@@ -3544,12 +3564,20 @@ public class TaskExecutionManager {
 					return getTaskResult();
 				}
 			}
+
+			//a set of futures on which we are waiting
+			//if any of the futures becomes RESULT_READY then we need to recheck the condition
+			//any ancestor addition to any of the futures also cause a recheck 
 			Set<ManagerTaskFutureImpl<?>> ancestorwaitfutures = new HashSet<>();
 			//to be notified about caller future ancestor addition
 			ancestorwaitfutures.add(callerfuture);
 			ancestorwaitfutures.add(this);
 
-			Set<Collection<ManagerTaskFutureImpl<?>>> ancestorwaiterpaths = new HashSet<>();
+			//collection of ancestor paths
+			//each path is a set of futures 
+			//   each future in a path need to be in RESULT_READY state for the task result to be retrievable
+			//   at least one path needs to be satisfied
+			Set<Set<ManagerTaskFutureImpl<?>>> ancestorwaiterpaths = new HashSet<>();
 			collectAncestorWaiterPaths(callerancestors, thisancestorstate, ancestorstates, wp -> {
 				ancestorwaiterpaths.add(wp);
 				ancestorwaitfutures.addAll(wp);
@@ -3565,6 +3593,7 @@ public class TaskExecutionManager {
 							//loop until there are no more changes detected, as adding waiter threads
 							//    can cause race conditions and missing of updates
 							while (true) {
+								//update all ancestor states with the fresh ancestor iterables, so we have an up to date snapshot
 								boolean hadanyancestorchange = false;
 								for (Entry<ManagerTaskFutureImpl<?>, AncestorWaitAncestorState> entry : ancestorstates
 										.entrySet()) {
@@ -3580,6 +3609,7 @@ public class TaskExecutionManager {
 								}
 
 								if (!hadanyancestorchange) {
+									//no ancestors changed whatsoever, so this is probably a RESULT_READY notification (or this is not the first loop)
 									break;
 								}
 								recollectBuffer.clear();
@@ -3593,22 +3623,16 @@ public class TaskExecutionManager {
 										return true;
 									}
 								}
-								//some ancestor was added
-								for (ManagerTaskFutureImpl<?> a : thisancestorstate.ancestorIterable) {
-									LinkedHashSet<ManagerTaskFutureImpl<?>> waiterpath = new LinkedHashSet<>();
-									waiterpath.add(a);
-									AncestorWaitAncestorState aancestorstate = ancestorstates.computeIfAbsent(a,
-											x -> new AncestorWaitAncestorState(x.ancestors.iterable()));
-									collectAncestorWaiterPathsImpl(p -> {
-										if (ancestorwaiterpaths.add(p)) {
-											for (ManagerTaskFutureImpl<?> f : p) {
-												if (ancestorwaitfutures.add(f)) {
-													f.waitingThreads.add(threadhandle);
-												}
+								//some ancestor was added, collect the waither paths again, and add us to the waiting threads of the newly found futures
+								collectAncestorWaiterPaths(callerancestors, thisancestorstate, ancestorstates, wp -> {
+									if (ancestorwaiterpaths.add(wp)) {
+										for (ManagerTaskFutureImpl<?> f : wp) {
+											if (ancestorwaitfutures.add(f)) {
+												f.waitingThreads.add(threadhandle);
 											}
 										}
-									}, callerancestors, waiterpath, aancestorstate, ancestorstates);
-								}
+									}
+								});
 							}
 							for (Iterable<ManagerTaskFutureImpl<?>> waiterpath : ancestorwaiterpaths) {
 								if (isAllFutureResultReady(waiterpath)) {
@@ -3630,24 +3654,52 @@ public class TaskExecutionManager {
 			return true;
 		}
 
+		/**
+		 * @param callerancestors
+		 *            ALL of the ancestors of the caller task
+		 * @param ancestorstate
+		 *            The ancestor state of the WAITED task
+		 * @param ancestorstates
+		 *            The holder of current ancestor states
+		 * @param result
+		 *            The result consumer
+		 */
 		private static void collectAncestorWaiterPaths(Set<ManagerTaskFutureImpl<?>> callerancestors,
 				AncestorWaitAncestorState ancestorstate,
 				Map<ManagerTaskFutureImpl<?>, AncestorWaitAncestorState> ancestorstates,
-				Consumer<? super Collection<ManagerTaskFutureImpl<?>>> result) {
+				Consumer<? super Set<ManagerTaskFutureImpl<?>>> result) {
+			//calls the result consumer for each ancestor path found
 			for (ManagerTaskFutureImpl<?> a : ancestorstate.ancestorIterable) {
+				//each path starts with a direct ancestor
 				LinkedHashSet<ManagerTaskFutureImpl<?>> waiterpath = new LinkedHashSet<>();
 				waiterpath.add(a);
 				AncestorWaitAncestorState aancestorstate = ancestorstates.computeIfAbsent(a,
-						x -> new AncestorWaitAncestorState(x.ancestors.iterable()));
-				collectAncestorWaiterPathsImpl(result, callerancestors, waiterpath, aancestorstate, ancestorstates);
+						AncestorWaitAncestorState::new);
+				collectAncestorWaiterPathsImpl(callerancestors, waiterpath, aancestorstate, ancestorstates, result);
 			}
 		}
 
-		private static void collectAncestorWaiterPathsImpl(
-				Consumer<? super Collection<ManagerTaskFutureImpl<?>>> result,
-				Set<ManagerTaskFutureImpl<?>> callerancestors, LinkedHashSet<ManagerTaskFutureImpl<?>> waiterpath,
-				AncestorWaitAncestorState ancestorstate,
-				Map<ManagerTaskFutureImpl<?>, AncestorWaitAncestorState> ancestorstates) {
+		/**
+		 * Collects ancestor waiter paths.
+		 * <p>
+		 * The method works by recursively going up the parent chain of the WAITED task, and when any common parent is
+		 * found with the CALLER task, then a waiter path is found. (The path won't contain the common ancestor)
+		 * 
+		 * @param callerancestors
+		 *            ALL of the ancestors of the caller task
+		 * @param waiterpath
+		 *            The waiter path so far, containing the currently processed ancestor
+		 * @param ancestorstate
+		 *            The currently processed ancestor (some parent of the WAITED task)
+		 * @param ancestorstates
+		 *            The holder of current ancestor states
+		 * @param result
+		 *            The result consumer
+		 */
+		private static void collectAncestorWaiterPathsImpl(Set<ManagerTaskFutureImpl<?>> callerancestors,
+				LinkedHashSet<ManagerTaskFutureImpl<?>> waiterpath, AncestorWaitAncestorState ancestorstate,
+				Map<ManagerTaskFutureImpl<?>, AncestorWaitAncestorState> ancestorstates,
+				Consumer<? super Set<ManagerTaskFutureImpl<?>>> result) {
 			Iterable<ManagerTaskFutureImpl<?>> ancestorsiterable = ancestorstate.ancestorIterable;
 			{
 				Iterator<ManagerTaskFutureImpl<?>> it = ancestorsiterable.iterator();
@@ -3664,13 +3716,11 @@ public class TaskExecutionManager {
 				}
 			}
 			Iterator<ManagerTaskFutureImpl<?>> it = ancestorsiterable.iterator();
-			if (!it.hasNext()) {
-				//this should never occurr, as elements are never removed from the ancestors
-				//but just in case, as the ancestors could be modified concurrently
-				result.accept(waiterpath);
-				return;
-			}
+
+			//handling of the first is done as the last step of this method
+			//so we can copy the parameter waiter path without this element
 			ManagerTaskFutureImpl<?> first = it.next();
+
 			outer_loop:
 			while (it.hasNext()) {
 				ManagerTaskFutureImpl<?> n = it.next();
@@ -3685,13 +3735,13 @@ public class TaskExecutionManager {
 					n = it.next();
 				}
 				AncestorWaitAncestorState nancestorstate = ancestorstates.computeIfAbsent(n,
-						x -> new AncestorWaitAncestorState(x.ancestors.iterable()));
-				collectAncestorWaiterPathsImpl(result, callerancestors, npath, nancestorstate, ancestorstates);
+						AncestorWaitAncestorState::new);
+				collectAncestorWaiterPathsImpl(callerancestors, npath, nancestorstate, ancestorstates, result);
 			}
 			if (waiterpath.add(first)) {
 				AncestorWaitAncestorState fancestorstate = ancestorstates.computeIfAbsent(first,
-						x -> new AncestorWaitAncestorState(x.ancestors.iterable()));
-				collectAncestorWaiterPathsImpl(result, callerancestors, waiterpath, fancestorstate, ancestorstates);
+						AncestorWaitAncestorState::new);
+				collectAncestorWaiterPathsImpl(callerancestors, waiterpath, fancestorstate, ancestorstates, result);
 			}
 		}
 
@@ -3709,8 +3759,7 @@ public class TaskExecutionManager {
 				return false;
 			}
 			for (ManagerTaskFutureImpl<?> f : ancestorstate.ancestorIterable) {
-				AncestorWaitAncestorState fas = ancestorstates.computeIfAbsent(f,
-						x -> new AncestorWaitAncestorState(x.ancestors.iterable()));
+				AncestorWaitAncestorState fas = ancestorstates.computeIfAbsent(f, AncestorWaitAncestorState::new);
 				f.collectAllAncestors(fas, ancestorstates, result);
 			}
 			return true;
@@ -3744,22 +3793,36 @@ public class TaskExecutionManager {
 				waiter.finish(execmanager);
 				return;
 			}
-			Thread currentthread = waiter.get();
 			//add the current thread as a waiter for the futures
 			Iterator<? extends ManagerTaskFutureImpl<?>> initit = futures.iterator();
 			if (!initit.hasNext()) {
 				throw new IllegalArgumentException("No futures.");
 			}
-			do {
+
+			//we no longer need this iterable, let it be garbage collected
+			futures = null;
+
+			//store the first future in case we need it in the thrown exception
+			ManagerTaskFutureImpl<?> firstfuture;
+			{
 				ManagerTaskFutureImpl<?> fut = initit.next();
-				fut.waitingThreads.add(waiter);
-			} while (initit.hasNext());
+				firstfuture = fut;
+				while (true) {
+					fut.waitingThreads.add(waiter);
+					if (!initit.hasNext()) {
+						break;
+					}
+					fut = initit.next();
+				}
+			}
 
 			//check the condition again in case it has changed while we were adding the waiting threads and don't get notified
 			if (condition.getAsBoolean()) {
 				waiter.finish(execmanager);
 				return;
 			}
+
+			Thread currentthread = waiter.get();
 			//go ahead with locking, deadlock detecting, and others
 			while (true) {
 				WaitingThreadCounter wtc;
@@ -3818,7 +3881,7 @@ public class TaskExecutionManager {
 				if (wtc == WAITING_THREAD_COUNTER_DEADLOCKED) {
 					waiter.finish(execmanager);
 					throw ExceptionAccessInternal
-							.createTaskExecutionDeadlockedException(futures.iterator().next().getTaskIdentifier());
+							.createTaskExecutionDeadlockedException(firstfuture.getTaskIdentifier());
 				}
 				int activecount = wtc.runningThreadCount;
 				if (TestFlag.ENABLED) {
@@ -3831,7 +3894,7 @@ public class TaskExecutionManager {
 					if (execmanager.deadlocked(wtc)) {
 						waiter.finish(execmanager);
 						throw ExceptionAccessInternal
-								.createTaskExecutionDeadlockedException(futures.iterator().next().getTaskIdentifier());
+								.createTaskExecutionDeadlockedException(firstfuture.getTaskIdentifier());
 					}
 					//else the deadlock application didnt go through due to transient operations, 
 					//    continue and check again later
@@ -3839,24 +3902,22 @@ public class TaskExecutionManager {
 				if (currentthread.isInterrupted()) {
 					waiter.finish(execmanager);
 					throw ExceptionAccessInternal
-							.createTaskResultWaitingInterruptedException(futures.iterator().next().getTaskIdentifier());
+							.createTaskResultWaitingInterruptedException(firstfuture.getTaskIdentifier());
 				}
 				//park the thread and recheck
-//				LockSupport.parkNanos(execmanager.deadlockDetectionPollingMillis * DateUtils.NANOS_PER_MS);
 				LockSupport.park();
 			}
 		}
 
 		protected void deadlocked() {
-			FutureState s = this.futureState;
-			while (s.state == STATE_UNSTARTED || s.state == STATE_EXECUTING || s.state == STATE_INITIALIZING) {
+			for (FutureState s = this.futureState; s.state == STATE_UNSTARTED || s.state == STATE_EXECUTING
+					|| s.state == STATE_INITIALIZING; s = this.futureState) {
 				if (ARFU_futureState.compareAndSet(this, s,
 						new DeadlockedFutureState<>(s.getFactory(), s.getInvocationConfiguration(), this.taskId))) {
 					for (WaiterThreadHandle t; (t = waitingThreads.poll()) != null;) {
 						LockSupport.unpark(t.get());
 					}
-				} else {
-					s = this.futureState;
+					break;
 				}
 			}
 		}
