@@ -21,9 +21,9 @@ import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.locks.ReentrantLock;
 
 import saker.build.thirdparty.saker.util.ImmutableUtils;
@@ -74,12 +74,17 @@ public class WeakRefDaemonOutputController implements DaemonOutputController {
 	private static class WeakRefMultiplexOutputStream extends OutputStream {
 		private final Collection<WeakReference<AsyncOutputStream>> streams = ConcurrentHashMap.newKeySet();
 		private final ReentrantLock lock = new ReentrantLock();
+		private final ThreadFactory threadFactory;
+
+		public WeakRefMultiplexOutputStream(ThreadFactory threadFactory) {
+			this.threadFactory = threadFactory;
+		}
 
 		public StreamToken addStream(OutputStream os) {
 			lock.lock();
 			try {
 				//keep strong reference on stack until it is actually added
-				AsyncOutputStream thestream = new AsyncOutputStream(os);
+				AsyncOutputStream thestream = new AsyncOutputStream(os, threadFactory);
 				WeakReference<AsyncOutputStream> weakref = new WeakReference<>(thestream);
 				streams.add(weakref);
 				return new WeakRefStreamToken(this, weakref);
@@ -182,10 +187,16 @@ public class WeakRefDaemonOutputController implements DaemonOutputController {
 
 	}
 
-	private final WeakRefMultiplexOutputStream stdOutStream = new WeakRefMultiplexOutputStream();
-	private final WeakRefMultiplexOutputStream stdErrStream = new WeakRefMultiplexOutputStream();
+	private final WeakRefMultiplexOutputStream stdOutStream;
+	private final WeakRefMultiplexOutputStream stdErrStream;
+
+	public WeakRefDaemonOutputController(ThreadFactory threadfactory) {
+		stdErrStream = new WeakRefMultiplexOutputStream(threadfactory);
+		stdOutStream = new WeakRefMultiplexOutputStream(threadfactory);
+	}
 
 	public WeakRefDaemonOutputController() {
+		this(null);
 	}
 
 	public OutputStream getStdOutStream() {
@@ -197,17 +208,23 @@ public class WeakRefDaemonOutputController implements DaemonOutputController {
 	}
 
 	public StreamToken replaceStandardIOAndAttach() {
-		PrintStream out;
-		PrintStream err;
+		StreamToken outtoken;
+		StreamToken errtoken;
 		PrintStream noutstream = new PrintStream(stdOutStream);
 		PrintStream nerrstream = new PrintStream(stdErrStream);
 		synchronized (JVMSynchronizationObjects.getStandardIOLock()) {
-			out = System.out;
-			err = System.err;
+			PrintStream out = System.out;
+			PrintStream err = System.err;
+
+			//we need to add the streams before we replace the System.* variables,
+			//as otherwise we could miss some output in case of concurrent writing
+			//(though this should be extremely rare)
+			outtoken = addStandardOutput(ByteSink.valueOf(out));
+			errtoken = addStandardError(ByteSink.valueOf(err));
 			System.setOut(noutstream);
 			System.setErr(nerrstream);
 		}
-		return new CompoundToken(addStandardOutput(ByteSink.valueOf(out)), addStandardError(ByteSink.valueOf(err)));
+		return new CompoundToken(outtoken, errtoken);
 	}
 
 	public void replaceStandardIO() {
