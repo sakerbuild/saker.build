@@ -39,6 +39,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.ServiceConfigurationError;
 import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
@@ -147,7 +148,6 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 	private RandomAccessFile lockFile;
 	private FileLock fileLock;
-	private int daemonInstanceIndex = -1;
 
 	private SocketFactory connectionSocketFactory;
 	private ServerSocketFactory serverSocketFactory;
@@ -159,12 +159,15 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	private DaemonLaunchParameters launchParameters;
 	protected final DaemonLaunchParameters constructLaunchParameters;
 
-	private DaemonOutputController outputController;
+	private final DaemonOutputController outputController;
 
 	private RMIServer server;
 	private RMIOptions connectionBaseRMIOptions;
 	private ThreadGroup serverThreadGroup;
 
+	/**
+	 * Synchronized collection.
+	 */
 	private Set<WeakReference<TaskInvokerFactory>> clientClusterTaskInvokers = Collections
 			.synchronizedSet(new HashSet<>());
 	private Set<? extends AddressResolver> connectToAsClusterAddresses;
@@ -173,7 +176,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 	//may be a weak set as the keys stay referenced by the cache 
 	//synchronize on the set when accessed
-	private Set<ProjectCacheKey> loadedProjectCacheKeys = Collections.newSetFromMap(new WeakHashMap<>());
+	private final Set<ProjectCacheKey> loadedProjectCacheKeys = Collections.newSetFromMap(new WeakHashMap<>());
 
 	public LocalDaemonEnvironment(Path sakerJarPath, DaemonLaunchParameters launchParameters,
 			DaemonOutputController outputController, SocketFactory connectionsocketfactory) {
@@ -187,6 +190,10 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	public LocalDaemonEnvironment(Path sakerJarPath, DaemonLaunchParameters launchParameters,
 			DaemonOutputController outputController) {
 		this(sakerJarPath, launchParameters, outputController, null);
+	}
+
+	public LocalDaemonEnvironment(Path sakerJarPath, DaemonLaunchParameters launchParameters) {
+		this(sakerJarPath, launchParameters, null, null);
 	}
 
 	public void setConnectionBaseRMIOptions(RMIOptions connectionBaseRMIOptions) {
@@ -215,10 +222,10 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	}
 
 	public void setConnectToAsClusterAddresses(Set<? extends AddressResolver> serveraddresses) {
-		checkUnstarted();
 		if (!constructLaunchParameters.isActsAsCluster()) {
 			throw new IllegalArgumentException("Daemon environment doesn't act as cluster.");
 		}
+		checkUnstarted();
 		this.connectToAsClusterAddresses = serveraddresses;
 	}
 
@@ -266,190 +273,213 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	public synchronized final void start() throws FileNotFoundException, IOException {
 		checkUnstarted();
 
-		Path storagedirectory = LocalFileProvider.toRealPath(constructLaunchParameters.getStorageDirectory());
-		EnvironmentParameters params = EnvironmentParameters.builder(sakerJarPath).setStorageDirectory(storagedirectory)
-				.setUserParameters(constructLaunchParameters.getUserParameters())
-				.setThreadFactor(constructLaunchParameters.getThreadFactor()).build();
+		try {
+			Path storagedirectory = LocalFileProvider.toRealPath(constructLaunchParameters.getStorageDirectory());
+			EnvironmentParameters params = EnvironmentParameters.builder(sakerJarPath)
+					.setStorageDirectory(storagedirectory)
+					.setUserParameters(constructLaunchParameters.getUserParameters())
+					.setThreadFactor(constructLaunchParameters.getThreadFactor()).build();
 
-		Path lockpath = storagedirectory.resolve(DAEMON_LOCK_FILE_NAME);
-		LocalFileProvider.getInstance().createDirectories(storagedirectory);
+			Path lockpath = storagedirectory.resolve(DAEMON_LOCK_FILE_NAME);
+			LocalFileProvider.getInstance().createDirectories(storagedirectory);
 
-		DaemonLaunchParameters.Builder builder = DaemonLaunchParameters.builder(constructLaunchParameters);
+			DaemonLaunchParameters.Builder builder = DaemonLaunchParameters.builder(constructLaunchParameters);
 
-		Integer serverport = constructLaunchParameters.getPort();
-		if (serverport != null) {
-			ServerSocketFactory socketFactory = serverSocketFactory;
-			InetAddress serverBindAddress;
-			if (constructLaunchParameters.isActsAsServer()) {
-				serverBindAddress = null;
-			} else {
-				serverBindAddress = InetAddress.getLoopbackAddress();
-			}
-
-			int useport = serverport < 0 ? DaemonLaunchParameters.DEFAULT_PORT : serverport;
-
-			boolean actsascluster = constructLaunchParameters.isActsAsCluster();
-
-			lockFile = new RandomAccessFile(lockpath.toFile(), "rw");
-			FileChannel channel = lockFile.getChannel();
-			for (int i = 0; i < DAEMON_INSTANCE_INDEX_END; i++) {
-				FileLock flock = channel.tryLock(FILE_LOCK_REGION_START + i * FILE_LOCK_DATA_LENGTH,
-						FILE_LOCK_DATA_LENGTH, false);
-				if (flock == null) {
-					continue;
+			Integer serverport = constructLaunchParameters.getPort();
+			if (serverport != null) {
+				ServerSocketFactory socketFactory = serverSocketFactory;
+				InetAddress serverBindAddress;
+				if (constructLaunchParameters.isActsAsServer()) {
+					serverBindAddress = null;
+				} else {
+					serverBindAddress = InetAddress.getLoopbackAddress();
 				}
-				daemonInstanceIndex = i;
-				fileLock = flock;
-				break;
-			}
-			if (fileLock == null) {
-				throw new IOException("Failed to start daemon server, unable to acquire lock. Already running "
-						+ DAEMON_INSTANCE_INDEX_END + " daemons?");
-			}
 
-			//lock the data as well to lock initialization 
-			try (FileLock datalock = channel.lock(FILE_LOCK_DATA_LENGTH * daemonInstanceIndex, FILE_LOCK_DATA_LENGTH,
-					false)) {
+				int useport = serverport < 0 ? DaemonLaunchParameters.DEFAULT_PORT : serverport;
+
+				boolean actsascluster = constructLaunchParameters.isActsAsCluster();
+
+				int daemonInstanceIndex = -1;
+
+				lockFile = new RandomAccessFile(lockpath.toFile(), "rw");
+				FileChannel channel = lockFile.getChannel();
+				for (int i = 0; i < DAEMON_INSTANCE_INDEX_END; i++) {
+					FileLock flock = channel.tryLock(FILE_LOCK_REGION_START + i * FILE_LOCK_DATA_LENGTH,
+							FILE_LOCK_DATA_LENGTH, false);
+					if (flock == null) {
+						continue;
+					}
+					daemonInstanceIndex = i;
+					fileLock = flock;
+					break;
+				}
+				if (fileLock == null) {
+					throw new IOException("Failed to start daemon server, unable to acquire lock. Already running "
+							+ DAEMON_INSTANCE_INDEX_END + " daemons?");
+				}
+
+				//lock the data as well to lock initialization 
+				try (FileLock datalock = channel.lock(FILE_LOCK_DATA_LENGTH * daemonInstanceIndex,
+						FILE_LOCK_DATA_LENGTH, false)) {
+					environment = createSakerEnvironment(params);
+					buildExecutionInvoker = new EnvironmentBuildExecutionInvoker(environment);
+					server = new RMIServer(socketFactory, useport, serverBindAddress) {
+						@Override
+						protected RMIOptions getRMIOptionsForAcceptedConnection(Socket acceptedsocket,
+								int protocolversion) {
+							RMIOptions options;
+							if (connectionBaseRMIOptions == null) {
+								options = SakerRMIHelper.createBaseRMIOptions()
+										.classResolver(new ClassLoaderResolverRegistry(
+												RemoteDaemonConnection.createConnectionBaseClassLoaderResolver()));
+							} else {
+								options = connectionBaseRMIOptions;
+							}
+							return options;
+						}
+
+						@Override
+						protected void setupConnection(Socket acceptedsocket, RMIConnection connection)
+								throws IOException {
+							connection.addCloseListener(new RMIConnection.CloseListener() {
+								@Override
+								public void onConnectionClosed() {
+									SakerRMIHelper.dumpRMIStatistics(connection);
+								}
+							});
+							LocalDaemonClusterInvokerFactory clusterinvokerfactory;
+							if (actsascluster) {
+								ClassLoaderResolverRegistry connectionclresolver = (ClassLoaderResolverRegistry) connection
+										.getClassLoaderResolver();
+								clusterinvokerfactory = new LocalDaemonClusterInvokerFactory(connectionclresolver,
+										constructLaunchParameters.getClusterMirrorDirectory());
+							} else {
+								clusterinvokerfactory = null;
+							}
+							DaemonClientServerImpl clientserver = new DaemonClientServerImpl(connection);
+							connection.putContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_ACCESS, new DaemonAccess() {
+								@Override
+								public DaemonEnvironment getDaemonEnvironment() {
+									return LocalDaemonEnvironment.this;
+								}
+
+								@Override
+								public DaemonClientServer getDaemonClientServer() {
+									return clientserver;
+								}
+
+								@Override
+								public TaskInvokerFactory getClusterTaskInvokerFactory() {
+									return clusterinvokerfactory;
+								}
+							});
+							super.setupConnection(acceptedsocket, connection);
+						}
+
+						@Override
+						protected void validateSocket(Socket accepted) throws IOException, RuntimeException {
+							if (accepted instanceof SSLSocket) {
+								SSLSocket ssls = (SSLSocket) accepted;
+								PrintStream ps = System.out;
+								SSLSession session = ssls.getSession();
+								try {
+									Principal localprincipal = session.getLocalPrincipal();
+									Principal peerprincipal = session.getPeerPrincipal();
+									synchronized (ps) {
+										ps.println("Connection accepted from: " + accepted.getRemoteSocketAddress());
+										ps.println("Local principal: " + localprincipal);
+										ps.println("Peer principal: " + peerprincipal);
+									}
+								} catch (SSLPeerUnverifiedException e) {
+									synchronized (ps) {
+										ps.println("Connection accepted from: " + accepted.getRemoteSocketAddress());
+										ps.println("Failed to verify peer identity.");
+									}
+									throw e;
+								} catch (Exception e) {
+									synchronized (ps) {
+										ps.println("Connection accepted from: " + accepted.getRemoteSocketAddress());
+										ps.println("Connection error.");
+										SakerLog.printFormatException(ExceptionView.create(e), ps,
+												SakerLog.CommonExceptionFormat.NO_TRACE);
+									}
+									throw e;
+								}
+
+							}
+							super.validateSocket(accepted);
+						}
+					};
+					int port = server.getPort();
+					lockFile.seek(daemonInstanceIndex * FILE_LOCK_DATA_LENGTH);
+					if (sslKeystorePath != null) {
+						byte[] bytes = sslKeystorePath.toString().getBytes(StandardCharsets.UTF_8);
+						lockFile.writeInt(DAEMON_CONNECTION_FORMAT_SSL);
+						lockFile.writeInt(port);
+						lockFile.writeInt(bytes.length);
+						lockFile.write(bytes);
+					} else {
+						lockFile.writeInt(DAEMON_CONNECTION_FORMAT_TCP);
+						lockFile.writeInt(port);
+					}
+					builder.setPort(port);
+					builder.setStorageDirectory(SakerPath.valueOf(environment.getStorageDirectoryPath()));
+					builder.setThreadFactor(environment.getThreadFactor());
+					launchParameters = builder.build();
+
+					state = STATE_STARTED;
+
+					//start the server as the last step, so new connections can access the resources right away
+					server.start(serverThreadGroup);
+
+				} catch (Throwable e) {
+					//in case of initialization error, close the file lock to signal that we're not running.
+					IOUtils.addExc(e, IOUtils.closeExc(fileLock));
+					fileLock = null;
+					throw e;
+				}
+			} else {
 				environment = createSakerEnvironment(params);
 				buildExecutionInvoker = new EnvironmentBuildExecutionInvoker(environment);
-				server = new RMIServer(socketFactory, useport, serverBindAddress) {
-					@Override
-					protected RMIOptions getRMIOptionsForAcceptedConnection(Socket acceptedsocket,
-							int protocolversion) {
-						RMIOptions options;
-						if (connectionBaseRMIOptions == null) {
-							options = SakerRMIHelper.createBaseRMIOptions()
-									.classResolver(new ClassLoaderResolverRegistry(
-											RemoteDaemonConnection.createConnectionBaseClassLoaderResolver()));
-						} else {
-							options = connectionBaseRMIOptions;
-						}
-						return options;
-					}
 
-					@Override
-					protected void setupConnection(Socket acceptedsocket, RMIConnection connection) throws IOException {
-						connection.addCloseListener(new RMIConnection.CloseListener() {
-							@Override
-							public void onConnectionClosed() {
-								SakerRMIHelper.dumpRMIStatistics(connection);
-							}
-						});
-						LocalDaemonClusterInvokerFactory clusterinvokerfactory;
-						if (actsascluster) {
-							ClassLoaderResolverRegistry connectionclresolver = (ClassLoaderResolverRegistry) connection
-									.getClassLoaderResolver();
-							clusterinvokerfactory = new LocalDaemonClusterInvokerFactory(connectionclresolver,
-									constructLaunchParameters.getClusterMirrorDirectory());
-						} else {
-							clusterinvokerfactory = null;
-						}
-						DaemonClientServerImpl clientserver = new DaemonClientServerImpl(connection);
-						connection.putContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_ACCESS, new DaemonAccess() {
-							@Override
-							public DaemonEnvironment getDaemonEnvironment() {
-								return LocalDaemonEnvironment.this;
-							}
-
-							@Override
-							public DaemonClientServer getDaemonClientServer() {
-								return clientserver;
-							}
-
-							@Override
-							public TaskInvokerFactory getClusterTaskInvokerFactory() {
-								return clusterinvokerfactory;
-							}
-						});
-						super.setupConnection(acceptedsocket, connection);
-					}
-
-					@Override
-					protected void validateSocket(Socket accepted) throws IOException, RuntimeException {
-						if (accepted instanceof SSLSocket) {
-							SSLSocket ssls = (SSLSocket) accepted;
-							PrintStream ps = System.out;
-							SSLSession session = ssls.getSession();
-							try {
-								Principal localprincipal = session.getLocalPrincipal();
-								Principal peerprincipal = session.getPeerPrincipal();
-								synchronized (ps) {
-									ps.println("Connection accepted from: " + accepted.getRemoteSocketAddress());
-									ps.println("Local principal: " + localprincipal);
-									ps.println("Peer principal: " + peerprincipal);
-								}
-							} catch (SSLPeerUnverifiedException e) {
-								synchronized (ps) {
-									ps.println("Connection accepted from: " + accepted.getRemoteSocketAddress());
-									ps.println("Failed to verify peer identity.");
-								}
-								throw e;
-							} catch (Exception e) {
-								synchronized (ps) {
-									ps.println("Connection accepted from: " + accepted.getRemoteSocketAddress());
-									ps.println("Connection error.");
-									SakerLog.printFormatException(ExceptionView.create(e), ps,
-											SakerLog.CommonExceptionFormat.NO_TRACE);
-								}
-								throw e;
-							}
-
-						}
-						super.validateSocket(accepted);
-					}
-				};
-				int port = server.getPort();
-				lockFile.seek(daemonInstanceIndex * FILE_LOCK_DATA_LENGTH);
-				if (sslKeystorePath != null) {
-					byte[] bytes = sslKeystorePath.toString().getBytes(StandardCharsets.UTF_8);
-					lockFile.writeInt(DAEMON_CONNECTION_FORMAT_SSL);
-					lockFile.writeInt(port);
-					lockFile.writeInt(bytes.length);
-					lockFile.write(bytes);
-				} else {
-					lockFile.writeInt(DAEMON_CONNECTION_FORMAT_TCP);
-					lockFile.writeInt(port);
-				}
-				builder.setPort(port);
 				builder.setStorageDirectory(SakerPath.valueOf(environment.getStorageDirectoryPath()));
 				builder.setThreadFactor(environment.getThreadFactor());
+				builder.setPort(null);
 				launchParameters = builder.build();
-
 				state = STATE_STARTED;
-
-				//start the server as the last step, so new connections can access the resources right away
-				server.start(serverThreadGroup);
-
-			} catch (Throwable e) {
-				//in case of initialization error, close the file lock to signal that we're not running.
-				IOUtils.addExc(e, IOUtils.closeExc(fileLock));
-				fileLock = null;
-				throw e;
 			}
-		} else {
-			environment = createSakerEnvironment(params);
-			buildExecutionInvoker = new EnvironmentBuildExecutionInvoker(environment);
+			if (!ObjectUtils.isNullOrEmpty(connectToAsClusterAddresses)) {
+				if (serverThreadGroup != null) {
+					clusterClientConnectingThreadGroup = new ThreadGroup(serverThreadGroup, "Daemon client connector");
+				} else {
+					clusterClientConnectingThreadGroup = new ThreadGroup("Daemon client connector");
+				}
+				//the thread group is daemon, but the thread tool threads are not
+				//this is not to exit the process if we don't accept connections
+				clusterClientConnectingThreadGroup.setDaemon(true);
+				clusterClientConnectingWorkPool = ThreadUtils.newDynamicWorkPool(clusterClientConnectingThreadGroup,
+						"cluster-client-");
+				for (AddressResolver addr : connectToAsClusterAddresses) {
+					clusterClientConnectingWorkPool.offer(new ClusterClientConnectingRunnable(addr));
+				}
+			}
+		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+				| ServiceConfigurationError e) {
+			IOUtils.addExc(e, IOUtils.closeExc(server, environment, fileLock, lockFile));
+			server = null;
+			environment = null;
+			fileLock = null;
+			lockFile = null;
+			buildExecutionInvoker = null;
+			launchParameters = null;
 
-			builder.setStorageDirectory(SakerPath.valueOf(environment.getStorageDirectoryPath()));
-			builder.setThreadFactor(environment.getThreadFactor());
-			builder.setPort(null);
-			launchParameters = builder.build();
-			state = STATE_STARTED;
-		}
-		if (!ObjectUtils.isNullOrEmpty(connectToAsClusterAddresses)) {
-			if (serverThreadGroup != null) {
-				clusterClientConnectingThreadGroup = new ThreadGroup(serverThreadGroup, "Daemon client connector");
-			} else {
-				clusterClientConnectingThreadGroup = new ThreadGroup("Daemon client connector");
+			clusterClientConnectingThreadGroup = null;
+			if (clusterClientConnectingWorkPool != null) {
+				clusterClientConnectingWorkPool.exit();
+				clusterClientConnectingWorkPool = null;
 			}
-			//the thread group is daemon, but the thread tool threads are not
-			//this is not to exit the process if we don't accept connections
-			clusterClientConnectingThreadGroup.setDaemon(true);
-			clusterClientConnectingWorkPool = ThreadUtils.newDynamicWorkPool(clusterClientConnectingThreadGroup,
-					"cluster-client-");
-			for (AddressResolver addr : connectToAsClusterAddresses) {
-				clusterClientConnectingWorkPool.offer(new ClusterClientConnectingRunnable(addr));
-			}
+			state = STATE_UNSTARTED;
+			throw e;
 		}
 	}
 

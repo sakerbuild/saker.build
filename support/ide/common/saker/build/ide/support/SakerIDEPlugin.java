@@ -224,7 +224,7 @@ public final class SakerIDEPlugin implements Closeable {
 				throw new IllegalStateException("Already started.");
 			}
 
-			ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, daemonparams, null);
+			ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, daemonparams);
 			LocalDaemonEnvironment localdaemonenvtoclose = ndaemonenv;
 			ndaemonenv.setServerSocketFactory(serversocketfactory);
 			ndaemonenv.setConnectionSocketFactory(socketfactory);
@@ -526,7 +526,7 @@ public final class SakerIDEPlugin implements Closeable {
 				}
 			}
 
-			LocalDaemonEnvironment ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, newlaunchparams, null);
+			LocalDaemonEnvironment ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, newlaunchparams);
 			ServerSocketFactory usedserversocketfactory;
 			SocketFactory usedsocketfactory;
 			SakerPath usedkeystorepath;

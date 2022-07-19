@@ -385,7 +385,7 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 							DaemonLaunchParameters clusterdaemonparams = clusterparamsbuilder.build();
 
 							LocalDaemonEnvironment clusterdaemon = new LocalDaemonEnvironment(getSakerJarPath(),
-									clusterdaemonparams, null) {
+									clusterdaemonparams) {
 								@Override
 								protected SakerEnvironmentImpl createSakerEnvironment(EnvironmentParameters params) {
 									SakerEnvironmentImpl daemonenv = new SakerEnvironmentImpl(params);
