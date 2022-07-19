@@ -1,4 +1,4 @@
-package testing.saker.build.tests.scenario;
+package testing.saker.build.tests.daemon;
 
 import java.nio.file.Path;
 import java.util.Map;
