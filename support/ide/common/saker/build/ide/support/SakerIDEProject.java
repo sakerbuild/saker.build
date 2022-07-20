@@ -40,6 +40,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.Lock;
@@ -931,7 +932,7 @@ public final class SakerIDEProject {
 
 	private void persistIDEConfigsFile() throws IOException {
 		Path propfilepath = projectPath.resolve(IDE_CONFIG_FILE_NAME);
-		Path tempfilepath = propfilepath.resolveSibling(IDE_CONFIG_FILE_NAME + ".temp");
+		Path tempfilepath = propfilepath.resolveSibling(propfilepath.getFileName() + "." + UUID.randomUUID() + ".temp");
 		try (OutputStream os = Files.newOutputStream(tempfilepath);
 				XMLStructuredWriter writer = new XMLStructuredWriter(os);
 				StructuredObjectOutput objwriter = writer.writeObject(IDE_CONFIG_FILE_ROOT_OBJECT_NAME)) {
@@ -948,7 +949,7 @@ public final class SakerIDEProject {
 
 	private void persistIDEProjectPropertiesFile() throws IOException {
 		Path propfilepath = projectPath.resolve(PROPERTIES_FILE_NAME);
-		Path tempfilepath = propfilepath.resolveSibling(PROPERTIES_FILE_NAME + ".temp");
+		Path tempfilepath = propfilepath.resolveSibling(propfilepath.getFileName() + "." + UUID.randomUUID() + ".temp");
 		try (OutputStream os = Files.newOutputStream(tempfilepath);
 				XMLStructuredWriter writer = new XMLStructuredWriter(os);
 				StructuredObjectOutput objwriter = writer.writeObject(CONFIG_FILE_ROOT_OBJECT_NAME)) {

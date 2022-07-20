@@ -35,6 +35,7 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.ServiceConfigurationError;
 import java.util.Set;
+import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
@@ -653,7 +654,7 @@ public final class SakerIDEPlugin implements Closeable {
 
 	private void writePluginPropertiesFile(IDEPluginProperties pluginConfiguration) throws IOException {
 		Path propfilepath = pluginConfigurationFilePath;
-		Path tempfilepath = propfilepath.resolveSibling(IDE_PLUGIN_PROPERTIES_FILE_NAME + ".temp");
+		Path tempfilepath = propfilepath.resolveSibling(propfilepath.getFileName() + "." + UUID.randomUUID() + ".temp");
 		try (OutputStream os = Files.newOutputStream(tempfilepath);
 				XMLStructuredWriter writer = new XMLStructuredWriter(os);
 				StructuredObjectOutput objwriter = writer.writeObject(CONFIG_FILE_ROOT_OBJECT_NAME)) {
