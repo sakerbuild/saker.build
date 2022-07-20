@@ -22,6 +22,8 @@ import sipka.cmdline.api.MultiParameter;
 import sipka.cmdline.api.Parameter;
 
 class StartDaemonParams {
+	public static final String PARAM_NAME_CONNECT_CLIENT = "-connect-client";
+
 	/**
 	 * <pre>
 	 * Specifies the network addresses of server daemons to which 
@@ -35,7 +37,7 @@ class StartDaemonParams {
 	 * -cluster-use-clients flag.
 	 * </pre>
 	 */
-	@Parameter("-connect-client")
+	@Parameter(PARAM_NAME_CONNECT_CLIENT)
 	@MultiParameter(DaemonAddressParam.class)
 	public Collection<DaemonAddressParam> connectClientParam = new ArrayList<>();
 }

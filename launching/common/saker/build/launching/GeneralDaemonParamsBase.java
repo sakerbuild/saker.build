@@ -25,6 +25,7 @@ import sipka.cmdline.api.ParameterContext;
 import sipka.cmdline.runtime.InvalidArgumentValueException;
 
 abstract class GeneralDaemonParamsBase {
+	public static final String PARAM_NAME_SERVER = "-server";
 	public static final String PARAM_NAME_CLUSTER_ENABLE = "-cluster-enable";
 
 	@ParameterContext
@@ -37,7 +38,7 @@ abstract class GeneralDaemonParamsBase {
 	 * A non-server daemon can only accept connections from the localhost.
 	 * </pre>
 	 */
-	@Parameter("-server")
+	@Parameter(PARAM_NAME_SERVER)
 	@Flag
 	public boolean server;
 

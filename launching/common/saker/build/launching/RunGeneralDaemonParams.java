@@ -22,6 +22,8 @@ import sipka.cmdline.api.Converter;
 import sipka.cmdline.api.Parameter;
 
 class RunGeneralDaemonParams extends GeneralDaemonParamsBase {
+	public static final String PARAM_NAME_PORT = "-port";
+
 	/**
 	 * <pre>
 	 * Specifies the port on which the daemon should listen for incoming connections.
@@ -35,7 +37,7 @@ class RunGeneralDaemonParams extends GeneralDaemonParamsBase {
 	 * for incoming connections in any way.
 	 * </pre>
 	 */
-	@Parameter("-port")
+	@Parameter(PARAM_NAME_PORT)
 	public RunDaemonPortParam port = RunDaemonPortParam.DEFAULT;
 
 	@Override
