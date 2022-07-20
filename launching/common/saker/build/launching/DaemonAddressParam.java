@@ -66,38 +66,9 @@ class DaemonAddressParam {
 	public AddressResolver getAsAddressResolver() {
 		String argval = this.argument;
 		if (argval == null) {
-			InetSocketAddress defaddr = getDefaultLocalDaemonSocketAddress();
-			return new AddressResolver() {
-				@Override
-				public SocketAddress getAddress() throws UnknownHostException {
-					return defaddr;
-				}
-
-				@Override
-				public String toString() {
-					return defaddr.toString();
-				}
-			};
+			return DefaultDaemonAddressResolver.INSTANCE;
 		}
-		return new AddressResolver() {
-			@Override
-			public SocketAddress getAddress() throws UnknownHostException {
-				try {
-					return parseInetSocketAddress(argval);
-				} catch (UnknownHostException e) {
-					throw e;
-				} catch (IllegalArgumentException e) {
-					UnknownHostException exc = new UnknownHostException("Invalid network address format: " + argval);
-					exc.initCause(e);
-					throw exc;
-				}
-			}
-
-			@Override
-			public String toString() {
-				return argval;
-			}
-		};
+		return new SimpleArgumentAddressResolver(argval);
 	}
 
 	public InetSocketAddress getSocketAddressThrowArgumentException() {
@@ -128,5 +99,46 @@ class DaemonAddressParam {
 
 	public static InetSocketAddress getDefaultLocalDaemonSocketAddressWithPort(int port) {
 		return new InetSocketAddress(InetAddress.getLoopbackAddress(), port);
+	}
+
+	private static final class SimpleArgumentAddressResolver implements AddressResolver {
+		private final String argument;
+
+		private SimpleArgumentAddressResolver(String argval) {
+			this.argument = argval;
+		}
+
+		@Override
+		public SocketAddress getAddress() throws UnknownHostException {
+			try {
+				return parseInetSocketAddress(argument);
+			} catch (UnknownHostException e) {
+				throw e;
+			} catch (IllegalArgumentException e) {
+				UnknownHostException exc = new UnknownHostException("Invalid network address format: " + argument);
+				exc.initCause(e);
+				throw exc;
+			}
+		}
+
+		@Override
+		public String toString() {
+			return argument;
+		}
+	}
+
+	private static final class DefaultDaemonAddressResolver implements AddressResolver {
+		private static final InetSocketAddress DEFAULT_ADDRESS = getDefaultLocalDaemonSocketAddress();
+		public static final DefaultDaemonAddressResolver INSTANCE = new DefaultDaemonAddressResolver();
+
+		@Override
+		public SocketAddress getAddress() throws UnknownHostException {
+			return DEFAULT_ADDRESS;
+		}
+
+		@Override
+		public String toString() {
+			return DEFAULT_ADDRESS.toString();
+		}
 	}
 }
