@@ -18,11 +18,14 @@ package saker.build.file;
 import java.util.Collections;
 import java.util.NavigableMap;
 
+import saker.apiextract.api.ExcludeApi;
 import saker.build.file.content.ContentDatabase;
 import saker.build.file.path.SakerPath;
 import saker.build.file.path.SakerPath.Builder;
 
-class MarkerSakerDirectory extends SakerDirectoryBase {
+//public only to make it accessuble to classes that deal with SakerDirectory internals. (e.g. ProjectFileChangesWatchHandler)
+@ExcludeApi
+public final class MarkerSakerDirectory extends SakerDirectoryBase {
 	public static final SakerDirectoryBase REMOVED_FROM_PARENT = new MarkerSakerDirectory();
 	public static final SakerDirectoryBase POPULATED_NOT_PRESENT = new MarkerSakerDirectory();
 

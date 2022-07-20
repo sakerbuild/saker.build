@@ -31,10 +31,12 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.function.Consumer;
 
+import saker.build.file.MarkerSakerDirectory;
 import saker.build.file.ProviderPathSakerDirectory;
 import saker.build.file.ProviderPathSakerFile;
 import saker.build.file.SakerDirectory;
 import saker.build.file.SakerFile;
+import saker.build.file.SakerFileBase;
 import saker.build.file.content.ContentDatabaseImpl;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
@@ -465,18 +467,56 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 			if (database != null) {
 				database.invalidateOffline(providerKey, path);
 			}
+			//XXX Note: slight code duplication below
 			if (directory.isAnyPopulated()) {
 				synchronized (this) {
+					ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = directory.getTrackedFilesMap();
 					try {
 						FileEntry attrs = fileProvider.getFileAttributes(path);
 						if (attrs.isDirectory()) {
-							directory.addPopulatedDirectory(filename);
+							SakerFile presentfile = trackedfiles.get(filename);
+							if (presentfile instanceof SakerDirectory
+									&& !(presentfile instanceof MarkerSakerDirectory)) {
+								//a directory is already present there
+								//changes to a directory contents will be applied when the appropriate listener is called
+							} else {
+								//add it as a directory
+								directory.addPopulatedDirectory(filename);
+							}
 						} else {
 							directory.addPopulatedFile(filename);
 						}
 					} catch (IOException e) {
 						//failed to get the attributes for the file, consider it deleted
-						directory.getTrackedFilesMap().remove(filename);
+						trackedfiles.remove(filename);
+					}
+				}
+			} else {
+				synchronized (this) {
+					ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = directory.getTrackedFilesMap();
+					SakerFile presentfile = trackedfiles.get(filename);
+					if (presentfile == null) {
+						//no file is present for this name, nothing was populated, okay
+						//no need to deal with this change
+					} else {
+						try {
+							FileEntry attrs = fileProvider.getFileAttributes(path);
+							if (attrs.isDirectory()) {
+								if (presentfile instanceof SakerDirectory
+										&& !(presentfile instanceof MarkerSakerDirectory)) {
+									//a directory is already present there
+									//changes to a directory contents will be applied when the appropriate listener is called
+								} else {
+									//add it as a directory
+									directory.addPopulatedDirectory(filename);
+								}
+							} else {
+								directory.addPopulatedFile(filename);
+							}
+						} catch (IOException e) {
+							//failed to get the attributes for the file, consider it deleted
+							trackedfiles.remove(filename, presentfile);
+						}
 					}
 				}
 			}

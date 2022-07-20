@@ -738,7 +738,7 @@ public class MemoryFileProvider implements SakerFileProvider {
 			boolean isdir = f.attributes.isDirectory();
 			if (isdir) {
 				//deleting a directory
-				clearDirectoryRecursively(path);
+				clearDirectoryRecursivelyImpl(path);
 			}
 			boolean removed = files.remove(path, f);
 			if (!removed) {

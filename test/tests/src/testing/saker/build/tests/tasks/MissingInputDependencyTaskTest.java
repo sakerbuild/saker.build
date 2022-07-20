@@ -15,7 +15,10 @@
  */
 package testing.saker.build.tests.tasks;
 
+import java.io.IOException;
+
 import saker.build.file.path.SakerPath;
+import saker.build.task.identifier.TaskIdentifier;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
 import testing.saker.build.tests.tasks.factories.FileStringContentTaskFactory;
@@ -24,27 +27,46 @@ import testing.saker.build.tests.tasks.factories.FileStringContentTaskFactory;
 public class MissingInputDependencyTaskTest extends CollectingMetricEnvironmentTestCase {
 	@Override
 	protected void runTestImpl() throws Throwable {
-		SakerPath filepath = PATH_WORKING_DIRECTORY.resolve("input.txt");
+		runTestOnFile(PATH_WORKING_DIRECTORY.resolve("input.txt"));
+		runTestOnFile(PATH_WORKING_DIRECTORY.resolve("dir/dirinput.txt"));
+	}
 
+	private void runTestOnFile(SakerPath filepath) throws Throwable, AssertionError, IOException, InterruptedException {
 		FileStringContentTaskFactory task = new FileStringContentTaskFactory(filepath);
 
-		runTask("main", task);
-		assertMap(getMetric().getRunTaskIdResults()).contains(strTaskId("main"), null).noRemaining();
+		TaskIdentifier maintaskid = strTaskId("main-" + filepath);
+		runTask(maintaskid, task);
+		assertMap(getMetric().getRunTaskIdResults()).contains(maintaskid, null).noRemaining();
 
-		runTask("main", task);
+		runTask(maintaskid, task);
 		assertEquals(getMetric().getRunTaskIdResults().keySet(), setOf());
 
 		files.putFile(filepath, "content");
-		runTask("main", task);
-		assertMap(getMetric().getRunTaskIdResults()).contains(strTaskId("main"), "content").noRemaining();
+		runTask(maintaskid, task);
+		assertMap(getMetric().getRunTaskIdResults()).contains(maintaskid, "content").noRemaining();
 
 		files.putFile(filepath, "modifiedcontent");
-		runTask("main", task);
-		assertMap(getMetric().getRunTaskIdResults()).contains(strTaskId("main"), "modifiedcontent").noRemaining();
+		runTask(maintaskid, task);
+		assertMap(getMetric().getRunTaskIdResults()).contains(maintaskid, "modifiedcontent").noRemaining();
+
+		if (project != null) {
+			//wait the execution finalization, as this caused some bug to surface
+			//the SakerFile is not removed properly from the file hierarchy, and retrieving its contents causes an exception
+			//the failure was at the next build execution
+			project.waitExecutionFinalization();
+		}
 
 		files.deleteRecursively(filepath);
-		runTask("main", task);
-		assertMap(getMetric().getRunTaskIdResults()).contains(strTaskId("main"), null).noRemaining();
+		runTask(maintaskid, task);
+		assertMap(getMetric().getRunTaskIdResults()).contains(maintaskid, null).noRemaining();
+
+		files.putFile(filepath, "content2");
+		runTask(maintaskid, task);
+		assertMap(getMetric().getRunTaskIdResults()).contains(maintaskid, "content2").noRemaining();
+
+		files.deleteRecursively(filepath);
+		runTask(maintaskid, task);
+		assertMap(getMetric().getRunTaskIdResults()).contains(maintaskid, null).noRemaining();
 	}
 
 }
