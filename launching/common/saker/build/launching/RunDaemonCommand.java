@@ -15,10 +15,10 @@
  */
 package saker.build.launching;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.net.SocketAddress;
+import java.net.BindException;
+import java.net.InetSocketAddress;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -37,6 +37,7 @@ import saker.build.util.config.JVMSynchronizationObjects;
 import sipka.cmdline.api.Flag;
 import sipka.cmdline.api.Parameter;
 import sipka.cmdline.api.ParameterContext;
+import sipka.cmdline.runtime.ArgumentException;
 import sipka.cmdline.runtime.MissingArgumentException;
 
 /**
@@ -60,7 +61,7 @@ public class RunDaemonCommand {
 
 	public static final String FIRST_LINE_NON_SERVER_DAEMON = "Starting daemon...";
 	public static final Pattern FIRST_LINE_PATTERN_WITH_PORT = Pattern.compile(
-			Pattern.quote("Starting daemon on port ") + "([0-9]+)" + Pattern.quote(FIRST_LINE_WITH_PORT_SUFFIX));
+			Pattern.quote(FIRST_LINE_WITH_PORT_PREFIX) + "([0-9]+)" + Pattern.quote(FIRST_LINE_WITH_PORT_SUFFIX));
 	public static final int FIRST_LINE_PATTERN_WITH_PORT_GROUP_PORTNUMBER = 1;
 
 	private static class TokenRefs {
@@ -105,45 +106,15 @@ public class RunDaemonCommand {
 	public AuthKeystoreParamContext authParams = new AuthKeystoreParamContext();
 
 	@SuppressWarnings("resource")
-	public void call() throws FileNotFoundException, IOException {
+	public void call() throws IOException {
 		PrintStream err = System.err;
 		PrintStream out = System.out;
 		LocalDaemonEnvironment daemonenv = null;
+		boolean ioreplaced = false;
+
+		boolean[] noexit = { noJvmExit };
 		try {
 			DaemonLaunchParameters launchparams = daemonParams.toLaunchParameters(envParams);
-
-			WeakRefDaemonOutputController outputcontroller = new WeakRefDaemonOutputController();
-			if (!noOutput) {
-				TokenRefs.token = outputcontroller.replaceStandardIOAndAttach();
-			} else {
-				outputcontroller.replaceStandardIO();
-			}
-
-			boolean noexit = noJvmExit;
-			SSLContext sslcontext = authParams.getSSLContext();
-			daemonenv = new LocalDaemonEnvironment(sakerJarParam.getSakerJarPath(), launchparams, outputcontroller,
-					LaunchingUtils.getSocketFactory(sslcontext)) {
-				@Override
-				protected void closeImpl() {
-					//when the daemon environment is being closed, call system.exit so any mistakenly unjoined threads won't prevent JVM shutdown
-					if (!noexit) {
-						System.exit(0);
-					}
-				}
-			};
-			daemonenv.setServerSocketFactory(LaunchingUtils.getServerSocketFactory(sslcontext));
-			daemonenv.setSslKeystorePath(authParams.getAuthKeystorePath());
-			if (!ObjectUtils.isNullOrEmpty(startParams.connectClientParam)) {
-				if (!launchparams.isActsAsCluster()) {
-					throw new MissingArgumentException("Cannot connect to daemon as client without acting as cluster.",
-							GeneralDaemonParams.PARAM_NAME_CLUSTER_ENABLE);
-				}
-				Set<AddressResolver> serveraddresses = new LinkedHashSet<>();
-				ThreadUtils.runParallelItems(startParams.connectClientParam, addr -> {
-					serveraddresses.add(addr.getAsAddressResolver());
-				});
-				daemonenv.setConnectToAsClusterAddresses(serveraddresses);
-			}
 
 			Integer serverport = launchparams.getPort();
 			Integer useserverport;
@@ -157,20 +128,69 @@ public class RunDaemonCommand {
 				if (ObjectUtils.isNullOrEmpty(startParams.connectClientParam)) {
 					throw new IllegalArgumentException("Invalid daemon start parameters. "
 							+ "Daemon doesn't accept connections, or connects to servers. It has no purpose. "
-							+ "Specify -port or -connect-client parameters.");
+							+ "Specify " + RunGeneralDaemonParams.PARAM_NAME_PORT + ", "
+							+ StartDaemonParams.PARAM_NAME_CONNECT_CLIENT + " parameters.");
 				}
 			}
 
-			daemonenv.start();
+			Set<AddressResolver> serveraddresses;
+			if (!ObjectUtils.isNullOrEmpty(startParams.connectClientParam)) {
+				if (!launchparams.isActsAsCluster()) {
+					throw new MissingArgumentException("Cannot connect to daemon as client without acting as cluster.",
+							GeneralDaemonParams.PARAM_NAME_CLUSTER_ENABLE);
+				}
+				serveraddresses = new LinkedHashSet<>();
+				ThreadUtils.runParallelItems(startParams.connectClientParam, addr -> {
+					serveraddresses.add(addr.getAsAddressResolver());
+				});
+			} else {
+				serveraddresses = null;
+			}
+
+			ioreplaced = true;
+			WeakRefDaemonOutputController outputcontroller = new WeakRefDaemonOutputController();
+			if (!noOutput) {
+				TokenRefs.token = outputcontroller.replaceStandardIOAndAttach();
+			} else {
+				outputcontroller.replaceStandardIO();
+			}
+
+			SSLContext sslcontext = authParams.getSSLContext();
+			daemonenv = new LocalDaemonEnvironment(sakerJarParam.getSakerJarPath(), launchparams, outputcontroller,
+					LaunchingUtils.getSocketFactory(sslcontext)) {
+				@Override
+				protected void closeImpl() {
+					//when the daemon environment is being closed, call system.exit so any mistakenly unjoined threads won't prevent JVM shutdown
+					if (!noexit[0]) {
+						System.exit(0);
+					}
+				}
+			};
+			daemonenv.setServerSocketFactory(LaunchingUtils.getServerSocketFactory(sslcontext));
+			daemonenv.setSslKeystorePath(authParams.getAuthKeystorePath());
+			if (serveraddresses != null) {
+				daemonenv.setConnectToAsClusterAddresses(serveraddresses);
+			}
+
+			try {
+				daemonenv.init();
+			} catch (BindException e) {
+				throw new ArgumentException("Failed to bind to port: " + useserverport, e,
+						RunGeneralDaemonParams.PARAM_NAME_PORT);
+			}
+			//its expected to be an InetSocketAddress
+			InetSocketAddress serveraddr = (InetSocketAddress) daemonenv.getServerSocketAddress();
+
+			daemonenv.startAfterInitialization();
 
 			//print this AFTER the daemon is started, so the starter process can already connect
 			if (useserverport != null) {
-				System.out.println(FIRST_LINE_WITH_PORT_PREFIX + useserverport + FIRST_LINE_WITH_PORT_SUFFIX);
+				//use the port that we're actually using (OS determined in case of 0)
+				System.out.println(FIRST_LINE_WITH_PORT_PREFIX + serveraddr.getPort() + FIRST_LINE_WITH_PORT_SUFFIX);
 			} else {
 				System.out.println(FIRST_LINE_NON_SERVER_DAEMON);
 			}
 
-			SocketAddress serveraddr = daemonenv.getServerSocketAddress();
 			if (serveraddr != null) {
 				System.out.println("Daemon listening at address: " + serveraddr);
 			}
@@ -180,13 +200,19 @@ public class RunDaemonCommand {
 				InfoDaemonCommand.printInformation(daemonenv.getRuntimeLaunchConfiguration(), System.out);
 			}
 		} catch (Throwable e) {
+			//an exception happened, don't exit the JVM when the daemon env is closing
+			//the main function of saker.build will call system.exit if appropriate
+			noexit[0] = true;
+
 			if (daemonenv != null) {
 				IOUtils.addExc(e, IOUtils.closeExc(daemonenv));
 			}
-			//restore the streams so the caller can print the exception appropriately
-			synchronized (JVMSynchronizationObjects.getStandardIOLock()) {
-				System.setOut(out);
-				System.setErr(err);
+			if (ioreplaced) {
+				//restore the streams so the caller can print the exception appropriately
+				synchronized (JVMSynchronizationObjects.getStandardIOLock()) {
+					System.setOut(out);
+					System.setErr(err);
+				}
 			}
 			throw e;
 		}
