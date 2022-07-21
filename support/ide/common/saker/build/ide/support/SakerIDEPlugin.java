@@ -423,8 +423,10 @@ public final class SakerIDEPlugin implements Closeable {
 	public void displayException(int severity, String message, Throwable e) {
 		int callcount = callListeners(ImmutableUtils.makeImmutableList(exceptionDisplayers),
 				d -> d.displayException(severity, message, e));
-		if (callcount == 0) {
-			e.printStackTrace();
+		if (e != null) {
+			if (callcount == 0) {
+				e.printStackTrace();
+			}
 		}
 	}
 
