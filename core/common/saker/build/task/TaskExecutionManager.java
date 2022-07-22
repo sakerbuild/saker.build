@@ -2456,9 +2456,22 @@ public final class TaskExecutionManager {
 	}
 
 	private static class WaiterThreadHandle extends WeakReference<Thread> {
+		/**
+		 * Initial state, the handle hasn't been used yet anywhere. It hasn't been added to futures for waiting.
+		 */
 		static final int STATE_INITIAL = 0;
+		/**
+		 * The handle is waiting for notification, and has been added to the waiting thread collection of the relevant
+		 * futures.
+		 */
 		static final int STATE_WAITING = 1;
+		/**
+		 * The handle has been notified and should re-check the condition.
+		 */
 		static final int STATE_NOTIFIED = 2;
+		/**
+		 * The handle is finished, no longer needs notification.
+		 */
 		static final int STATE_FINISHED = 3;
 
 		static final AtomicIntegerFieldUpdater<TaskExecutionManager.WaiterThreadHandle> AIFU_state = AtomicIntegerFieldUpdater
@@ -2472,6 +2485,17 @@ public final class TaskExecutionManager {
 			this.triggerEvents = triggerEvents;
 		}
 
+		/**
+		 * Notifies and unparks the thread handle.
+		 * <p>
+		 * The method always unparks the associated thread, unless the state is {@link #STATE_FINISHED}.
+		 * <p>
+		 * The method sets the state to {@link #STATE_NOTIFIED}, and handles the waiting thread count adjustments.
+		 * 
+		 * @param execmanager
+		 *            The execution manager.
+		 * @return <code>false</code> if the thread handle is finished, and can be released.
+		 */
 		public boolean unparkNotify(TaskExecutionManager execmanager) {
 			while (true) {
 				int s = this.state;
@@ -3119,7 +3143,7 @@ public final class TaskExecutionManager {
 				}
 				throw new AssertionError("Failed to set state for " + taskId + " (" + this.futureState + ") " + nstate);
 			}
-			unparkAllWaitingThreads(execmanager);
+			unparkWaitingThreadsForResult(execmanager);
 		}
 
 		protected TaskResultHolder<R> getWaitWithoutOutputChangeDetector(TaskExecutorContext<?> realcontext)
@@ -3937,7 +3961,8 @@ public final class TaskExecutionManager {
 					|| s.state == STATE_INITIALIZING; s = this.futureState) {
 				if (ARFU_futureState.compareAndSet(this, s,
 						new DeadlockedFutureState<>(s.getFactory(), s.getInvocationConfiguration(), this.taskId))) {
-					for (WaiterThreadHandle t; (t = waitingThreads.poll()) != null;) {
+					ConcurrentLinkedQueue<WaiterThreadHandle> threadqueue = waitingThreads;
+					for (WaiterThreadHandle t; (t = threadqueue.poll()) != null;) {
 						LockSupport.unpark(t.get());
 					}
 					break;
@@ -3958,10 +3983,20 @@ public final class TaskExecutionManager {
 			}
 		}
 
-		protected void unparkAllWaitingThreads(TaskExecutionManager execmanager) {
-			ConcurrentLinkedQueue<WaiterThreadHandle> threadqueue = waitingThreads;
-			for (WaiterThreadHandle t; (t = threadqueue.poll()) != null;) {
-				t.unparkNotify(execmanager);
+		protected void unparkWaitingThreadsForResult(TaskExecutionManager execmanager) {
+			for (Iterator<WaiterThreadHandle> it = waitingThreads.iterator(); it.hasNext();) {
+				WaiterThreadHandle t = it.next();
+				int triggerevents = t.triggerEvents;
+				if ((triggerevents & STATE_RESULT_READY) == 0) {
+					//the thread is not interested in the RESULT_READY event
+					continue;
+				}
+				if (!t.unparkNotify(execmanager) || triggerevents == STATE_RESULT_READY) {
+					//thread handle finished
+					//  OR
+					//only interested in the RESULT_READY event, so it can be removed
+					it.remove();
+				}
 			}
 		}
 
@@ -3969,7 +4004,7 @@ public final class TaskExecutionManager {
 			for (Iterator<WaiterThreadHandle> it = waitingThreads.iterator(); it.hasNext();) {
 				WaiterThreadHandle t = it.next();
 				if (!t.unparkNotify(execmanager)) {
-					//thread handle finished
+					//thread handle finished, continue attempting to unpark the next one
 					it.remove();
 				} else {
 					return true;
@@ -6376,10 +6411,6 @@ public final class TaskExecutionManager {
 //						throw exc;
 //					}
 				}
-				if (TestFlag.ENABLED) {
-					TestFlag.metric().taskFinished(taskid, factory, result, executionresult.getTaggedOutputs(),
-							executionresult.getMetaDatas());
-				}
 
 				executiondependencies.setSelfOutputChangeDetector(taskcontext.reportedOutputChangeDetector);
 
@@ -6392,6 +6423,12 @@ public final class TaskExecutionManager {
 				putTaskToResults(taskid, executionresult);
 
 				future.finished(this, executionresult);
+
+				if (TestFlag.ENABLED) {
+					//call this after the future.finished() call
+					TestFlag.metric().taskFinished(taskid, factory, result, executionresult.getTaggedOutputs(),
+							executionresult.getMetaDatas());
+				}
 
 				if (hasabortedexception) {
 					taskRunningFailureExceptions.add(ImmutableUtils.makeImmutableMapEntry(taskid,

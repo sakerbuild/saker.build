@@ -15,6 +15,8 @@
  */
 package testing.saker.build.tests;
 
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedList;
 import java.util.Objects;
 
@@ -39,24 +41,34 @@ public class ExecutionOrderer {
 
 	public synchronized void enter(String id) throws InterruptedException {
 		try {
+			if (Thread.interrupted()) {
+				//check interruption before entering
+				//so if the thread is already interrupted when this method is called, then 
+				//we throw an exception and dont consume a section (so errors are logged more appropriately.)
+				throw new InterruptedException(DateTimeFormatter.ISO_INSTANT.format(Instant.now())
+						+ " Interrupted while waiting for: " + id + " in " + order);
+			}
 			while (true) {
 				String first = order.peekFirst();
 				if (first == null) {
 					throw new IllegalArgumentException("No more sections.");
 				}
 				if (first.equals(id)) {
-					System.out.println("Reached: " + id);
+					System.out.println(
+							DateTimeFormatter.ISO_INSTANT.format(Instant.now()) + " ExecutionOrderer reached: " + id);
 					order.pollFirst();
 					this.notifyAll();
 					return;
 				}
 				if (!order.contains(id)) {
-					throw new IllegalArgumentException("No section found: " + id + " in " + order);
+					throw new IllegalArgumentException(DateTimeFormatter.ISO_INSTANT.format(Instant.now())
+							+ " No section found: " + id + " in " + order);
 				}
 				this.wait();
 			}
 		} catch (InterruptedException e) {
-			throw new InterruptedException("Interrupted while waiting for: " + id + " in " + order);
+			throw new InterruptedException(DateTimeFormatter.ISO_INSTANT.format(Instant.now())
+					+ " Interrupted while waiting for: " + id + " in " + order);
 		}
 	}
 
@@ -70,7 +82,11 @@ public class ExecutionOrderer {
 
 	@Override
 	public String toString() {
-		return "ExecutionOrderer[" + order + "]";
+		String orderstr;
+		synchronized (this) {
+			orderstr = order.toString();
+		}
+		return getClass().getSimpleName() + "[" + orderstr + "]";
 	}
 
 }

@@ -30,7 +30,7 @@ import saker.build.task.TaskFactory;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 
-public class ChildTaskStarterTaskFactory implements TaskFactory<Void>, Externalizable {
+public class ChildTaskStarterTaskFactory implements TaskFactory<Void>, Task<Void>, Externalizable {
 	private static final long serialVersionUID = 1L;
 
 	private Map<TaskIdentifier, TaskFactory<?>> namedChildTaskValues = new HashMap<>();
@@ -64,16 +64,15 @@ public class ChildTaskStarterTaskFactory implements TaskFactory<Void>, Externali
 
 	@Override
 	public Task<Void> createTask(ExecutionContext context) {
-		return new Task<Void>() {
-			@Override
-			public Void run(TaskContext context) {
-				for (Entry<? extends TaskIdentifier, ? extends TaskFactory<?>> entry : namedChildTaskValues
-						.entrySet()) {
-					context.getTaskUtilities().startTaskFuture(entry.getKey(), entry.getValue());
-				}
-				return null;
-			}
-		};
+		return this;
+	}
+
+	@Override
+	public Void run(TaskContext context) throws Exception {
+		for (Entry<? extends TaskIdentifier, ? extends TaskFactory<?>> entry : namedChildTaskValues.entrySet()) {
+			context.getTaskUtilities().startTaskFuture(entry.getKey(), entry.getValue());
+		}
+		return null;
 	}
 
 	@Override

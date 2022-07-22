@@ -15,11 +15,15 @@
  */
 package testing.saker.build.tests.tasks;
 
+import java.io.IOException;
+
 import saker.build.task.TaskContext;
 import saker.build.task.TaskFactory;
 import saker.build.task.TaskFuture;
 import testing.saker.SakerTest;
+import testing.saker.build.flag.TestFlag;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
+import testing.saker.build.tests.CollectingTestMetric;
 import testing.saker.build.tests.ExecutionOrderer;
 import testing.saker.build.tests.tasks.factories.ChildTaskStarterTaskFactory;
 import testing.saker.build.tests.tasks.factories.StringTaskFactory;
@@ -65,7 +69,7 @@ public class AddAncestorBlockingWaitTaskTest extends CollectingMetricEnvironment
 	/**
 	 * The plus task has finished, and its result has been waited for by main.
 	 */
-	private static final String SECTION_PLUS_FINISHED = "plus_started";
+	private static final String SECTION_PLUS_FINISHED = "plus_finished";
 	/**
 	 * The str task has ben waited for by waiter.
 	 */
@@ -78,6 +82,8 @@ public class AddAncestorBlockingWaitTaskTest extends CollectingMetricEnvironment
 	private static ExecutionOrderer orderer;
 	private static volatile boolean gotStrTaskResultByWaiter = false;
 
+	private static volatile boolean waitStrFinishInStarter = false;
+
 	private static class StarterTaskFactory extends SelfStatelessTaskFactory<Void> {
 		private static final long serialVersionUID = 1L;
 
@@ -86,8 +92,24 @@ public class AddAncestorBlockingWaitTaskTest extends CollectingMetricEnvironment
 			taskcontext.getTaskUtilities().startTaskFuture(strTaskId("waiter"), new WaiterTaskFactory());
 			taskcontext.getTaskUtilities().startTaskFuture(strTaskId("blocker"), new BlockerStarterTaskFactory());
 			orderer.enter(SECTION_PLUS_STARTER);
-			taskcontext.getTaskUtilities().runTaskResult(strTaskId("plus"),
-					new ChildTaskStarterTaskFactory().add(strTaskId("str"), new StringTaskFactory("str")));
+			ChildTaskStarterTaskFactory childstarter = new ChildTaskStarterTaskFactory() {
+				@Override
+				public Void run(TaskContext context) throws Exception {
+					if (waitStrFinishInStarter) {
+						System.out.println("Wait result of str task before starting it...");
+						while (!((CollectingTestMetric) TestFlag.metric()).getRunTaskIdResults()
+								.containsKey(strTaskId("str"))) {
+							Thread.sleep(100);
+						}
+
+						System.out.println("Got result of str through test metric.");
+					}
+					return super.run(context);
+				}
+			};
+			childstarter.add(strTaskId("str"), new StringTaskFactory("str"));
+
+			taskcontext.getTaskUtilities().runTaskResult(strTaskId("plus"), childstarter);
 			orderer.enter(SECTION_PLUS_FINISHED);
 			return null;
 		}
@@ -126,6 +148,29 @@ public class AddAncestorBlockingWaitTaskTest extends CollectingMetricEnvironment
 
 	@Override
 	protected void runTestImpl() throws Throwable {
+		for (int i = 0; i < 10; i++) {
+			waitStrFinishInStarter = false;
+			runMainTask();
+			cleanProject();
+			System.out.println();
+
+			System.out.println("Wait str:");
+			waitStrFinishInStarter = true;
+			runMainTask();
+			cleanProject();
+			System.out.println();
+		}
+	}
+
+	private void cleanProject() throws IOException {
+		if (project != null) {
+			project.clean();
+		} else {
+			files.clearDirectoryRecursively(PATH_BUILD_DIRECTORY);
+		}
+	}
+
+	private void runMainTask() throws Throwable, AssertionError {
 		gotStrTaskResultByWaiter = false;
 		ExecutionOrderer orderer = new ExecutionOrderer();
 		orderer.addSection(SECTION_WAITER_START);
@@ -139,6 +184,8 @@ public class AddAncestorBlockingWaitTaskTest extends CollectingMetricEnvironment
 
 		AddAncestorBlockingWaitTaskTest.orderer = new ExecutionOrderer(orderer);
 		runTask("main", main);
+		assertEquals(getMetric().getRunTaskIdFactories().keySet(),
+				strTaskIdSetOf("main", "blocker", "str", "waiter", "plus"));
 	}
 
 }
