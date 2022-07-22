@@ -39,6 +39,8 @@ import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
+import javax.net.ServerSocketFactory;
+import javax.net.SocketFactory;
 import javax.net.ssl.CertPathTrustManagerParameters;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -221,6 +223,12 @@ public class LaunchConfigUtils {
 		}
 		KeyManagerFactory kmfactory = LaunchConfigUtils.openKeyManagerFactory(ks, realpath, inoutkspass[0],
 				keypasswords, msg -> exceptionfactory.apply(msg, null));
+		return createSSLContext(realpath, ks, kmfactory, exceptionfactory);
+	}
+
+	public static <E extends Throwable> SSLContext createSSLContext(Path realpath, KeyStore ks,
+			KeyManagerFactory kmfactory, BiFunction<? super String, ? super Throwable, ? extends E> exceptionfactory)
+			throws E {
 		TrustManagerFactory tmfactory;
 		try {
 			tmfactory = getTrustManagerFactory(ks);
@@ -281,5 +289,19 @@ public class LaunchConfigUtils {
 		pkixbuilderparams.setRevocationEnabled(false);
 		tmfactory.init(new CertPathTrustManagerParameters(pkixbuilderparams));
 		return tmfactory;
+	}
+
+	public static ServerSocketFactory getServerSocketFactory(SSLContext sc) {
+		if (sc == null) {
+			return null;
+		}
+		return new ClientAuthSSLServerSocketFactory(sc.getServerSocketFactory());
+	}
+
+	public static SocketFactory getSocketFactory(SSLContext sc) {
+		if (sc == null) {
+			return null;
+		}
+		return sc.getSocketFactory();
 	}
 }

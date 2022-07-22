@@ -35,6 +35,7 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 	private String exceptionFormat;
 	private String port;
 	private String actsAsServer;
+	private String keyStorePath;
 
 	private SimpleIDEPluginProperties() {
 	}
@@ -45,6 +46,7 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 		this.exceptionFormat = copy.getExceptionFormat();
 		this.port = copy.getPort();
 		this.actsAsServer = copy.getActsAsServer();
+		this.keyStorePath = copy.getKeyStorePath();
 	}
 
 	@Override
@@ -72,6 +74,11 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 		return actsAsServer;
 	}
 
+	@Override
+	public String getKeyStorePath() {
+		return keyStorePath;
+	}
+
 	public static Builder builder() {
 		return new Builder();
 	}
@@ -86,6 +93,7 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 		int result = 1;
 		result = prime * result + ((actsAsServer == null) ? 0 : actsAsServer.hashCode());
 		result = prime * result + ((exceptionFormat == null) ? 0 : exceptionFormat.hashCode());
+		result = prime * result + ((keyStorePath == null) ? 0 : keyStorePath.hashCode());
 		result = prime * result + ((port == null) ? 0 : port.hashCode());
 		result = prime * result + ((storageDirectory == null) ? 0 : storageDirectory.hashCode());
 		result = prime * result + ((userParameters == null) ? 0 : userParameters.hashCode());
@@ -110,6 +118,11 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 			if (other.exceptionFormat != null)
 				return false;
 		} else if (!exceptionFormat.equals(other.exceptionFormat))
+			return false;
+		if (keyStorePath == null) {
+			if (other.keyStorePath != null)
+				return false;
+		} else if (!keyStorePath.equals(other.keyStorePath))
 			return false;
 		if (port == null) {
 			if (other.port != null)
@@ -186,6 +199,11 @@ public class SimpleIDEPluginProperties implements IDEPluginProperties {
 
 		public Builder setActsAsServer(String actsAsServer) {
 			result.actsAsServer = actsAsServer;
+			return this;
+		}
+
+		public Builder setKeyStorePath(String keyStorePath) {
+			result.keyStorePath = keyStorePath;
 			return this;
 		}
 

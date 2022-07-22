@@ -102,6 +102,7 @@ public class IDEPersistenceUtils {
 	private static final String F_TYPE = "type";
 	private static final String F_VERSION = "version";
 	private static final String F_ACTS_AS_SERVER = "acts_as_server";
+	private static final String F_KEY_STORE_PATH = "key_store_path";
 	private static final String F_PORT = "port";
 	private static final String F_EXCEPTION_FORMAT = "exception_format";
 	private static final String F_USER_PARAMETERS = "user_parameters";
@@ -124,6 +125,7 @@ public class IDEPersistenceUtils {
 		writeStringIfNotNull(out, F_EXCEPTION_FORMAT, props.getExceptionFormat());
 		writeStringIfNotNull(out, F_PORT, props.getPort());
 		writeStringIfNotNull(out, F_ACTS_AS_SERVER, props.getActsAsServer());
+		writeStringIfNotNull(out, F_KEY_STORE_PATH, props.getKeyStorePath());
 	}
 
 	public static IDEPluginProperties readIDEPluginProperties(StructuredObjectInput input) throws IOException {
@@ -145,6 +147,7 @@ public class IDEPersistenceUtils {
 		result.setExceptionFormat(input.readString(F_EXCEPTION_FORMAT));
 		result.setPort(input.readString(F_PORT));
 		result.setActsAsServer(input.readString(F_ACTS_AS_SERVER));
+		result.setKeyStorePath(input.readString(F_KEY_STORE_PATH));
 
 		return result.build();
 	}

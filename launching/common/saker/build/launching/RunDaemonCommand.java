@@ -166,7 +166,7 @@ public class RunDaemonCommand {
 					}
 				}
 			};
-			daemonenv.setServerSocketFactory(LaunchingUtils.getServerSocketFactory(sslcontext));
+			daemonenv.setServerSocketFactory(LaunchConfigUtils.getServerSocketFactory(sslcontext));
 			daemonenv.setSslKeystorePath(authParams.getAuthKeystorePath());
 			if (serveraddresses != null) {
 				daemonenv.setConnectToAsClusterAddresses(serveraddresses);

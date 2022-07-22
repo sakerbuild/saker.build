@@ -210,7 +210,8 @@ public class StartDaemonCommand {
 					try {
 						SakerPath keystorepath = SakerPath.valueOf(sslkspathstr);
 						if (authparams == null) {
-							connectsocketfactory = LaunchingUtils.createSSLContext(keystorepath).getSocketFactory();
+							connectsocketfactory = LaunchingUtils
+									.getSocketFactory(LaunchingUtils.createSSLContext(keystorepath));
 						} else {
 							connectsocketfactory = authparams.getSocketFactoryForDefaultedKeystore(keystorepath);
 						}

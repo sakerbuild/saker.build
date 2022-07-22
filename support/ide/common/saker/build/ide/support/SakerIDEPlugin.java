@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -54,16 +55,20 @@ import saker.build.daemon.LocalDaemonEnvironment;
 import saker.build.daemon.RemoteDaemonConnection;
 import saker.build.exception.InvalidPathFormatException;
 import saker.build.file.path.SakerPath;
+import saker.build.file.provider.LocalFileProvider;
 import saker.build.ide.support.persist.StructuredObjectInput;
 import saker.build.ide.support.persist.StructuredObjectOutput;
 import saker.build.ide.support.persist.XMLStructuredReader;
 import saker.build.ide.support.persist.XMLStructuredWriter;
 import saker.build.ide.support.properties.DaemonConnectionIDEProperty;
 import saker.build.ide.support.properties.IDEPluginProperties;
+import saker.build.launching.LaunchConfigUtils;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.SakerLog;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.StringUtils;
+import saker.build.thirdparty.saker.util.function.ThrowingFunction;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.NetworkUtils;
 import saker.build.thirdparty.saker.util.thread.ParallelExecutionException;
@@ -200,19 +205,14 @@ public final class SakerIDEPlugin implements Closeable {
 		}
 	}
 
-	public void start(DaemonLaunchParameters daemonparams, SSLContext sslcontext, SakerPath keystorepath)
+	public void start(DaemonLaunchParameters daemonparams, SakerPath keystorepath,
+			ThrowingFunction<? super SakerPath, ? extends SSLContext> sslcontextcreator)
 			throws IOException, IllegalStateException {
-		ServerSocketFactory serversocketfactory = null;
-		SocketFactory socketfactory = null;
-		if (sslcontext != null) {
-			serversocketfactory = sslcontext.getServerSocketFactory();
-			socketfactory = sslcontext.getSocketFactory();
-		}
-		startImpl(daemonparams, keystorepath, serversocketfactory, socketfactory);
+		startImpl(daemonparams, keystorepath, sslcontextcreator);
 	}
 
 	private void startImpl(DaemonLaunchParameters daemonparams, SakerPath keystorepath,
-			ServerSocketFactory serversocketfactory, SocketFactory socketfactory)
+			ThrowingFunction<? super SakerPath, ? extends SSLContext> sslcontextcreator)
 			throws IOException, IllegalStateException {
 		LocalDaemonEnvironment ndaemonenv = null;
 		configurationChangeWriteLock.lock();
@@ -224,16 +224,29 @@ public final class SakerIDEPlugin implements Closeable {
 			if (this.pluginDaemonEnvironment != PLUGIN_ENVIRONMENT_STATE_NOT_INITIALIZED) {
 				throw new IllegalStateException("Already started.");
 			}
+			PluginEnvironmentState npluginstate;
+			try {
+				npluginstate = createPluginEnvironmentStateWithSSL(null, KeyStorePathHash.create(keystorepath),
+						sslcontextcreator);
+			} catch (Exception e) {
+				displayException(SakerLog.SEVERITY_ERROR,
+						"Failed to intialize SSL for plugin daemon. Running in local mode.", e);
+				//will have no ssl, and we turn off all server config for the daemon
+				//not to allow unauthorized access
+				daemonparams = SakerIDESupportUtils.cleanParametersForFailedSSL(daemonparams);
+				npluginstate = new PluginEnvironmentState();
+			}
 
 			ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, daemonparams);
 			LocalDaemonEnvironment localdaemonenvtoclose = ndaemonenv;
-			ndaemonenv.setServerSocketFactory(serversocketfactory);
-			ndaemonenv.setConnectionSocketFactory(socketfactory);
-			ndaemonenv.setSslKeystorePath(keystorepath);
 
-			PluginEnvironmentState npluginstate = null;
+			ndaemonenv.setServerSocketFactory(npluginstate.serverSocketFactory);
+			ndaemonenv.setConnectionSocketFactory(npluginstate.socketFactory);
+			ndaemonenv.setSslKeystorePath(npluginstate.getKeyStorePath());
+
 			try {
 				ndaemonenv.start();
+				npluginstate.init(ndaemonenv);
 				npluginstate = new PluginEnvironmentState(ndaemonenv);
 				localdaemonenvtoclose = null;
 			} catch (Throwable e) {
@@ -247,13 +260,6 @@ public final class SakerIDEPlugin implements Closeable {
 				throw e;
 			} finally {
 				IOUtils.close(localdaemonenvtoclose);
-				if (npluginstate != null) {
-					//this should not ever be null, as it is always assigned even in case of exception,
-					//but check anyway
-					npluginstate.serverSocketFactory = serversocketfactory;
-					npluginstate.socketFactory = socketfactory;
-					npluginstate.keyStorePath = keystorepath;
-				}
 				this.pluginDaemonEnvironment = npluginstate;
 			}
 			if (ndaemonenv != null) {
@@ -269,11 +275,6 @@ public final class SakerIDEPlugin implements Closeable {
 		} finally {
 			tounlock.unlock();
 		}
-	}
-
-	@Deprecated
-	public void start(DaemonLaunchParameters daemonparams) throws IOException {
-		start(daemonparams, null, null);
 	}
 
 	public Map<String, RemoteDaemonConnection> connectToDaemonsFromPluginEnvironment(
@@ -434,32 +435,29 @@ public final class SakerIDEPlugin implements Closeable {
 		return pluginProperties;
 	}
 
-	public final void setIDEPluginProperties(IDEPluginProperties properties) throws IOException {
+	public final boolean setIDEPluginProperties(IDEPluginProperties properties) throws IOException {
 		properties = properties == null ? SimpleIDEPluginProperties.empty()
 				: SimpleIDEPluginProperties.builder(properties).build();
 		configurationChangeWriteLock.lock();
 		try {
 			if (this.pluginProperties.equals(properties)) {
-				return;
+				return false;
 			}
 			writePluginPropertiesFile(properties);
 			this.pluginProperties = properties;
+			return true;
 		} finally {
 			configurationChangeWriteLock.unlock();
 		}
 	}
 
-	public void updateForPluginProperties(IDEPluginProperties properties) {
-		updateForPluginPropertiesImpl(properties, null, null, false);
+	public void updateForPluginProperties(IDEPluginProperties properties,
+			ThrowingFunction<? super SakerPath, ? extends SSLContext> sslcontextcreator) {
+		updateForPluginPropertiesImpl(properties, sslcontextcreator);
 	}
 
-	public void updateForPluginProperties(IDEPluginProperties properties, SSLContext sslcontext,
-			SakerPath keystorepath) {
-		updateForPluginPropertiesImpl(properties, sslcontext, keystorepath, true);
-	}
-
-	private void updateForPluginPropertiesImpl(IDEPluginProperties properties, SSLContext sslcontext,
-			SakerPath keystorepath, boolean updatessl) {
+	private void updateForPluginPropertiesImpl(IDEPluginProperties properties,
+			ThrowingFunction<? super SakerPath, ? extends SSLContext> sslcontextcreator) {
 		properties = properties == null ? SimpleIDEPluginProperties.empty()
 				: SimpleIDEPluginProperties.builder(properties).build();
 		DaemonLaunchParameters newlaunchparams = createDaemonLaunchParameters(properties);
@@ -467,12 +465,30 @@ public final class SakerIDEPlugin implements Closeable {
 		configurationChangeWriteLock.lock();
 		Lock tounlock = configurationChangeWriteLock;
 		try {
-			LocalDaemonEnvironment plugindaemonenv = this.pluginDaemonEnvironment.environment;
-			if (plugindaemonenv == null || !newlaunchparams.equals(plugindaemonenv.getLaunchParameters())) {
-				tounlock = null;
-				//method will unlock
-				reloadPluginDaemonWriteLocked(newlaunchparams, sslcontext, keystorepath, updatessl);
+			PluginEnvironmentState envstate = this.pluginDaemonEnvironment;
+			LocalDaemonEnvironment plugindaemonenv = envstate.environment;
+			KeyStorePathHash keystore;
+			String keystorepathprop = properties.getKeyStorePath();
+			if (!ObjectUtils.isNullOrEmpty(keystorepathprop)) {
+				try {
+					SakerPath keystorepath = SakerPath.valueOf(keystorepathprop);
+					keystore = KeyStorePathHash.create(keystorepath);
+				} catch (Exception e) {
+					displayException(SakerLog.SEVERITY_ERROR, "Failed to open keystore: " + keystorepathprop, e);
+					keystore = KeyStorePathHash.EMPTY;
+					newlaunchparams = SakerIDESupportUtils.cleanParametersForFailedSSL(newlaunchparams);
+				}
+			} else {
+				keystore = KeyStorePathHash.EMPTY;
 			}
+			if (plugindaemonenv != null && newlaunchparams.equals(plugindaemonenv.getLaunchParameters())
+					&& envstate.isKeyStoreHashEquals(keystore)) {
+				return;
+			}
+			//else we go ahead and reload the daemon
+			tounlock = null;
+			//method will unlock
+			reloadPluginDaemonWriteLocked(newlaunchparams, keystore, sslcontextcreator);
 		} finally {
 			if (tounlock != null) {
 				tounlock.unlock();
@@ -480,10 +496,20 @@ public final class SakerIDEPlugin implements Closeable {
 		}
 	}
 
-	public void forceReloadPluginDaemon(DaemonLaunchParameters newlaunchparams) {
+	public void forceReloadPluginDaemon(DaemonLaunchParameters newlaunchparams, SakerPath keystorepath,
+			ThrowingFunction<? super SakerPath, ? extends SSLContext> sslcontextcreator) {
 		configurationChangeWriteLock.lock();
-		reloadPluginDaemonWriteLocked(newlaunchparams, null, null, false);
 
+		KeyStorePathHash keystore;
+		try {
+			keystore = KeyStorePathHash.create(keystorepath);
+		} catch (IOException e) {
+			displayException(SakerLog.SEVERITY_ERROR, "Failed to open keystore: " + keystorepath, e);
+			keystore = KeyStorePathHash.EMPTY;
+			newlaunchparams = SakerIDESupportUtils.cleanParametersForFailedSSL(newlaunchparams);
+		}
+
+		reloadPluginDaemonWriteLocked(newlaunchparams, keystore, sslcontextcreator);
 	}
 
 	private <L> int callListeners(Iterable<L> listeners, Consumer<? super L> caller) {
@@ -501,8 +527,8 @@ public final class SakerIDEPlugin implements Closeable {
 	}
 
 	//This method is responsible for unlocking the write lock
-	private void reloadPluginDaemonWriteLocked(DaemonLaunchParameters newlaunchparams, SSLContext sslcontext,
-			SakerPath keystorepath, boolean updatessl) {
+	private void reloadPluginDaemonWriteLocked(DaemonLaunchParameters newlaunchparams, KeyStorePathHash keystore,
+			ThrowingFunction<? super SakerPath, ? extends SSLContext> sslcontextcreator) {
 		Lock tounlock = configurationChangeWriteLock;
 		try {
 			List<PluginResourceListener> pluginlisteners = ImmutableUtils.makeImmutableList(pluginResourceListeners);
@@ -517,40 +543,33 @@ public final class SakerIDEPlugin implements Closeable {
 				} finally {
 					PluginEnvironmentState npluginstate = new PluginEnvironmentState(
 							new IllegalStateException("Plugin build environment closed."));
-					if (updatessl) {
-						npluginstate.serverSocketFactory = (sslcontext == null ? null
-								: sslcontext.getServerSocketFactory());
-						npluginstate.socketFactory = (sslcontext == null ? null : sslcontext.getSocketFactory());
-						npluginstate.keyStorePath = (keystorepath);
-					} else {
-						npluginstate.copySSLFields(currentenvironmentstate);
-					}
+					npluginstate.copyKeyStoreAndSocketFactories(currentenvironmentstate);
 					this.pluginDaemonEnvironment = npluginstate;
 				}
 			}
 
-			LocalDaemonEnvironment ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, newlaunchparams);
-			ServerSocketFactory usedserversocketfactory;
-			SocketFactory usedsocketfactory;
-			SakerPath usedkeystorepath;
-			if (updatessl) {
-				usedserversocketfactory = sslcontext == null ? null : sslcontext.getServerSocketFactory();
-				usedsocketfactory = sslcontext == null ? null : sslcontext.getSocketFactory();
-				usedkeystorepath = keystorepath;
-			} else {
-				usedserversocketfactory = currentenvironmentstate.serverSocketFactory;
-				usedsocketfactory = currentenvironmentstate.socketFactory;
-				usedkeystorepath = currentenvironmentstate.keyStorePath;
+			PluginEnvironmentState npluginstate;
+			try {
+				npluginstate = createPluginEnvironmentStateWithSSL(currentenvironmentstate, keystore,
+						sslcontextcreator);
+			} catch (Exception e) {
+				displayException(SakerLog.SEVERITY_ERROR,
+						"Failed to intialize SSL for plugin daemon. Running in local mode.", e);
+				//will have no ssl, and we turn off all server config for the daemon
+				//not to allow unauthorized access
+				newlaunchparams = SakerIDESupportUtils.cleanParametersForFailedSSL(newlaunchparams);
+				npluginstate = new PluginEnvironmentState();
 			}
-			ndaemonenv.setServerSocketFactory(usedserversocketfactory);
-			ndaemonenv.setConnectionSocketFactory(usedsocketfactory);
-			ndaemonenv.setSslKeystorePath(usedkeystorepath);
+
+			LocalDaemonEnvironment ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, newlaunchparams);
+			ndaemonenv.setServerSocketFactory(npluginstate.serverSocketFactory);
+			ndaemonenv.setConnectionSocketFactory(npluginstate.socketFactory);
+			ndaemonenv.setSslKeystorePath(npluginstate.getKeyStorePath());
 
 			LocalDaemonEnvironment localdaemonenvtoclose = ndaemonenv;
-			PluginEnvironmentState npluginstate = null;
 			try {
 				ndaemonenv.start();
-				npluginstate = new PluginEnvironmentState(ndaemonenv);
+				npluginstate.init(ndaemonenv);
 				localdaemonenvtoclose = null;
 			} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError | AssertionError
 					| Exception e) {
@@ -565,9 +584,6 @@ public final class SakerIDEPlugin implements Closeable {
 				throw e;
 			} finally {
 				if (npluginstate != null) {
-					npluginstate.serverSocketFactory = usedserversocketfactory;
-					npluginstate.socketFactory = usedsocketfactory;
-					npluginstate.keyStorePath = usedkeystorepath;
 					this.pluginDaemonEnvironment = npluginstate;
 				}
 
@@ -590,6 +606,27 @@ public final class SakerIDEPlugin implements Closeable {
 		} finally {
 			tounlock.unlock();
 		}
+	}
+
+	private static PluginEnvironmentState createPluginEnvironmentStateWithSSL(
+			PluginEnvironmentState currentenvironmentstate, KeyStorePathHash keystore,
+			ThrowingFunction<? super SakerPath, ? extends SSLContext> sslcontextcreator) throws Exception {
+		PluginEnvironmentState npluginstate = new PluginEnvironmentState();
+		npluginstate.setKeyStorePathHash(keystore);
+		if (currentenvironmentstate != null && npluginstate.isKeyStoreHashEquals(currentenvironmentstate)) {
+			//the keystore didn't change, no need to construct new SSLContext, can use socket factories from the old one
+			npluginstate.copySocketFactories(currentenvironmentstate);
+		} else {
+			//the keystore changed, create a new ssl context
+			if (keystore != null && keystore.keyStorePath != null) {
+				Objects.requireNonNull(sslcontextcreator, "SSL context creator");
+				SSLContext sslcontext = sslcontextcreator.apply(keystore.keyStorePath);
+				Objects.requireNonNull(sslcontext, "SSL context");
+				npluginstate.socketFactory = LaunchConfigUtils.getSocketFactory(sslcontext);
+				npluginstate.serverSocketFactory = LaunchConfigUtils.getServerSocketFactory(sslcontext);
+			}
+		}
+		return npluginstate;
 	}
 
 	public static Map<String, String> entrySetToMap(Set<? extends Entry<String, String>> entries) {
@@ -683,26 +720,96 @@ public final class SakerIDEPlugin implements Closeable {
 	}
 
 	private static final class PluginEnvironmentState {
-		protected final LocalDaemonEnvironment environment;
-		protected final Throwable initializationException;
+		protected LocalDaemonEnvironment environment;
+		protected Throwable initializationException;
+
+		protected KeyStorePathHash keyStorePathHash = KeyStorePathHash.EMPTY;
+
 		protected SocketFactory socketFactory;
 		protected ServerSocketFactory serverSocketFactory;
-		protected SakerPath keyStorePath;
+
+		public PluginEnvironmentState() {
+		}
 
 		public PluginEnvironmentState(LocalDaemonEnvironment environment) {
 			this.environment = environment;
-			this.initializationException = null;
 		}
 
 		public PluginEnvironmentState(Throwable initializationException) {
-			this.environment = null;
 			this.initializationException = initializationException;
 		}
 
-		public void copySSLFields(PluginEnvironmentState state) {
+		public void init(LocalDaemonEnvironment environment) {
+			this.environment = environment;
+		}
+
+		public void initFailed(Throwable initializationException) {
+			this.initializationException = initializationException;
+		}
+
+		public void copyKeyStoreAndSocketFactories(PluginEnvironmentState state) {
 			this.socketFactory = state.socketFactory;
 			this.serverSocketFactory = state.serverSocketFactory;
-			this.keyStorePath = state.keyStorePath;
+			this.keyStorePathHash = state.keyStorePathHash;
 		}
+
+		public void copySocketFactories(PluginEnvironmentState state) {
+			this.socketFactory = state.socketFactory;
+			this.serverSocketFactory = state.serverSocketFactory;
+		}
+
+		public void setKeyStorePathHash(KeyStorePathHash keyStorePathHash) {
+			this.keyStorePathHash = keyStorePathHash;
+		}
+
+		public boolean isKeyStoreHashEquals(PluginEnvironmentState state) {
+			return Objects.equals(this.keyStorePathHash, state.keyStorePathHash);
+		}
+
+		public boolean isKeyStoreHashEquals(KeyStorePathHash keystorepathhash) {
+			return Objects.equals(this.keyStorePathHash, keystorepathhash);
+		}
+
+		public SakerPath getKeyStorePath() {
+			return keyStorePathHash == null ? null : keyStorePathHash.keyStorePath;
+		}
+	}
+
+	private static final class KeyStorePathHash {
+		protected static final KeyStorePathHash EMPTY = new KeyStorePathHash(null, null);
+
+		protected final SakerPath keyStorePath;
+		protected final String keyStoreHash;
+
+		public KeyStorePathHash(SakerPath keyStorePath, String keyStoreHash) {
+			this.keyStorePath = keyStorePath;
+			this.keyStoreHash = keyStoreHash;
+		}
+
+		public static KeyStorePathHash create(SakerPath keyStorePath) throws IOException {
+			if (keyStorePath == null) {
+				return EMPTY;
+			} else {
+				try {
+					String hash = StringUtils
+							.toHexString(LocalFileProvider.getInstance().hash(keyStorePath, "SHA1").getHash());
+					return new KeyStorePathHash(keyStorePath, hash);
+				} catch (NoSuchAlgorithmException e) {
+					throw new RuntimeException("SHA1 hash algorithm not found.", e);
+				}
+			}
+		}
+
+		@Override
+		public String toString() {
+			StringBuilder builder = new StringBuilder(getClass().getSimpleName());
+			builder.append("[keyStorePath=");
+			builder.append(keyStorePath);
+			builder.append(", keyStoreHash=");
+			builder.append(keyStoreHash);
+			builder.append("]");
+			return builder.toString();
+		}
+
 	}
 }

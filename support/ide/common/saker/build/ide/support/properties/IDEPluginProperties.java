@@ -29,6 +29,13 @@ public interface IDEPluginProperties {
 
 	public String getActsAsServer();
 
+	/**
+	 * Gets the keystore path that the plugin daemon environment should use for creating a secure SSL connection.
+	 * 
+	 * @return The path of the key store on the local machine or <code>null</code> if none.
+	 */
+	public String getKeyStorePath();
+
 	@Override
 	public int hashCode();
 

@@ -89,6 +89,10 @@ public class AuthKeystoreParamContext {
 	 * <pre>
 	 * The key password for the keystore used for authentication.
 	 * 
+	 * It's strongly recommended that the key password is same as the
+	 * store password. Otherwise errors related to incorrect key password
+	 * may not surface immediately during initialization.
+	 * 
 	 * If not specified, the loader will use the same password that
 	 * was used for opening the store.
 	 * </pre>
@@ -136,11 +140,7 @@ public class AuthKeystoreParamContext {
 	}
 
 	public SocketFactory getSocketFactory() {
-		SSLContext sslc = getSSLContext();
-		if (sslc == null) {
-			return null;
-		}
-		return sslc.getSocketFactory();
+		return LaunchConfigUtils.getSocketFactory(getSSLContext());
 	}
 
 	public SocketFactory getSocketFactoryForDefaultedKeystore(SakerPath keystorepath) {
@@ -149,11 +149,7 @@ public class AuthKeystoreParamContext {
 			return LaunchingUtils.getSocketFactory(PARAM_AUTH_KEYSTORE, keystorepath,
 					ObjectUtils.newHashSet(null, authStorePassword), ObjectUtils.newHashSet(null, authKeyPassword));
 		}
-		SSLContext sslc = getSSLContext();
-		if (sslc == null) {
-			return null;
-		}
-		return sslc.getSocketFactory();
+		return getSocketFactory();
 	}
 
 	public SSLContext getSSLContext() {

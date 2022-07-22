@@ -1321,16 +1321,17 @@ public final class SakerIDEProject {
 		return null;
 	}
 
-	public final void setIDEProjectProperties(IDEProjectProperties properties) throws IOException {
+	public final boolean setIDEProjectProperties(IDEProjectProperties properties) throws IOException {
 		properties = properties == null ? SimpleIDEProjectProperties.getDefaultsInstance()
 				: SimpleIDEProjectProperties.copy(properties);
 		configurationChangeLock.lock();
 		try {
 			if (properties.equals(this.ideProjectProperties.properties)) {
-				return;
+				return false;
 			}
 			persistIDEProjectPropertiesFile();
 			this.ideProjectProperties = createValidatedProjectProperties(properties);
+			return true;
 		} finally {
 			configurationChangeLock.unlock();
 		}

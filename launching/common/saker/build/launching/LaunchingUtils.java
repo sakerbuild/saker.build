@@ -158,14 +158,7 @@ public class LaunchingUtils {
 	public static ServerSocketFactory getServerSocketFactory(String paramname, SakerPath keystorepath,
 			Collection<String> storepasswords, Collection<String> keypasswords) {
 		SSLContext sc = getSSLContext(paramname, keystorepath, storepasswords, keypasswords);
-		return getServerSocketFactory(sc);
-	}
-
-	public static ServerSocketFactory getServerSocketFactory(SSLContext sc) {
-		if (sc == null) {
-			return null;
-		}
-		return new ClientAuthSSLServerSocketFactory(sc.getServerSocketFactory());
+		return LaunchConfigUtils.getServerSocketFactory(sc);
 	}
 
 	public static SocketFactory getSocketFactory(String paramname, SakerPath keystorepath,

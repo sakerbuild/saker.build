@@ -19,6 +19,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.function.Function;
 
+import saker.build.daemon.DaemonLaunchParameters;
 import saker.build.file.path.SakerPath;
 import saker.build.file.path.WildcardPath;
 import saker.build.ide.support.properties.BuiltinScriptingLanguageClassPathLocationIDEProperty;
@@ -888,5 +889,12 @@ public class SakerIDESupportUtils {
 				return sb.toString();
 			}
 		}
+	}
+
+	public static DaemonLaunchParameters cleanParametersForFailedSSL(DaemonLaunchParameters params) {
+		if (!params.isActsAsServer() && params.getPort() == null) {
+			return params;
+		}
+		return DaemonLaunchParameters.builder(params).setActsAsServer(false).setPort(null).build();
 	}
 }
