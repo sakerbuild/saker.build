@@ -306,6 +306,18 @@ public class TestExternalScriptInformationProvider implements ExternalScriptInfo
 			parameters.add(paraminfo);
 		}
 		{
+			SimpleTaskParameterInformation paraminfo = new SimpleTaskParameterInformation(taskinfo, "ParameterTest1");
+			String paramdoc = "doc_" + taskname + "_" + paraminfo.getParameterName();
+			paraminfo.setInformation(createPlainFormattedTextContent(paramdoc));
+			parameters.add(paraminfo);
+		}
+		{
+			SimpleTaskParameterInformation paraminfo = new SimpleTaskParameterInformation(taskinfo, "ParameterTest2");
+			String paramdoc = "doc_" + taskname + "_" + paraminfo.getParameterName();
+			paraminfo.setInformation(createPlainFormattedTextContent(paramdoc));
+			parameters.add(paraminfo);
+		}
+		{
 			SimpleTaskParameterInformation paraminfo = new SimpleTaskParameterInformation(taskinfo, "BoolParam1");
 			String paramdoc = "doc_" + taskname + "_" + paraminfo.getParameterName();
 			paraminfo.setInformation(createPlainFormattedTextContent(paramdoc));

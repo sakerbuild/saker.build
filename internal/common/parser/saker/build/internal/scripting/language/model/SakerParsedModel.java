@@ -3930,7 +3930,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 								continue;
 							}
 							if (base == null || isPhraseStartsWithProposal(paramname, base)) {
-								ParameterProposalKey proposalkey = new ParameterProposalKey(paramname, tn, null);
+								ParameterProposalKey proposalkey = new ParameterProposalKey(paramname, tn);
 
 								SimpleLiteralCompletionProposal simpleproposal = proposalfactory.create(TYPE_PARAMETER,
 										paramname);
@@ -3973,6 +3973,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	private static void addExternalTaskParameterProposals(String base, ProposalFactory proposalfactory,
 			ProposalCollector collector, ScriptModelInformationAnalyzer analyzer, Set<String> presentparamnames,
 			TaskName tn) {
+		List<Runnable> substringproposals = new ArrayList<>();
 		for (ExternalScriptInformationProvider extprovider : analyzer.getExternalScriptInformationProviders()) {
 			Map<TaskName, ? extends TaskInformation> taskinfos = extprovider.getTaskInformation(tn);
 			if (ObjectUtils.isNullOrEmpty(taskinfos)) {
@@ -3989,25 +3990,47 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				}
 				for (TaskParameterInformation pinfo : params) {
 					String pname = pinfo.getParameterName();
-					//if the parameter name is the wildcard, then don't add a proposal, as the current value is acceptable
-					if (("*".equals(pname) && !ObjectUtils.isNullOrEmpty(base)) || presentparamnames.contains(pname)) {
+					if ("*".equals(pname) && !ObjectUtils.isNullOrEmpty(base)) {
+						//the parameter name is the wildcard, then don't add a proposal, as the current value is acceptable
+						continue;
+					}
+					if (presentparamnames.contains(pname)) {
+						//the parameter is already present in the task invocation
 						continue;
 					}
 					String startswithcompatiblename = base == null ? pname
 							: ScriptInfoUtils.isStartsWithCompatibleParameterName(base, pinfo);
 					if (startswithcompatiblename == null) {
+						if (!ObjectUtils.isNullOrEmpty(base) && pname.contains(base)) {
+							//the parameter name cannot be "*" at this point
+							//we checked above, and the base is not empty 
+							substringproposals.add(() -> {
+								createAddExternalParameterProposal(collector, proposalfactory, tn, pname, tinfo, pinfo);
+							});
+						}
 						continue;
 					}
-					ParameterProposalKey proposalkey = new ParameterProposalKey(startswithcompatiblename, tn, null);
-
-					SimpleLiteralCompletionProposal simpleproposal = proposalfactory.create(TYPE_PARAMETER,
-							startswithcompatiblename);
-					simpleproposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_TASK_PARAMETER);
-					simpleproposal.setDisplayRelation(Objects.toString(tinfo.getTaskName(), null));
-					collector.add(proposalkey, simpleproposal, createTaskParameterTextPartition(pinfo));
+					createAddExternalParameterProposal(collector, proposalfactory, tn, startswithcompatiblename, tinfo,
+							pinfo);
 				}
 			}
 		}
+		if (!substringproposals.isEmpty()) {
+			for (Runnable run : substringproposals) {
+				run.run();
+			}
+		}
+	}
+
+	private static void createAddExternalParameterProposal(ProposalCollector collector, ProposalFactory proposalfactory,
+			TaskName tn, String startswithcompatiblename, TaskInformation tinfo, TaskParameterInformation pinfo) {
+		ParameterProposalKey proposalkey = new ParameterProposalKey(startswithcompatiblename, tn);
+
+		SimpleLiteralCompletionProposal simpleproposal = proposalfactory.create(TYPE_PARAMETER,
+				startswithcompatiblename);
+		simpleproposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_TASK_PARAMETER);
+		simpleproposal.setDisplayRelation(Objects.toString(tinfo.getTaskName(), null));
+		collector.add(proposalkey, simpleproposal, createTaskParameterTextPartition(pinfo));
 	}
 
 	private static NavigableSet<String> getParameterNamesInParamList(Statement paramliststm) {
@@ -4106,6 +4129,10 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			this.name = name;
 			this.taskName = taskName;
 			this.repositoryName = repositoryName;
+		}
+
+		public ParameterProposalKey(String name, TaskName taskName) {
+			this(name, taskName, null);
 		}
 
 		@Override
