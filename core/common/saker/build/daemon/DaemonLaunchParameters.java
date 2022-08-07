@@ -28,7 +28,7 @@ import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 
-public class DaemonLaunchParameters implements Externalizable, Cloneable {
+public final class DaemonLaunchParameters implements Externalizable, Cloneable {
 	private static final long serialVersionUID = 1L;
 
 	public static final int DEFAULT_PORT = 3500;
@@ -176,32 +176,27 @@ public class DaemonLaunchParameters implements Externalizable, Cloneable {
 
 	@Override
 	public String toString() {
-		StringBuilder sb = new StringBuilder();
-		sb.append("DaemonLaunchParameters[");
-		sb.append("actsAsServer=");
+		StringBuilder sb = new StringBuilder(getClass().getSimpleName());
+		sb.append("[actsAsServer=");
 		sb.append(actsAsServer);
 		sb.append(", threadFactor=");
 		sb.append(threadFactor);
 		sb.append(", actsAsCluster=");
 		sb.append(actsAsCluster);
 		if (storageDirectory != null) {
-			sb.append(", ");
-			sb.append("storageDirectory=");
+			sb.append(", storageDirectory=");
 			sb.append(storageDirectory);
 		}
 		if (port != null) {
-			sb.append(", ");
-			sb.append("port=");
+			sb.append(", port=");
 			sb.append(port);
 		}
 		if (clusterMirrorDirectory != null) {
-			sb.append(", ");
-			sb.append("clusterMirrorDirectory=");
+			sb.append(", clusterMirrorDirectory=");
 			sb.append(clusterMirrorDirectory);
 		}
 		if (userParameters != null) {
-			sb.append(", ");
-			sb.append("userParameters=");
+			sb.append(", userParameters=");
 			sb.append(userParameters);
 		}
 		sb.append("]");
@@ -289,6 +284,10 @@ public class DaemonLaunchParameters implements Externalizable, Cloneable {
 
 		public DaemonLaunchParameters build() {
 			DaemonLaunchParameters res = result;
+			if (res.port == null) {
+				//cannot act as a server, if no port is set, as the daemon is constrained to the JVM
+				res.actsAsServer = false;
+			}
 			this.result = null;
 			return res;
 		}
