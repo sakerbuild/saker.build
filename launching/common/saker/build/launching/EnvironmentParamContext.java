@@ -23,7 +23,8 @@ import sipka.cmdline.api.Parameter;
 import sipka.cmdline.runtime.ArgumentResolutionException;
 
 class EnvironmentParamContext {
-	private static final String PARAM_NAME_EU = "-EU";
+	public static final String PARAM_NAME_EU = "-EU";
+	public static final String PARAM_NAME_THREAD_FACTOR = "-thread-factor";
 
 	private Map<String, String> environmentUserParameters = new TreeMap<>();
 
@@ -60,7 +61,7 @@ class EnvironmentParamContext {
 	 * implementation dependent manner. (Usually based on the number of cores the CPU has.)
 	 * </pre>
 	 */
-	@Parameter("-thread-factor")
+	@Parameter(PARAM_NAME_THREAD_FACTOR)
 	public int threadFactor;
 
 	public Map<String, String> getEnvironmentUserParameters() {

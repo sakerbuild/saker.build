@@ -57,12 +57,17 @@ import sipka.cmdline.runtime.ParseUtil;
 @CommonConverter(type = SakerPath.class, converter = MainCommand.class, method = "toSakerPath")
 @CommonConverter(type = InetAddress.class, converter = MainCommand.class, method = "toInetAddress")
 @CommonConverter(type = Path.class, converter = MainCommand.class, method = "toLocalPath")
-@SubCommand(name = "build", type = BuildCommand.class, defaultCommand = true)
-@SubCommand(name = "daemon", type = DaemonCommand.class)
-@SubCommand(name = "action", type = RepositoryActionCommand.class)
-@SubCommand(name = "licenses", type = LicensesCommand.class)
+@SubCommand(name = MainCommand.COMMAND_BUILD, type = BuildCommand.class, defaultCommand = true)
+@SubCommand(name = MainCommand.COMMAND_DAEMON, type = DaemonCommand.class)
+@SubCommand(name = MainCommand.COMMAND_ACTION, type = RepositoryActionCommand.class)
+@SubCommand(name = MainCommand.COMMAND_LICENSES, type = LicensesCommand.class)
 @SubCommand(name = { "version", "-version", "--version" }, type = VersionCommand.class)
 public abstract class MainCommand {
+
+	public static final String COMMAND_LICENSES = "licenses";
+	public static final String COMMAND_ACTION = "action";
+	public static final String COMMAND_DAEMON = "daemon";
+	public static final String COMMAND_BUILD = "build";
 
 	protected boolean shouldSystemExit = false;
 

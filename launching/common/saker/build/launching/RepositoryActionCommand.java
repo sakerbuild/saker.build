@@ -67,7 +67,8 @@ public class RepositoryActionCommand {
 	 * build environment storage directory.
 	 * </pre>
 	 */
-	@Parameter({ "-storage-directory", "-storage-dir", "-sd" })
+	@Parameter({ StorageDirectoryParamContext.PARAM_NAME_STORAGE_DIRECTORY,
+			StorageDirectoryParamContext.PARAM_NAME_STORAGE_DIR, StorageDirectoryParamContext.PARAM_NAME_SD })
 	public SakerPath storageDirectory;
 
 	private ClassPathParam repositoryClassPath;

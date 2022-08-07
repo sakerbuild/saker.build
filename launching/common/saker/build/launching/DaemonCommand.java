@@ -22,10 +22,15 @@ import sipka.cmdline.api.SubCommand;
  * Base command for configuring and managing daemons.
  * </pre>
  */
-@SubCommand(name = "start", type = StartDaemonCommand.class)
-@SubCommand(name = "stop", type = StopDaemonCommand.class)
-@SubCommand(name = "run", type = RunDaemonCommand.class)
-@SubCommand(name = "io", type = IODaemonCommand.class)
-@SubCommand(name = "info", type = InfoDaemonCommand.class)
+@SubCommand(name = DaemonCommand.SUBCOMMAND_START, type = StartDaemonCommand.class)
+@SubCommand(name = DaemonCommand.SUBCOMMAND_STOP, type = StopDaemonCommand.class)
+@SubCommand(name = DaemonCommand.SUBCOMMAND_RUN, type = RunDaemonCommand.class)
+@SubCommand(name = DaemonCommand.SUBCOMMAND_IO, type = IODaemonCommand.class)
+@SubCommand(name = DaemonCommand.SUBCOMMAND_INFO, type = InfoDaemonCommand.class)
 public class DaemonCommand {
+	public static final String SUBCOMMAND_INFO = "info";
+	public static final String SUBCOMMAND_IO = "io";
+	public static final String SUBCOMMAND_STOP = "stop";
+	public static final String SUBCOMMAND_START = "start";
+	public static final String SUBCOMMAND_RUN = "run";
 }

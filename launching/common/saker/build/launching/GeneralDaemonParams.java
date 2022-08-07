@@ -28,7 +28,7 @@ class GeneralDaemonParams extends GeneralDaemonParamsBase {
 	 * If not specified, the default port of 3500 will be used.
 	 * </pre>
 	 */
-	@Parameter("-port")
+	@Parameter(RunGeneralDaemonParams.PARAM_NAME_PORT)
 	public PortParam port = PortParam.DEFAULT;
 
 	@Override

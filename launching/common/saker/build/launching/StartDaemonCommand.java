@@ -250,8 +250,8 @@ public class StartDaemonCommand {
 		commands.add("-cp");
 		commands.add(sakerjarpath.toString());
 		commands.add(saker.build.launching.Main.class.getName());
-		commands.add("daemon");
-		commands.add("run");
+		commands.add(MainCommand.COMMAND_DAEMON);
+		commands.add(DaemonCommand.SUBCOMMAND_RUN);
 
 		addDaemonLaunchParametersToCommandLine(commands, launchparams, startparams);
 
@@ -391,39 +391,40 @@ public class StartDaemonCommand {
 			DaemonLaunchParameters launchparams, StartDaemonParams startparams) {
 		SakerPath storagedir = launchparams.getStorageDirectory();
 		if (storagedir != null) {
-			commands.add("-storage-directory");
+			commands.add(StorageDirectoryParamContext.PARAM_NAME_STORAGE_DIRECTORY);
 			commands.add(storagedir.toString());
 		}
 		if (launchparams.isActsAsServer()) {
-			commands.add("-server");
+			commands.add(GeneralDaemonParamsBase.PARAM_NAME_SERVER);
 		}
 		Integer port = launchparams.getPort();
 		if (port != null) {
-			commands.add("-port");
+			commands.add(RunGeneralDaemonParams.PARAM_NAME_PORT);
 			commands.add(port.toString());
 		}
 		int threadfactor = launchparams.getThreadFactor();
 		if (threadfactor > 0) {
-			commands.add("-thread-factor");
+			commands.add(EnvironmentParamContext.PARAM_NAME_THREAD_FACTOR);
 			commands.add(Integer.toString(threadfactor));
 		}
 		if (launchparams.isActsAsCluster()) {
-			commands.add("-cluster-enable");
+			commands.add(GeneralDaemonParamsBase.PARAM_NAME_CLUSTER_ENABLE);
 		}
 		SakerPath clustermirrordir = launchparams.getClusterMirrorDirectory();
 		if (clustermirrordir != null) {
-			commands.add("-cluster-mirror-directory");
+			commands.add(GeneralDaemonParamsBase.PARAM_NAME_CLUSTER_MIRROR_DIRECTORY);
 			commands.add(clustermirrordir.toString());
 		}
 		Map<String, String> envuserparams = launchparams.getUserParameters();
 		if (!ObjectUtils.isNullOrEmpty(envuserparams)) {
 			for (Entry<String, String> entry : envuserparams.entrySet()) {
-				commands.add(ParseUtil.toKeyValueArgument("-EU", entry.getKey(), entry.getValue()));
+				commands.add(ParseUtil.toKeyValueArgument(EnvironmentParamContext.PARAM_NAME_EU, entry.getKey(),
+						entry.getValue()));
 			}
 		}
 		if (startparams != null) {
 			for (DaemonAddressParam addr : startparams.connectClientParam) {
-				commands.add("-connect-client");
+				commands.add(StartDaemonParams.PARAM_NAME_CONNECT_CLIENT);
 				commands.add(addr.getArgumentString());
 			}
 		}

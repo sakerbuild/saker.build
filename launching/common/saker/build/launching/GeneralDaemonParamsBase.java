@@ -25,6 +25,9 @@ import sipka.cmdline.api.ParameterContext;
 import sipka.cmdline.runtime.InvalidArgumentValueException;
 
 abstract class GeneralDaemonParamsBase {
+	public static final String PARAM_NAME_CLUSTER_MIRROR_DIRECTORY = "-cluster-mirror-directory";
+	public static final String PARAM_NAME_CLUSTER_MIRROR_DIR = "-cluster-mirror-dir";
+	public static final String PARAM_NAME_CMIRRORD = "-cmirrord";
 	public static final String PARAM_NAME_SERVER = "-server";
 	public static final String PARAM_NAME_CLUSTER_ENABLE = "-cluster-enable";
 
@@ -69,7 +72,7 @@ abstract class GeneralDaemonParamsBase {
 	 * daemon takes ownership of the contents in the directory, and may delete files in it.
 	 * </pre>
 	 */
-	@Parameter({ "-cluster-mirror-directory", "-cluster-mirror-dir", "-cmirrord" })
+	@Parameter({ PARAM_NAME_CLUSTER_MIRROR_DIRECTORY, PARAM_NAME_CLUSTER_MIRROR_DIR, PARAM_NAME_CMIRRORD })
 	public SakerPath clusterMirrorPath;
 
 	public boolean isEnableCluster() {
