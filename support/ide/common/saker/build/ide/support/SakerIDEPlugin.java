@@ -19,6 +19,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -214,7 +215,6 @@ public final class SakerIDEPlugin implements Closeable {
 	private void startImpl(DaemonLaunchParameters daemonparams, SakerPath keystorepath,
 			ThrowingFunction<? super SakerPath, ? extends SSLContext> sslcontextcreator)
 			throws IOException, IllegalStateException {
-		LocalDaemonEnvironment ndaemonenv = null;
 		configurationChangeWriteLock.lock();
 		Lock tounlock = configurationChangeWriteLock;
 		try {
@@ -230,24 +230,42 @@ public final class SakerIDEPlugin implements Closeable {
 						sslcontextcreator);
 			} catch (Exception e) {
 				displayException(SakerLog.SEVERITY_ERROR,
-						"Failed to intialize SSL for plugin daemon. Running in local mode.", e);
+						"Failed to intialize SSL for plugin daemon. Starting daemon in local mode.", e);
 				//will have no ssl, and we turn off all server config for the daemon
 				//not to allow unauthorized access
 				daemonparams = SakerIDESupportUtils.cleanParametersForFailedSSL(daemonparams);
 				npluginstate = new PluginEnvironmentState();
 			}
 
-			ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, daemonparams);
+			LocalDaemonEnvironment ndaemonenv = createLocalDaemonEnvironment(daemonparams, npluginstate);
 			LocalDaemonEnvironment localdaemonenvtoclose = ndaemonenv;
 
-			ndaemonenv.setServerSocketFactory(npluginstate.serverSocketFactory);
-			ndaemonenv.setConnectionSocketFactory(npluginstate.socketFactory);
-			ndaemonenv.setSslKeystorePath(npluginstate.getKeyStorePath());
-
 			try {
-				ndaemonenv.start();
+				try {
+					ndaemonenv.init();
+				} catch (BindException e) {
+					// if the daemon cannot be started on the given port, start it in non server mode
+					Integer port = daemonparams.getPort();
+					if (port == null) {
+						//some non port related bind exception
+						throw e;
+					}
+					// if the daemon cannot be started on the given port, start it in non server mode
+					displayException(SakerLog.SEVERITY_ERROR, "Failed to bind socket for plugin daemon (port " + port
+							+ "). Starting daemon in local mode.", e);
+					//remove the port from the daemon parameters, to not try and open one
+					daemonparams = DaemonLaunchParameters.builder(daemonparams).setPort(null).build();
+					//close the currently created daemon
+					IOUtils.close(localdaemonenvtoclose);
+					localdaemonenvtoclose = null;
+
+					//create a new daemon with the new parameters
+					ndaemonenv = createLocalDaemonEnvironment(daemonparams, npluginstate);
+					localdaemonenvtoclose = ndaemonenv;
+					ndaemonenv.init();
+				}
+				ndaemonenv.startAfterInitialization();
 				npluginstate.init(ndaemonenv);
-				npluginstate = new PluginEnvironmentState(ndaemonenv);
 				localdaemonenvtoclose = null;
 			} catch (Throwable e) {
 				try {
@@ -259,8 +277,8 @@ public final class SakerIDEPlugin implements Closeable {
 				//the exception is thrown, no need to call the display exception hooks here
 				throw e;
 			} finally {
-				IOUtils.close(localdaemonenvtoclose);
 				this.pluginDaemonEnvironment = npluginstate;
+				IOUtils.close(localdaemonenvtoclose);
 			}
 			if (ndaemonenv != null) {
 				//downgrade to read lock when calling listeners
@@ -275,6 +293,31 @@ public final class SakerIDEPlugin implements Closeable {
 		} finally {
 			tounlock.unlock();
 		}
+	}
+
+	/**
+	 * @param daemonparams
+	 *            The launch params.
+	 * @param npluginstate
+	 *            The new plugin state.
+	 * @return
+	 */
+	private LocalDaemonEnvironment createLocalDaemonEnvironment(DaemonLaunchParameters daemonparams,
+			PluginEnvironmentState npluginstate) {
+		LocalDaemonEnvironment ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, daemonparams);
+		try {
+			ndaemonenv.setServerSocketFactory(npluginstate.serverSocketFactory);
+			ndaemonenv.setConnectionSocketFactory(npluginstate.socketFactory);
+			ndaemonenv.setSslKeystorePath(npluginstate.getKeyStorePath());
+		} catch (Throwable e) {
+			try {
+				IOUtils.close(ndaemonenv);
+			} catch (Throwable e2) {
+				e.addSuppressed(e2);
+			}
+			throw e;
+		}
+		return ndaemonenv;
 	}
 
 	public Map<String, RemoteDaemonConnection> connectToDaemonsFromPluginEnvironment(
@@ -474,7 +517,8 @@ public final class SakerIDEPlugin implements Closeable {
 					SakerPath keystorepath = SakerPath.valueOf(keystorepathprop);
 					keystore = KeyStorePathHash.create(keystorepath);
 				} catch (Exception e) {
-					displayException(SakerLog.SEVERITY_ERROR, "Failed to open keystore: " + keystorepathprop, e);
+					displayException(SakerLog.SEVERITY_ERROR,
+							"Failed to open keystore, starting daemon in local mode: " + keystorepathprop, e);
 					keystore = KeyStorePathHash.EMPTY;
 					newlaunchparams = SakerIDESupportUtils.cleanParametersForFailedSSL(newlaunchparams);
 				}
@@ -504,7 +548,8 @@ public final class SakerIDEPlugin implements Closeable {
 		try {
 			keystore = KeyStorePathHash.create(keystorepath);
 		} catch (IOException e) {
-			displayException(SakerLog.SEVERITY_ERROR, "Failed to open keystore: " + keystorepath, e);
+			displayException(SakerLog.SEVERITY_ERROR,
+					"Failed to open keystore, starting daemon in local mode: " + keystorepath, e);
 			keystore = KeyStorePathHash.EMPTY;
 			newlaunchparams = SakerIDESupportUtils.cleanParametersForFailedSSL(newlaunchparams);
 		}
@@ -527,7 +572,7 @@ public final class SakerIDEPlugin implements Closeable {
 	}
 
 	//This method is responsible for unlocking the write lock
-	private void reloadPluginDaemonWriteLocked(DaemonLaunchParameters newlaunchparams, KeyStorePathHash keystore,
+	private void reloadPluginDaemonWriteLocked(DaemonLaunchParameters daemonparams, KeyStorePathHash keystore,
 			ThrowingFunction<? super SakerPath, ? extends SSLContext> sslcontextcreator) {
 		Lock tounlock = configurationChangeWriteLock;
 		try {
@@ -554,21 +599,41 @@ public final class SakerIDEPlugin implements Closeable {
 						sslcontextcreator);
 			} catch (Exception e) {
 				displayException(SakerLog.SEVERITY_ERROR,
-						"Failed to intialize SSL for plugin daemon. Running in local mode.", e);
+						"Failed to intialize SSL for plugin daemon. Starting daemon in local mode.", e);
 				//will have no ssl, and we turn off all server config for the daemon
 				//not to allow unauthorized access
-				newlaunchparams = SakerIDESupportUtils.cleanParametersForFailedSSL(newlaunchparams);
+				daemonparams = SakerIDESupportUtils.cleanParametersForFailedSSL(daemonparams);
 				npluginstate = new PluginEnvironmentState();
 			}
 
-			LocalDaemonEnvironment ndaemonenv = new LocalDaemonEnvironment(sakerJarPath, newlaunchparams);
-			ndaemonenv.setServerSocketFactory(npluginstate.serverSocketFactory);
-			ndaemonenv.setConnectionSocketFactory(npluginstate.socketFactory);
-			ndaemonenv.setSslKeystorePath(npluginstate.getKeyStorePath());
-
+			LocalDaemonEnvironment ndaemonenv = createLocalDaemonEnvironment(daemonparams, npluginstate);
 			LocalDaemonEnvironment localdaemonenvtoclose = ndaemonenv;
+
 			try {
-				ndaemonenv.start();
+				try {
+					ndaemonenv.init();
+				} catch (BindException e) {
+					// if the daemon cannot be started on the given port, start it in non server mode
+					Integer port = daemonparams.getPort();
+					if (port == null) {
+						//some non port related bind exception
+						throw e;
+					}
+					// if the daemon cannot be started on the given port, start it in non server mode
+					displayException(SakerLog.SEVERITY_ERROR, "Failed to bind socket for plugin daemon (port " + port
+							+ "). Starting daemon in local mode.", e);
+					//remove the port from the daemon parameters, to not try and open one
+					daemonparams = DaemonLaunchParameters.builder(daemonparams).setPort(null).build();
+					//close the currently created daemon
+					IOUtils.close(localdaemonenvtoclose);
+					localdaemonenvtoclose = null;
+
+					//create a new daemon with the new parameters
+					ndaemonenv = createLocalDaemonEnvironment(daemonparams, npluginstate);
+					localdaemonenvtoclose = ndaemonenv;
+					ndaemonenv.init();
+				}
+				ndaemonenv.startAfterInitialization();
 				npluginstate.init(ndaemonenv);
 				localdaemonenvtoclose = null;
 			} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError | AssertionError
@@ -578,14 +643,16 @@ public final class SakerIDEPlugin implements Closeable {
 				displayException(SakerLog.SEVERITY_ERROR, "Failed to start plugin daemon environment.", e);
 				return;
 			} catch (Throwable e) {
-				ndaemonenv = null;
-				npluginstate = new PluginEnvironmentState(e);
-				//no need to display the exception here, as the exception is thrown
+				try {
+					ndaemonenv = null;
+					npluginstate = new PluginEnvironmentState(e);
+				} catch (Throwable e2) {
+					e.addSuppressed(e2);
+				}
+				//the exception is thrown, no need to call the display exception hooks here
 				throw e;
 			} finally {
-				if (npluginstate != null) {
-					this.pluginDaemonEnvironment = npluginstate;
-				}
+				this.pluginDaemonEnvironment = npluginstate;
 
 				try {
 					IOUtils.close(localdaemonenvtoclose);
