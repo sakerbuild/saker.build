@@ -61,12 +61,21 @@ import saker.build.util.exc.ExceptionView;
 @ExcludeApi
 public class LaunchConfigUtils {
 
+	private static final Collection<String> COLLECTION_PKCS12 = Collections.singleton("PKCS12");
+	private static final Collection<String> COLLECTION_JKS = Collections.singleton("JKS");
+	private static final Collection<String> COLLECTION_PKCS12_JKS = ImmutableUtils.asUnmodifiableArrayList("PKCS12",
+			"JKS");
+
 	public static void printArgumentExceptionOmitTraceIfSo(Throwable e) {
 		if (Main.isArgumentException(e)) {
 			SakerLog.printFormatException(ExceptionView.create(e), CommonExceptionFormat.NO_TRACE);
 		} else {
 			e.printStackTrace();
 		}
+	}
+
+	public static KeyStore openKeystore(Path path, char[][] inoutkeystorepass) throws KeyStoreException {
+		return openKeystore(path.getFileName().toString(), path, inoutkeystorepass);
 	}
 
 	/**
@@ -78,13 +87,13 @@ public class LaunchConfigUtils {
 			throws KeyStoreException {
 		Collection<String> keystoretypes;
 		if (StringUtils.endsWithIgnoreCase(filename, ".jks")) {
-			keystoretypes = Collections.singleton("JKS");
+			keystoretypes = COLLECTION_JKS;
 		} else if (StringUtils.endsWithIgnoreCase(filename, ".pfx")
 				|| StringUtils.endsWithIgnoreCase(filename, ".p12")) {
-			keystoretypes = Collections.singleton("PKCS12");
+			keystoretypes = COLLECTION_PKCS12;
 		} else {
 			//try both of them
-			keystoretypes = ImmutableUtils.asUnmodifiableArrayList("PKCS12", "JKS");
+			keystoretypes = COLLECTION_PKCS12_JKS;
 		}
 		try (FileChannel fc = FileChannel.open(path)) {
 			//no closing, as that would close the channel too
@@ -120,8 +129,9 @@ public class LaunchConfigUtils {
 				if (performinfer) {
 					//attempt with passwords based on the file name
 					String fnwithoutext = FileUtils.removeExtension(filename);
-					int idx = 0;
-					while (idx < fnwithoutext.length()) {
+
+					int fnwithouttextlength = fnwithoutext.length();
+					for (int idx = 0; idx <= fnwithouttextlength;) {
 						String pass = fnwithoutext.substring(idx);
 						char[] passarray = pass.toCharArray();
 						try {
@@ -135,12 +145,18 @@ public class LaunchConfigUtils {
 							fails = ArrayUtils.appended(fails, new KeyStoreException(
 									"Failed to open " + kstype + " keystore: " + path + " with password: " + pass, e));
 						}
-						idx = fnwithoutext.indexOf('_', idx);
-						if (idx < 0) {
-							break;
+						int nextidx = fnwithoutext.indexOf('_', idx);
+						if (nextidx < 0) {
+							//no more '_' character in the remaining part of the file name, try the empty string as password
+							if (idx == fnwithouttextlength) {
+								//just tried the empty password, break out the loop
+								break;
+							}
+							idx = fnwithouttextlength;
+							continue;
 						}
 						//don't include the _ in the password substring
-						idx++;
+						idx = nextidx + 1;
 					}
 				}
 			}
