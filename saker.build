@@ -366,6 +366,14 @@ exportall(
 	$testexport = include(testexport)
 	$exportide = include(exportide)
 	$exportsources = include(exportsources, export: $export)
+	
+	foreach $path in $bundlepaths {
+		std.file.copy(
+			Source: $path
+			Target: std.file.place("release/{ $path[FileName] }")
+		)
+	}
+	
 }
 install() {
 	$exportall = include(exportall)
