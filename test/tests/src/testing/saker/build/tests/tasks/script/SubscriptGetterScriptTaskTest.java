@@ -44,6 +44,10 @@ public class SubscriptGetterScriptTaskTest extends VariablesMetricEnvironmentTes
 			return "PG";
 		}
 
+		public String directValue() {
+			return "DV";
+		}
+
 		@Override
 		public void writeExternal(ObjectOutput out) throws IOException {
 		}
@@ -67,6 +71,10 @@ public class SubscriptGetterScriptTaskTest extends VariablesMetricEnvironmentTes
 
 		public String getPresentGetter() {
 			return "PG";
+		}
+
+		public String directValue() {
+			return "DV";
 		}
 
 		@Override
@@ -96,12 +104,14 @@ public class SubscriptGetterScriptTaskTest extends VariablesMetricEnvironmentTes
 		assertEquals(res.getTargetTaskResult("subscript1"), "valval");
 		assertEquals(res.getTargetTaskResult("presentgetter"), "PG");
 		assertEquals(res.getTargetTaskResult("intsubscript"), 123 * 2);
+		assertEquals(res.getTargetTaskResult("directval"), "DV");
 
 		getterObject = new SwitchDynamicGetter();
 		res = runScriptTask("build");
 		assertEquals(res.getTargetTaskResult("subscript1"), "valval");
 		assertEquals(res.getTargetTaskResult("presentgetter"), "PG");
 		assertEquals(res.getTargetTaskResult("intsubscript"), 123 * 2);
+		assertEquals(res.getTargetTaskResult("directval"), "DV");
 	}
 
 }

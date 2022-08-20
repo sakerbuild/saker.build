@@ -422,6 +422,7 @@ public class SubscriptSakerTaskResult implements SakerTaskResult, ComposedStruct
 		}
 		//XXX cache
 		try {
+			//getSomeField()
 			Method result = clazz.getMethod("get" + name);
 			if (!Modifier.isStatic(result.getModifiers())) {
 				return result;
@@ -429,7 +430,16 @@ public class SubscriptSakerTaskResult implements SakerTaskResult, ComposedStruct
 		} catch (NoSuchMethodException | SecurityException e) {
 		}
 		try {
+			//get_SomeField()
 			Method result = clazz.getMethod("get_" + name);
+			if (!Modifier.isStatic(result.getModifiers())) {
+				return result;
+			}
+		} catch (NoSuchMethodException | SecurityException e) {
+		}
+		try {
+			//SomeField()
+			Method result = clazz.getMethod(name);
 			if (!Modifier.isStatic(result.getModifiers())) {
 				return result;
 			}

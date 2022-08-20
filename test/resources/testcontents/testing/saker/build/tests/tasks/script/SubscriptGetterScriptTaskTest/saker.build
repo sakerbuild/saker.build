@@ -2,6 +2,7 @@ build(
 	out subscript1 = test.subscript1()[val],
 	out presentgetter = test.subscript1()[PresentGetter],
 	out intsubscript = test.subscript1()[123],
+	out directval = test.subscript1()[directValue],
 ) {
 
 }
