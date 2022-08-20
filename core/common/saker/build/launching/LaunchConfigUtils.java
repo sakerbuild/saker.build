@@ -205,7 +205,12 @@ public class LaunchConfigUtils {
 				causeexc = ArrayUtils.appended(causeexc, e);
 			}
 		}
-		String msg = "Failed to create keystore key manager for: " + realpath;
+		String msg;
+		if (realpath != null) {
+			msg = "Failed to create keystore key manager for: " + realpath;
+		} else {
+			msg = "Failed to create keystore key manager.";
+		}
 		E throwexc = exceptionfactory.apply(msg);
 		for (Throwable e : causeexc) {
 			throwexc.addSuppressed(e);
@@ -213,7 +218,14 @@ public class LaunchConfigUtils {
 		throw throwexc;
 	}
 
-	public static <E extends Throwable> SSLContext createSSLContext(String fn, Path realpath,
+	public static <E extends Throwable> SSLContext createSSLContext(Path realpath, Collection<String> storepasswords,
+			Collection<String> keypasswords,
+			BiFunction<? super String, ? super Throwable, ? extends E> exceptionfactory) throws E {
+		return createSSLContext(realpath.getFileName().toString(), realpath, storepasswords, keypasswords,
+				exceptionfactory);
+	}
+
+	public static <E extends Throwable> SSLContext createSSLContext(String filename, Path realpath,
 			Collection<String> storepasswords, Collection<String> keypasswords,
 			BiFunction<? super String, ? super Throwable, ? extends E> exceptionfactory) throws E {
 		char[][] inoutkspass;
@@ -232,7 +244,7 @@ public class LaunchConfigUtils {
 		}
 		KeyStore ks;
 		try {
-			ks = LaunchConfigUtils.openKeystore(fn, realpath, inoutkspass);
+			ks = LaunchConfigUtils.openKeystore(filename, realpath, inoutkspass);
 		} catch (KeyStoreException e) {
 			String msg = "Failed to open keystore.";
 			throw exceptionfactory.apply(msg, e);
