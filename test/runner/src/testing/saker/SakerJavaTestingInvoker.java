@@ -21,6 +21,8 @@ import java.util.Collections;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.TreeMap;
 
 import saker.java.testing.api.test.exc.JavaTestRunnerFailureException;
@@ -90,6 +92,7 @@ public class SakerJavaTestingInvoker extends BasicInstrumentationJavaTestInvoker
 			//dont care
 			return;
 		}
+		Lock finishedlock = new ReentrantLock();
 		boolean[] finished = { false };
 		Object instance;
 		try {
@@ -113,7 +116,7 @@ public class SakerJavaTestingInvoker extends BasicInstrumentationJavaTestInvoker
 				}
 			}
 		};
-		Thread timeout = startTimoutThread(testclassname, finished, testingthread);
+		Thread timeout = startTimoutThread(testclassname, testingthread, finished, finishedlock);
 		try {
 			testingthread.start();
 			while (true) {
@@ -135,12 +138,15 @@ public class SakerJavaTestingInvoker extends BasicInstrumentationJavaTestInvoker
 				throw e;
 			}
 		} finally {
-			synchronized (finished) {
+			finishedlock.lock();
+			try {
 				finished[0] = true;
 				Thread.interrupted();
 				if (timeout != null) {
 					timeout.interrupt();
 				}
+			} finally {
+				finishedlock.unlock();
 			}
 			if (timeout != null) {
 				timeout.join();
@@ -148,41 +154,56 @@ public class SakerJavaTestingInvoker extends BasicInstrumentationJavaTestInvoker
 		}
 	}
 
-	private static Thread startTimoutThread(String tcname, boolean[] finished, Thread tointerrupt) {
-		if (TEST_INTERRUPT_DELAY_MILLIS <= 0) {
+	private static Thread startTimoutThread(String testclassname, Thread tointerrupt, boolean[] finished,
+			Lock finishedlock) {
+		final int interruptdelay = TEST_INTERRUPT_DELAY_MILLIS;
+		if (interruptdelay <= 0) {
 			return null;
 		}
-		Thread t = new Thread() {
+		Thread t = new Thread("Test: " + testclassname + " timeout") {
 			@Override
 			public void run() {
 				String cause;
 				try {
-					Thread.sleep(TEST_INTERRUPT_DELAY_MILLIS);
+					Thread.sleep(interruptdelay);
 					cause = "timeout";
 				} catch (InterruptedException e) {
 					cause = "interrupted";
 				}
-				synchronized (finished) {
+				finishedlock.lock();
+				try {
 					if (!finished[0]) {
 						Map<Thread, StackTraceElement[]> traces = Thread.getAllStackTraces();
 						//synchronize so we print the trace in a block
-						synchronized (System.err) {
-							System.err.println("Info: " + cause + " on " + tcname);
-							for (Entry<Thread, StackTraceElement[]> entry : traces.entrySet()) {
-								if (entry.getKey() == this) {
-									continue;
-								}
-								System.err.println("Thread: " + entry.getKey());
-								for (StackTraceElement ste : entry.getValue()) {
-									System.err.println("    " + ste);
-								}
+						String ls = System.lineSeparator();
+						StringBuilder sb = new StringBuilder();
+						sb.append("Info: ");
+						sb.append(cause);
+						sb.append(" on ");
+						sb.append(testclassname);
+						sb.append(ls);
+						for (Entry<Thread, StackTraceElement[]> entry : traces.entrySet()) {
+							Thread stackthread = entry.getKey();
+							if (stackthread == this) {
+								continue;
+							}
+							sb.append("Thread: ");
+							sb.append(stackthread);
+							sb.append(ls);
+							for (StackTraceElement ste : entry.getValue()) {
+								sb.append("    ");
+								sb.append(ste);
+								sb.append(ls);
 							}
 						}
+						System.err.print(sb.toString());
 						ThreadGroup tg = tointerrupt.getThreadGroup();
 						if (tg != null) {
 							tg.interrupt();
 						}
 					}
+				} finally {
+					finishedlock.unlock();
 				}
 			}
 		};
