@@ -62,6 +62,7 @@ import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.FileMirrorHandler;
 import saker.build.runtime.execution.InternalExecutionContext;
 import saker.build.runtime.execution.SakerLog;
+import saker.build.runtime.execution.SakerLog.CommonExceptionFormat;
 import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.runtime.params.InvalidBuildConfigurationException;
 import saker.build.runtime.project.ProjectCacheHandle;
@@ -780,29 +781,45 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		protected void validateSocket(Socket accepted) throws IOException, RuntimeException {
 			if (accepted instanceof SSLSocket) {
 				SSLSocket ssls = (SSLSocket) accepted;
-				PrintStream ps = System.out;
 				SSLSession session = ssls.getSession();
 				try {
 					Principal localprincipal = session.getLocalPrincipal();
 					Principal peerprincipal = session.getPeerPrincipal();
-					synchronized (ps) {
-						ps.println("Connection accepted from: " + accepted.getRemoteSocketAddress());
-						ps.println("Local principal: " + localprincipal);
-						ps.println("Peer principal: " + peerprincipal);
-					}
+					String ls = System.lineSeparator();
+
+					StringBuilder sb = new StringBuilder();
+					sb.append("Connection accepted from: ");
+					sb.append(accepted.getRemoteSocketAddress());
+					sb.append(ls);
+					sb.append("Local principal: ");
+					sb.append(localprincipal);
+					sb.append(ls);
+					sb.append("Peer principal: ");
+					sb.append(peerprincipal);
+					sb.append(ls);
+					System.out.print(sb.toString());
 				} catch (SSLPeerUnverifiedException e) {
-					synchronized (ps) {
-						ps.println("Connection accepted from: " + accepted.getRemoteSocketAddress());
-						ps.println("Failed to verify peer identity.");
-					}
+					String ls = System.lineSeparator();
+					StringBuilder sb = new StringBuilder();
+					sb.append("Connection accepted from: ");
+					sb.append(accepted.getRemoteSocketAddress());
+					sb.append(ls);
+					sb.append("Failed to verify peer identity.");
+					sb.append(ls);
+
+					System.out.print(sb.toString());
 					throw e;
 				} catch (Exception e) {
-					synchronized (ps) {
-						ps.println("Connection accepted from: " + accepted.getRemoteSocketAddress());
-						ps.println("Connection error.");
-						SakerLog.printFormatException(ExceptionView.create(e), ps,
-								SakerLog.CommonExceptionFormat.NO_TRACE);
-					}
+					String ls = System.lineSeparator();
+					StringBuilder sb = new StringBuilder();
+					sb.append("Connection accepted from: ");
+					sb.append(accepted.getRemoteSocketAddress());
+					sb.append(ls);
+					sb.append("Connection error.");
+					sb.append(ls);
+					SakerLog.printFormatException(ExceptionView.create(e), sb, CommonExceptionFormat.NO_TRACE);
+
+					System.out.print(sb.toString());
 					throw e;
 				}
 
@@ -900,12 +917,17 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 								try {
 									clientserver.addClientClusterTaskInvokerFactory(clusterinvokerfactory);
 								} catch (InvalidBuildConfigurationException e) {
-									synchronized (System.err) {
-										System.err.println(
-												"Invalid cluster configuration error detected while connecting to daemon:");
-										System.err.println(e);
-										System.err.println("Dropping client connection attempts for: " + addr);
-									}
+									String ls = System.lineSeparator();
+									StringBuilder sb = new StringBuilder();
+									sb.append(
+											"Invalid cluster configuration error detected while connecting to daemon:");
+									sb.append(ls);
+									sb.append(e);
+									sb.append(ls);
+									sb.append("Dropping client connection attempts for: ");
+									sb.append(addr);
+									sb.append(ls);
+									System.err.print(sb.toString());
 									selfconnection = true;
 								}
 								if (!selfconnection) {
