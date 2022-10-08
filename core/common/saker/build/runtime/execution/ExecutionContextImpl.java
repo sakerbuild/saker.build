@@ -151,7 +151,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 	private BuildTaskResultDatabase results;
 	private TaskResultCollectionImpl resultCollection;
-	private final Object executionLock = new Object();
+	private final Lock executionLock = new ReentrantLock();
 
 	private ConcurrentMap<SakerPath, TargetConfigurationReadingResult> scriptCache = new ConcurrentSkipListMap<>();
 	private ConcurrentMap<SakerPath, Lock> scriptLoadLock = new ConcurrentSkipListMap<>();
@@ -204,9 +204,9 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		ByteSink pstdout = parameters.getStandardOutput();
 		ByteSink pstderr = parameters.getErrorOutput();
 		ByteSource pstdin = parameters.getStandardInput();
-		stdOutSink = pstdout == null ? StreamUtils.nullByteSink() : StreamUtils.synchronizedByteSink(pstdout);
-		stdErrSink = pstderr == null ? StreamUtils.nullByteSink() : StreamUtils.synchronizedByteSink(pstderr);
-		stdInSource = pstdin == null ? StreamUtils.nullByteSource() : StreamUtils.synchronizedByteSource(pstdin);
+		stdOutSink = pstdout == null ? StreamUtils.nullByteSink() : StreamUtils.lockedByteSink(pstdout);
+		stdErrSink = pstderr == null ? StreamUtils.nullByteSink() : StreamUtils.lockedByteSink(pstderr);
+		stdInSource = pstdin == null ? StreamUtils.nullByteSource() : StreamUtils.lockedByteSource(pstdin);
 		secretInputReader = parameters.getSecretInputReader();
 
 		this.progressMonitor = parameters.getProgressMonitor();
@@ -469,7 +469,8 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	}
 
 	public void executeTask(TaskIdentifier taskid, TaskFactory<?> taskfactory) {
-		synchronized (executionLock) {
+		executionLock.lock();
+		try {
 			if (results != null) {
 				throw new IllegalStateException("Execution context was already used to execute a task.");
 			}
@@ -520,6 +521,8 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 				results.setScriptInformationProviders(scriptinfoproviders);
 				contentDatabase.setTaskResults(results);
 			}
+		} finally {
+			executionLock.unlock();
 		}
 	}
 
@@ -676,7 +679,8 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 	@Override
 	public void close() throws IOException, RepositoryOperationException {
-		synchronized (executionLock) {
+		executionLock.lock();
+		try {
 			//XXX might paralellize this
 			IOException ioexc = null;
 			ContentDatabaseImpl contentdb = contentDatabase;
@@ -715,6 +719,8 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 				}
 			}
 			IOUtils.throwExc(ioexc);
+		} finally {
+			executionLock.unlock();
 		}
 	}
 
