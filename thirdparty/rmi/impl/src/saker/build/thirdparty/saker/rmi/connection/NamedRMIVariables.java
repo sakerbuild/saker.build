@@ -26,8 +26,9 @@ class NamedRMIVariables extends RMIVariables {
 	@SuppressWarnings("unused")
 	private volatile int referenceCount = 1;
 
-	NamedRMIVariables(String name, int localIdentifier, int remoteIdentifier, RMIConnection connection) {
-		super(localIdentifier, remoteIdentifier, connection);
+	NamedRMIVariables(String name, int localIdentifier, int remoteIdentifier, RMIConnection connection,
+			RMIStream stream) {
+		super(localIdentifier, remoteIdentifier, connection, stream);
 		this.name = name;
 	}
 

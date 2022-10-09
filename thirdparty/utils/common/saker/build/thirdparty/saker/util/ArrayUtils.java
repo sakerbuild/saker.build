@@ -22,8 +22,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-import saker.build.thirdparty.saker.util.ArrayAccessor;
-
 /**
  * Utility class containg functions related to arrays.
  */

@@ -37,7 +37,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 
-import saker.build.thirdparty.saker.util.Reflector;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
 

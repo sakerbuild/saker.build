@@ -144,7 +144,11 @@ public class AsyncOutputStream extends OutputStream implements ByteSink {
 				throw new NullPointerException("ThreadFactory returned null thread.");
 			}
 		}
-		thread.setContextClassLoader(null);
+		try {
+			thread.setContextClassLoader(null);
+		} catch (UnsupportedOperationException e) {
+			//might be unsupported with virtual threads
+		}
 		thread.start();
 
 		flushingThread = thread;

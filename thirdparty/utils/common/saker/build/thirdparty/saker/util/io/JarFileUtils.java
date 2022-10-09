@@ -22,8 +22,6 @@ import java.util.Objects;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 
-import saker.build.thirdparty.saker.util.io.JarFileUtilAccessor;
-
 /**
  * Utility class containing functions dealing with JAR files.
  * 

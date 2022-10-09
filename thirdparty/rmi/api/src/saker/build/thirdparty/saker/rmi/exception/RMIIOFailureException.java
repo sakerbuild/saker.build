@@ -47,8 +47,20 @@ public class RMIIOFailureException extends RMIRuntimeException {
 		super(message, cause);
 	}
 
-	@Override
-	public IOException getCause() {
-		return (IOException) super.getCause();
+	/**
+	 * @see RMIRuntimeException#RMIRuntimeException(String, Throwable)
+	 * @since saker.rmi 0.8.3
+	 */
+	public RMIIOFailureException(String message, Throwable cause) {
+		super(message, cause);
 	}
+
+	/**
+	 * @see RMIRuntimeException#RMIRuntimeException(Throwable)
+	 * @since saker.rmi 0.8.3
+	 */
+	public RMIIOFailureException(Throwable cause) {
+		super(cause);
+	}
+
 }

@@ -15,20 +15,24 @@
  */
 package saker.build.thirdparty.saker.util.thread;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.PrintStream;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
-import java.security.AccessController;
-import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.ServiceConfigurationError;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.AbstractQueuedSynchronizer;
 import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
@@ -779,6 +783,30 @@ public class ThreadUtils {
 	}
 
 	/**
+	 * Joins the argument thread.
+	 * <p>
+	 * This is a single {@link Thread} parameter overload of {@link #joinThreads(Thread...)}.
+	 * 
+	 * @param thread
+	 *            The thread to join. May be <code>null</code>, in which case this function call is a no-op.
+	 * @throws InterruptedException
+	 *             If the current thread was interrupted while joining.
+	 * @throws IllegalThreadStateException
+	 *             If the argument is the current thread. (I.e. the thread tries to join itself)
+	 * @since saker.util 0.8.4
+	 */
+	public static void joinThreads(Thread thread) throws InterruptedException, IllegalThreadStateException {
+		if (thread == null) {
+			return;
+		}
+		final Thread ct = Thread.currentThread();
+		if (thread == ct) {
+			throw new IllegalThreadStateException("Trying to join current thread.");
+		}
+		thread.join();
+	}
+
+	/**
 	 * Joins the argument threads.
 	 * <p>
 	 * If this method finishes successfully, all the arguments thread will be in a finished state.
@@ -816,6 +844,44 @@ public class ThreadUtils {
 		}
 		Objects.requireNonNull(threads, "threads");
 		joinThreadsImpl(threads.iterator());
+	}
+
+	/**
+	 * Joins the argument thread non-interruptibly.
+	 * <p>
+	 * If the current thread is interrupted while joining, the interrupt flag is stored, and the joining will continue.
+	 * If the thread was interrupted, it will be reinterrupted at the end of the method.
+	 * <p>
+	 * This is a single {@link Thread} parameter overload of {@link #joinThreadsNonInterruptible(Thread...)}.
+	 * 
+	 * @param thread
+	 *            The thread to join. May be <code>null</code>, in which case this function call is a no-op.
+	 * @throws IllegalThreadStateException
+	 *             If the argument is the current thread. (I.e. the thread tries to join itself)
+	 * @since saker.util 0.8.4
+	 */
+	public static void joinThreadsNonInterruptible(Thread thread) throws IllegalThreadStateException {
+		if (thread == null) {
+			return;
+		}
+
+		final Thread ct = Thread.currentThread();
+		if (thread == ct) {
+			throw new IllegalThreadStateException("Trying to join current thread.");
+		}
+		boolean interrupted = false;
+		while (true) {
+			try {
+				thread.join();
+				break;
+			} catch (InterruptedException e) {
+				interrupted = true;
+			}
+		}
+		if (interrupted) {
+			//if we were interrupted, set the flag again
+			ct.interrupt();
+		}
 	}
 
 	/**
@@ -911,21 +977,19 @@ public class ThreadUtils {
 	/**
 	 * Sets the default thread factor that newly created concurrent runners should use.
 	 * <p>
-	 * The default thread factor is set to an {@linkplain InheritableThreadLocal inheritable thread local} variable,
-	 * therefore any value set here will be propagated to all started threads.
-	 * <p>
-	 * It is recommended that the thread factor is at least 2.
+	 * This method used to set an {@linkplain InheritableThreadLocal inheritable thread local} variable, whose value
+	 * would be returned by {@link #getDefaultThreadFactor()}. This feature is deprecated and that method returns a
+	 * fixed value based on the available processor count.
 	 * 
+	 * @deprecated This method doesn't do anything anymore. Not recommended to use, keep track of your desired thread
+	 *                 factor, and pass it to the appropriate configuration parameters instead of using an inheritable
+	 *                 thread local configuration.
 	 * @param threadfactor
 	 *            The thread factor to use.
-	 * @throws IllegalArgumentException
-	 *             If the argument is 0 or negative.
 	 */
-	public static void setInheritableDefaultThreadFactor(int threadfactor) throws IllegalArgumentException {
-		if (threadfactor <= 0) {
-			throw new IllegalArgumentException("Invalid thread factor: " + threadfactor);
-		}
-		DEFAULT_THREAD_FACTOR.set(threadfactor);
+	@Deprecated
+	public static void setInheritableDefaultThreadFactor(int threadfactor) {
+		//no-op
 	}
 
 	/**
@@ -1000,7 +1064,7 @@ public class ThreadUtils {
 	 */
 	public static <T, C> void runParallelContextItems(Iterable<? extends T> items,
 			Supplier<? extends C> contextsupplier, ThrowingContextConsumer<? super T, ? super C> worker) {
-		runParallel(null, toSupplier(items), contextsupplier, -1, worker, null, null);
+		runParallel(DefaultNamePrefixThreadFactory.INSTANCE, toSupplier(items), contextsupplier, -1, worker, null);
 	}
 
 	/**
@@ -1151,7 +1215,7 @@ public class ThreadUtils {
 	 * @return The work pool.
 	 */
 	public static ThreadWorkPool newFixedWorkPool(int threadCount, OperationCancelMonitor monitor) {
-		return newFixedWorkPool(null, threadCount, monitor);
+		return newFixedWorkPool((ThreadFactory) null, threadCount, monitor);
 	}
 
 	/**
@@ -1212,7 +1276,12 @@ public class ThreadUtils {
 	 */
 	public static ThreadWorkPool newFixedWorkPool(ThreadGroup group, int threadCount, OperationCancelMonitor monitor,
 			String nameprefix) {
-		return newFixedWorkPool(group, threadCount, monitor, nameprefix, Thread.currentThread().isDaemon());
+		Thread currentthread = Thread.currentThread();
+		if (group == null) {
+			//set the thread group to the current, so offered tasks doesn't get started on the offering thread groups, but on this one
+			group = currentthread.getThreadGroup();
+		}
+		return newFixedWorkPool(group, threadCount, monitor, nameprefix, currentthread.isDaemon());
 	}
 
 	/**
@@ -1276,6 +1345,37 @@ public class ThreadUtils {
 			group = Thread.currentThread().getThreadGroup();
 		}
 		return new FixedWorkPool(group, threadCount, monitor, nameprefix, daemon);
+	}
+
+	/**
+	 * Creates a new work pool that uses a fixed number of threads for task execution.
+	 * <p>
+	 * The threads are lazily started when new tasks are offered to the thread pool.
+	 * 
+	 * @param threadfactory
+	 *            The thread factory to use for creating new threads. May be <code>null</code> in which case the new
+	 *            threads are created and their {@linkplain Thread#setDaemon(boolean) daemon flag} and
+	 *            {@linkplain Thread#getThreadGroup() thread group} is set based on the thread that creates the pool.
+	 * @param threadCount
+	 *            The maximum number of threads that the thread pool spawns. Negative or 0 means the
+	 *            {@linkplain #setInheritableDefaultThreadFactor(int) default value}.
+	 * @param monitor
+	 *            Cancellation monitor for the tasks. May be <code>null</code>.
+	 * @return The work pool.
+	 * @since saker.util 0.8.4
+	 */
+	public static ThreadWorkPool newFixedWorkPool(ThreadFactory threadfactory, int threadCount,
+			OperationCancelMonitor monitor) {
+		if (threadCount < 0) {
+			threadCount = getDefaultThreadFactor();
+		}
+		if (monitor == null) {
+			monitor = getDefaultMonitor();
+		}
+		if (threadfactory == null) {
+			threadfactory = createDefaultThreadFactoryForkWorkPools();
+		}
+		return new FixedWorkPool(threadfactory, threadCount, monitor);
 	}
 
 	/**
@@ -1356,7 +1456,12 @@ public class ThreadUtils {
 	 */
 	public static ThreadWorkPool newDynamicWorkPool(ThreadGroup group, String nameprefix,
 			OperationCancelMonitor monitor) {
-		return newDynamicWorkPool(group, nameprefix, monitor, Thread.currentThread().isDaemon());
+		Thread currentthread = Thread.currentThread();
+		if (group == null) {
+			//set the thread group to the current, so offered tasks doesn't get started on the offering thread groups, but on this one
+			group = currentthread.getThreadGroup();
+		}
+		return newDynamicWorkPool(group, nameprefix, monitor, currentthread.isDaemon());
 	}
 
 	/**
@@ -1390,7 +1495,32 @@ public class ThreadUtils {
 			//set the thread group to the current, so offered tasks doesn't get started on the offering thread groups, but on this one
 			group = Thread.currentThread().getThreadGroup();
 		}
-		return new DynamicWorkPool(group, monitor, nameprefix, daemon);
+		return new DynamicWorkPool(group, nameprefix, daemon, monitor);
+	}
+
+	/**
+	 * Creates a new work pool that dynamically creates new threads when new tasks are posted.
+	 * <p>
+	 * The returned work pool will cache threads for some time, and dynamically allocate new ones if necessary. It will
+	 * also exit threads if they've not been used for some time.
+	 * 
+	 * @param threadfactory
+	 *            The thread factory to use for creating new threads. May be <code>null</code> in which case the new
+	 *            threads are created and their {@linkplain Thread#setDaemon(boolean) daemon flag} and
+	 *            {@linkplain Thread#getThreadGroup() thread group} is set based on the thread that creates the pool.
+	 * @param monitor
+	 *            Cancellation monitor for the tasks. May be <code>null</code>.
+	 * @return The created work pool.
+	 * @since saker.util 0.8.4
+	 */
+	public static ThreadWorkPool newDynamicWorkPool(ThreadFactory threadfactory, OperationCancelMonitor monitor) {
+		if (monitor == null) {
+			monitor = getDefaultMonitor();
+		}
+		if (threadfactory == null) {
+			threadfactory = createDefaultThreadFactoryForkWorkPools();
+		}
+		return new DynamicWorkPool(threadfactory, monitor);
 	}
 
 	/**
@@ -1460,29 +1590,44 @@ public class ThreadUtils {
 		return dumpAllThreadStackTraces(ps, t -> hasParentThreadGroup(t, threadgroup));
 	}
 
-	private static final OperationCancelMonitor MONITOR_INSTANCE_NEVER_CANCELLED = () -> false;
+	/**
+	 * Creates a new non-reentrant {@link Lock} that can only be exclusively held by a single thread.
+	 * <p>
+	 * The lock will throw an {@link IllegalThreadStateException} in case reentrant locking is attempted.
+	 * 
+	 * @return The new exclusive lock.
+	 * @since saker.util 0.8.4
+	 */
+	public static Lock newExclusiveLock() {
+		return new ExclusiveLock();
+	}
 
-	private static final ThreadLocal<Integer> DEFAULT_THREAD_FACTOR = new InheritableThreadLocal<Integer>() {
-		@Override
-		protected Integer initialValue() {
-			//set the min value to 2, so there is at least some concurrency
-			return Math.max(Runtime.getRuntime().availableProcessors() * 3 / 2, 2);
-		}
-	};
+	private static final OperationCancelMonitor MONITOR_INSTANCE_NEVER_CANCELLED = () -> false;
 
 	private static OperationCancelMonitor getDefaultMonitor() {
 		return MONITOR_INSTANCE_NEVER_CANCELLED;
 	}
 
+	//set the min value to 2, so there is at least some concurrency
+	private static final int DEFAULT_THREAD_FACTOR_INITIAL_VALUE = Math
+			.max(Runtime.getRuntime().availableProcessors() * 3 / 2, 2);
+
 	/**
 	 * Gets the default thread concurrency factor.
+	 * <p>
+	 * This method used to return the value of an {@linkplain InheritableThreadLocal inheritable thread local}, with an
+	 * initial value of <code>Math.max(Runtime.getRuntime().availableProcessors() * 3 / 2, 2)</code>. Now it returns
+	 * this fixed initial value.
 	 * 
+	 * @deprecated Not recommended to use, keep track of your desired thread factor, and pass it to the appropriate
+	 *                 configuration parameters instead of using an inheritable thread local configuration.
 	 * @return The thread factor.
 	 * @see #setInheritableDefaultThreadFactor(int)
 	 * @since saker.util 0.8.2
 	 */
+	@Deprecated
 	public static int getDefaultThreadFactor() {
-		return DEFAULT_THREAD_FACTOR.get();
+		return DEFAULT_THREAD_FACTOR_INITIAL_VALUE;
 	}
 
 	private static <T> Supplier<T> toSupplier(T[] items) {
@@ -1540,6 +1685,18 @@ public class ThreadUtils {
 	private static <C, T> void runParallel(ThreadGroup group, Supplier<? extends T> it,
 			Supplier<? extends C> contextsupplier, int threadcount,
 			ThrowingContextConsumer<? super T, ? super C> worker, String nameprefix, OperationCancelMonitor monitor) {
+		ThreadFactory threadfactory;
+		if (nameprefix == null) {
+			threadfactory = new GroupDefaultNamePrefixThreadFactory(group);
+		} else {
+			threadfactory = new GroupNamePrefixThreadFactory(group, nameprefix);
+		}
+		runParallel(threadfactory, it, contextsupplier, threadcount, worker, monitor);
+	}
+
+	private static <C, T> void runParallel(ThreadFactory threadfactory, Supplier<? extends T> it,
+			Supplier<? extends C> contextsupplier, int threadcount,
+			ThrowingContextConsumer<? super T, ? super C> worker, OperationCancelMonitor monitor) {
 		if (it == null) {
 			return;
 		}
@@ -1582,19 +1739,15 @@ public class ThreadUtils {
 		}
 		//more than one item, and more than 1 thread requested
 
-		List<WorkerThread<T, C>> threads = new ArrayList<>(threadcount);
-
-		if (nameprefix == null) {
-			nameprefix = DEFAULT_NAME_PREFIX;
-		}
+		List<Thread> threads = new ArrayList<>(threadcount);
 
 		//unroll two loops
-		WorkerThread<T, C> t1 = new WorkerThread<>(group, nameprefix + 1, ehit, workobj, worker, contextsupplier,
-				monitor);
+		Thread t1 = threadfactory
+				.newThread(new WorkerThreadRunnable<>(ehit, workobj, worker, contextsupplier, monitor));
 		threads.add(t1);
 		t1.start();
-		WorkerThread<T, C> t2 = new WorkerThread<>(group, nameprefix + 2, ehit, secondworkobj, worker, contextsupplier,
-				monitor);
+		Thread t2 = threadfactory
+				.newThread(new WorkerThreadRunnable<>(ehit, secondworkobj, worker, contextsupplier, monitor));
 		threads.add(t2);
 		t2.start();
 		for (int i = 2; i < threadcount; i++) {
@@ -1602,8 +1755,8 @@ public class ThreadUtils {
 			if (nextobj == null || ehit.isAborted()) {
 				break;
 			}
-			WorkerThread<T, C> thread = new WorkerThread<>(group, nameprefix + (i + 1), ehit, nextobj, worker,
-					contextsupplier, monitor);
+			Thread thread = threadfactory
+					.newThread(new WorkerThreadRunnable<>(ehit, nextobj, worker, contextsupplier, monitor));
 			threads.add(thread);
 			thread.start();
 		}
@@ -1612,13 +1765,13 @@ public class ThreadUtils {
 		throwOnException(ehit);
 	}
 
-	private static <T, C> void joinParallelThreads(List<WorkerThread<T, C>> threads, ExceptionHoldingSupplier<T> ehit) {
+	private static void joinParallelThreads(List<? extends Thread> threads, ExceptionHoldingSupplier<?> ehit) {
 		joinParallelThreads(threads::get, threads.size(), ehit);
 	}
 
 	private static <R extends Reference<? extends Thread>> void joinClearParallelThreadsNonInterruptibleRef(
 			ConcurrentPrependAccumulator<R> threads) {
-		Thread ct = Thread.currentThread();
+		final Thread ct = Thread.currentThread();
 		boolean interrupted = false;
 		for (R tref; (tref = threads.take()) != null;) {
 			Thread t = tref.get();
@@ -1639,13 +1792,13 @@ public class ThreadUtils {
 		}
 		if (interrupted) {
 			//if we were interrupted, set the flag again
-			Thread.currentThread().interrupt();
+			ct.interrupt();
 		}
 	}
 
 	private static <R extends Reference<? extends Thread>> void joinClearParallelThreadsRefInterruptible(
 			ConcurrentPrependAccumulator<R> threads) throws InterruptedException {
-		Thread ct = Thread.currentThread();
+		final Thread ct = Thread.currentThread();
 		for (R tref; (tref = threads.take()) != null;) {
 			Thread t = tref.get();
 			if (t == null) {
@@ -1668,7 +1821,7 @@ public class ThreadUtils {
 
 	private static <T, R extends Reference<? extends Thread>> void joinClearParallelThreadsRef(
 			ConcurrentPrependAccumulator<R> threads, ExceptionHoldingSupplier<T> ehit) {
-		Thread ct = Thread.currentThread();
+		final Thread ct = Thread.currentThread();
 		boolean interrupted = false;
 		for (R tref; (tref = threads.take()) != null;) {
 			Thread t = tref.get();
@@ -1704,19 +1857,19 @@ public class ThreadUtils {
 		}
 		if (interrupted) {
 			//if we were interrupted, set the flag again
-			Thread.currentThread().interrupt();
+			ct.interrupt();
 			if (!ehit.isAllTasksProcessed()) {
 				ehit.cancelled("Interrupted.");
 			}
 		}
 	}
 
-	private static <T, C> void joinParallelThreads(Function<Integer, WorkerThread<T, C>> threadindexer, int count,
-			ExceptionHoldingSupplier<T> ehit) {
-		Thread ct = Thread.currentThread();
+	private static void joinParallelThreads(Function<Integer, ? extends Thread> threadindexer, int count,
+			ExceptionHoldingSupplier<?> ehit) {
+		final Thread ct = Thread.currentThread();
 		boolean interrupted = false;
 		for (int i = 0; i < count; i++) {
-			WorkerThread<T, C> t = threadindexer.apply(i);
+			Thread t = threadindexer.apply(i);
 			if (t == ct) {
 				throw new IllegalThreadStateException("Trying to join current thread.");
 			}
@@ -1740,7 +1893,7 @@ public class ThreadUtils {
 		}
 		if (interrupted) {
 			//if we were interrupted, set the flag again
-			Thread.currentThread().interrupt();
+			ct.interrupt();
 			if (!ehit.isAllTasksProcessed()) {
 				ehit.cancelled("Interrupted.");
 			}
@@ -1752,7 +1905,7 @@ public class ThreadUtils {
 		if (!it.hasNext()) {
 			return;
 		}
-		Thread ct = Thread.currentThread();
+		final Thread ct = Thread.currentThread();
 		do {
 			Thread t = it.next();
 			if (t == null) {
@@ -1771,7 +1924,7 @@ public class ThreadUtils {
 		if (!it.hasNext()) {
 			return;
 		}
-		Thread ct = Thread.currentThread();
+		final Thread ct = Thread.currentThread();
 		boolean interrupted = false;
 		do {
 			Thread t = it.next();
@@ -1792,8 +1945,14 @@ public class ThreadUtils {
 		} while (it.hasNext());
 		if (interrupted) {
 			//if we were interrupted, set the flag again
-			Thread.currentThread().interrupt();
+			ct.interrupt();
 		}
+	}
+
+	private static ThreadFactory createDefaultThreadFactoryForkWorkPools() {
+		Thread currentthread = Thread.currentThread();
+		return new GroupNamePrefixDaemonThreadFactory(currentthread.getThreadGroup(), DEFAULT_NAME_PREFIX,
+				currentthread.isDaemon());
 	}
 
 	private static class DirectWorkPool implements ThreadWorkPool {
@@ -1900,7 +2059,90 @@ public class ThreadUtils {
 
 	}
 
+	private static final class GroupNamePrefixDaemonThreadFactory implements ThreadFactory {
+		private static final AtomicIntegerFieldUpdater<ThreadUtils.GroupNamePrefixDaemonThreadFactory> AIFU_counter = AtomicIntegerFieldUpdater
+				.newUpdater(ThreadUtils.GroupNamePrefixDaemonThreadFactory.class, "counter");
+		@SuppressWarnings("unused")
+		private volatile int counter;
+
+		private final ThreadGroup group;
+		private final String namePrefix;
+		private final boolean daemon;
+
+		public GroupNamePrefixDaemonThreadFactory(ThreadGroup group, String namePrefix, boolean daemon) {
+			this.group = group;
+			this.namePrefix = namePrefix;
+			this.daemon = daemon;
+		}
+
+		@Override
+		public Thread newThread(Runnable r) {
+			Thread thread = new Thread(group, r, namePrefix + AIFU_counter.incrementAndGet(this));
+			thread.setDaemon(daemon);
+			return thread;
+		}
+	}
+
+	private static final class GroupNamePrefixThreadFactory implements ThreadFactory {
+		private static final AtomicIntegerFieldUpdater<ThreadUtils.GroupNamePrefixThreadFactory> AIFU_counter = AtomicIntegerFieldUpdater
+				.newUpdater(ThreadUtils.GroupNamePrefixThreadFactory.class, "counter");
+		@SuppressWarnings("unused")
+		private volatile int counter;
+
+		private final ThreadGroup group;
+		private final String namePrefix;
+
+		public GroupNamePrefixThreadFactory(ThreadGroup group, String namePrefix) {
+			this.group = group;
+			this.namePrefix = namePrefix;
+		}
+
+		@Override
+		public Thread newThread(Runnable r) {
+			Thread thread = new Thread(group, r, namePrefix + AIFU_counter.incrementAndGet(this));
+			return thread;
+		}
+	}
+
+	private static final class GroupDefaultNamePrefixThreadFactory implements ThreadFactory {
+		private final ThreadGroup group;
+
+		public GroupDefaultNamePrefixThreadFactory(ThreadGroup group) {
+			this.group = group;
+		}
+
+		@Override
+		public Thread newThread(Runnable r) {
+			//pass through the default name prefix thread factory so the counter is shared
+			return DefaultNamePrefixThreadFactory.createWithGroup(group, r);
+		}
+	}
+
+	private static final class DefaultNamePrefixThreadFactory implements ThreadFactory {
+		private static final AtomicIntegerFieldUpdater<ThreadUtils.DefaultNamePrefixThreadFactory> AIFU_counter = AtomicIntegerFieldUpdater
+				.newUpdater(ThreadUtils.DefaultNamePrefixThreadFactory.class, "counter");
+		@SuppressWarnings("unused")
+		private volatile int counter;
+
+		//a single global instance is fine
+		public static final DefaultNamePrefixThreadFactory INSTANCE = new DefaultNamePrefixThreadFactory();
+
+		public DefaultNamePrefixThreadFactory() {
+		}
+
+		@Override
+		public Thread newThread(Runnable r) {
+			Thread thread = new Thread(r, DEFAULT_NAME_PREFIX + AIFU_counter.incrementAndGet(this));
+			return thread;
+		}
+
+		public static Thread createWithGroup(ThreadGroup group, Runnable r) {
+			return new Thread(group, r, DEFAULT_NAME_PREFIX + AIFU_counter.incrementAndGet(INSTANCE));
+		}
+	}
+
 	private static class FixedWorkPool implements ThreadWorkPool {
+
 		private class FixedThreadCountSupplier implements ExceptionHoldingSupplier<ThrowingRunnable> {
 			private final ReentrantLock lock = new ReentrantLock();
 			private final Condition cond = lock.newCondition();
@@ -2190,23 +2432,23 @@ public class ThreadUtils {
 		volatile PoolState state = new PoolState();
 
 		private final int maxThreadCount;
-		private final ConcurrentPrependAccumulator<WorkerThread<ThrowingRunnable, Object>> threads = new ConcurrentPrependAccumulator<>();
+		private final ConcurrentPrependAccumulator<Thread> threads = new ConcurrentPrependAccumulator<>();
 		private final FixedThreadCountSupplier parallelSupplier = new FixedThreadCountSupplier();
-		private final boolean daemon;
-		private final String namePrefix;
+		private final ThreadFactory threadFactory;
 		private final OperationCancelMonitor monitor;
-		private final ThreadGroup group;
 
 		private final ReentrantLock threadsStateNotifyLock = new ReentrantLock();
 		private final Condition threadsStateNotifyCondition = threadsStateNotifyLock.newCondition();
 
 		public FixedWorkPool(ThreadGroup group, int threadCount, OperationCancelMonitor monitor, String nameprefix,
 				boolean daemon) {
-			this.group = group;
+			this(new GroupNamePrefixDaemonThreadFactory(group, nameprefix, daemon), threadCount, monitor);
+		}
+
+		public FixedWorkPool(ThreadFactory threadFactory, int maxThreadCount, OperationCancelMonitor monitor) {
+			this.threadFactory = threadFactory;
+			this.maxThreadCount = maxThreadCount;
 			this.monitor = monitor;
-			this.namePrefix = nameprefix;
-			this.maxThreadCount = threadCount;
-			this.daemon = daemon;
 		}
 
 		@Override
@@ -2228,16 +2470,10 @@ public class ThreadUtils {
 					nstate = s.offerForNewThread();
 					if (ARFU_state.compareAndSet(this, s, nstate)) {
 						//spawn a new thread
-						//do this in a priviliged manner so inherited access control don't leak references 
-						AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
-							WorkerThread<ThrowingRunnable, Object> workthread = new WorkerThread<>(group,
-									namePrefix + nstate.threadCount, parallelSupplier, task, (t, c) -> t.run(), null,
-									monitor);
-							workthread.setDaemon(daemon);
-							threads.add(workthread);
-							workthread.start();
-							return null;
-						});
+						Thread workthread = threadFactory.newThread(
+								new WorkerThreadRunnable<>(parallelSupplier, task, (t, c) -> t.run(), null, monitor));
+						threads.add(workthread);
+						workthread.start();
 						return;
 					}
 				}
@@ -2341,18 +2577,17 @@ public class ThreadUtils {
 
 	private static class DynamicWorkPool implements ThreadWorkPool {
 		private final DynamicSmartSupplier<ThrowingRunnable> supplier = new DynamicSmartSupplier<>();
-		private final ConcurrentPrependAccumulator<WeakReference<WorkerThread<ThrowingRunnable, Object>>> threads = new ConcurrentPrependAccumulator<>();
-		private final boolean daemon;
-		private final String namePrefix;
+		private final ConcurrentPrependAccumulator<WeakReference<? extends Thread>> threads = new ConcurrentPrependAccumulator<>();
 		private final OperationCancelMonitor monitor;
-		private final ThreadGroup group;
-		private final AtomicInteger threadIdx = new AtomicInteger(0);
+		private final ThreadFactory threadFactory;
 
-		public DynamicWorkPool(ThreadGroup group, OperationCancelMonitor monitor, String namePrefix, boolean daemon) {
-			this.daemon = daemon;
-			this.namePrefix = namePrefix;
+		public DynamicWorkPool(ThreadGroup group, String namePrefix, boolean daemon, OperationCancelMonitor monitor) {
+			this(new GroupNamePrefixDaemonThreadFactory(group, namePrefix, daemon), monitor);
+		}
+
+		public DynamicWorkPool(ThreadFactory threadFactory, OperationCancelMonitor monitor) {
+			this.threadFactory = threadFactory;
 			this.monitor = monitor;
-			this.group = group;
 		}
 
 		@Override
@@ -2360,16 +2595,10 @@ public class ThreadUtils {
 			Objects.requireNonNull(task, "task");
 			boolean success = supplier.offer(task);
 			if (!success) {
-				//do this in a priviliged manner so inherited access control don't leak references 
-				AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
-					WorkerThread<ThrowingRunnable, Object> workthread = new WorkerThread<>(group,
-							namePrefix + (threadIdx.getAndIncrement() + 1), supplier, task, (t, c) -> t.run(), null,
-							monitor);
-					workthread.setDaemon(daemon);
-					workthread.start();
-					threads.add(new WeakReference<>(workthread));
-					return null;
-				});
+				Thread workthread = this.threadFactory
+						.newThread(new WorkerThreadRunnable<>(supplier, task, (t, c) -> t.run(), null, monitor));
+				workthread.start();
+				threads.add(new WeakReference<>(workthread));
 			}
 		}
 
@@ -2857,7 +3086,7 @@ public class ThreadUtils {
 		}
 	}
 
-	private static class WorkerThread<T, C> extends Thread {
+	private static class WorkerThreadRunnable<T, C> implements Runnable {
 		private ExceptionHoldingSupplier<? extends T> it;
 		private ThrowingContextConsumer<? super T, ? super C> worker;
 
@@ -2866,10 +3095,9 @@ public class ThreadUtils {
 		private T workObject;
 		private Supplier<? extends C> contextSupplier;
 
-		public WorkerThread(ThreadGroup group, String name, ExceptionHoldingSupplier<T> it, T initworkobject,
+		public WorkerThreadRunnable(ExceptionHoldingSupplier<T> it, T initworkobject,
 				ThrowingContextConsumer<? super T, ? super C> worker, Supplier<? extends C> contextSupplier,
 				OperationCancelMonitor monitor) {
-			super(group, name);
 			this.it = it;
 			this.worker = worker;
 			this.monitor = monitor;
@@ -2879,6 +3107,7 @@ public class ThreadUtils {
 
 		@Override
 		public void run() {
+			Thread currentthread = Thread.currentThread();
 			C context = this.contextSupplier == null ? null : this.contextSupplier.get();
 			T workobj = this.workObject;
 			OperationCancelMonitor monitor = this.monitor;
@@ -2899,13 +3128,13 @@ public class ThreadUtils {
 
 			boolean interruptchecked = false;
 			while (!it.isAborted()) {
-				if (!interruptchecked && isInterrupted()) {
+				if (!interruptchecked && currentthread.isInterrupted()) {
 					interruptchecked = true;
 					it.cancelled("Interrupted.");
 					//continue instead of break as the supplier may choose not to abort the thread
 					continue;
 				}
-				workobj = it.get(this);
+				workobj = it.get(currentthread);
 				if (workobj == null) {
 					//no more items
 					break;
@@ -2945,6 +3174,88 @@ public class ThreadUtils {
 			} finally {
 				lock.unlock();
 			}
+		}
+	}
+
+	private static final class ExclusiveLock extends AbstractQueuedSynchronizer implements Lock {
+		private static final long serialVersionUID = 1L;
+
+		private static final int STATE_AVAILABLE = 0;
+		private static final int STATE_LOCKED = 1;
+
+		@Override
+		public void unlock() {
+			release(0);
+		}
+
+		@Override
+		protected boolean tryRelease(int ignored) {
+			if (getExclusiveOwnerThread() != Thread.currentThread()) {
+				throw new IllegalMonitorStateException("Exclusive lock is not owned by current thread.");
+			}
+			if (!compareAndSetState(STATE_LOCKED, STATE_AVAILABLE)) {
+				return false;
+			}
+			setExclusiveOwnerThread(null);
+			return true;
+		}
+
+		@Override
+		protected boolean tryAcquire(int ignored) {
+			if (compareAndSetState(STATE_AVAILABLE, STATE_LOCKED)) {
+				setExclusiveOwnerThread(Thread.currentThread());
+				return true;
+			}
+			checkReentrancy();
+			return false;
+		}
+
+		@Override
+		public boolean tryLock(long time, TimeUnit unit) throws InterruptedException {
+			if (!tryAcquireNanos(0, unit.toNanos(time))) {
+				return false;
+			}
+			return true;
+		}
+
+		@Override
+		public boolean tryLock() {
+			if (!tryAcquire(0)) {
+				return false;
+			}
+			return true;
+		}
+
+		@Override
+		public Condition newCondition() {
+			return new ConditionObject();
+		}
+
+		@Override
+		public void lockInterruptibly() throws InterruptedException {
+			acquireInterruptibly(0);
+		}
+
+		@Override
+		public void lock() {
+			acquire(0);
+		}
+
+		@Override
+		protected boolean isHeldExclusively() {
+			return getExclusiveOwnerThread() == Thread.currentThread();
+		}
+
+		private void checkReentrancy() {
+			if (getExclusiveOwnerThread() == Thread.currentThread()) {
+				throw new IllegalThreadStateException("Reentrant attempt for acquiring exclusive lock.");
+			}
+		}
+
+		//serialization is really not recommended by us for concurrency objects, but handle it here nonetheless
+		private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
+			s.defaultReadObject();
+			setState(STATE_AVAILABLE); // reset to unlocked state
 		}
 	}
 

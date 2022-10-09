@@ -58,7 +58,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.ToIntBiFunction;
 
-import saker.build.thirdparty.saker.util.Reflector;
 import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.function.TriConsumer;
 import saker.build.thirdparty.saker.util.function.TriPredicate;

@@ -18,9 +18,10 @@ package saker.build.thirdparty.saker.rmi.connection;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -28,11 +29,17 @@ import java.util.ServiceConfigurationError;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.locks.ReentrantLock;
 
 import saker.build.thirdparty.saker.rmi.connection.RMIStream.ClassLoaderNotFoundIOException;
+import saker.build.thirdparty.saker.rmi.connection.RMIStream.RequestScopeHandler;
+import saker.build.thirdparty.saker.rmi.connection.RMIStream.ThreadLocalRequestScopeHandler;
 import saker.build.thirdparty.saker.rmi.exception.RMIIOFailureException;
 import saker.build.thirdparty.saker.rmi.exception.RMIListenerException;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
@@ -41,11 +48,11 @@ import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
-import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.io.DataOutputUnsyncByteArrayOutputStream;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.StreamPair;
 import saker.build.thirdparty.saker.util.io.function.IOFunction;
+import saker.build.thirdparty.saker.util.io.function.IOSupplier;
 import saker.build.thirdparty.saker.util.ref.StrongSoftReference;
 import saker.build.thirdparty.saker.util.thread.ParallelExecutionException;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
@@ -128,22 +135,27 @@ public final class RMIConnection implements AutoCloseable {
 		public void onConnectionClosed();
 	}
 
-	private static final AtomicIntegerFieldUpdater<RMIConnection> ARFU_streamRoundRobin = AtomicIntegerFieldUpdater
-			.newUpdater(RMIConnection.class, "streamRoundRobin");
-	private static final AtomicIntegerFieldUpdater<RMIConnection> ARFU_offeredStreamTaskCount = AtomicIntegerFieldUpdater
+	private static final AtomicIntegerFieldUpdater<RMIConnection> AIFU_offeredStreamTaskCount = AtomicIntegerFieldUpdater
 			.newUpdater(RMIConnection.class, "offeredStreamTaskCount");
 	private static final AtomicIntegerFieldUpdater<RMIConnection> AIFU_variablesIdentifierCounter = AtomicIntegerFieldUpdater
 			.newUpdater(RMIConnection.class, "variablesIdentifierCounter");
 
-	private final ThreadWorkPool taskPool;
+	private static final AtomicReferenceFieldUpdater<RMIConnection, Thread[]> ARFU_exitWaitThreads = AtomicReferenceFieldUpdater
+			.newUpdater(RMIConnection.class, Thread[].class, "exitWaitThreads");
 
-	@SuppressWarnings("unused")
-	private volatile int streamRoundRobin;
+	private static final AtomicIntegerFieldUpdater<RMIConnection> AIFU_requestIdCounter = AtomicIntegerFieldUpdater
+			.newUpdater(RMIConnection.class, "requestIdCounter");
+
+	private static final Thread[] EXIT_WAIT_THREADS_MARKER_EXITED = {};
 
 	private final List<RMIStream> allStreams = new ArrayList<>();
 	private final Collection<AutoCloseable> connectingStreamSockets = ConcurrentHashMap.newKeySet();
-	private final AtomicInteger connectedOrConnectingStreams = new AtomicInteger(1);
-	private WeakReference<Thread> streamAddingThread;
+	/**
+	 * Atomic variable holding the number of connection attempts made to establish new streams.
+	 * <p>
+	 * Never decremented
+	 */
+	private final AtomicInteger connectedOrConnectingStreamCount = new AtomicInteger(1);
 
 	private final RMITransferProperties properties;
 	private final ClassLoaderResolver classLoaderResolver;
@@ -153,17 +165,16 @@ public final class RMIConnection implements AutoCloseable {
 	private volatile String exitMessage = null;
 	private volatile boolean aborting = false;
 
-	private final Object stateModifyLock = new Object();
+	private final Lock stateModifyLock = new ReentrantLock();
 
 	@SuppressWarnings("unused")
 	private volatile int variablesIdentifierCounter = 1;
 
 	private final ConcurrentMap<Integer, RMIVariables> variablesByLocalId = new ConcurrentSkipListMap<>();
 	private final ConcurrentMap<String, NamedRMIVariables> variablesByNames = new ConcurrentSkipListMap<>();
-	private final ConcurrentSkipListMap<String, Object> namedVariablesGetLocks = new ConcurrentSkipListMap<>();
+	private final ConcurrentSkipListMap<String, Lock> namedVariablesGetLocks = new ConcurrentSkipListMap<>();
 
 	private final int maxStreamCount;
-	private final ThreadGroup workerThreadGroup;
 
 	private final ConcurrentSkipListMap<String, Object> contextVariables = new ConcurrentSkipListMap<>();
 
@@ -171,11 +182,11 @@ public final class RMIConnection implements AutoCloseable {
 	private Collection<IOErrorListener> errorListeners = ObjectUtils.newIdentityHashSet();
 	private Collection<CloseListener> closeListeners = ObjectUtils.newIdentityHashSet();
 
-	private final RequestHandler requestHandler = new RequestHandler();
-	private final ThreadLocal<int[]> currentThreadPreviousMethodCallRequestId = ThreadLocal
-			.withInitial(() -> new int[1]);
-
 	@SuppressWarnings("unused")
+	private volatile int requestIdCounter;
+	private final RequestScopeHandler requestScopeHandler = new ThreadLocalRequestScopeHandler();
+
+	@SuppressWarnings("unused") // used through its atomic field updater
 	private volatile int offeredStreamTaskCount;
 
 	private final ConcurrentPrependAccumulator<StrongSoftReference<DataOutputUnsyncByteArrayOutputStream>> bufferCache = new ConcurrentPrependAccumulator<>();
@@ -185,34 +196,106 @@ public final class RMIConnection implements AutoCloseable {
 
 	private RMIStatistics statistics;
 
+	/**
+	 * Only set if the {@link RMIConnection} manages its own task pool, and no {@link Executor} was set via
+	 * {@link RMIOptions}.
+	 */
+	//effectively final
+	private ThreadWorkPool taskPool;
+	//effectively final
+	private Executor taskExecutor;
+
+	/**
+	 * A list of threads that are waiting for the started task threads to exit.
+	 */
+	private volatile Thread[] exitWaitThreads = {};
+
+	private final IOSupplier<? extends StreamPair> streamConnector;
+
 	RMIConnection(RMIOptions options, short protocolversion) {
 		this.protocolVersion = protocolversion;
 		this.allowDirectRequests = options.allowDirectRequests;
-		ThreadGroup workerThreadGroup = options.workerThreadGroup;
+		this.streamConnector = null;
 		RMITransferProperties properties = options.properties;
 
 		this.properties = properties;
 
-		this.workerThreadGroup = new ThreadGroup(
-				workerThreadGroup == null ? Thread.currentThread().getThreadGroup() : workerThreadGroup,
-				"RMI worker group");
-
 		this.classLoaderResolver = defaultedClassLoaderResolver(options.classLoaderResolver);
 		this.nullClassLoader = defaultedNullClassLoader(options.nullClassLoader);
 		this.maxStreamCount = Math.max(options.getDefaultedMaxStreamCount(), 1);
-		this.taskPool = createWorkPool();
+
+		initTaskFields(options);
 		if (options.collectStatistics) {
 			this.statistics = new RMIStatistics();
 		}
 	}
 
+	boolean isCustomExecutor() {
+		return this.taskExecutor != null;
+	}
+
+	int getNextRequestId() {
+		return AIFU_requestIdCounter.incrementAndGet(this);
+	}
+
+	RequestScopeHandler getRequestScopeHandler() {
+		return requestScopeHandler;
+	}
+
+	private void initTaskFields(RMIOptions options) {
+		Executor executor = options.executor;
+		if (executor != null) {
+			this.taskExecutor = executor;
+			return;
+		}
+
+		ThreadGroup workerThreadGroup = options.workerThreadGroup;
+		//create worker subgroup
+		workerThreadGroup = new ThreadGroup(
+				workerThreadGroup == null ? Thread.currentThread().getThreadGroup() : workerThreadGroup,
+				"RMI worker group");
+		ThreadWorkPool taskpool = createWorkPool(workerThreadGroup);
+		this.taskPool = taskpool;
+		this.taskExecutor = r -> taskpool.offer(r::run);
+	}
+
 	RMIConnection(RMIOptions options, StreamPair streams, short protocolversion,
-			IOFunction<? super Collection<? super AutoCloseable>, ? extends StreamPair> streamconnector)
-			throws IOException {
+			IOFunction<? super PendingStreamTracker, ? extends StreamPair> streamconnector) throws IOException {
 		this.allowDirectRequests = options.allowDirectRequests;
 		if (options.collectStatistics) {
 			this.statistics = new RMIStatistics();
 		}
+
+		this.streamConnector = new IOSupplier<StreamPair>() {
+			private final PendingStreamTracker pendingTracker = new PendingStreamTracker() {
+				@Override
+				public boolean add(AutoCloseable s) {
+					//lock on state modify lock, so if close is being called concurrently,
+					//we still add the socket to the collection
+					stateModifyLock.lock();
+					try {
+						if (aborting) {
+							return false;
+						}
+						connectingStreamSockets.add(s);
+					} finally {
+						stateModifyLock.unlock();
+					}
+					return true;
+				}
+
+				@Override
+				public void remove(AutoCloseable s) {
+					connectingStreamSockets.remove(s);
+				}
+			};
+
+			@Override
+			public StreamPair get() throws IOException {
+				return streamconnector.apply(pendingTracker);
+			}
+		};
+
 		StreamPair streamstoclose = streams;
 		RMIStream streamclose = null;
 		IOException exc = null;
@@ -220,16 +303,14 @@ public final class RMIConnection implements AutoCloseable {
 			Objects.requireNonNull(streamconnector, "stream connector");
 			ClassLoaderResolver classresolver = options.classLoaderResolver;
 			RMITransferProperties properties = options.properties;
-			ThreadGroup workerThreadGroup = options.workerThreadGroup;
 
 			this.properties = properties;
-			this.workerThreadGroup = new ThreadGroup(
-					workerThreadGroup == null ? Thread.currentThread().getThreadGroup() : workerThreadGroup,
-					"RMI worker group");
 			this.classLoaderResolver = defaultedClassLoaderResolver(classresolver);
 			this.nullClassLoader = defaultedNullClassLoader(options.nullClassLoader);
 			this.maxStreamCount = Math.max(options.getDefaultedMaxStreamCount(), 1);
 			this.protocolVersion = protocolversion;
+
+			initTaskFields(options);
 
 			OutputStream sockout = streams.getOutput();
 			InputStream sockin = streams.getInput();
@@ -237,9 +318,7 @@ public final class RMIConnection implements AutoCloseable {
 			RMIStream stream = new RMIStream(this, sockin, sockout);
 			streamclose = stream;
 
-			this.taskPool = createWorkPool();
 			addStream(stream);
-			postAddAdditionalStreams(streamconnector);
 
 			streamstoclose = null;
 			streamclose = null;
@@ -315,27 +394,37 @@ public final class RMIConnection implements AutoCloseable {
 			throw new IllegalArgumentException("Empty or null variables name. (" + name + ")");
 		}
 		checkClosed();
-		NamedRMIVariables got = variablesByNames.get(name);
-		if (got != null) {
-			got.increaseReference();
-			return got;
+		NamedRMIVariables result = variablesByNames.get(name);
+		if (result != null) {
+			result.increaseReference();
+			return result;
 		}
 		int identifier = AIFU_variablesIdentifierCounter.getAndIncrement(this);
-		synchronized (stateModifyLock) {
+		RMIStream stream;
+		final Lock namedvarlock = getNamedVariablesGetLock(name);
+		stateModifyLock.lock();
+		try {
 			checkAborting();
-			synchronized (getNamedVariablesGetLock(name)) {
-				got = variablesByNames.get(name);
-				if (got != null) {
-					got.increaseReference();
-					return got;
+			namedvarlock.lock();
+			try {
+				result = variablesByNames.get(name);
+				if (result != null) {
+					result.increaseReference();
+					return result;
 				}
-				int varsremoteid = getStream().createNewVariables(name, identifier);
-				got = new NamedRMIVariables(name, identifier, varsremoteid, this);
-				variablesByNames.put(name, got);
+				stream = getStream();
+				int varsremoteid = stream.createNewVariables(name, identifier);
+				result = new NamedRMIVariables(name, identifier, varsremoteid, this, stream);
+				variablesByNames.put(name, result);
+			} finally {
+				namedvarlock.unlock();
 			}
-			variablesByLocalId.put(identifier, got);
-			return got;
+			variablesByLocalId.put(identifier, result);
+		} finally {
+			stateModifyLock.unlock();
 		}
+		stream.associateVariables(result);
+		return result;
 	}
 
 	/**
@@ -351,9 +440,30 @@ public final class RMIConnection implements AutoCloseable {
 	public RMIVariables newVariables() throws RMIRuntimeException {
 		checkClosed();
 		int identifier = AIFU_variablesIdentifierCounter.getAndIncrement(this);
-		int varsremoteid = getStream().createNewVariables(null, identifier);
-		RMIVariables result = new RMIVariables(identifier, varsremoteid, this);
-		variablesByLocalId.put(identifier, result);
+		RMIStream stream = getStream();
+		int varsremoteid = stream.createNewVariables(null, identifier);
+		RMIVariables result = new RMIVariables(identifier, varsremoteid, this, stream);
+
+		//check if the connection was closed meanwhile
+		//close the variables, and report an appropriate exception if so
+		//(if closed, then we still have to put the variables in the appropriate map
+		// so the closing procedure is correct)
+		//XXX there's still a hazardous state, as getVariablesByLocalId() still returns this variables
+		//    so the other endpoint still could use this, but it is unlikely
+		//    anyway, event in that case, the variables will still be auto-closed when the last request finishes on it
+		boolean aborting;
+		stateModifyLock.lock();
+		try {
+			variablesByLocalId.put(identifier, result);
+			aborting = this.aborting;
+		} finally {
+			stateModifyLock.unlock();
+		}
+		stream.associateVariables(result);
+		if (aborting) {
+			result.close();
+			throw new RMIIOFailureException("Connection aborting.");
+		}
 		return result;
 	}
 
@@ -505,7 +615,8 @@ public final class RMIConnection implements AutoCloseable {
 		if (isRemoteObject(listener)) {
 			throw new IllegalArgumentException("Listener must be a local object.");
 		}
-		synchronized (stateModifyLock) {
+		stateModifyLock.lock();
+		try {
 			if (aborting && this.variablesByLocalId.isEmpty()) {
 				//listener to be called outside of lock
 			} else {
@@ -514,6 +625,8 @@ public final class RMIConnection implements AutoCloseable {
 				}
 				return;
 			}
+		} finally {
+			stateModifyLock.unlock();
 		}
 		try {
 			listener.onConnectionClosed();
@@ -557,9 +670,71 @@ public final class RMIConnection implements AutoCloseable {
 	 */
 	public void closeWait() throws IOException, InterruptedException {
 		closeImpl();
-		try {
-			taskPool.closeInterruptible();
-		} catch (ParallelExecutionException e) {
+		waitRMITasks();
+	}
+
+	private void waitRMITasks() throws InterruptedException {
+		if (taskPool != null) {
+			try {
+				taskPool.closeInterruptible();
+			} catch (ParallelExecutionException e) {
+			}
+			return;
+		}
+		//add the current thread to the waiting threads
+		//(some part of the loops are unrolled, that's why this code looks like it does)
+		Thread[] threads = this.exitWaitThreads;
+		if (threads == EXIT_WAIT_THREADS_MARKER_EXITED) {
+			return;
+		}
+		Thread currentthread = Thread.currentThread();
+		while (true) {
+			Thread[] nthreads = ArrayUtils.appended(threads, currentthread);
+			if (ARFU_exitWaitThreads.compareAndSet(this, threads, nthreads)) {
+				threads = nthreads;
+				break;
+			}
+			threads = this.exitWaitThreads;
+			if (threads == EXIT_WAIT_THREADS_MARKER_EXITED) {
+				return;
+			}
+		}
+		//our thread has been added to the exit thread array
+		while (true) {
+			threads = this.exitWaitThreads;
+			if (threads == EXIT_WAIT_THREADS_MARKER_EXITED) {
+				return;
+			}
+			if (Thread.interrupted()) {
+				//the thread got interrupted
+				//remove the current thread from the threads array and throw an exception
+				for (int i = 0; i < threads.length;) {
+					if (threads[i] != currentthread) {
+						i++;
+						continue;
+					}
+					Thread[] nthreads = ArrayUtils.removedAtIndex(threads, i);
+					if (ARFU_exitWaitThreads.compareAndSet(this, threads, nthreads)) {
+						//successful removal, throw the exception
+						throw new InterruptedException("Waiting for RMI tasks interrupted.");
+					}
+					//failed to update the threads variable, re-read it again, and restart the loop
+					threads = this.exitWaitThreads;
+					if (threads == EXIT_WAIT_THREADS_MARKER_EXITED) {
+						//the tasks exited meanwhile, so we can ignore the interruption, and exit successfully as all is finished
+						//reinterrupt, as we consumed it in the call above
+						currentthread.interrupt();
+						return;
+					}
+					//reinit iter variable
+					i = 0;
+				}
+				throw new IllegalStateException(
+						"Internal consistency error: Current thread not found in waiter threads when waiting for RMI tasks. Current thread: "
+								+ currentthread + " Threads: " + Arrays.toString(threads));
+
+			}
+			LockSupport.park();
 		}
 	}
 
@@ -652,18 +827,6 @@ public final class RMIConnection implements AutoCloseable {
 		s.interrupt();
 	}
 
-	RequestHandler getRequestHandler() {
-		return requestHandler;
-	}
-
-	ThreadLocal<int[]> getCurrentThreadPreviousMethodCallRequestIdThreadLocal() {
-		return currentThreadPreviousMethodCallRequestId;
-	}
-
-	ThreadWorkPool getThreadWorkPool() {
-		return taskPool;
-	}
-
 	void finishNewConnectionSetup(RMIStream stream) throws RMIRuntimeException, IOException {
 		addStream(stream);
 	}
@@ -672,11 +835,11 @@ public final class RMIConnection implements AutoCloseable {
 		return variablesByLocalId.get(identifier);
 	}
 
-	RMIVariables newRemoteVariables(String name, int remoteid) throws IOException {
+	RMIVariables newRemoteVariables(String name, int remoteid, RMIStream stream) throws IOException {
 		if (ObjectUtils.isNullOrEmpty(name)) {
-			return newUnnamedRemoteVariables(remoteid);
+			return newUnnamedRemoteVariables(remoteid, stream);
 		}
-		return newNamedRemoteVariables(name, remoteid);
+		return newNamedRemoteVariables(name, remoteid, stream);
 	}
 
 	void remotelyClosedVariables(RMIVariables vars) {
@@ -689,21 +852,35 @@ public final class RMIConnection implements AutoCloseable {
 
 	void closeVariables(RMIVariables variables) {
 		int identifier = variables.getLocalIdentifier();
-		synchronized (stateModifyLock) {
-			boolean removed = this.variablesByLocalId.remove(identifier, variables);
-			if (!removed) {
-				return;
-			}
-			if (variables instanceof NamedRMIVariables) {
-				this.variablesByNames.remove(((NamedRMIVariables) variables).getName(), variables);
-			}
-
-			try {
-				getStreamStateModifyLocked().writeVariablesClosed(variables);
-			} catch (IOException | RMIRuntimeException e) {
-			}
-			closeIfAbortingAndNoVariables();
+		stateModifyLock.lock();
+		try {
+			closeVariablesLocked(variables, identifier);
+		} finally {
+			stateModifyLock.unlock();
 		}
+	}
+
+	/**
+	 * Locked on stateModifyLock.
+	 * 
+	 * @param variables
+	 * @param identifier
+	 *            The local identifier of the variables.
+	 */
+	private void closeVariablesLocked(RMIVariables variables, int identifier) {
+		boolean removed = this.variablesByLocalId.remove(identifier, variables);
+		if (!removed) {
+			return;
+		}
+		if (variables instanceof NamedRMIVariables) {
+			this.variablesByNames.remove(((NamedRMIVariables) variables).getName(), variables);
+		}
+
+		try {
+			variables.getStream().writeVariablesClosed(variables);
+		} catch (IOException | RMIRuntimeException e) {
+		}
+		closeIfAbortingAndNoVariablesLocked();
 	}
 
 	ClassLoader getNullClassLoader() {
@@ -711,22 +888,42 @@ public final class RMIConnection implements AutoCloseable {
 	}
 
 	void offerStreamTask(Runnable task) {
-		ARFU_offeredStreamTaskCount.incrementAndGet(this);
-		taskPool.offer(() -> {
-			Thread.currentThread().setContextClassLoader(null);
+		AIFU_offeredStreamTaskCount.incrementAndGet(this);
+		this.taskExecutor.execute(() -> {
 			try {
+				clearContextClassLoaderOfCurrentThread();
 				task.run();
 			} finally {
-				int c = ARFU_offeredStreamTaskCount.decrementAndGet(this);
-				if (c == 0) {
-					//this was the last stream task to run
-					//stream reading tasks have already exited (or this was it)
-					//no streams running -> no more requests will be added
-					//close the request handler as it will not receive responses anymore
-					requestHandler.close();
+				if (AIFU_offeredStreamTaskCount.decrementAndGet(this) == 0) {
+					handleNoMoreRunningStreamTasks();
 				}
 			}
 		});
+	}
+
+	public static void clearContextClassLoaderOfCurrentThread() {
+		try {
+			Thread.currentThread().setContextClassLoader(null);
+		} catch (UnsupportedOperationException e) {
+			//setting the context class loader may be unsupported on virtual threads
+			//ignore
+		}
+	}
+
+	void offerVariablesTask(Runnable task) {
+		offerStreamTask(task);
+	}
+
+	private void handleNoMoreRunningStreamTasks() {
+		//unpark the possibly waiting threads
+		Thread[] threads = ARFU_exitWaitThreads.getAndSet(this, EXIT_WAIT_THREADS_MARKER_EXITED);
+		if (threads == EXIT_WAIT_THREADS_MARKER_EXITED) {
+			//somebody already called this function
+			return;
+		}
+		for (int i = 0; i < threads.length; i++) {
+			LockSupport.unpark(threads[i]);
+		}
 	}
 
 	StrongSoftReference<DataOutputUnsyncByteArrayOutputStream> getCachedByteBuffer() {
@@ -749,47 +946,163 @@ public final class RMIConnection implements AutoCloseable {
 		return properties;
 	}
 
-	void addStream(RMIStream stream) throws RMIRuntimeException, IOException {
-		checkClosed();
-		synchronized (stateModifyLock) {
+	void addStream(RMIStream stream) throws IOException {
+		stateModifyLock.lock();
+		try {
 			if (aborting) {
+				//the connection is already aborting, ignore the stream addition, silently close it
 				IOUtils.close(stream);
 				return;
 			}
-			streamRoundRobin = allStreams.size();
 			allStreams.add(stream);
+		} finally {
+			stateModifyLock.unlock();
 		}
 		stream.start();
 	}
 
 	void removeStream(RMIStream stream) throws IOException {
-		boolean removed;
-		synchronized (stateModifyLock) {
-			removed = allStreams.remove(stream);
-		}
-		if (removed) {
-			connectedOrConnectingStreams.decrementAndGet();
+		stateModifyLock.lock();
+		try {
+			allStreams.remove(stream);
+		} finally {
+			stateModifyLock.unlock();
 		}
 		IOUtils.close(stream);
 	}
 
-	RMIStream getStream() {
-		checkClosed();
-		synchronized (stateModifyLock) {
-			return getStreamStateModifyLocked();
+	private RMIStream getStream() {
+		checkAborting();
+
+		RMIStream minstream;
+		boolean connect = false;
+		stateModifyLock.lock();
+		try {
+			//choose from existing streams
+			Iterator<RMIStream> it = allStreams.iterator();
+			if (!it.hasNext()) {
+				if (streamConnector != null && allStreams.size() < maxStreamCount) {
+					int cocstreams = connectedOrConnectingStreamCount.getAndIncrement();
+					if (cocstreams >= maxStreamCount) {
+						//cant connect to any more streams
+						throw new RMIIOFailureException("No stream found.");
+					}
+
+					minstream = null;
+					connect = true;
+				} else {
+					throw new RMIIOFailureException("No stream found.");
+				}
+			} else {
+				minstream = it.next();
+				int minc = minstream.getAssociatedRMIVariablesCount();
+				if (minc == 0) {
+					//no variables are used on this stream, can return it without checking the others
+					return minstream;
+				}
+				if (!it.hasNext()) {
+					if (streamConnector != null && allStreams.size() < maxStreamCount) {
+						int cocstreams = connectedOrConnectingStreamCount.getAndIncrement();
+						if (cocstreams < maxStreamCount) {
+							//can connect to more streams, try it
+							connect = true;
+						} else {
+							return minstream;
+						}
+					} else {
+						return minstream;
+					}
+				} else {
+					do {
+						RMIStream stream = it.next();
+						int currentcount = stream.getAssociatedRMIVariablesCount();
+						if (currentcount == 0) {
+							return stream;
+						}
+						if (currentcount < minc) {
+							minc = currentcount;
+							minstream = stream;
+						}
+					} while (it.hasNext());
+
+					//all streams have at least 1 RMIVariables associated with them
+					//try to connect a new one if allowed, otherwise return the found one
+					if (streamConnector == null || allStreams.size() >= maxStreamCount) {
+						return minstream;
+					}
+
+					int cocstreams = connectedOrConnectingStreamCount.getAndIncrement();
+					if (cocstreams >= maxStreamCount) {
+						//cant connect to any more streams
+						return minstream;
+					}
+					connect = true;
+				}
+			}
+		} finally {
+			stateModifyLock.unlock();
 		}
+		if (connect) {
+			//if connection fails, then return the found min stream (if any)
+
+			checkAborting();
+			StreamPair streampair;
+			RMIStream nstream;
+			try {
+				streampair = this.streamConnector.get();
+				if (streampair == null) {
+					throw new NullPointerException("Failed to create RMI stream pair.");
+				}
+				nstream = new RMIStream(this, streampair);
+				try {
+					addStream(nstream);
+				} catch (Exception e) {
+					//close the stream if we failed to add it
+					IOUtils.addExc(e, IOUtils.closeExc(nstream));
+					throw e;
+				}
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
+				//set the connecting count to the max stream count so we don't attempt to establish new connections, 
+				//as this one failed, and we don't expect others to succeed
+				connectedOrConnectingStreamCount.set(maxStreamCount);
+
+				if (aborting) {
+					//ignorable if we're already aborting
+					throw new RMIIOFailureException("Connection aborting.", e);
+				}
+				// notify the user of the RMI library about the exception
+				invokeIOErrorListeners(e, false);
+				if (minstream != null) {
+					return minstream;
+				}
+				throw new RMIIOFailureException("Failed to connect new stream.", e);
+			}
+
+			return nstream;
+		}
+		return minstream;
 	}
 
-	private RMIStream getStreamStateModifyLocked() {
-		if (allStreams.isEmpty()) {
-			throw new RMIIOFailureException("No stream found.");
+	/**
+	 * Gets the current number of active streams.
+	 * <p>
+	 * For testing purposes only.
+	 * 
+	 * @return The stream count.
+	 */
+	int getStreamCount() {
+		stateModifyLock.lock();
+		try {
+			return allStreams.size();
+		} finally {
+			stateModifyLock.unlock();
 		}
-		return allStreams.get(ARFU_streamRoundRobin.getAndIncrement(this) % allStreams.size());
 	}
 
 	void clientClose() {
 		exitMessage = "Connection closed remotely.";
-		abort();
+		abort(false);
 	}
 
 	void streamError(RMIStream stream, Throwable exc) {
@@ -802,7 +1115,7 @@ public final class RMIConnection implements AutoCloseable {
 		}
 		exitMessage = "Connection stream error. (" + exc + ")";
 		try {
-			abort();
+			abort(true);
 		} catch (Exception abortexc) {
 			IOUtils.addExc(abortexc, runexc);
 
@@ -966,47 +1279,83 @@ public final class RMIConnection implements AutoCloseable {
 	}
 
 	private void closeImpl() {
-		abort();
-		synchronized (stateModifyLock) {
-			closeIfAbortingAndNoVariables();
-		}
+		abort(false);
 	}
 
 	private void checkClosed() {
 		if (aborting) {
-			throw new RMIIOFailureException("Closed." + (exitMessage == null ? "" : " (" + exitMessage + ")"));
+			StringBuilder sb = new StringBuilder();
+			sb.append("Closed.");
+			String exitmessage = this.exitMessage;
+			if (exitmessage != null) {
+				sb.append(" (");
+				sb.append(exitmessage);
+				sb.append(')');
+			}
+			throw new RMIIOFailureException(sb.toString());
 		}
 	}
 
 	private void checkAborting() {
-		//holds lock for stateModifyLock
 		if (aborting) {
 			throw new RMIIOFailureException("Connection aborting.");
 		}
 	}
 
-	private void abort() {
+	/**
+	 * Signals that the connection should be closed. This method may not actually close the connection, as some
+	 * concurrent requests may keep it alive for a while.
+	 * 
+	 * @param onerror
+	 *            <code>true</code> if aborting is performed due to an error.
+	 */
+	private void abort(boolean onerror) {
 		if (aborting) {
-			return;
+			if (!onerror) {
+				return;
+			}
+			//else if aborting due to an error, then continue
+		} else {
+			//set the aborting flag while locked, so no more variables and other state related objects are added to the connection
+			//(if we didn't lock, then we risk new requests/variables/etc... being added after setting the aborting flag
+			stateModifyLock.lock();
+			try {
+				aborting = true;
+			} finally {
+				stateModifyLock.unlock();
+			}
 		}
-		aborting = true;
 		//use a copy collection to be able to remove from the real collection while the variables are closing
-		for (RMIVariables v : ImmutableUtils.makeImmutableList(variablesByLocalId.values())) {
-			v.close();
+		List<RMIVariables> vars = ImmutableUtils.makeImmutableList(variablesByLocalId.values());
+		boolean emptyvars = vars.isEmpty();
+		if (!emptyvars) {
+			for (RMIVariables v : vars) {
+				v.close();
+			}
 		}
-		taskPool.exit();
-		synchronized (stateModifyLock) {
-			closeIfAbortingAndNoVariables();
+		if (taskPool != null) {
+			taskPool.exit();
 		}
+		if (emptyvars) {
+			//variables are empty
+			//we need to call closeIfAbortingAndNoVariablesLocked() in this branch
+			//as that will not be called in closeVariables(RMIVariables), as no variables were closed this time
+
+			//if there is at least 1 variable closed during this method call, then that will call closeIfAbortingAndNoVariablesLocked()
+			//when it gets closed
+
+			stateModifyLock.lock();
+			try {
+				closeIfAbortingAndNoVariablesLocked();
+			} finally {
+				stateModifyLock.unlock();
+			}
+		}
+
 	}
 
-	private ThreadWorkPool createWorkPool() {
-		return ThreadUtils.newDynamicWorkPool(workerThreadGroup, "RMI-worker-");
-	}
-
-	private void postAddAdditionalStreams(
-			IOFunction<? super Collection<? super AutoCloseable>, ? extends StreamPair> streamconnector) {
-		taskPool.offer(() -> addAdditionalStreams(streamconnector));
+	private static ThreadWorkPool createWorkPool(ThreadGroup threadgroup) {
+		return ThreadUtils.newDynamicWorkPool(threadgroup, "RMI-worker-");
 	}
 
 	void invokeIOErrorListeners(Throwable exc, boolean storeexception) {
@@ -1042,7 +1391,7 @@ public final class RMIConnection implements AutoCloseable {
 			//this is a hard fallback
 			for (IOErrorListener l : ioerrorlistenerscopy) {
 				try {
-					l.onIOError(exc);
+					l.onIOError(ex);
 				} catch (Exception | LinkageError | StackOverflowError | AssertionError | ServiceConfigurationError
 						| OutOfMemoryError e) {
 					e.printStackTrace();
@@ -1055,43 +1404,59 @@ public final class RMIConnection implements AutoCloseable {
 		invokeIOErrorListeners(exc, true);
 	}
 
-	private RMIVariables newUnnamedRemoteVariables(int remoteid) {
-		synchronized (stateModifyLock) {
+	private RMIVariables newUnnamedRemoteVariables(int remoteid, RMIStream stream) {
+		RMIVariables result;
+		stateModifyLock.lock();
+		try {
 			checkAborting();
-			RMIVariables got = new RMIVariables(AIFU_variablesIdentifierCounter.getAndIncrement(this), remoteid, this);
-			variablesByLocalId.put(got.getLocalIdentifier(), got);
-			return got;
+			result = new RMIVariables(AIFU_variablesIdentifierCounter.getAndIncrement(this), remoteid, this, stream);
+			variablesByLocalId.put(result.getLocalIdentifier(), result);
+		} finally {
+			stateModifyLock.unlock();
 		}
+		stream.associateVariables(result);
+		return result;
 	}
 
-	private RMIVariables newNamedRemoteVariables(String name, int remoteid) throws IOException {
-		synchronized (stateModifyLock) {
+	private RMIVariables newNamedRemoteVariables(String name, int remoteid, RMIStream stream) throws IOException {
+		NamedRMIVariables result;
+		final Lock namedvarlock = getNamedVariablesGetLock(name);
+		stateModifyLock.lock();
+		try {
 			checkAborting();
-			NamedRMIVariables got;
-			synchronized (getNamedVariablesGetLock(name)) {
-				got = variablesByNames.get(name);
-				if (got != null) {
-					return got;
+			namedvarlock.lock();
+			try {
+				result = variablesByNames.get(name);
+				if (result != null) {
+					return result;
 				}
 
-				got = new NamedRMIVariables(name, AIFU_variablesIdentifierCounter.getAndIncrement(this), remoteid,
-						this);
-				RMIVariables prev = variablesByNames.putIfAbsent(name, got);
+				result = new NamedRMIVariables(name, AIFU_variablesIdentifierCounter.getAndIncrement(this), remoteid,
+						this, stream);
+				RMIVariables prev = variablesByNames.putIfAbsent(name, result);
 				if (prev != null) {
-					IOException cause = IOUtils.closeExc(got);
+					IOException cause = IOUtils.closeExc(result);
 					throw new IOException("Variables with name defined more than once: " + name, cause);
 				}
+			} finally {
+				namedvarlock.unlock();
 			}
-			variablesByLocalId.put(got.getLocalIdentifier(), got);
-			return got;
+			variablesByLocalId.put(result.getLocalIdentifier(), result);
+		} finally {
+			stateModifyLock.unlock();
 		}
+		stream.associateVariables(result);
+		return result;
 	}
 
-	private Object getNamedVariablesGetLock(String name) {
-		return namedVariablesGetLocks.computeIfAbsent(name, Functionals.objectComputer());
+	private Lock getNamedVariablesGetLock(String name) {
+		return namedVariablesGetLocks.computeIfAbsent(name, k -> new ReentrantLock());
 	}
 
-	private void closeIfAbortingAndNoVariables() {
+	/**
+	 * Called with {@link #stateModifyLock} locked.
+	 */
+	private void closeIfAbortingAndNoVariablesLocked() {
 		if (!aborting || !this.variablesByLocalId.isEmpty()) {
 			return;
 		}
@@ -1105,10 +1470,6 @@ public final class RMIConnection implements AutoCloseable {
 		closeexc = IOUtils.closeExc(closeexc, streamscopy);
 
 		closeexc = IOUtils.closeExc(closeexc, connectingStreamSockets);
-
-		//interrupt the stream adding thread if any
-		//if the stream adding thread stays interrupted in the task pool that is fine, as there are no more requests running.
-		ThreadUtils.interruptThread(ObjectUtils.getReference(streamAddingThread));
 
 		variablesByNames.clear();
 		contextVariables.clear();
@@ -1142,36 +1503,23 @@ public final class RMIConnection implements AutoCloseable {
 		}
 	}
 
-	private void addAdditionalStreams(
-			IOFunction<? super Collection<? super AutoCloseable>, ? extends StreamPair> streamconnector) {
-		this.streamAddingThread = new WeakReference<>(Thread.currentThread());
-		try {
-			while (!aborting) {
-				int cocstreams = connectedOrConnectingStreams.getAndIncrement();
-				if (cocstreams < maxStreamCount) {
-					StreamPair streampair = streamconnector.apply(connectingStreamSockets);
-
-					RMIStream nstream = new RMIStream(this, streampair);
-					addStream(nstream);
-				} else {
-					//dont need to connect to any more streams
-					connectedOrConnectingStreams.decrementAndGet();
-					break;
-				}
-			}
-		} catch (Exception e) {
-			invokeIOErrorListeners(e, false);
-		} finally {
-			this.streamAddingThread = null;
-		}
-	}
-
 	private static ClassLoaderResolver defaultedClassLoaderResolver(ClassLoaderResolver resolver) {
 		return resolver;
 	}
 
 	private static ClassLoader defaultedNullClassLoader(ClassLoader nullcl) {
 		return nullcl;
+	}
+
+	interface PendingStreamTracker {
+		/**
+		 * @param s
+		 * @return <code>true</code> if the caller should proceed, <code>false</code> if the RMI connection is closing
+		 *             and caller shouldn't attempt further connections or communication.
+		 */
+		public boolean add(AutoCloseable s);
+
+		public void remove(AutoCloseable s);
 	}
 
 }

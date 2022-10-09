@@ -17,10 +17,9 @@ package saker.build.thirdparty.saker.rmi.connection;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.Iterator;
+import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.LockSupport;
 
@@ -64,6 +63,18 @@ class RequestHandler implements Closeable {
 				return this;
 			}
 
+			@Override
+			public String toString() {
+				StringBuilder builder = new StringBuilder();
+				builder.append("State[closed=");
+				builder.append(closed);
+				builder.append(", response=");
+				builder.append(response);
+				builder.append(", waitingThread=");
+				builder.append(waitingThread);
+				builder.append("]");
+				return builder.toString();
+			}
 		}
 
 		private final RequestHandler owner;
@@ -176,38 +187,53 @@ class RequestHandler implements Closeable {
 		public int hashCode() {
 			return requestId;
 		}
+
+		@Override
+		public String toString() {
+			StringBuilder builder = new StringBuilder();
+			builder.append("Request[");
+			builder.append("owner=");
+			builder.append(owner);
+			builder.append(", requestId=");
+			builder.append(requestId);
+			builder.append(", state=");
+			builder.append(state);
+			builder.append("]");
+			return builder.toString();
+		}
 	}
 
-	private static final AtomicIntegerFieldUpdater<RequestHandler> ARFU_requestIdCounter = AtomicIntegerFieldUpdater
-			.newUpdater(RequestHandler.class, "requestIdCounter");
-	@SuppressWarnings("unused")
-	private volatile int requestIdCounter;
-
 	protected final ConcurrentNavigableMap<Integer, Request> requests = new ConcurrentSkipListMap<>();
+	private final RMIConnection connection;
 
-	public RequestHandler() {
+	public RequestHandler(RMIConnection connection) {
+		this.connection = connection;
 	}
 
 	public Request newRequest() {
-		int id = ARFU_requestIdCounter.incrementAndGet(this);
+		int id = connection.getNextRequestId();
 		Request result = new Request(this, id);
 		requests.put(id, result);
 		return result;
 	}
 
-	public void addResponse(int requestid, Object response) {
+	public boolean addResponse(int requestid, Object response) {
 		Request req = requests.get(requestid);
-		if (req != null) {
-			req.setResponse(response);
+		if (req == null) {
+			return false;
 		}
+		req.setResponse(response);
+		return true;
 	}
 
 	@Override
-	public void close() throws IOException {
-		for (Iterator<Request> it = requests.values().iterator(); it.hasNext();) {
-			Request r = it.next();
-			r.wakeClose();
-			it.remove();
+	public void close() {
+		while (true) {
+			Entry<Integer, Request> entry = requests.pollFirstEntry();
+			if (entry == null) {
+				break;
+			}
+			entry.getValue().wakeClose();
 		}
 	}
 }

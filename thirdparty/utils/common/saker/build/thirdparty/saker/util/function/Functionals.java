@@ -39,6 +39,8 @@ import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -1119,6 +1121,40 @@ public final class Functionals {
 	}
 
 	/**
+	 * Converts the argument iterator to a {@link Supplier}.
+	 * <p>
+	 * Same as {@link #toSupplier(Iterator)}, but the {@link Supplier#get()} calls of the returned supplier is locked
+	 * for multi threaded access. Clients shouldn't expect the lock to be reentrant.
+	 * <p>
+	 * The returned supplier is not serializable.
+	 * 
+	 * @param <T>
+	 *            The element type.
+	 * @param iterator
+	 *            The iterator.
+	 * @return The created supplier.
+	 * @since saker.util 0.8.4
+	 */
+	public static <T> Supplier<T> toLockedSupplier(Iterator<? extends T> iterator) {
+		return new Supplier<T>() {
+			private final Lock lock = new ReentrantLock();
+
+			@Override
+			public T get() {
+				lock.lock();
+				try {
+					if (!iterator.hasNext()) {
+						return null;
+					}
+					return iterator.next();
+				} finally {
+					lock.unlock();
+				}
+			}
+		};
+	}
+
+	/**
 	 * Converts the argument iterator to a {@link Supplier} that removes the elements after retrieving them.
 	 * <p>
 	 * The returned supplier will return <code>null</code> if there are no more elements in the iterator. If the
@@ -1175,6 +1211,42 @@ public final class Functionals {
 	}
 
 	/**
+	 * Converts the argument iterator to a {@link Supplier} that removes the elements after retrieving them.
+	 * <p>
+	 * Same as {@link #toRemovingSupplier(Iterator)}, but the {@link Supplier#get()} calls of the returned supplier is
+	 * locked for multi threaded access. Clients shouldn't expect the lock to be reentrant.
+	 * <p>
+	 * The returned supplier is not serializable.
+	 * 
+	 * @param <T>
+	 *            The element type.
+	 * @param iterator
+	 *            The iterator.
+	 * @return The created supplier.
+	 * @since saker.util 0.8.4
+	 */
+	public static <T> Supplier<T> toLockedRemovingSupplier(Iterator<? extends T> iterator) {
+		return new Supplier<T>() {
+			private final Lock lock = new ReentrantLock();
+
+			@Override
+			public T get() {
+				lock.lock();
+				try {
+					if (!iterator.hasNext()) {
+						return null;
+					}
+					T result = iterator.next();
+					iterator.remove();
+					return result;
+				} finally {
+					lock.unlock();
+				}
+			}
+		};
+	}
+
+	/**
 	 * Converts the argument enumeration to a {@link Supplier}.
 	 * <p>
 	 * The returned supplier will return <code>null</code> if there are no more elements in the enumeration. If the
@@ -1222,6 +1294,40 @@ public final class Functionals {
 					return null;
 				}
 				return enumeration.nextElement();
+			}
+		};
+	}
+
+	/**
+	 * Converts the argument enumeration to a {@link Supplier}.
+	 * <p>
+	 * Same as {@link #toSupplier(Enumeration)}, but the {@link Supplier#get()} calls of the returned supplier is locked
+	 * for multi threaded access. Clients shouldn't expect the lock to be reentrant.
+	 * <p>
+	 * The returned supplier is not serializable.
+	 * 
+	 * @param <T>
+	 *            The element type.
+	 * @param enumeration
+	 *            The enumeration.
+	 * @return The created supplier.
+	 * @since saker.util 0.8.4
+	 */
+	public static <T> Supplier<T> toLockedSupplier(Enumeration<? extends T> enumeration) {
+		return new Supplier<T>() {
+			private final Lock lock = new ReentrantLock();
+
+			@Override
+			public T get() {
+				lock.lock();
+				try {
+					if (!enumeration.hasMoreElements()) {
+						return null;
+					}
+					return enumeration.nextElement();
+				} finally {
+					lock.unlock();
+				}
 			}
 		};
 	}

@@ -18,6 +18,7 @@ package saker.build.thirdparty.saker.rmi.connection;
 import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.Objects;
+import java.util.concurrent.Executor;
 
 import javax.net.SocketFactory;
 
@@ -38,6 +39,7 @@ public final class RMIOptions {
 	ClassLoader nullClassLoader = null;
 	RMITransferProperties properties;
 	ThreadGroup workerThreadGroup;
+	Executor executor;
 	int maxStreamCount = -1;
 	boolean allowDirectRequests = true;
 	boolean collectStatistics = false;
@@ -53,12 +55,15 @@ public final class RMIOptions {
 	 * 
 	 * @param copy
 	 *            The options to copy the values from.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
 	 */
-	public RMIOptions(RMIOptions copy) {
+	public RMIOptions(RMIOptions copy) throws NullPointerException {
 		this.classLoaderResolver = copy.classLoaderResolver;
 		this.nullClassLoader = copy.nullClassLoader;
 		this.properties = copy.properties;
 		this.workerThreadGroup = copy.workerThreadGroup;
+		this.executor = copy.executor;
 		this.maxStreamCount = copy.maxStreamCount;
 		this.allowDirectRequests = copy.allowDirectRequests;
 		this.collectStatistics = copy.collectStatistics;
@@ -143,6 +148,9 @@ public final class RMIOptions {
 	/**
 	 * Specifies the thread group to use for worker threads in the connection.
 	 * <p>
+	 * <b>Note</b>: since saker.rmi version 0.8.3 if you set the worker thread group, the
+	 * {@linkplain #executor(Executor) executor} will be unset.
+	 * <p>
 	 * Any created thread that is used to manage the connection will have this thread group as an ancestor. <br>
 	 * Worker threads include: <br>
 	 * <ul>
@@ -158,6 +166,30 @@ public final class RMIOptions {
 	 */
 	public RMIOptions workerThreadGroup(ThreadGroup threadgroup) {
 		this.workerThreadGroup = threadgroup;
+		this.executor = null;
+		return this;
+	}
+
+	/**
+	 * Sets the {@link Executor} that should be used by the RMI connection when spawning new tasks.
+	 * <p>
+	 * <b>Important:</b> In newer releases of Java, thread locals can be disabled for threads. Saker.rmi doesn't support
+	 * executors that disable thread locals. (This may change in the future when Extent-Local Variables are introduced.)
+	 * <p>
+	 * The concurrency factor of the used executor should be unbounded, meaning that all tasks submitted should be able
+	 * to run in parallel. Otherwise the RMI connection and its streams could get deadlocked.
+	 * <p>
+	 * Setting an executor will unset the {@linkplain #workerThreadGroup(ThreadGroup) worker thread group}, as in this
+	 * case the RMI library won't spawn its own threads.
+	 * 
+	 * @param executor
+	 *            The executor to use.
+	 * @return <code>this</code>
+	 * @since saker.rmi 0.8.3
+	 */
+	public RMIOptions executor(Executor executor) {
+		this.executor = executor;
+		this.workerThreadGroup = null;
 		return this;
 	}
 
@@ -323,4 +355,47 @@ public final class RMIOptions {
 	public ClassLoader getNullClassLoader() {
 		return nullClassLoader;
 	}
+
+	@Override
+	public String toString() {
+		StringBuilder builder = new StringBuilder(getClass().getName());
+		builder.append("[");
+		if (classLoaderResolver != null) {
+			builder.append("classLoaderResolver=");
+			builder.append(classLoaderResolver);
+			builder.append(", ");
+		}
+		if (nullClassLoader != null) {
+			builder.append("nullClassLoader=");
+			builder.append(nullClassLoader);
+			builder.append(", ");
+		}
+		if (properties != null) {
+			builder.append("properties=");
+			builder.append(properties);
+			builder.append(", ");
+		}
+		if (workerThreadGroup != null) {
+			builder.append("workerThreadGroup=");
+			builder.append(workerThreadGroup);
+			builder.append(", ");
+		}
+		if (executor != null) {
+			builder.append("executor=");
+			builder.append(executor);
+			builder.append(", ");
+		}
+		builder.append("maxStreamCount=");
+		builder.append(maxStreamCount);
+		if (maxStreamCount < 0) {
+			builder.append(" (default)");
+		}
+		builder.append(", allowDirectRequests=");
+		builder.append(allowDirectRequests);
+		builder.append(", collectStatistics=");
+		builder.append(collectStatistics);
+		builder.append("]");
+		return builder.toString();
+	}
+
 }

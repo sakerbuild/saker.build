@@ -33,6 +33,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import saker.build.thirdparty.saker.rmi.exception.RMICallFailedException;
@@ -93,11 +94,27 @@ public class RMIVariables implements AutoCloseable {
 
 	private static final AtomicIntegerFieldUpdater<RMIVariables> AIFU_objectIdProvider = AtomicIntegerFieldUpdater
 			.newUpdater(RMIVariables.class, "objectIdProvider");
-	private static final AtomicIntegerFieldUpdater<RMIVariables> AIFU_ongoingRequestCount = AtomicIntegerFieldUpdater
-			.newUpdater(RMIVariables.class, "ongoingRequestCount");
+
+	private static final AtomicIntegerFieldUpdater<RMIVariables> AIFU_state = AtomicIntegerFieldUpdater
+			.newUpdater(RMIVariables.class, "state");
+	/**
+	 * Flag set in {@link #state} if this {@link RMIVariables} is closed.
+	 */
+	private static final int STATE_BIT_CLOSED = 1 << 31;
+	/**
+	 * Flag set in {@link #state} if this {@link RMIVariables} should be closed after the last ongoing request is done.
+	 */
+	private static final int STATE_BIT_ABORTING = 1 << 30;
+	/**
+	 * Mask for {@link #state} holding the ongoing request count.
+	 */
+	private static final int STATE_MASK_ONGOING_REQUEST_COUNT = (1 << 30) - 1;
 
 	private final RMIConnection connection;
 	private final Object refSync = new Object();
+	/**
+	 * Access while locked on {@link #refSync}.
+	 */
 	private final Map<IdentityEqWeakReference<?>, LocalObjectReference> localObjectsToLocalReferences = new HashMap<>();
 	private final ConcurrentNavigableMap<Integer, LocalObjectReference> localIdentifiersToLocalObjects = new ConcurrentSkipListMap<>();
 
@@ -117,20 +134,39 @@ public class RMIVariables implements AutoCloseable {
 	@SuppressWarnings("unused")
 	private volatile int objectIdProvider = 1;
 
+	private final RMIStream stream;
+
 	private final ReferenceQueue<Object> gcReferenceQueue = new ReferenceQueue<>();
 
 	private final WeakReference<RMIVariables> gcThreadThisWeakReference = new WeakReference<>(this, gcReferenceQueue);
 
-	private volatile boolean aborting = false;
-	private volatile boolean closed = false;
-
-	@SuppressWarnings("unused")
-	private volatile int ongoingRequestCount = 0;
+	/**
+	 * Holds the closed, aborting flags and ongoing request count value.
+	 * 
+	 * @see #STATE_BIT_ABORTING
+	 * @see #STATE_BIT_CLOSED
+	 * @see #STATE_MASK_ONGOING_REQUEST_COUNT
+	 */
+	private volatile int state;
 
 	private RMITransferPropertiesHolder properties;
 
-	RMIVariables(int localIdentifier, int remoteIdentifier, RMIConnection connection) {
+	/**
+	 * A non-reentrant lock for writing a references released command.
+	 * <p>
+	 * This field is kept on a per RMIVariables basis instead of a per RMIStream basis, as the objects are tracked in
+	 * variables contexts.
+	 * <p>
+	 * The waiting on this sempahore is interruptable when writing the gc command, but is acquired uninterruptibly when
+	 * waiting to write command other than gc. This is because the semaphore should be available quickly after a gc
+	 * command, so interruption handling is not strictly necessary in case an other commands, however, in case when
+	 * writing a gc command, it can be handled on the gc thread.
+	 */
+	protected final Semaphore gcCommandSemaphore = new Semaphore(1);
+
+	RMIVariables(int localIdentifier, int remoteIdentifier, RMIConnection connection, RMIStream stream) {
 		//XXX we could allow the user to add custom transfer properties just for this variables instance
+		this.stream = stream;
 		this.properties = AutoCreatingRMITransferProperties.create(connection.getProperties());
 		this.localIdentifier = localIdentifier;
 		this.remoteIdentifier = remoteIdentifier;
@@ -152,7 +188,7 @@ public class RMIVariables implements AutoCloseable {
 		//dont inline this variable, or this RMIVariables is going to be strong referenced from the thread
 		ReferenceQueue<Object> refqueue = gcReferenceQueue;
 		WeakReference<RMIVariables> ref = gcThreadThisWeakReference;
-		connection.getThreadWorkPool().offer(() -> runGcThread(refqueue, ref));
+		connection.offerVariablesTask(() -> runGcThread(refqueue, ref));
 	}
 
 	/**
@@ -161,7 +197,7 @@ public class RMIVariables implements AutoCloseable {
 	 * @return <code>true</code> if closed.
 	 */
 	public boolean isClosed() {
-		return aborting;
+		return (state & (STATE_BIT_CLOSED | STATE_BIT_ABORTING)) != 0;
 	}
 
 	/**
@@ -184,12 +220,28 @@ public class RMIVariables implements AutoCloseable {
 	 */
 	@Override
 	public void close() {
-		if (aborting) {
-			return;
-		}
-		aborting = true;
-		if (AIFU_ongoingRequestCount.compareAndSet(this, 0, -1)) {
-			closeWithNoOngoingRequest();
+		while (true) {
+			int state = this.state;
+			if (((state & STATE_BIT_ABORTING) == STATE_BIT_ABORTING)) {
+				//already aborting, actual closing is done in either the previous close() call
+				//or when no more requests are ongoing 
+				return;
+			}
+			if ((state & STATE_MASK_ONGOING_REQUEST_COUNT) == 0) {
+				//no ongoing requests, close right away
+				if (!AIFU_state.compareAndSet(this, state, state | STATE_BIT_ABORTING | STATE_BIT_CLOSED)) {
+					//try again
+					continue;
+				}
+				closeWithNoOngoingRequest();
+			} else {
+				//still some ongoing requests, only set aborting flag
+				if (!AIFU_state.compareAndSet(this, state, state | STATE_BIT_ABORTING)) {
+					//try again
+					continue;
+				}
+			}
+			break;
 		}
 	}
 
@@ -208,7 +260,6 @@ public class RMIVariables implements AutoCloseable {
 	 */
 	public Object getRemoteContextVariable(String variablename) throws RMIIOFailureException {
 		addOngoingRequest();
-		RMIStream stream = connection.getStream();
 		try {
 			return stream.getRemoteContextVariable(this, variablename);
 		} catch (IOException e) {
@@ -289,7 +340,6 @@ public class RMIVariables implements AutoCloseable {
 	public Object newRemoteInstance(ConstructorTransferProperties<?> constructor, Object... arguments)
 			throws RMIRuntimeException, InvocationTargetException {
 		addOngoingRequest();
-		RMIStream stream = connection.getStream();
 		try {
 			return stream.newRemoteInstance(this, constructor, arguments);
 		} finally {
@@ -342,7 +392,6 @@ public class RMIVariables implements AutoCloseable {
 	public Object invokeRemoteStaticMethod(MethodTransferProperties method, Object... arguments)
 			throws RMIRuntimeException, InvocationTargetException {
 		addOngoingRequest();
-		RMIStream stream = connection.getStream();
 		try {
 			return stream.callMethod(this, NO_OBJECT_ID, method, arguments);
 		} finally {
@@ -833,7 +882,6 @@ public class RMIVariables implements AutoCloseable {
 			constructorarguments = ObjectUtils.EMPTY_OBJECT_ARRAY;
 		}
 		addOngoingRequest();
-		RMIStream stream = connection.getStream();
 		try {
 			return stream.newRemoteOnlyInstance(this, remoteclassloaderid, classname, constructorargumentclasses,
 					constructorarguments);
@@ -848,34 +896,63 @@ public class RMIVariables implements AutoCloseable {
 	}
 
 	boolean isAborting() {
-		return aborting;
+		return (state & STATE_BIT_ABORTING) == STATE_BIT_ABORTING;
 	}
 
 	void addOngoingRequest() {
-		AIFU_ongoingRequestCount.updateAndGet(this, c -> {
-			if (c < 0 || closed) {
+		while (true) {
+			int state = this.state;
+			if ((state & (STATE_BIT_CLOSED | STATE_BIT_ABORTING)) != 0) {
 				throw new RMIIOFailureException("Variables is closed.");
 			}
-			return c + 1;
-		});
+			int c = state & STATE_MASK_ONGOING_REQUEST_COUNT;
+			//keep the flags, add one
+			if (!AIFU_state.compareAndSet(this, state, (state & ~STATE_MASK_ONGOING_REQUEST_COUNT) | (c + 1))) {
+				continue;
+			}
+			return;
+		}
 	}
 
 	void removeOngoingRequest() {
-		int res = AIFU_ongoingRequestCount.updateAndGet(this, c -> {
-			if (c == 1 && aborting) {
-				return -1;
+		while (true) {
+			int state = this.state;
+
+			int c = state & STATE_MASK_ONGOING_REQUEST_COUNT;
+			switch (c) {
+				case 0: {
+					throw new IllegalStateException("No ongoing requests.");
+				}
+				case 1: {
+					if (((state & STATE_BIT_ABORTING) == STATE_BIT_ABORTING)) {
+						//closing as well
+						if (!AIFU_state.compareAndSet(this, state,
+								(state & ~STATE_MASK_ONGOING_REQUEST_COUNT) | STATE_BIT_CLOSED)) {
+							continue;
+						}
+						closeWithNoOngoingRequest();
+						return;
+					}
+					//not closing, clear request count
+					if (!AIFU_state.compareAndSet(this, state, state & ~STATE_MASK_ONGOING_REQUEST_COUNT)) {
+						continue;
+					}
+					return;
+				}
+				default: {
+					//keep the flags, subtract one
+					if (!AIFU_state.compareAndSet(this, state, (state & ~STATE_MASK_ONGOING_REQUEST_COUNT) | (c - 1))) {
+						continue;
+					}
+					return;
+				}
 			}
-			return c - 1;
-		});
-		if (res < 0) {
-			closeWithNoOngoingRequest();
 		}
 	}
 
 	Object invokeAllowedNonRedirectMethod(int remoteid, MethodTransferProperties method, Object[] arguments)
 			throws InvocationTargetException {
 		addOngoingRequest();
-		RMIStream stream = connection.getStream();
 		try {
 			return stream.callMethod(this, remoteid, method, arguments);
 		} finally {
@@ -885,7 +962,6 @@ public class RMIVariables implements AutoCloseable {
 
 	private void invokeAllowedNonRedirectMethodAsync(int remoteid, MethodTransferProperties method, Object[] arguments)
 			throws RMIIOFailureException {
-		RMIStream stream = connection.getStream();
 		stream.callMethodAsync(this, remoteid, method, arguments);
 	}
 
@@ -920,12 +996,14 @@ public class RMIVariables implements AutoCloseable {
 			throw new IllegalArgumentException("Local object doesn't exist with id: " + localid);
 		}
 		synchronized (localref) {
-			if (count > localref.remoteReferenceCount) {
-				throw new IllegalArgumentException("Released count: " + count
-						+ " is greater than remote reference count: " + localref.remoteReferenceCount);
+			int remoterefcount = localref.remoteReferenceCount;
+			if (count > remoterefcount) {
+				throw new IllegalArgumentException(
+						"Released count: " + count + " is greater than remote reference count: " + remoterefcount);
 			}
-			localref.remoteReferenceCount -= count;
-			if (localref.remoteReferenceCount == 0) {
+			int nremoterefcount = remoterefcount - count;
+			localref.remoteReferenceCount = nremoterefcount;
+			if (nremoterefcount == 0) {
 				//local object is not referenced any more on the other side
 				//null out reference to allow garbage collection
 				localref.strongReference = null;
@@ -990,10 +1068,29 @@ public class RMIVariables implements AutoCloseable {
 		return null;
 	}
 
-	int getLocalInstanceIdIncreaseReference(Object localobject) {
+	/**
+	 * Checks if this variables context strongly references the given argument as a local object.
+	 * <p>
+	 * Note: used for testing purposes.
+	 * 
+	 * @param localobject
+	 *            The object.
+	 * @return <code>true</code> if this object is strongly referenced by this variables instance.
+	 */
+	boolean isLocalObjectKnown(Object localobject) {
+		IdentityRefSearcher refsearcher = new IdentityRefSearcher(localobject);
 		synchronized (refSync) {
 			@SuppressWarnings("unlikely-arg-type")
-			LocalObjectReference gotobjref = localObjectsToLocalReferences.get(new IdentityRefSearcher(localobject));
+			LocalObjectReference gotobjref = localObjectsToLocalReferences.get(refsearcher);
+			return gotobjref != null && gotobjref.strongReference != null;
+		}
+	}
+
+	int getLocalInstanceIdIncreaseReference(Object localobject) {
+		IdentityRefSearcher refsearcher = new IdentityRefSearcher(localobject);
+		synchronized (refSync) {
+			@SuppressWarnings("unlikely-arg-type")
+			LocalObjectReference gotobjref = localObjectsToLocalReferences.get(refsearcher);
 			if (gotobjref != null) {
 				synchronized (gotobjref) {
 					++gotobjref.remoteReferenceCount;
@@ -1016,6 +1113,10 @@ public class RMIVariables implements AutoCloseable {
 		return localIdentifiersToLocalObjects.size();
 	}
 
+	int getLiveRemoteObjectCount() {
+		return cachedRemoteProxies.size();
+	}
+
 	RMITransferPropertiesHolder getProperties() {
 		return properties;
 	}
@@ -1036,6 +1137,10 @@ public class RMIVariables implements AutoCloseable {
 			throws RMIRuntimeException, InvocationTargetException {
 		checkForbidden(method);
 		return invokeAllowedNonRedirectMethod(remoteid, method, arguments);
+	}
+
+	RMIStream getStream() {
+		return stream;
 	}
 
 	private static class LocalObjectReference extends WeakReference<Object> {
@@ -1325,7 +1430,7 @@ public class RMIVariables implements AutoCloseable {
 	}
 
 	private static void runGcThread(ReferenceQueue<Object> refqueue, WeakReference<RMIVariables> varsref) {
-		Thread.currentThread().setContextClassLoader(null);
+		RMIConnection.clearContextClassLoaderOfCurrentThread();
 		try {
 			while (true) {
 				Reference<? extends Object> ref = refqueue.remove();
@@ -1342,7 +1447,7 @@ public class RMIVariables implements AutoCloseable {
 		}
 	}
 
-	private boolean handleGcQueuedReference(Reference<? extends Object> ref) {
+	private boolean handleGcQueuedReference(Reference<? extends Object> ref) throws InterruptedException {
 		if (ref instanceof RemoteProxyReference) {
 			RemoteProxyReference rpr = (RemoteProxyReference) ref;
 			//reference to a proxy object became unreachable
@@ -1351,7 +1456,7 @@ public class RMIVariables implements AutoCloseable {
 			cachedRemoteProxies.remove(remoteid, rpr);
 			//notify the remote connection about the unreachability
 			try {
-				connection.getStream().writeCommandReferencesReleased(this, remoteid, rpr.referenceCount);
+				stream.writeCommandReferencesReleased(this, remoteid, rpr.referenceCount);
 			} catch (RMIIOFailureException | IOException e) {
 				//IO error occurred when we were trying to write the released command
 				//we expect that we wont be able to write any command to the streams
@@ -1380,9 +1485,10 @@ public class RMIVariables implements AutoCloseable {
 		}
 	}
 
+	/**
+	 * Set {@link #STATE_BIT_CLOSED} before calling this!
+	 */
 	private void closeWithNoOngoingRequest() {
-		closed = true;
-
 		//enqueue a reference to notify the gc thread about exiting
 		gcThreadThisWeakReference.enqueue();
 
