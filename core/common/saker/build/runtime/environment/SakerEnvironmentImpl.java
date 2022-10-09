@@ -41,7 +41,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.Lock;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -126,7 +126,7 @@ public final class SakerEnvironmentImpl implements Closeable {
 	private ClassLoaderResolverRegistry classLoaderRegistry;
 
 	private final Map<EnvironmentProperty<?>, PropertyComputationResultSupplier> checkedEnvironmentProperties = new ConcurrentHashMap<>();
-	private final ConcurrentHashMap<EnvironmentProperty<?>, StrongWeakReference<ReentrantLock>> environmentPropertyCalculateLocks = new ConcurrentHashMap<>();
+	private final ConcurrentHashMap<EnvironmentProperty<?>, StrongWeakReference<Lock>> environmentPropertyCalculateLocks = new ConcurrentHashMap<>();
 
 	private ClassPathLoadManager classPathManager;
 	private RepositoryManager repositoryManager;
@@ -296,7 +296,7 @@ public final class SakerEnvironmentImpl implements Closeable {
 		Objects.requireNonNull(environmentproperty, "property");
 		PropertyComputationResultSupplier result = checkedEnvironmentProperties.get(environmentproperty);
 		if (result == null) {
-			ReentrantLock lock = getEnvironmentPropertyCalculateLock(environmentproperty);
+			Lock lock = getEnvironmentPropertyCalculateLock(environmentproperty);
 			lock.lock();
 			try {
 				result = checkedEnvironmentProperties.get(environmentproperty);
@@ -390,15 +390,14 @@ public final class SakerEnvironmentImpl implements Closeable {
 		}
 	}
 
-	private ReentrantLock getEnvironmentPropertyCalculateLock(EnvironmentProperty<?> environmentproperty) {
-		StrongWeakReference<ReentrantLock> ref = environmentPropertyCalculateLocks.compute(environmentproperty,
-				(k, v) -> {
-					if (v != null && v.makeStrong()) {
-						return v;
-					}
-					return new StrongWeakReference<>(new ReentrantLock());
-				});
-		ReentrantLock result = ref.get();
+	private Lock getEnvironmentPropertyCalculateLock(EnvironmentProperty<?> environmentproperty) {
+		StrongWeakReference<Lock> ref = environmentPropertyCalculateLocks.compute(environmentproperty, (k, v) -> {
+			if (v != null && v.makeStrong()) {
+				return v;
+			}
+			return new StrongWeakReference<>(ThreadUtils.newExclusiveLock());
+		});
+		Lock result = ref.get();
 		ref.makeWeak();
 		return result;
 	}

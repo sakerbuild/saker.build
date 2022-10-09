@@ -147,7 +147,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	private Object environmentExecutionKey;
 
 	private Map<ExecutionProperty<?>, Supplier<?>> checkedExecutionProperties = new ConcurrentHashMap<>();
-	private final ConcurrentHashMap<ExecutionProperty<?>, StrongWeakReference<ReentrantLock>> executionPropertyCalculateLocks = new ConcurrentHashMap<>();
+	private final ConcurrentHashMap<ExecutionProperty<?>, StrongWeakReference<Lock>> executionPropertyCalculateLocks = new ConcurrentHashMap<>();
 
 	private BuildTaskResultDatabase results;
 	private TaskResultCollectionImpl resultCollection;
@@ -388,7 +388,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		if (result != null) {
 			return (T) result.get();
 		}
-		ReentrantLock lock = getExecutionPropertyCalculateLock(executionproperty);
+		Lock lock = getExecutionPropertyCalculateLock(executionproperty);
 		lock.lock();
 		try {
 			result = checkedExecutionProperties.get(executionproperty);
@@ -410,14 +410,14 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		}
 	}
 
-	private ReentrantLock getExecutionPropertyCalculateLock(ExecutionProperty<?> executionproperty) {
-		StrongWeakReference<ReentrantLock> ref = executionPropertyCalculateLocks.compute(executionproperty, (k, v) -> {
+	private Lock getExecutionPropertyCalculateLock(ExecutionProperty<?> executionproperty) {
+		StrongWeakReference<Lock> ref = executionPropertyCalculateLocks.compute(executionproperty, (k, v) -> {
 			if (v != null && v.makeStrong()) {
 				return v;
 			}
-			return new StrongWeakReference<>(new ReentrantLock());
+			return new StrongWeakReference<>(ThreadUtils.newExclusiveLock());
 		});
-		ReentrantLock result = ref.get();
+		Lock result = ref.get();
 		ref.makeWeak();
 		return result;
 	}
