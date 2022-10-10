@@ -38,6 +38,7 @@ import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.Lock;
 
 import saker.build.file.path.ProviderHolderPathKey;
@@ -51,7 +52,6 @@ import saker.build.thirdparty.saker.util.classloader.ClassLoaderDataFinder;
 import saker.build.thirdparty.saker.util.classloader.CloseProtectedClassLoaderDataFinder;
 import saker.build.thirdparty.saker.util.classloader.JarClassLoaderDataFinder;
 import saker.build.thirdparty.saker.util.classloader.MultiDataClassLoader;
-import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.io.FileUtils;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
@@ -155,7 +155,7 @@ public class ClassPathLoadManager implements Closeable {
 	 * Maps classpath load directories to their load states.
 	 */
 	private final ConcurrentNavigableMap<Path, ClassPathLoadState> loadDirectoryLoadStates = new ConcurrentSkipListMap<>();
-	private final ConcurrentNavigableMap<Path, Object> loadDirectoryLoadStatesLocks = new ConcurrentSkipListMap<>();
+	private final ConcurrentNavigableMap<Path, Lock> loadDirectoryLoadStatesLocks = new ConcurrentSkipListMap<>();
 
 	private volatile boolean closed = false;
 
@@ -213,7 +213,15 @@ public class ClassPathLoadManager implements Closeable {
 	public ClassPathLock loadClassPath(ClassPathLocation classpathlocation) throws IOException {
 		String locationid = classpathlocation.getIdentifier();
 		Path loaddir = getClassPathLoadDirectory(locationid);
-		synchronized (loadDirectoryLoadStatesLocks.computeIfAbsent(loaddir, Functionals.objectComputer())) {
+		Lock lock = getClassPathLoadDirectoryLoadStateLock(loaddir);
+		try {
+			lock.lockInterruptibly();
+		} catch (InterruptedException e) {
+			//set back the interrupt flag
+			Thread.currentThread().interrupt();
+			throw new InterruptedIOException("Acquiring class path load lock interrupted.");
+		}
+		try {
 			checkClosed();
 			ClassPathLoadState loadstate = loadDirectoryLoadStates.get(loaddir);
 			if (loadstate == null) {
@@ -222,6 +230,8 @@ public class ClassPathLoadManager implements Closeable {
 				loadDirectoryLoadStates.put(loaddir, loadstate);
 			}
 			return loadstate.createLock(classpathlocation);
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -249,9 +259,15 @@ public class ClassPathLoadManager implements Closeable {
 	public ClassPathLock loadDirectClassPath(Path classpathloaddirectory) throws IOException {
 		SakerPathFiles.requireAbsolutePath(classpathloaddirectory);
 		classpathloaddirectory = classpathloaddirectory.normalize();
-
-		synchronized (loadDirectoryLoadStatesLocks.computeIfAbsent(classpathloaddirectory,
-				Functionals.objectComputer())) {
+		Lock lock = getClassPathLoadDirectoryLoadStateLock(classpathloaddirectory);
+		try {
+			lock.lockInterruptibly();
+		} catch (InterruptedException e) {
+			//set back the interrupt flag
+			Thread.currentThread().interrupt();
+			throw new InterruptedIOException("Acquiring class path load lock interrupted.");
+		}
+		try {
 			checkClosed();
 			ClassPathLoadState loadstate = loadDirectoryLoadStates.get(classpathloaddirectory);
 			if (loadstate == null) {
@@ -260,6 +276,8 @@ public class ClassPathLoadManager implements Closeable {
 				loadDirectoryLoadStates.put(classpathloaddirectory, loadstate);
 			}
 			return loadstate.createLock(null);
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -292,9 +310,13 @@ public class ClassPathLoadManager implements Closeable {
 		closed = true;
 		refQueue = null;
 		IOException exc = null;
-		for (Entry<Path, Object> entry : loadDirectoryLoadStatesLocks.entrySet()) {
-			synchronized (entry.getValue()) {
+		for (Entry<Path, Lock> entry : loadDirectoryLoadStatesLocks.entrySet()) {
+			Lock lock = entry.getValue();
+			lock.lock();
+			try {
 				exc = IOUtils.closeExc(loadDirectoryLoadStates.remove(entry.getKey()));
+			} finally {
+				lock.unlock();
 			}
 		}
 		cleanerThread.interrupt();
@@ -394,6 +416,10 @@ public class ClassPathLoadManager implements Closeable {
 		return null;
 	}
 
+	private Lock getClassPathLoadDirectoryLoadStateLock(Path loaddir) {
+		return loadDirectoryLoadStatesLocks.computeIfAbsent(loaddir, x -> ThreadUtils.newExclusiveLock());
+	}
+
 	private static class ReturnedFinderReference extends WeakReference<ClassLoaderDataFinder> {
 		protected ClassPathLoadState loadState;
 
@@ -433,7 +459,9 @@ public class ClassPathLoadManager implements Closeable {
 		protected ConcurrentPrependAccumulator<ReturnedFinderReference> returnedClassLoaderDataFinderReferences = new ConcurrentPrependAccumulator<>();
 		protected ConcurrentPrependAccumulator<ReturnedLockReference> returnedLockReferences = new ConcurrentPrependAccumulator<>();
 
-		private FileLock readLock;
+		private FileLock readFileLock;
+
+		private final Lock accessLock = ThreadUtils.newExclusiveLock();
 
 		public ClassPathLoadState(Path classpathloaddirectory) {
 			this.classPathLoadDirectory = classpathloaddirectory;
@@ -448,23 +476,30 @@ public class ClassPathLoadManager implements Closeable {
 		}
 
 		public ClassPathLock createLock(ClassPathLocation classpathlocation) throws IOException {
-			synchronized (this) {
+			try {
+				accessLock.lockInterruptibly();
+			} catch (InterruptedException e) {
+				//set back the interrupt flag
+				Thread.currentThread().interrupt();
+				throw new InterruptedIOException("Acquiring class path load state lock interrupted.");
+			}
+			try {
 				StateLoadLockImpl result = new StateLoadLockImpl();
 				ensureClassPathLoadedLocked(classpathlocation, result);
 				locks.add(result);
 				return returnLock(result);
+			} finally {
+				accessLock.unlock();
 			}
-		}
-
-		private ClassPathLock returnLock(StateLoadLockImpl result) {
-			returnedLockReferences.add(new ReturnedLockReference(result, refQueue));
-			return result;
 		}
 
 		protected void returningDataFinder(CloseProtectedClassLoaderDataFinder finder) {
 			ReturnedFinderReference ref = new ReturnedFinderReference(finder, refQueue, this);
-			synchronized (this) {
+			accessLock.lock();
+			try {
 				returnedDataFinders.add(finder);
+			} finally {
+				accessLock.unlock();
 			}
 			returnedClassLoaderDataFinderReferences.add(ref);
 		}
@@ -475,7 +510,8 @@ public class ClassPathLoadManager implements Closeable {
 
 		@Override
 		public void close() throws IOException {
-			synchronized (this) {
+			accessLock.lock();
+			try {
 				if (lockFileHandle == null) {
 					return;
 				}
@@ -483,47 +519,50 @@ public class ClassPathLoadManager implements Closeable {
 				IOException exc = null;
 				exc = IOUtils.closeExc(exc, locks);
 				locks.clear();
-				exc = IOUtils.closeExc(exc, readLock);
-				readLock = null;
+				exc = IOUtils.closeExc(exc, readFileLock);
+				readFileLock = null;
 				lockFileHandle.releaseUserCount();
 				lockFileHandle = null;
 				IOUtils.throwExc(exc);
+			} finally {
+				accessLock.unlock();
 			}
 		}
 
-		@Override
-		public String toString() {
-			return "ClassPathLoadState["
-					+ (classPathLoadDirectory != null ? "classPathLoadDirectory=" + classPathLoadDirectory : "") + "]";
-		}
-
 		protected void unlock(StateLoadLockImpl lock) {
-			synchronized (this) {
+			accessLock.lock();
+			try {
 				if (!locks.remove(lock)) {
 					return;
 				}
 				if (locks.isEmpty()) {
 					clearLoadState();
-					IOUtils.closePrint(readLock);
-					readLock = null;
+					IOUtils.closePrint(readFileLock);
+					readFileLock = null;
 				}
+			} finally {
+				accessLock.unlock();
 			}
 		}
 
 		protected void handlePossibleLockAbandonment() {
-			synchronized (this) {
+			accessLock.lock();
+			try {
 				if (!locks.isEmpty() || !returnedDataFinders.isEmpty()) {
 					//there are still locks or data finders referenced by the client
 					return;
 				}
 				clearLoadState();
-				IOUtils.closePrint(readLock);
-				readLock = null;
+				IOUtils.closePrint(readFileLock);
+				readFileLock = null;
+			} finally {
+				accessLock.unlock();
 			}
 		}
 
 //		protected boolean tryReloadIfChanged(StateLoadLockImpl lock, Runnable run) throws IOException {
-//			synchronized (this) {
+//			accessLock.lock();
+//			try {
 //				if (this.location == null) {
 //					return false;
 //				}
@@ -542,37 +581,69 @@ public class ClassPathLoadManager implements Closeable {
 //				ensureClassPathLoadedLocked(null, lock, run);
 //				//if the data finder changed, then the classpath was reloaded
 //				return datafinder != this.loadedDataFinder;
+//			} finally {
+//				accessLock.unlock();
 //			}
 //		}
 
+		@Override
+		public String toString() {
+			StringBuilder builder = new StringBuilder(getClass().getSimpleName());
+			builder.append("[classPathLoadDirectory=");
+			builder.append(classPathLoadDirectory);
+			builder.append("]");
+			return builder.toString();
+		}
+
 		private class StateLoadLockImpl implements ClassPathLock {
 			private boolean closed = false;
+			private final Lock accessLock = ThreadUtils.newExclusiveLock();
 
 			@Override
-			public synchronized ClassLoaderDataFinder getClassLoaderDataFinder() {
-				checkClosed();
-				CloseProtectedClassLoaderDataFinder result = new CloseProtectedClassLoaderDataFinder(
-						ClassPathLoadState.this.loadedDataFinder);
-				returningDataFinder(result);
-				return result;
+			public ClassLoaderDataFinder getClassLoaderDataFinder() {
+				accessLock.lock();
+				try {
+					checkClosed();
+					CloseProtectedClassLoaderDataFinder result = new CloseProtectedClassLoaderDataFinder(
+							ClassPathLoadState.this.loadedDataFinder);
+					returningDataFinder(result);
+					return result;
+				} finally {
+					accessLock.unlock();
+				}
 			}
 
 			@Override
-			public synchronized Path getClassPathPath() {
-				checkClosed();
-				return ClassPathLoadState.this.getClassPathPath();
+			public Path getClassPathPath() {
+				accessLock.lock();
+				try {
+					checkClosed();
+					return ClassPathLoadState.this.getClassPathPath();
+				} finally {
+					accessLock.unlock();
+				}
 			}
 
 			@Override
-			public synchronized Path getClassPathLoadDirectory() {
-				checkClosed();
-				return ClassPathLoadState.this.getClassPathLoadDirectory();
+			public Path getClassPathLoadDirectory() {
+				accessLock.lock();
+				try {
+					checkClosed();
+					return ClassPathLoadState.this.getClassPathLoadDirectory();
+				} finally {
+					accessLock.unlock();
+				}
 			}
 
 			@Override
-			public synchronized String getLocationIdentifier() {
-				checkClosed();
-				return ClassPathLoadState.this.locationIdentifier;
+			public String getLocationIdentifier() {
+				accessLock.lock();
+				try {
+					checkClosed();
+					return ClassPathLoadState.this.locationIdentifier;
+				} finally {
+					accessLock.unlock();
+				}
 			}
 
 			@Override
@@ -581,18 +652,28 @@ public class ClassPathLoadManager implements Closeable {
 			}
 
 //			@Override
-//			public synchronized boolean tryReloadIfchanged(Runnable run) throws IOException {
-//				checkClosed();
-//				return ClassPathLoadState.this.tryReloadIfChanged(this, run);
+//			public boolean tryReloadIfchanged(Runnable run) throws IOException {
+//				accessLock.lock();
+//				try {
+//					checkClosed();
+//					return ClassPathLoadState.this.tryReloadIfChanged(this, run);
+//				} finally {
+//					accessLock.unlock();
+//				}
 //			}
 
 			@Override
-			public synchronized void close() {
-				if (closed) {
-					return;
+			public void close() {
+				accessLock.lock();
+				try {
+					if (closed) {
+						return;
+					}
+					closed = true;
+					unlock(this);
+				} finally {
+					accessLock.unlock();
 				}
-				closed = true;
-				unlock(this);
 			}
 
 			public ClassPathLoadState getEnclosingLoadState() {
@@ -604,17 +685,21 @@ public class ClassPathLoadManager implements Closeable {
 					throw new IllegalStateException("closed");
 				}
 			}
+		}
 
+		private ClassPathLock returnLock(StateLoadLockImpl result) {
+			returnedLockReferences.add(new ReturnedLockReference(result, refQueue));
+			return result;
 		}
 
 		private boolean tryAcquireReadLock(FileChannel lockchannel, StateLoadLockImpl loadlock) throws IOException {
-			if (readLock != null) {
-				throw new AssertionError("readlock is not null.");
+			if (readFileLock != null) {
+				throw new IllegalStateException("readlock is not null.");
 			}
 			for (int i = 0; i < 3; i++) {
 				long offset = randomReadLockOffset();
-				readLock = tryLockFileNullOverlappingException(lockchannel, offset, READLOCK_REGION_LENGTH, false);
-				if (readLock != null) {
+				readFileLock = tryLockFileNullOverlappingException(lockchannel, offset, READLOCK_REGION_LENGTH, false);
+				if (readFileLock != null) {
 					//successfully acquired read lock with loaded classpath
 					this.locks.add(loadlock);
 					return true;
@@ -627,8 +712,8 @@ public class ClassPathLoadManager implements Closeable {
 		@SuppressWarnings("try")
 		private void ensureClassPathLoaded(StateLoadLockImpl loadlock, ClassPathLocation thislocation)
 				throws IOException {
-			if (!locks.isEmpty() || readLock != null) {
-				throw new AssertionError(locks + " --- " + readLock);
+			if (!locks.isEmpty() || readFileLock != null) {
+				throw new IllegalStateException(locks + " --- " + readFileLock);
 			}
 			LocalFileProvider localfiles = LocalFileProvider.getInstance();
 			ProviderHolderPathKey targetdirpathkey = localfiles.getPathKey(classPathLoadDirectory);
@@ -646,6 +731,8 @@ public class ClassPathLoadManager implements Closeable {
 				RandomAccessFile raf = lockFileHandle.getFileLocked();
 				FileChannel lockchannel = raf.getChannel();
 				while (true) {
+					//XXX we should handle OverlappingFileLockException from the locking methods, 
+					//    what if multiple ClassPathLoadManagers are used from different classloaders in the same JVM?
 					try (FileLock statelock = lockchannel.lock(0, LOCKFILE_STATE_DATA_LENGTH, false)) {
 						raf.seek(0);
 						boolean wasloaded;
@@ -668,7 +755,9 @@ public class ClassPathLoadManager implements Closeable {
 							try (FileLock writelock = lockchannel.tryLock(LOCKFILE_STATE_DATA_LENGTH,
 									Long.MAX_VALUE - LOCKFILE_STATE_DATA_LENGTH, false)) {
 								if (writelock == null) {
-									throw new AssertionError("Failed to lock remaining part of lock file.");
+									//this shouldn't happen, as there shouldn't be any read locks on a failed load state
+									throw new IOException(
+											"Failed to lock remaining part of lock file: " + lockFileHandle.path);
 								}
 
 								executeClassPathLoadingAndWriteFileState(thislocation, localfiles, targetdirpathkey,
@@ -677,7 +766,7 @@ public class ClassPathLoadManager implements Closeable {
 						} else {
 							//the classpath is in a successfully loaded state
 							//the classpath loading was successful by some other agent
-							//it is still is use by some other agent, 
+							//if it is still is use by some other agent, 
 							//    we can't load the classpath again, as that would corrupt the other agent
 							//we go ahead and load the classpath without loading
 							//    this is acceptable as reloading a classpath requires all users to release it first
@@ -809,17 +898,20 @@ public class ClassPathLoadManager implements Closeable {
 	}
 
 	private static class LoaderLockFileHandle {
-		private final Path path;
+		private static final AtomicReferenceFieldUpdater<ClassPathLoadManager.LoaderLockFileHandle, State> ARFU_state = AtomicReferenceFieldUpdater
+				.newUpdater(ClassPathLoadManager.LoaderLockFileHandle.class, State.class, "state");
+
+		public final Path path;
 		private final Lock lock = ThreadUtils.newExclusiveLock();
-		private RandomAccessFile lockFile;
-		private int userCount = 0;
+
+		private volatile State state = new State();
 
 		public LoaderLockFileHandle(Path path) {
 			this.path = path;
 		}
 
 		public void acquireLock() throws InterruptedException {
-			lock.lock();
+			lock.lockInterruptibly();
 		}
 
 		public boolean tryAcquireLock(long timeout, TimeUnit unit) throws InterruptedException {
@@ -831,36 +923,75 @@ public class ClassPathLoadManager implements Closeable {
 		}
 
 		public RandomAccessFile getFileLocked() throws FileNotFoundException {
-			if (lockFile != null) {
-				return lockFile;
+			State state = this.state;
+			RandomAccessFile file = state.lockFile[0];
+			if (file == null) {
+				file = new RandomAccessFile(path.toFile(), "rw");
+				state.lockFile[0] = file;
 			}
-			lockFile = new RandomAccessFile(path.toFile(), "rw");
-			return lockFile;
+			return file;
 		}
 
 		public void releaseUserCount() {
-			synchronized (this) {
-				--userCount;
-				if (userCount == 0) {
-					boolean acquired = lock.tryLock();
-					if (!acquired) {
-						throw new AssertionError("No lock file users are present, and failed to acquire handle lock.");
+			while (true) {
+				State s = this.state;
+				switch (s.userCount) {
+					case 0: {
+						throw new IllegalStateException("No reference to release.");
 					}
-					try {
-						if (lockFile != null) {
-							IOUtils.closePrint(lockFile);
-							lockFile = null;
+					case 1: {
+						//release the state
+						if (!ARFU_state.compareAndSet(this, s, new State())) {
+							continue;
 						}
-					} finally {
-						lock.unlock();
+						//we were the last users of the state
+						//close the lock file
+						IOUtils.closePrint(s.lockFile);
+						return;
+					}
+					default: {
+						if (!ARFU_state.compareAndSet(this, s, s.decreaseReference())) {
+							continue;
+						}
+						return;
 					}
 				}
 			}
 		}
 
 		public void addUsercount() {
-			synchronized (this) {
-				++userCount;
+			while (true) {
+				State s = this.state;
+				if (!ARFU_state.compareAndSet(this, s, s.increaseReference())) {
+					continue;
+				}
+				break;
+			}
+		}
+
+		private static class State {
+			/**
+			 * Length 1 array to have an common reference holder to the opened lock file.
+			 */
+			protected final RandomAccessFile[] lockFile;
+			protected final int userCount;
+
+			public State() {
+				this.lockFile = new RandomAccessFile[1];
+				this.userCount = 0;
+			}
+
+			private State(RandomAccessFile[] lockFile, int userCount) {
+				this.lockFile = lockFile;
+				this.userCount = userCount;
+			}
+
+			public State decreaseReference() {
+				return new State(lockFile, userCount - 1);
+			}
+
+			public State increaseReference() {
+				return new State(lockFile, userCount - 1);
 			}
 		}
 	}
