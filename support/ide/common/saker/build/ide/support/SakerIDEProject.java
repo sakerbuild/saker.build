@@ -44,7 +44,6 @@ import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
 import saker.build.daemon.BuildExecutionInvoker;
@@ -104,9 +103,9 @@ import saker.build.runtime.environment.RepositoryManager;
 import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.execution.ExecutionParametersImpl;
-import saker.build.runtime.execution.SakerLog;
 import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation;
 import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation.ConnectionInformation;
+import saker.build.runtime.execution.SakerLog;
 import saker.build.runtime.params.BuiltinScriptAccessorServiceEnumerator;
 import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.runtime.params.ExecutionRepositoryConfiguration;
@@ -136,6 +135,7 @@ import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.function.LazySupplier;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.NetworkUtils;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 
 public final class SakerIDEProject {
 	private static final SakerPath SCRIPTING_PSEUDO_PATH = SakerPath.valueOf("scriptingpseudoroot:");
@@ -237,7 +237,7 @@ public final class SakerIDEProject {
 	private final SakerIDEPlugin plugin;
 	private Path projectPath;
 
-	private final Lock configurationChangeLock = new ReentrantLock();
+	private final Lock configurationChangeLock = ThreadUtils.newExclusiveLock();
 	private ProjectIDEConfigurationCollection configurationCollection;
 	private ValidatedProjectProperties ideProjectProperties;
 	private volatile ProjectCacheHandle retrievedProjectHandle;

@@ -46,7 +46,6 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.function.ToIntBiFunction;
 
@@ -87,6 +86,7 @@ import saker.build.thirdparty.saker.util.io.UnsyncBufferedInputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncBufferedOutputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import saker.build.thirdparty.saker.util.io.function.IORunnable;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.util.serial.ContentReaderObjectInput;
 import saker.build.util.serial.ContentWriterObjectOutput;
 
@@ -1243,7 +1243,10 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 	private Lock getPathLock(RootFileProviderKey providerkey, SakerPath path) {
 		ConcurrentSkipListMap<SakerPath, Lock> coll = providerKeyPathUpdateLocks.computeIfAbsent(providerkey,
 				Functionals.concurrentSkipListMapComputer());
-		return coll.computeIfAbsent(path, x -> new ReentrantLock());
+		//use exclusive lock for the path lock,
+		//as reentrancy is not needed, and kind of not desirable, 
+		//as one synchronization would interfere with the other 
+		return coll.computeIfAbsent(path, x -> ThreadUtils.newExclusiveLock());
 	}
 
 	private void deleteWithContent(RootFileProviderKey providerkey, SakerPath path, ContentDescriptor contentdescriptor,

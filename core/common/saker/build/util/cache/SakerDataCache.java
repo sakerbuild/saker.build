@@ -27,12 +27,13 @@ import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.Lock;
 import java.util.function.Predicate;
 
 import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.thirdparty.saker.util.DateUtils;
 import saker.build.thirdparty.saker.util.io.IOUtils;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 
 /**
  * The caching logic implementation for {@link SakerEnvironment}.
@@ -92,7 +93,7 @@ public class SakerDataCache implements Closeable {
 	}
 
 	private static class CacheEntry<DataType, ResourceType> {
-		protected final ReentrantLock lock = new ReentrantLock();
+		protected final Lock lock = ThreadUtils.newExclusiveLock();
 
 		protected Reference<DataType> dataRef;
 		protected Long expiryMillis;
@@ -164,7 +165,7 @@ public class SakerDataCache implements Closeable {
 					if (removed != null) {
 						CommonReference<?, ?> rpr = (CommonReference<?, ?>) removed;
 						CacheEntry<?, ?> entry = rpr.getEntry();
-						entry.lock.lock();
+						entry.lock.lockInterruptibly();
 						try {
 							if (entry.dataRef != rpr) {
 								//dont close the resource as it is being used by a new data
@@ -190,7 +191,7 @@ public class SakerDataCache implements Closeable {
 								.iterator(); it.hasNext();) {
 							Entry<CacheKey<?, ?>, CacheEntry<?, ?>> entry = it.next();
 							CacheEntry ce = entry.getValue();
-							ce.lock.lock();
+							ce.lock.lockInterruptibly();
 							try {
 								if (!ce.isConstructed() || ce.isInvalidated()) {
 									//not yet finished constructing

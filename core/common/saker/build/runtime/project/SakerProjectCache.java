@@ -79,6 +79,8 @@ public class SakerProjectCache implements ProjectCacheHandle {
 	}
 
 	private final SakerEnvironmentImpl environment;
+	//a Semaphore acting as a lock
+	//we need a Semaphore for this, as the lock is acquired and released on different threads
 	private final Semaphore usageLock = new Semaphore(1);
 
 	private volatile Thread executionFinalizerThread;
@@ -246,7 +248,8 @@ public class SakerProjectCache implements ProjectCacheHandle {
 
 		SakerPath workingdir = pathconfig.getWorkingDirectory();
 		Thread currentthread = Thread.currentThread();
-		lockUsageLockForExecution(new ExecutionProgressMonitor.NullProgressMonitor(), workingdir, currentthread);
+		lockUsageLockForExecution(new ExecutionProgressMonitor.NullProgressMonitor(), workingdir, currentthread,
+				usageLock);
 
 		Semaphore execlocktounlock = usageLock;
 		try {
@@ -369,7 +372,7 @@ public class SakerProjectCache implements ProjectCacheHandle {
 
 		Thread currentthread = Thread.currentThread();
 
-		lockUsageLockForExecution(monitor, workingdir, currentthread);
+		lockUsageLockForExecution(monitor, workingdir, currentthread, usageLock);
 
 		Semaphore execlocktounlock = usageLock;
 		SakerFileLock filetounlock = null;
@@ -535,8 +538,8 @@ public class SakerProjectCache implements ProjectCacheHandle {
 		clusterMirrorHandler = null;
 	}
 
-	private void lockUsageLockForExecution(ExecutionProgressMonitor monitor, SakerPath workingdir,
-			Thread currentthread) {
+	private static void lockUsageLockForExecution(ExecutionProgressMonitor monitor, SakerPath workingdir,
+			Thread currentthread, Semaphore usageLock) {
 		boolean locked = usageLock.tryAcquire();
 		if (!locked) {
 			SakerLog.log().verbose().println("Awaiting execution lock for project at: " + workingdir);

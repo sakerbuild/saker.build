@@ -29,9 +29,9 @@ import java.util.Objects;
 import java.util.ServiceConfigurationError;
 import java.util.Set;
 import java.util.WeakHashMap;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.Lock;
 
 import saker.build.file.path.SakerPath;
 import saker.build.ide.support.SakerIDEPlugin.PluginResourceListener;
@@ -52,6 +52,7 @@ import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayInputStream;
 import saker.build.thirdparty.saker.util.io.function.IOSupplier;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 
 public class ScriptEditorModel implements Closeable {
 	private static final AtomicReferenceFieldUpdater<ScriptEditorModel, ModelReference> ARFU_model = AtomicReferenceFieldUpdater
@@ -645,7 +646,7 @@ public class ScriptEditorModel implements Closeable {
 				.newUpdater(ScriptEditorModel.ModelReference.class, "postedUpdateCounter");
 
 		protected final ScriptSyntaxModel model;
-		protected final Semaphore updateSemaphore = new Semaphore(1);
+		protected final Lock updateSemaphore = ThreadUtils.newExclusiveLock();
 
 		protected String fullInput;
 		protected List<TextRegionChange> regionChanges = null;
@@ -709,7 +710,7 @@ public class ScriptEditorModel implements Closeable {
 					}
 					try {
 						try {
-							updateSemaphore.acquireUninterruptibly();
+							updateSemaphore.lock();
 							try {
 								if (invalidated) {
 									//model reference no longer used
@@ -723,7 +724,7 @@ public class ScriptEditorModel implements Closeable {
 									model.updateModel(regionchanges, currentdatasupplier);
 								}
 							} finally {
-								updateSemaphore.release();
+								updateSemaphore.unlock();
 							}
 							Object nupdateversion = new Object();
 							TokenStateReference ntokenstate = editor.getTokenStateFromModel(model, nupdateversion);
@@ -872,11 +873,11 @@ public class ScriptEditorModel implements Closeable {
 				this.regionChanges = null;
 				this.invalidated = true;
 			}
-			updateSemaphore.acquireUninterruptibly();
+			updateSemaphore.lock();
 			try {
 				this.model.invalidateModel();
 			} finally {
-				updateSemaphore.release();
+				updateSemaphore.unlock();
 			}
 		}
 

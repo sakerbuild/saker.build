@@ -28,10 +28,8 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -841,7 +839,7 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		}
 
 		public static PopulateState unpopulated() {
-			return new PopulateState(POPULATED_STATE_UNPOPULATED, new ReentrantLock());
+			return new PopulateState(POPULATED_STATE_UNPOPULATED, ThreadUtils.newExclusiveLock());
 		}
 	}
 }

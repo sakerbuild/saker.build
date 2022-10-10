@@ -18,6 +18,7 @@ package saker.build.runtime.execution;
 import java.io.Closeable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Collections;
@@ -37,7 +38,6 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 import saker.build.cache.BuildCacheAccessor;
@@ -138,6 +138,8 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	private Map<String, ? extends BuildRepository> loadedBuildRepositories;
 	private Map<String, ? extends RepositoryBuildEnvironment> loadedBuildRepositoryEnvironments;
 
+	//a Semaphore acting as an exclusive lock
+	//we need a Semaphore for this, as the lock is acquired and released on different threads
 	private final Semaphore stdIOLockSemaphore = new Semaphore(1);
 
 	private final ByteSink stdOutSink;
@@ -151,7 +153,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 	private BuildTaskResultDatabase results;
 	private TaskResultCollectionImpl resultCollection;
-	private final Lock executionLock = new ReentrantLock();
+	private final Lock executionLock = ThreadUtils.newExclusiveLock();
 
 	private ConcurrentMap<SakerPath, TargetConfigurationReadingResult> scriptCache = new ConcurrentSkipListMap<>();
 	private ConcurrentMap<SakerPath, Lock> scriptLoadLock = new ConcurrentSkipListMap<>();
@@ -841,8 +843,14 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		if (present != null) {
 			return present.getTargetConfiguration();
 		}
-		Lock lock = scriptLoadLock.computeIfAbsent(path, x -> new ReentrantLock());
-		lock.lock();
+		Lock lock = scriptLoadLock.computeIfAbsent(path, x -> ThreadUtils.newExclusiveLock());
+		try {
+			lock.lockInterruptibly();
+		} catch (InterruptedException e) {
+			//set back the interrupt flag
+			Thread.currentThread().interrupt();
+			throw new InterruptedIOException("Interrupted while acquiring script load lock.");
+		}
 		try {
 			present = scriptCache.get(path);
 			if (present != null) {

@@ -21,15 +21,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 import saker.build.meta.PropertyNames;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.FileUtils;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.trace.InternalBuildTraceImpl;
 
 public class NativeLibs {
-	private static final Lock INIT_LOCK = new ReentrantLock();
+	private static final Lock INIT_LOCK = ThreadUtils.newExclusiveLock();
 	private static volatile Path libraryPath = null;
 
 	public static void init(Path librarypath) throws IOException {

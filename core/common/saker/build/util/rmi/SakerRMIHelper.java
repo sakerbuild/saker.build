@@ -1,7 +1,5 @@
 package saker.build.util.rmi;
 
-import java.util.concurrent.locks.ReentrantLock;
-
 import saker.build.meta.PropertyNames;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
 import saker.build.thirdparty.saker.rmi.connection.RMIOptions;
@@ -9,8 +7,6 @@ import saker.build.thirdparty.saker.rmi.connection.RMIStatistics;
 import testing.saker.build.flag.TestFlag;
 
 public class SakerRMIHelper {
-	private static final ReentrantLock DUMP_STATISTICS_LOCK = new ReentrantLock();
-
 	private SakerRMIHelper() {
 		throw new UnsupportedOperationException();
 	}
@@ -30,12 +26,9 @@ public class SakerRMIHelper {
 		RMIStatistics stats = connection.getStatistics();
 		if (stats != null) {
 			//lock to prevent interlacing
-			DUMP_STATISTICS_LOCK.lock();
-			try {
-				stats.dumpSummary(System.err, null);
-			} finally {
-				DUMP_STATISTICS_LOCK.unlock();
-			}
+			StringBuilder sb = new StringBuilder();
+			stats.dumpSummary(sb, null);
+			System.err.println(sb);
 		}
 	}
 }

@@ -28,6 +28,7 @@ import java.lang.ref.WeakReference;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.channels.FileLockInterruptionException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.ClosedWatchServiceException;
 import java.nio.file.CopyOption;
@@ -83,9 +84,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.Lock;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -250,7 +251,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 		private final FileChannel channel;
 		private FileLock lock;
 
-		private Semaphore accessLock = new Semaphore(1);
+		private Lock accessLock = ThreadUtils.newExclusiveLock();
 
 		private LocalFileSakerLock(FileChannel channel) {
 			this.channel = channel;
@@ -262,7 +263,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 
 		@Override
 		public void close() throws IOException {
-			accessLock.acquireUninterruptibly();
+			accessLock.lock();
 			try {
 				//to wake up the GC thread
 				if (gcReferences.remove(reference)) {
@@ -275,26 +276,32 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 				}
 				channel.close();
 			} finally {
-				accessLock.release();
+				accessLock.unlock();
 			}
 		}
 
 		@Override
 		public void lock() throws IOException {
-			accessLock.acquireUninterruptibly();
+			try {
+				accessLock.lockInterruptibly();
+			} catch (InterruptedException e) {
+				//set back the interrupt flag
+				Thread.currentThread().interrupt();
+				throw new FileLockInterruptionException();
+			}
 			try {
 				if (this.lock != null) {
 					throw new IllegalStateException("Trying to acquire lock more than once.");
 				}
 				lock = channel.lock();
 			} finally {
-				accessLock.release();
+				accessLock.unlock();
 			}
 		}
 
 		@Override
 		public boolean tryLock() throws IOException {
-			accessLock.acquireUninterruptibly();
+			accessLock.lock();
 			try {
 				if (this.lock != null) {
 					throw new IllegalStateException("Trying to acquire lock more than once.");
@@ -303,13 +310,13 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 				lock = nlock;
 				return nlock != null;
 			} finally {
-				accessLock.release();
+				accessLock.unlock();
 			}
 		}
 
 		@Override
 		public void release() throws IOException {
-			accessLock.acquireUninterruptibly();
+			accessLock.lock();
 			try {
 				FileLock lock = this.lock;
 				if (lock == null) {
@@ -318,7 +325,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 				lock.release();
 				this.lock = null;
 			} finally {
-				accessLock.release();
+				accessLock.unlock();
 			}
 		}
 	}

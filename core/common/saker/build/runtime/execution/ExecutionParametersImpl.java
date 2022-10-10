@@ -24,7 +24,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.UUID;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.Lock;
 
 import saker.build.cache.BuildDataCache;
 import saker.build.file.path.PathKey;
@@ -50,6 +50,7 @@ import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 
 @RMIWrap(ExecutionParametersImpl.ParametersRMIWrapper.class)
 public final class ExecutionParametersImpl implements ExecutionParameters {
@@ -421,7 +422,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		private final ExecutionProgressMonitor subject;
 		private volatile boolean cancelled = false;
 		private long lastCheck = System.nanoTime();
-		private final ReentrantLock lock = new ReentrantLock();
+		private final Lock lock = ThreadUtils.newExclusiveLock();
 
 		public TimedPollingProgressMonitor(ExecutionProgressMonitor subject) {
 			this.subject = subject;

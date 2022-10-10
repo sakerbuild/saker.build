@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 import javax.net.SocketFactory;
 
@@ -66,7 +65,7 @@ public class InfoDaemonCommand {
 	public AuthKeystoreParamContext authParams = new AuthKeystoreParamContext();
 
 	public void call() throws IOException {
-		ReentrantLock iolock = new ReentrantLock();
+		Lock iolock = ThreadUtils.newExclusiveLock();
 
 		if (addressParam != null) {
 			RunningDaemonConnectionInfo[] outconninfo = { null };
@@ -91,7 +90,7 @@ public class InfoDaemonCommand {
 		}
 	}
 
-	private void printDaemonInformationOfDaemon(RunningDaemonConnectionInfo conninfo, ReentrantLock iolock) {
+	private void printDaemonInformationOfDaemon(RunningDaemonConnectionInfo conninfo, Lock iolock) {
 		String sslkspathstr = conninfo.getSslKeystorePath();
 		Exception keystoreautoopenexception = null;
 		SocketFactory socketfactory;

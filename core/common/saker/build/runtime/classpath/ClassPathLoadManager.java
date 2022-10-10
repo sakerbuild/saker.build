@@ -37,8 +37,8 @@ import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
 
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
@@ -54,6 +54,7 @@ import saker.build.thirdparty.saker.util.classloader.MultiDataClassLoader;
 import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.io.FileUtils;
 import saker.build.thirdparty.saker.util.io.IOUtils;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.util.classloader.SakerPathClassLoaderDataFinder;
 import testing.saker.build.flag.TestFlag;
 
@@ -809,7 +810,7 @@ public class ClassPathLoadManager implements Closeable {
 
 	private static class LoaderLockFileHandle {
 		private final Path path;
-		private final Semaphore lock = new Semaphore(1);
+		private final Lock lock = ThreadUtils.newExclusiveLock();
 		private RandomAccessFile lockFile;
 		private int userCount = 0;
 
@@ -818,15 +819,15 @@ public class ClassPathLoadManager implements Closeable {
 		}
 
 		public void acquireLock() throws InterruptedException {
-			lock.acquire();
+			lock.lock();
 		}
 
 		public boolean tryAcquireLock(long timeout, TimeUnit unit) throws InterruptedException {
-			return lock.tryAcquire(timeout, unit);
+			return lock.tryLock(timeout, unit);
 		}
 
 		public void releaseLock() {
-			lock.release();
+			lock.unlock();
 		}
 
 		public RandomAccessFile getFileLocked() throws FileNotFoundException {
@@ -841,7 +842,7 @@ public class ClassPathLoadManager implements Closeable {
 			synchronized (this) {
 				--userCount;
 				if (userCount == 0) {
-					boolean acquired = lock.tryAcquire();
+					boolean acquired = lock.tryLock();
 					if (!acquired) {
 						throw new AssertionError("No lock file users are present, and failed to acquire handle lock.");
 					}
@@ -851,7 +852,7 @@ public class ClassPathLoadManager implements Closeable {
 							lockFile = null;
 						}
 					} finally {
-						lock.release();
+						lock.unlock();
 					}
 				}
 			}
