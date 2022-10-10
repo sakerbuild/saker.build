@@ -25,8 +25,8 @@ public class SakerRMIHelper {
 	public static void dumpRMIStatistics(RMIConnection connection) {
 		RMIStatistics stats = connection.getStatistics();
 		if (stats != null) {
-			//lock to prevent interlacing
-			StringBuilder sb = new StringBuilder();
+			//dump to a string builder then write in one call to prevent interlacing
+			StringBuilder sb = new StringBuilder(8 * 1024);
 			stats.dumpSummary(sb, null);
 			System.err.println(sb);
 		}
