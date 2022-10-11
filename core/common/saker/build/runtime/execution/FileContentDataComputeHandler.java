@@ -16,12 +16,14 @@
 package saker.build.runtime.execution;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.lang.ref.SoftReference;
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.locks.Lock;
 import java.util.function.Supplier;
 
 import saker.build.file.SakerFile;
@@ -29,10 +31,11 @@ import saker.build.file.content.ContentDescriptor;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
 import saker.build.thirdparty.saker.util.function.Functionals;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 
 public class FileContentDataComputeHandler {
 	private final ConcurrentNavigableMap<SakerPath, ConcurrentHashMap<FileDataComputer<?>, ComputedFileData>> fileComputedDatas = new ConcurrentSkipListMap<>();
-	private final ConcurrentHashMap<ComputedFileDataKey, Object> fileComputeLocks = new ConcurrentHashMap<>();
+	private final ConcurrentHashMap<ComputedFileDataKey, Lock> fileComputeLocks = new ConcurrentHashMap<>();
 
 	public FileContentDataComputeHandler() {
 	}
@@ -58,8 +61,16 @@ public class FileContentDataComputeHandler {
 				return got;
 			}
 		}
-		synchronized (fileComputeLocks.computeIfAbsent(new ComputedFileDataKey(filepath, computer),
-				Functionals.objectComputer())) {
+		Lock computelock = fileComputeLocks.computeIfAbsent(new ComputedFileDataKey(filepath, computer),
+				x -> ThreadUtils.newExclusiveLock());
+		try {
+			computelock.lockInterruptibly();
+		} catch (InterruptedException e) {
+			// set back the interrupt flag
+			Thread.currentThread().interrupt();
+			throw new InterruptedIOException("Failed to acquire file compute lock.");
+		}
+		try {
 			presentcomputed = computermap.get(computer);
 			if (presentcomputed != null) {
 				@SuppressWarnings("unchecked")
@@ -71,6 +82,8 @@ public class FileContentDataComputeHandler {
 			T result = callCompute(file, computer);
 			computermap.put(computer, new ComputedFileData(contentdescriptor, computer, result));
 			return result;
+		} finally {
+			computelock.unlock();
 		}
 	}
 
