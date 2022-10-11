@@ -17,6 +17,7 @@ package saker.build.runtime.environment;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.Map.Entry;
@@ -26,6 +27,7 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.Lock;
 import java.util.function.Supplier;
 
 import saker.build.file.provider.LocalFileProvider;
@@ -42,12 +44,12 @@ import saker.build.runtime.repository.SakerRepositoryFactory;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderDataFinder;
 import saker.build.thirdparty.saker.util.classloader.MultiDataClassLoader;
-import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.function.IOSupplier;
 import saker.build.thirdparty.saker.util.ref.StrongWeakReference;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.trace.BuildTrace;
 
 public class RepositoryManager implements Closeable {
@@ -58,7 +60,7 @@ public class RepositoryManager implements Closeable {
 	private ClassPathLoadManager classPathManager;
 
 	private final ConcurrentNavigableMap<Path, LoadedClassPath> locationLoadedClassPaths = new ConcurrentSkipListMap<>();
-	private final ConcurrentNavigableMap<Path, Object> classPathDirectoryLoadedClassPathLocks = new ConcurrentSkipListMap<>();
+	private final ConcurrentNavigableMap<Path, Lock> classPathDirectoryLoadedClassPathLocks = new ConcurrentSkipListMap<>();
 
 	private volatile boolean closed = false;
 
@@ -102,9 +104,13 @@ public class RepositoryManager implements Closeable {
 	public void close() throws IOException {
 		closed = true;
 		IOException exc = null;
-		for (Entry<Path, Object> entry : classPathDirectoryLoadedClassPathLocks.entrySet()) {
-			synchronized (entry.getValue()) {
+		for (Entry<Path, Lock> entry : classPathDirectoryLoadedClassPathLocks.entrySet()) {
+			Lock lock = entry.getValue();
+			lock.lock();
+			try {
 				exc = IOUtils.closeExc(exc, locationLoadedClassPaths.remove(entry.getKey()));
+			} finally {
+				lock.unlock();
 			}
 		}
 		exc = IOUtils.closeExc(locationLoadedClassPaths.values());
@@ -112,33 +118,45 @@ public class RepositoryManager implements Closeable {
 		IOUtils.throwExc(exc);
 	}
 
-	private LoadedClassPath loadDirectClassPath(Path classpathdirectory) {
+	private LoadedClassPath loadDirectClassPath(Path classpathdirectory) throws IOException {
 		LoadedClassPath loadedcp;
-		synchronized (classPathDirectoryLoadedClassPathLocks.computeIfAbsent(classpathdirectory,
-				Functionals.objectComputer())) {
+		Lock lock = getClassPathLoadDirectoryLock(classpathdirectory);
+		IOUtils.lockIO(lock, "Acquiring class path load lock interrupted.");
+		try {
 			checkClosed();
 			loadedcp = locationLoadedClassPaths.get(classpathdirectory);
 			if (loadedcp == null) {
 				loadedcp = new LoadedClassPath(this);
 				locationLoadedClassPaths.put(classpathdirectory, loadedcp);
 			}
+
+		} finally {
+			lock.unlock();
 		}
 		return loadedcp;
 	}
 
-	private LoadedClassPath loadClassPath(ClassPathLocation repolocation) {
+	private LoadedClassPath loadClassPath(ClassPathLocation repolocation) throws IOException {
 		LoadedClassPath loadedcp;
 		Path classpathdirectory = classPathManager.getClassPathLoadDirectoryPath(repolocation);
-		synchronized (classPathDirectoryLoadedClassPathLocks.computeIfAbsent(classpathdirectory,
-				Functionals.objectComputer())) {
+		Lock lock = getClassPathLoadDirectoryLock(classpathdirectory);
+		IOUtils.lockIO(lock, "Acquiring class path load lock interrupted.");
+		try {
 			checkClosed();
 			loadedcp = locationLoadedClassPaths.get(classpathdirectory);
 			if (loadedcp == null) {
 				loadedcp = new LoadedClassPath(this);
 				locationLoadedClassPaths.put(classpathdirectory, loadedcp);
 			}
+		} finally {
+			lock.unlock();
 		}
 		return loadedcp;
+	}
+
+	private Lock getClassPathLoadDirectoryLock(Path classpathdirectory) {
+		return classPathDirectoryLoadedClassPathLocks.computeIfAbsent(classpathdirectory,
+				x -> ThreadUtils.newExclusiveLock());
 	}
 
 	private void checkClosed() {
@@ -211,9 +229,9 @@ public class RepositoryManager implements Closeable {
 		protected Object classPathVersion;
 
 		protected ConcurrentHashMap<ClassPathServiceEnumerator<? extends SakerRepositoryFactory>, RepositoryEnumeratorState> enumeratorStates = new ConcurrentHashMap<>();
-		protected ConcurrentHashMap<ClassPathServiceEnumerator<? extends SakerRepositoryFactory>, Object> enumeratorStateLocks = new ConcurrentHashMap<>();
+		protected ConcurrentHashMap<ClassPathServiceEnumerator<? extends SakerRepositoryFactory>, Lock> enumeratorStateLocks = new ConcurrentHashMap<>();
 
-		private final Object loadCountLock = new Object();
+		private final Lock loadCountLock = ThreadUtils.newExclusiveLock();
 		private int allLoadCount = 0;
 
 		public LoadedClassPath(RepositoryManager manager) {
@@ -226,8 +244,10 @@ public class RepositoryManager implements Closeable {
 		}
 
 		public RepositoryEnumeratorState getEnumeratorState(
-				ClassPathServiceEnumerator<? extends SakerRepositoryFactory> enumerator) {
-			synchronized (enumeratorStateLocks.computeIfAbsent(enumerator, Functionals.objectComputer())) {
+				ClassPathServiceEnumerator<? extends SakerRepositoryFactory> enumerator) throws IOException {
+			Lock lock = enumeratorStateLocks.computeIfAbsent(enumerator, x -> ThreadUtils.newExclusiveLock());
+			IOUtils.lockIO(lock, "Failed to acquire repository enumerator lock.");
+			try {
 				checkClosed();
 				RepositoryEnumeratorState enstate = enumeratorStates.get(enumerator);
 				if (enstate == null) {
@@ -235,6 +255,8 @@ public class RepositoryManager implements Closeable {
 					enumeratorStates.put(enumerator, enstate);
 				}
 				return enstate;
+			} finally {
+				lock.unlock();
 			}
 		}
 
@@ -244,15 +266,20 @@ public class RepositoryManager implements Closeable {
 				return;
 			}
 			IOException exc = null;
-			for (Entry<ClassPathServiceEnumerator<? extends SakerRepositoryFactory>, Object> entry : enumeratorStateLocks
+			for (Entry<ClassPathServiceEnumerator<? extends SakerRepositoryFactory>, Lock> entry : enumeratorStateLocks
 					.entrySet()) {
 				RepositoryEnumeratorState state;
-				synchronized (entry.getValue()) {
+				Lock lock = entry.getValue();
+				lock.lock();
+				try {
 					state = enumeratorStates.remove(entry.getKey());
+				} finally {
+					lock.unlock();
 				}
 				exc = IOUtils.closeExc(exc, state);
 			}
-			synchronized (loadCountLock) {
+			loadCountLock.lock();
+			try {
 				MultiDataClassLoader clref = ObjectUtils.getReference(this.classLoader);
 				if (clref != null) {
 					exc = IOUtils.closeExc(exc, clref.getDatasFinders());
@@ -261,6 +288,8 @@ public class RepositoryManager implements Closeable {
 				this.classLoader = null;
 				this.classPathLock = null;
 				allLoadCount = 0;
+			} finally {
+				loadCountLock.unlock();
 			}
 			IOUtils.throwExc(exc);
 		}
@@ -272,8 +301,11 @@ public class RepositoryManager implements Closeable {
 		}
 
 		public void addLoadCount(IOSupplier<ClassPathLock> classPathLockSupplier) throws IOException {
-			synchronized (loadCountLock) {
+			IOUtils.lockIO(loadCountLock, "Acquiring class path load counter lock interrupted.");
+			try {
 				addLoadCountLocked(classPathLockSupplier);
+			} finally {
+				loadCountLock.unlock();
 			}
 		}
 
@@ -302,8 +334,11 @@ public class RepositoryManager implements Closeable {
 		}
 
 		public void removeLoadCount(int c) {
-			synchronized (loadCountLock) {
+			loadCountLock.lock();
+			try {
 				removeLoadCountLocked(c);
+			} finally {
+				loadCountLock.unlock();
 			}
 		}
 
@@ -315,11 +350,15 @@ public class RepositoryManager implements Closeable {
 			}
 			allLoadCount -= c;
 			if (allLoadCount == 0) {
-				for (Entry<ClassPathServiceEnumerator<? extends SakerRepositoryFactory>, Object> entry : enumeratorStateLocks
+				for (Entry<ClassPathServiceEnumerator<? extends SakerRepositoryFactory>, Lock> entry : enumeratorStateLocks
 						.entrySet()) {
 					RepositoryEnumeratorState state;
-					synchronized (entry.getValue()) {
+					Lock lock = entry.getValue();
+					lock.lock();
+					try {
 						state = enumeratorStates.remove(entry.getKey());
+					} finally {
+						lock.unlock();
 					}
 					IOUtils.closePrint(state);
 				}
@@ -412,38 +451,55 @@ public class RepositoryManager implements Closeable {
 		protected final SakerRepository repository;
 		protected final RepositoryEnumeratorState enumeratorState;
 
+		protected final Lock stateLock = ThreadUtils.newExclusiveLock();
+
 		public RepositoryLoadState(SakerRepository repository, RepositoryEnumeratorState enumeratorstate) {
 			this.repository = repository;
 			this.enumeratorState = enumeratorstate;
 		}
 
-		protected synchronized void closeRepositoryFromReturnedRepository() throws IOException {
-			if (refCount > 0) {
-				if (--refCount == 0) {
-					enumeratorState.closeRepositoryLockedOnState(this);
+		protected void closeRepositoryFromReturnedRepository() throws IOException {
+			stateLock.lock();
+			try {
+				int rc = this.refCount;
+				if (rc > 0) {
+					this.refCount = rc - 1;
+					if (rc == 1) {
+						//no more references
+						enumeratorState.closeRepositoryLockedOnState(this);
+					}
+					enumeratorState.loadedClassPath.removeLoadCount();
 				}
-				enumeratorState.loadedClassPath.removeLoadCount();
+			} finally {
+				stateLock.unlock();
 			}
 		}
 
 		protected boolean increaseOpenRefCountLocked() {
-			if (refCount > 0) {
-				++refCount;
+			int rc = this.refCount;
+			if (rc > 0) {
+				this.refCount = rc + 1;
 				return true;
 			}
 			return false;
 		}
 
 		@Override
-		public synchronized void close() throws IOException {
-			closeLocked();
+		public void close() throws IOException {
+			stateLock.lock();
+			try {
+				closeLocked();
+			} finally {
+				stateLock.unlock();
+			}
 		}
 
 		protected void closeLocked() throws IOException {
-			if (refCount > 0) {
+			int rc = this.refCount;
+			if (rc > 0) {
 				enumeratorState.closeRepositoryLockedOnState(this);
-				enumeratorState.loadedClassPath.removeLoadCount(refCount);
-				refCount = 0;
+				enumeratorState.loadedClassPath.removeLoadCount(rc);
+				this.refCount = 0;
 			}
 		}
 
@@ -465,7 +521,7 @@ public class RepositoryManager implements Closeable {
 		private SakerRepositoryFactory factory = null;
 		private Object factoriesClassLoaderVersion = null;
 
-		protected final Object repositoryLock = new Object();
+		protected final Lock repositoryLock = ThreadUtils.newExclusiveLock();
 
 		public RepositoryEnumeratorState(LoadedClassPath loadedClassPath,
 				ClassPathServiceEnumerator<? extends SakerRepositoryFactory> enumerator) {
@@ -501,7 +557,8 @@ public class RepositoryManager implements Closeable {
 
 		public SakerRepositoryFactory getFactoriesAddLoadCount(IOSupplier<ClassPathLock> classPathLockSupplier)
 				throws IOException, ClassPathEnumerationError {
-			synchronized (loadedClassPath.loadCountLock) {
+			IOUtils.lockIO(loadedClassPath.loadCountLock, "Acquiring class path load counter lock interrupted.");
+			try {
 				loadedClassPath.addLoadCountLocked(classPathLockSupplier);
 				if (loadedClassPath.classPathVersion.equals(factoriesClassLoaderVersion)) {
 					return factory;
@@ -513,6 +570,8 @@ public class RepositoryManager implements Closeable {
 					loadedClassPath.removeLoadCountLocked(1);
 					throw e;
 				}
+			} finally {
+				loadedClassPath.loadCountLock.unlock();
 			}
 			return factory;
 		}
@@ -524,17 +583,21 @@ public class RepositoryManager implements Closeable {
 				if (factory == null) {
 					return null;
 				}
-				synchronized (repositoryLock) {
+				IOUtils.lockIO(repositoryLock, "Failed to acquire repository lock.");
+				try {
 					checkClosed();
 					RepositoryLoadState repostate = loadState;
 					if (repostate != null) {
-						synchronized (repostate) {
+						IOUtils.lockIO(repostate.stateLock, "Failed to acquire repository load state lock.");
+						try {
 							if (repostate.increaseOpenRefCountLocked()) {
 								loadedClassPath.addLoadCount(classPathLockSupplier);
 								return new ReturnedRepository(repostate);
 							}
 							//repository was closed
 							repostate.closeLocked();
+						} finally {
+							repostate.stateLock.unlock();
 						}
 						loadState = null;
 					}
@@ -548,6 +611,8 @@ public class RepositoryManager implements Closeable {
 					this.loadState = repostate;
 					loadedClassPath.addLoadCount(classPathLockSupplier);
 					return new ReturnedRepository(repostate);
+				} finally {
+					repositoryLock.unlock();
 				}
 			} finally {
 				loadedClassPath.removeLoadCount();
@@ -636,9 +701,12 @@ public class RepositoryManager implements Closeable {
 				return;
 			}
 			IOException exc = null;
-			synchronized (repositoryLock) {
+			repositoryLock.lock();
+			try {
 				exc = IOUtils.closeExc(exc, loadState);
 				loadState = null;
+			} finally {
+				repositoryLock.unlock();
 			}
 			factory = null;
 			IOUtils.throwExc(exc);
