@@ -97,206 +97,216 @@ public class SakerExecutionCache implements Closeable {
 		this.recordingEnvironment = new CacheRecordingForwardingSakerEnvironment(environment, this);
 	}
 
-	public synchronized SakerEnvironment getRecordingEnvironment() {
-		return recordingEnvironment;
+	public SakerEnvironment getRecordingEnvironment() {
+		synchronized (this) {
+			return recordingEnvironment;
+		}
 	}
 
-	public synchronized SakerEnvironmentImpl getEnvironment() {
-		return environment;
+	public SakerEnvironmentImpl getEnvironment() {
+		synchronized (this) {
+			return environment;
+		}
 	}
 
-	public synchronized void recordEnvironmentPropertyAccess(EnvironmentProperty<?> environmentproperty) {
-		queriedEnvironmentProperties.add(environmentproperty);
+	public void recordEnvironmentPropertyAccess(EnvironmentProperty<?> environmentproperty) {
+		synchronized (this) {
+			queriedEnvironmentProperties.add(environmentproperty);
+		}
 	}
 
-	public synchronized void recordCacheKeyAccess(CacheKey<?, ?> key) {
-		queriedCacheKeys.add(key);
+	public void recordCacheKeyAccess(CacheKey<?, ?> key) {
+		synchronized (this) {
+			queriedCacheKeys.add(key);
+		}
 	}
 
 	//doc: returns true if changed
-	public synchronized boolean set(ExecutionPathConfiguration pathconfig,
-			ExecutionRepositoryConfiguration repositoryconfig, ExecutionScriptConfiguration scriptconfig,
-			Map<String, String> userparameters, SakerFileProvider coordinatorfileprovider,
-			ClassLoaderResolverRegistry executionclregistry, boolean forcluster,
-			RepositoryBuildSharedObjectProvider sharedObjectProvider)
+	public boolean set(ExecutionPathConfiguration pathconfig, ExecutionRepositoryConfiguration repositoryconfig,
+			ExecutionScriptConfiguration scriptconfig, Map<String, String> userparameters,
+			SakerFileProvider coordinatorfileprovider, ClassLoaderResolverRegistry executionclregistry,
+			boolean forcluster, RepositoryBuildSharedObjectProvider sharedObjectProvider)
 			throws InterruptedException, IOException, Exception {
-		FileProviderKey coordinatorproviderkey = coordinatorfileprovider.getProviderKey();
-		if (userparameters == null) {
-			userparameters = Collections.emptyMap();
-		}
-		if (currentPathConfiguration != null) {
-			//we need to set this anyway
-			currentPathConfigurationReference[0] = pathconfig;
-			//some runtime exception can happen if the configurations still hold reference to RMI objects which have their connections closed
-			//they won't equal in this case, consider the configuration changed.
-			if (isConfigurationsEqual(pathconfig, repositoryconfig, scriptconfig, userparameters,
-					coordinatorproviderkey, forcluster)) {
-				registeredClassLoaderResolvers.forEach(executionclregistry::register);
-				for (ExecutionCacheRepositoryBuildEnvironmentBase buildenv : loadedRepositoryBuildEnvironments
-						.values()) {
-					buildenv.resetSharedObjectLookup(sharedObjectProvider);
-				}
-				//nothing changed
-				//XXX parallelize this?
-				ConcurrentPrependEntryAccumulator<BuildRepository, Object> changesaccumulator = new ConcurrentPrependEntryAccumulator<>();
-				for (Entry<String, ? extends BuildRepository> entry : loadedBuildRepositories.entrySet()) {
-					BuildRepository buildrepo = entry.getValue();
-					try {
-						Object repochanges = buildrepo.detectChanges();
-						if (repochanges != null) {
-							changesaccumulator.add(buildrepo, repochanges);
-						}
-					} catch (Exception | LinkageError e) {
-						//the repository failed to detect changes
-						//it is assumed that any further calls will fail, or creating it newly will fail too
-						//clear the repositories, so the next build might succeed, but we dont expect it to without user intervention
-
-						//get the build repo string representation before the closing of it
-						String buildrepostr = entry.getKey();
+		synchronized (this) {
+			FileProviderKey coordinatorproviderkey = coordinatorfileprovider.getProviderKey();
+			if (userparameters == null) {
+				userparameters = Collections.emptyMap();
+			}
+			if (currentPathConfiguration != null) {
+				//we need to set this anyway
+				currentPathConfigurationReference[0] = pathconfig;
+				//some runtime exception can happen if the configurations still hold reference to RMI objects which have their connections closed
+				//they won't equal in this case, consider the configuration changed.
+				if (isConfigurationsEqual(pathconfig, repositoryconfig, scriptconfig, userparameters,
+						coordinatorproviderkey, forcluster)) {
+					registeredClassLoaderResolvers.forEach(executionclregistry::register);
+					for (ExecutionCacheRepositoryBuildEnvironmentBase buildenv : loadedRepositoryBuildEnvironments
+							.values()) {
+						buildenv.resetSharedObjectLookup(sharedObjectProvider);
+					}
+					//nothing changed
+					//XXX parallelize this?
+					ConcurrentPrependEntryAccumulator<BuildRepository, Object> changesaccumulator = new ConcurrentPrependEntryAccumulator<>();
+					for (Entry<String, ? extends BuildRepository> entry : loadedBuildRepositories.entrySet()) {
+						BuildRepository buildrepo = entry.getValue();
 						try {
-							buildrepostr += ": " + buildrepo.toString();
-						} catch (Exception | LinkageError e2) {
-							e.addSuppressed(e2);
+							Object repochanges = buildrepo.detectChanges();
+							if (repochanges != null) {
+								changesaccumulator.add(buildrepo, repochanges);
+							}
+						} catch (Exception | LinkageError e) {
+							//the repository failed to detect changes
+							//it is assumed that any further calls will fail, or creating it newly will fail too
+							//clear the repositories, so the next build might succeed, but we dont expect it to without user intervention
+
+							//get the build repo string representation before the closing of it
+							String buildrepostr = entry.getKey();
+							try {
+								buildrepostr += ": " + buildrepo.toString();
+							} catch (Exception | LinkageError e2) {
+								e.addSuppressed(e2);
+							}
+
+							IOException clearexc = IOUtils.closeExc(this::clearCurrentConfiguration);
+							IOUtils.addExc(e, clearexc);
+							throw new RepositoryOperationException(
+									"Failed to detect changes in build repository. (" + buildrepostr + ")", e);
+						}
+					}
+					if (changesaccumulator.isEmpty()) {
+						//no changes detected
+						return false;
+					}
+					clearCachedDatas();
+					for (Entry<BuildRepository, Object> entry : changesaccumulator) {
+						BuildRepository buildrepo = entry.getKey();
+						try {
+							buildrepo.handleChanges(entry.getValue());
+						} catch (Exception | LinkageError e) {
+							//the repository failed to handle changes
+							//it is assumed that any further calls will fail, or creating it newly will fail too
+							//clear the repositories, so the next build might succeed, but we dont expect it to without user intervention
+
+							//get the build repo string representation before the closing of it
+							String buildrepostr;
+							try {
+								buildrepostr = buildrepo.toString();
+							} catch (Exception | LinkageError e2) {
+								e.addSuppressed(e2);
+								buildrepostr = buildrepo.getClass().getName();
+							}
+
+							IOException clearexc = IOUtils.closeExc(this::clearCurrentConfiguration);
+							IOUtils.addExc(e, clearexc);
+							throw new RepositoryOperationException(
+									"Failed to handle changes in build repository. (" + buildrepostr + ")", e);
+						}
+					}
+					return true;
+				}
+				//XXX only clear parts of the configuration if applicable
+
+				// XXX: handle exception? should we fail loading if the closing failed? is printing stack trace sufficent?
+				IOUtils.closePrint(this::clearCurrentConfiguration);
+			}
+			ExecutionPathConfiguration[] npathconfigref = new ExecutionPathConfiguration[] { pathconfig };
+			//unmodifiableize
+			userparameters = ImmutableUtils.makeImmutableNavigableMap(userparameters);
+
+			TreeMap<String, ClassLoaderResolver> regclresolvers = new TreeMap<>();
+
+			//close any resources which were loaded but are unused due to an exception
+			//the resource closer is cleared if the loading is successful
+			try (ResourceCloser closer = new ResourceCloser()) {
+				Map<String, ? extends SakerRepository> loadedrepositories = loadRepositoriesForConfiguration(
+						repositoryconfig, closer);
+				Map<String, BuildRepository> loadedbuildrepositories = new TreeMap<>();
+				Map<String, ExecutionCacheRepositoryBuildEnvironmentBase> loadedrepositorybuildenvironments = new TreeMap<>();
+				Collection<ClassLoaderResolver> trackedclresolvers = new ArrayList<>();
+
+				if (!loadedrepositories.isEmpty()) {
+					for (Entry<String, ? extends SakerRepository> entry : loadedrepositories.entrySet()) {
+						String repoid = entry.getKey();
+						SakerRepository repository = entry.getValue();
+						ClassLoaderResolverRegistry reporegistry = new ClassLoaderResolverRegistry();
+
+						//register the cl resolver before initializing the repository 
+						// so RMI requests can succeed during initialization
+						String clresid = "repo/" + repoid;
+						regclresolvers.put(clresid, reporegistry);
+						executionclregistry.register(clresid, reporegistry);
+
+						ExecutionCacheRepositoryBuildEnvironmentBase buildenv;
+						if (forcluster) {
+							Objects.requireNonNull(sharedObjectProvider, "shared object provider");
+							buildenv = new ClusterExecutionCacheRepositoryBuildEnvironment(recordingEnvironment,
+									reporegistry, userparameters, npathconfigref, repoid, coordinatorfileprovider,
+									sharedObjectProvider);
+						} else {
+							buildenv = new ExecutionCacheRepositoryBuildEnvironment(recordingEnvironment, reporegistry,
+									userparameters, npathconfigref, repoid, coordinatorfileprovider);
 						}
 
-						IOException clearexc = IOUtils.closeExc(this::clearCurrentConfiguration);
-						IOUtils.addExc(e, clearexc);
-						throw new RepositoryOperationException(
-								"Failed to detect changes in build repository. (" + buildrepostr + ")", e);
+						BuildRepository buildrepo;
+						try {
+							buildrepo = repository.createBuildRepository(buildenv);
+						} catch (Exception e) {
+							throw new RepositoryOperationException(
+									"Failed to create build repository. (" + repository + ")", e);
+						}
+						closer.add(buildrepo);
+						loadedbuildrepositories.put(repoid, buildrepo);
+						loadedrepositorybuildenvironments.put(repoid, buildenv);
+
+						trackedclresolvers.add(reporegistry);
 					}
 				}
-				if (changesaccumulator.isEmpty()) {
-					//no changes detected
-					return false;
-				}
-				clearCachedDatas();
-				for (Entry<BuildRepository, Object> entry : changesaccumulator) {
-					BuildRepository buildrepo = entry.getKey();
-					try {
-						buildrepo.handleChanges(entry.getValue());
-					} catch (Exception | LinkageError e) {
-						//the repository failed to handle changes
-						//it is assumed that any further calls will fail, or creating it newly will fail too
-						//clear the repositories, so the next build might succeed, but we dont expect it to without user intervention
 
-						//get the build repo string representation before the closing of it
-						String buildrepostr;
-						try {
-							buildrepostr = buildrepo.toString();
-						} catch (Exception | LinkageError e2) {
-							e.addSuppressed(e2);
-							buildrepostr = buildrepo.getClass().getName();
+				Set<? extends ScriptProviderLocation> scriptproviderlocators = scriptconfig
+						.getScriptProviderLocations();
+				Map<ScriptProviderLocation, ScriptAccessorClassPathData> loadedscriptlocators = new HashMap<>();
+				if (!scriptproviderlocators.isEmpty()) {
+					ClassPathLoadManager classpathmanager = environment.getClassPathManager();
+					for (ScriptProviderLocation scriptproviderlocator : scriptproviderlocators) {
+						ScriptAccessorClassPathData classpathdata = environment.getCachedData(
+								new ScriptAccessorClassPathCacheKey(scriptproviderlocator, classpathmanager));
+						loadedscriptlocators.put(scriptproviderlocator, classpathdata);
+						ClassLoader scriptcl = classpathdata.getClassLoader();
+						if (scriptcl != null) {
+							ScriptAccessProvider scriptaccessor = classpathdata.getScriptAccessor();
+							SingleClassLoaderResolver scriptclresolver = new SingleClassLoaderResolver(
+									scriptaccessor.getScriptAccessorKey().toString(), scriptcl);
+
+							ClassPathLocation cplocation = scriptproviderlocator.getClassPathLocation();
+							String cplocationid = cplocation == null ? "no-cp-location" : cplocation.getIdentifier();
+							String clresid = "scripting/" + cplocationid;
+							regclresolvers.put(clresid, scriptclresolver);
+							executionclregistry.register(clresid, scriptclresolver);
+
+							trackedclresolvers.add(scriptclresolver);
 						}
-
-						IOException clearexc = IOUtils.closeExc(this::clearCurrentConfiguration);
-						IOUtils.addExc(e, clearexc);
-						throw new RepositoryOperationException(
-								"Failed to handle changes in build repository. (" + buildrepostr + ")", e);
 					}
 				}
+
+				closer.clearWithoutClosing();
+
+				//assign everything at the end, so if any loading exception happens, the class doesn't stay in an inconsistent state
+				currentCoordinatorProviderKey = coordinatorproviderkey;
+				currentPathConfiguration = pathconfig;
+				currentPathConfigurationReference = npathconfigref;
+				currentRepositoryConfiguration = repositoryconfig;
+				currentScriptConfiguration = scriptconfig;
+				currentUserParameters = userparameters;
+				currentForCluster = forcluster;
+				registeredClassLoaderResolvers = regclresolvers;
+				trackedClassLoaderResolvers.addAll(trackedclresolvers);
+
+				loadedRepositories = loadedrepositories;
+				loadedBuildRepositories = ImmutableUtils.unmodifiableMap(loadedbuildrepositories);
+				loadedRepositoryBuildEnvironments = ImmutableUtils.unmodifiableMap(loadedrepositorybuildenvironments);
+				loadedScriptProviderLocators = ImmutableUtils.unmodifiableMap(loadedscriptlocators);
 				return true;
 			}
-			//XXX only clear parts of the configuration if applicable
-
-			// XXX: handle exception? should we fail loading if the closing failed? is printing stack trace sufficent?
-			IOUtils.closePrint(this::clearCurrentConfiguration);
-		}
-		ExecutionPathConfiguration[] npathconfigref = new ExecutionPathConfiguration[] { pathconfig };
-		//unmodifiableize
-		userparameters = ImmutableUtils.makeImmutableNavigableMap(userparameters);
-
-		TreeMap<String, ClassLoaderResolver> regclresolvers = new TreeMap<>();
-
-		//close any resources which were loaded but are unused due to an exception
-		//the resource closer is cleared if the loading is successful
-		try (ResourceCloser closer = new ResourceCloser()) {
-			Map<String, ? extends SakerRepository> loadedrepositories = loadRepositoriesForConfiguration(
-					repositoryconfig, closer);
-			Map<String, BuildRepository> loadedbuildrepositories = new TreeMap<>();
-			Map<String, ExecutionCacheRepositoryBuildEnvironmentBase> loadedrepositorybuildenvironments = new TreeMap<>();
-			Collection<ClassLoaderResolver> trackedclresolvers = new ArrayList<>();
-
-			if (!loadedrepositories.isEmpty()) {
-				for (Entry<String, ? extends SakerRepository> entry : loadedrepositories.entrySet()) {
-					String repoid = entry.getKey();
-					SakerRepository repository = entry.getValue();
-					ClassLoaderResolverRegistry reporegistry = new ClassLoaderResolverRegistry();
-
-					//register the cl resolver before initializing the repository 
-					// so RMI requests can succeed during initialization
-					String clresid = "repo/" + repoid;
-					regclresolvers.put(clresid, reporegistry);
-					executionclregistry.register(clresid, reporegistry);
-
-					ExecutionCacheRepositoryBuildEnvironmentBase buildenv;
-					if (forcluster) {
-						Objects.requireNonNull(sharedObjectProvider, "shared object provider");
-						buildenv = new ClusterExecutionCacheRepositoryBuildEnvironment(recordingEnvironment,
-								reporegistry, userparameters, npathconfigref, repoid, coordinatorfileprovider,
-								sharedObjectProvider);
-					} else {
-						buildenv = new ExecutionCacheRepositoryBuildEnvironment(recordingEnvironment, reporegistry,
-								userparameters, npathconfigref, repoid, coordinatorfileprovider);
-					}
-
-					BuildRepository buildrepo;
-					try {
-						buildrepo = repository.createBuildRepository(buildenv);
-					} catch (Exception e) {
-						throw new RepositoryOperationException(
-								"Failed to create build repository. (" + repository + ")", e);
-					}
-					closer.add(buildrepo);
-					loadedbuildrepositories.put(repoid, buildrepo);
-					loadedrepositorybuildenvironments.put(repoid, buildenv);
-
-					trackedclresolvers.add(reporegistry);
-				}
-			}
-
-			Set<? extends ScriptProviderLocation> scriptproviderlocators = scriptconfig.getScriptProviderLocations();
-			Map<ScriptProviderLocation, ScriptAccessorClassPathData> loadedscriptlocators = new HashMap<>();
-			if (!scriptproviderlocators.isEmpty()) {
-				ClassPathLoadManager classpathmanager = environment.getClassPathManager();
-				for (ScriptProviderLocation scriptproviderlocator : scriptproviderlocators) {
-					ScriptAccessorClassPathData classpathdata = environment.getCachedData(
-							new ScriptAccessorClassPathCacheKey(scriptproviderlocator, classpathmanager));
-					loadedscriptlocators.put(scriptproviderlocator, classpathdata);
-					ClassLoader scriptcl = classpathdata.getClassLoader();
-					if (scriptcl != null) {
-						ScriptAccessProvider scriptaccessor = classpathdata.getScriptAccessor();
-						SingleClassLoaderResolver scriptclresolver = new SingleClassLoaderResolver(
-								scriptaccessor.getScriptAccessorKey().toString(), scriptcl);
-
-						ClassPathLocation cplocation = scriptproviderlocator.getClassPathLocation();
-						String cplocationid = cplocation == null ? "no-cp-location" : cplocation.getIdentifier();
-						String clresid = "scripting/" + cplocationid;
-						regclresolvers.put(clresid, scriptclresolver);
-						executionclregistry.register(clresid, scriptclresolver);
-
-						trackedclresolvers.add(scriptclresolver);
-					}
-				}
-			}
-
-			closer.clearWithoutClosing();
-
-			//assign everything at the end, so if any loading exception happens, the class doesn't stay in an inconsistent state
-			currentCoordinatorProviderKey = coordinatorproviderkey;
-			currentPathConfiguration = pathconfig;
-			currentPathConfigurationReference = npathconfigref;
-			currentRepositoryConfiguration = repositoryconfig;
-			currentScriptConfiguration = scriptconfig;
-			currentUserParameters = userparameters;
-			currentForCluster = forcluster;
-			registeredClassLoaderResolvers = regclresolvers;
-			trackedClassLoaderResolvers.addAll(trackedclresolvers);
-
-			loadedRepositories = loadedrepositories;
-			loadedBuildRepositories = ImmutableUtils.unmodifiableMap(loadedbuildrepositories);
-			loadedRepositoryBuildEnvironments = ImmutableUtils.unmodifiableMap(loadedrepositorybuildenvironments);
-			loadedScriptProviderLocators = ImmutableUtils.unmodifiableMap(loadedscriptlocators);
-			return true;
 		}
 	}
 
@@ -350,25 +360,35 @@ public class SakerExecutionCache implements Closeable {
 		return repositorymanager.loadRepository(repolocation, enumerator);
 	}
 
-	public synchronized Map<String, ? extends BuildRepository> getLoadedBuildRepositories() {
-		return loadedBuildRepositories;
+	public Map<String, ? extends BuildRepository> getLoadedBuildRepositories() {
+		synchronized (this) {
+			return loadedBuildRepositories;
+		}
 	}
 
-	public synchronized Map<String, ? extends RepositoryBuildEnvironment> getLoadedRepositoryBuildEnvironments() {
-		return loadedRepositoryBuildEnvironments;
+	public Map<String, ? extends RepositoryBuildEnvironment> getLoadedRepositoryBuildEnvironments() {
+		synchronized (this) {
+			return loadedRepositoryBuildEnvironments;
+		}
 	}
 
-	public synchronized Map<ExecutionScriptConfiguration.ScriptProviderLocation, ScriptAccessorClassPathData> getLoadedScriptProviderLocators() {
-		return loadedScriptProviderLocators;
+	public Map<ExecutionScriptConfiguration.ScriptProviderLocation, ScriptAccessorClassPathData> getLoadedScriptProviderLocators() {
+		synchronized (this) {
+			return loadedScriptProviderLocators;
+		}
 	}
 
-	public synchronized void clear() throws IOException {
-		clearCurrentConfiguration();
+	public void clear() throws IOException {
+		synchronized (this) {
+			clearCurrentConfiguration();
+		}
 	}
 
 	@Override
-	public synchronized void close() throws IOException {
-		clearCurrentConfiguration();
+	public void close() throws IOException {
+		synchronized (this) {
+			clearCurrentConfiguration();
+		}
 	}
 
 	public interface RepositoryBuildSharedObjectProvider {

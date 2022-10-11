@@ -215,13 +215,15 @@ public class TaskUtils {
 		public ClassInfoCache() {
 		}
 
-		public synchronized ClassSakerIOInfo get(Class<?> clazz) {
-			ClassSakerIOInfo result = ObjectUtils.getReference(classInfos.get(clazz));
-			if (result == null) {
-				result = new ClassSakerIOInfo(clazz);
-				classInfos.put(clazz, new WeakReference<>(result));
+		public ClassSakerIOInfo get(Class<?> clazz) {
+			synchronized (this) {
+				ClassSakerIOInfo result = ObjectUtils.getReference(classInfos.get(clazz));
+				if (result == null) {
+					result = new ClassSakerIOInfo(clazz);
+					classInfos.put(clazz, new WeakReference<>(result));
+				}
+				return result;
 			}
-			return result;
 		}
 	}
 

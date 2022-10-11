@@ -257,7 +257,9 @@ public class SakerJavaTestingInvoker extends BasicInstrumentationJavaTestInvoker
 		}
 	}
 
-	public static synchronized void addCloseable(AutoCloseable c) {
-		closeables.add(c);
+	public static void addCloseable(AutoCloseable c) {
+		synchronized (SakerJavaTestingInvoker.class) {
+			closeables.add(c);
+		}
 	}
 }

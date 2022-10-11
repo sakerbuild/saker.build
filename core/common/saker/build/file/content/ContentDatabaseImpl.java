@@ -25,6 +25,7 @@ import java.io.InterruptedIOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.io.OutputStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
@@ -240,59 +241,63 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 
 		//don't set the disk content to null during invalidation, as we don't want discovery to reset the contents anymore
 
-		public synchronized void invalidate() {
-			this.diskContent = createDiskContentSupplier();
-			this.diskAttributes = null;
+		public void invalidate() {
+			synchronized (this) {
+				this.diskContent = createDiskContentSupplier();
+				this.diskAttributes = null;
+			}
 		}
 
-		public synchronized void invalidateWithPosixPermissions(Set<PosixFilePermission> permissions) {
-			//XXX enum set based immutable
-			permissions = ImmutableUtils.makeImmutableNavigableSet(permissions);
+		public void invalidateWithPosixPermissions(Set<PosixFilePermission> permissions) {
+			synchronized (this) {
+				//XXX enum set based immutable
+				permissions = ImmutableUtils.makeImmutableNavigableSet(permissions);
 
-			Supplier<ContentDescriptor> dcsupplier = createDiskContentSupplier();
-			this.diskContent = dcsupplier;
-			//XXX the disk attributes could be queried alongside the permissions
-			this.diskAttributes = null;
-			UserContentState usercontent = userContent;
-			if (usercontent != null) {
-				Set<PosixFilePermission> ucpermissions = usercontent.getExpectedPosixFilePermissions();
-				if (Objects.equals(ucpermissions, permissions)) {
-					ContentDescriptor diskcontents = dcsupplier.get();
-					if (diskcontents == null) {
-						this.userContent = null;
-					} else {
-						if (!Objects.equals(diskcontents, usercontent.userExpectedDiskContent)) {
-							if (permissions != null) {
-								this.userContent = UserContentState.create(
-										new PosixFilePermissionsDelegateContentDescriptor(diskcontents, permissions),
-										diskcontents, permissions);
-							}
-							//null permissions, we can keep the user contents
-						}
-						//else the disk contents and posix permissions equal. we can keep the user contents
-					}
-				} else {
-					if (permissions == null) {
-						this.userContent = null;
-					} else {
+				Supplier<ContentDescriptor> dcsupplier = createDiskContentSupplier();
+				this.diskContent = dcsupplier;
+				//XXX the disk attributes could be queried alongside the permissions
+				this.diskAttributes = null;
+				UserContentState usercontent = userContent;
+				if (usercontent != null) {
+					Set<PosixFilePermission> ucpermissions = usercontent.getExpectedPosixFilePermissions();
+					if (Objects.equals(ucpermissions, permissions)) {
 						ContentDescriptor diskcontents = dcsupplier.get();
 						if (diskcontents == null) {
 							this.userContent = null;
 						} else {
-							this.userContent = UserContentState.create(
-									new PosixFilePermissionsDelegateContentDescriptor(diskcontents, permissions),
-									diskcontents, permissions);
+							if (!Objects.equals(diskcontents, usercontent.userExpectedDiskContent)) {
+								if (permissions != null) {
+									this.userContent = UserContentState
+											.create(new PosixFilePermissionsDelegateContentDescriptor(diskcontents,
+													permissions), diskcontents, permissions);
+								}
+								//null permissions, we can keep the user contents
+							}
+							//else the disk contents and posix permissions equal. we can keep the user contents
+						}
+					} else {
+						if (permissions == null) {
+							this.userContent = null;
+						} else {
+							ContentDescriptor diskcontents = dcsupplier.get();
+							if (diskcontents == null) {
+								this.userContent = null;
+							} else {
+								this.userContent = UserContentState.create(
+										new PosixFilePermissionsDelegateContentDescriptor(diskcontents, permissions),
+										diskcontents, permissions);
+							}
 						}
 					}
-				}
-			} else if (permissions != null) {
-				ContentDescriptor diskcontents = dcsupplier.get();
-				if (diskcontents == null) {
-					this.userContent = null;
-				} else {
-					this.userContent = UserContentState.create(
-							new PosixFilePermissionsDelegateContentDescriptor(diskcontents, permissions), diskcontents,
-							permissions);
+				} else if (permissions != null) {
+					ContentDescriptor diskcontents = dcsupplier.get();
+					if (diskcontents == null) {
+						this.userContent = null;
+					} else {
+						this.userContent = UserContentState.create(
+								new PosixFilePermissionsDelegateContentDescriptor(diskcontents, permissions),
+								diskcontents, permissions);
+					}
 				}
 			}
 		}
@@ -313,24 +318,28 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 			this.diskAttributes = diskattributes;
 		}
 
-		public synchronized void setContent(ContentDescriptor usercontent, ContentDescriptor diskcontent,
+		public void setContent(ContentDescriptor usercontent, ContentDescriptor diskcontent,
 				BasicFileAttributes diskattributes, Set<PosixFilePermission> expectedposixpermissions) {
-			this.userContent = UserContentState.create(usercontent, diskcontent, expectedposixpermissions);
-			this.diskContent = Functionals.valSupplier(diskcontent);
-			this.diskAttributes = diskattributes;
+			synchronized (this) {
+				this.userContent = UserContentState.create(usercontent, diskcontent, expectedposixpermissions);
+				this.diskContent = Functionals.valSupplier(diskcontent);
+				this.diskAttributes = diskattributes;
+			}
 		}
 
-		public synchronized void discoverAttributes(FileEntry attributes, FileEntry trackattributes) {
-			if (contentSupplier != CommonContentDescriptorSupplier.FILE_ATTRIBUTES) {
-				if (this.diskContent == null) {
+		public void discoverAttributes(FileEntry attributes, FileEntry trackattributes) {
+			synchronized (this) {
+				if (contentSupplier != CommonContentDescriptorSupplier.FILE_ATTRIBUTES) {
+					if (this.diskContent == null) {
+						this.diskAttributes = trackattributes;
+					}
+					return;
+				}
+				//only discover the attributes if the file was not yet accessed by an other agent
+				if (ARFU_diskContent.compareAndSet(this, null,
+						Functionals.valSupplier(FileAttributesContentDescriptor.create(pathKey, attributes)))) {
 					this.diskAttributes = trackattributes;
 				}
-				return;
-			}
-			//only discover the attributes if the file was not yet accessed by an other agent
-			if (ARFU_diskContent.compareAndSet(this, null,
-					Functionals.valSupplier(FileAttributesContentDescriptor.create(pathKey, attributes)))) {
-				this.diskAttributes = trackattributes;
 			}
 		}
 
@@ -643,20 +652,28 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		return taskResults;
 	}
 
-	public synchronized void setTaskResults(BuildTaskResultDatabase taskresults) {
-		if (taskresults == this.taskResults) {
-			//unchanged
-			return;
+	public void setTaskResults(BuildTaskResultDatabase taskresults) {
+		synchronized (this) {
+			if (taskresults == this.taskResults) {
+				//unchanged
+				return;
+			}
+			this.taskResults = taskresults;
+			setDirty();
 		}
-		this.taskResults = taskresults;
-		setDirty();
 	}
 
 	private void setDirty() {
 		this.dirty = true;
 	}
 
-	public synchronized void flush() throws IOException {
+	public void flush() throws IOException {
+		synchronized (this) {
+			flushLocked();
+		}
+	}
+
+	private void flushLocked() throws IOException, FileAlreadyExistsException {
 		if (!isPersisting()) {
 			return;
 		}
@@ -1142,8 +1159,10 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 	}
 
 	@Override
-	public synchronized void close() throws IOException {
-		flush();
+	public void close() throws IOException {
+		synchronized (this) {
+			flushLocked();
+		}
 	}
 
 	@Override

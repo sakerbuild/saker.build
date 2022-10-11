@@ -438,9 +438,11 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 			return token != null;
 		}
 
-		public synchronized void initToken(FileEventListener.ListenerToken token) {
-			if (!ARFU_token.compareAndSet(this, null, token)) {
-				throw new IllegalStateException();
+		public void initToken(FileEventListener.ListenerToken token) {
+			synchronized (this) {
+				if (!ARFU_token.compareAndSet(this, null, token)) {
+					throw new IllegalStateException();
+				}
 			}
 		}
 

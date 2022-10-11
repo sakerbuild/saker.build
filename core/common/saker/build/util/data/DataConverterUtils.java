@@ -262,61 +262,63 @@ public class DataConverterUtils {
 		}
 
 		@Override
-		public synchronized Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-			int arglen = args == null ? 0 : args.length;
-			String methodname = method.getName();
-			switch (arglen) {
-				case 0: {
-					Object pre = zeroArgumentPreGetter(proxy, methodname, method, args);
-					if (pre != null) {
-						return pre;
-					}
-					String getterfieldname = getGetterMethodFieldName(methodname);
-					if (getterfieldname != null) {
-						@SuppressWarnings({ "unchecked", "rawtypes" })
-						Object mapval = ((Map) map).getOrDefault(getterfieldname, NON_EXIST_DEFAULT_VALUE);
-						if (mapval == NON_EXIST_DEFAULT_VALUE) {
-							return invokeDefaultMethod(proxy, method);
+		public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+			synchronized (this) {
+				int arglen = args == null ? 0 : args.length;
+				String methodname = method.getName();
+				switch (arglen) {
+					case 0: {
+						Object pre = zeroArgumentPreGetter(proxy, methodname, method, args);
+						if (pre != null) {
+							return pre;
 						}
-						return convert(taskResultResolver, mapval, method);
-					}
-					break;
-				}
-				case 1: {
-					if (methodname.equals("equals")) {
-						Object param = args[0];
-						return callEquals(proxy, param);
-					}
-					if (method.getParameterTypes()[0] == String.class) {
 						String getterfieldname = getGetterMethodFieldName(methodname);
 						if (getterfieldname != null) {
-							//the methodname is in a format of getXYZ(String)
-							//    try to look up the value with the parameter key and in the field XYZ
 							@SuppressWarnings({ "unchecked", "rawtypes" })
 							Object mapval = ((Map) map).getOrDefault(getterfieldname, NON_EXIST_DEFAULT_VALUE);
 							if (mapval == NON_EXIST_DEFAULT_VALUE) {
 								return invokeDefaultMethod(proxy, method);
 							}
-							//XXX we could optimize by avoiding conversion to map, and examine the result value directly
-							@SuppressWarnings("unchecked")
-							Map<String, ?> keymap = (Map<String, ?>) convert(mapval,
-									MAP_STRING_OBJECT_PARAMETERIZED_TYPE);
-							return convert(taskResultResolver, keymap.get(args[0]), method);
+							return convert(taskResultResolver, mapval, method);
 						}
+						break;
 					}
-					break;
+					case 1: {
+						if (methodname.equals("equals")) {
+							Object param = args[0];
+							return callEquals(proxy, param);
+						}
+						if (method.getParameterTypes()[0] == String.class) {
+							String getterfieldname = getGetterMethodFieldName(methodname);
+							if (getterfieldname != null) {
+								//the methodname is in a format of getXYZ(String)
+								//    try to look up the value with the parameter key and in the field XYZ
+								@SuppressWarnings({ "unchecked", "rawtypes" })
+								Object mapval = ((Map) map).getOrDefault(getterfieldname, NON_EXIST_DEFAULT_VALUE);
+								if (mapval == NON_EXIST_DEFAULT_VALUE) {
+									return invokeDefaultMethod(proxy, method);
+								}
+								//XXX we could optimize by avoiding conversion to map, and examine the result value directly
+								@SuppressWarnings("unchecked")
+								Map<String, ?> keymap = (Map<String, ?>) convert(mapval,
+										MAP_STRING_OBJECT_PARAMETERIZED_TYPE);
+								return convert(taskResultResolver, keymap.get(args[0]), method);
+							}
+						}
+						break;
+					}
+					default: {
+						break;
+					}
 				}
-				default: {
-					break;
+
+				if (method.isDefault()) {
+					return ReflectUtils.invokeDefaultMethodOn(method, proxy, args);
 				}
-			}
 
-			if (method.isDefault()) {
-				return ReflectUtils.invokeDefaultMethodOn(method, proxy, args);
+				// probably Object method
+				throw new UnsupportedOperationException("Failed to call method: " + method);
 			}
-
-			// probably Object method
-			throw new UnsupportedOperationException("Failed to call method: " + method);
 		}
 
 		/**

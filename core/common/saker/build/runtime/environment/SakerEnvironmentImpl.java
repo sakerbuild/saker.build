@@ -559,44 +559,46 @@ public final class SakerEnvironmentImpl implements Closeable {
 	}
 
 	@Override
-	public synchronized void close() throws IOException {
-		if (closed) {
-			return;
-		}
-		closed = true;
-		IOException exc = null;
-		InterruptedException interruptexception = null;
-		try {
-			synchronized (runningExecutionsLock) {
-				while (!runningExecutions.isEmpty()) {
-					try {
-						runningExecutionsLock.wait();
-					} catch (InterruptedException e) {
-						interruptexception = e;
+	public void close() throws IOException {
+		synchronized (this) {
+			if (closed) {
+				return;
+			}
+			closed = true;
+			IOException exc = null;
+			InterruptedException interruptexception = null;
+			try {
+				synchronized (runningExecutionsLock) {
+					while (!runningExecutions.isEmpty()) {
+						try {
+							runningExecutionsLock.wait();
+						} catch (InterruptedException e) {
+							interruptexception = e;
+						}
 					}
 				}
-			}
-			exc = IOUtils.closeExc(exc, dataCache);
+				exc = IOUtils.closeExc(exc, dataCache);
 
-			exc = IOUtils.closeExc(exc, repositoryManager);
-			exc = IOUtils.closeExc(exc, classPathManager);
+				exc = IOUtils.closeExc(exc, repositoryManager);
+				exc = IOUtils.closeExc(exc, classPathManager);
 
-			unredirectStandardIOIfInstalled();
-			try {
-				environmentThreadGroup.destroy();
-			} catch (IllegalThreadStateException e) {
-				if (!environmentThreadGroup.isDestroyed()) {
-					ThreadUtils.dumpThreadGroupStackTraces(System.err, environmentThreadGroup);
-					exc = IOUtils.addExc(exc, new IOException("Failed to destroy Environment ThreadGroup.", e));
+				unredirectStandardIOIfInstalled();
+				try {
+					environmentThreadGroup.destroy();
+				} catch (IllegalThreadStateException e) {
+					if (!environmentThreadGroup.isDestroyed()) {
+						ThreadUtils.dumpThreadGroupStackTraces(System.err, environmentThreadGroup);
+						exc = IOUtils.addExc(exc, new IOException("Failed to destroy Environment ThreadGroup.", e));
+					}
 				}
-			}
-			if (exc != null) {
-				exc.addSuppressed(interruptexception);
-			}
-			IOUtils.throwExc(exc);
-		} finally {
-			if (interruptexception != null) {
-				Thread.currentThread().interrupt();
+				if (exc != null) {
+					exc.addSuppressed(interruptexception);
+				}
+				IOUtils.throwExc(exc);
+			} finally {
+				if (interruptexception != null) {
+					Thread.currentThread().interrupt();
+				}
 			}
 		}
 	}

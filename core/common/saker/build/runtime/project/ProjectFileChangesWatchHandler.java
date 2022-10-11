@@ -67,116 +67,118 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 
 	private ContentDatabaseImpl currentDatabase;
 
-	public synchronized void watch(ContentDatabaseImpl database, Map<String, ? extends SakerDirectory> rootdirs,
+	public void watch(ContentDatabaseImpl database, Map<String, ? extends SakerDirectory> rootdirs,
 			FileContentDataComputeHandler filecomputedatahandler) {
-		checkClosed();
-		checkStopped();
-		this.currentDatabase = database;
-		rootDirectoryCache.clear();
-		ConcurrentHashMap<RootFileProviderKey, ConcurrentSkipListSet<SakerPath>> dbinvalidateddirectorypaths = new ConcurrentHashMap<>();
-		if (!ObjectUtils.isNullOrEmpty(rootdirs)) {
-			try (ThreadWorkPool pool = ThreadUtils.newFixedWorkPool("Watcher installer-")) {
-				for (Entry<String, ? extends SakerDirectory> entry : rootdirs.entrySet()) {
-					SakerDirectory rd = entry.getValue();
-					pool.offer(() -> installWatchers(rd, SakerPath.valueOf(entry.getKey()), pool, database,
-							filecomputedatahandler, dbinvalidateddirectorypaths));
+		synchronized (this) {
+			checkClosed();
+			checkStopped();
+			this.currentDatabase = database;
+			rootDirectoryCache.clear();
+			ConcurrentHashMap<RootFileProviderKey, ConcurrentSkipListSet<SakerPath>> dbinvalidateddirectorypaths = new ConcurrentHashMap<>();
+			if (!ObjectUtils.isNullOrEmpty(rootdirs)) {
+				try (ThreadWorkPool pool = ThreadUtils.newFixedWorkPool("Watcher installer-")) {
+					for (Entry<String, ? extends SakerDirectory> entry : rootdirs.entrySet()) {
+						SakerDirectory rd = entry.getValue();
+						pool.offer(() -> installWatchers(rd, SakerPath.valueOf(entry.getKey()), pool, database,
+								filecomputedatahandler, dbinvalidateddirectorypaths));
+					}
+					pool.reset();
 				}
-				pool.reset();
 			}
-		}
-		ExecutionPathConfiguration pathconfig = database.getPathConfiguration();
-		for (RootFileProviderKey fpkey : database.getTrackedFileProviderKeys()) {
-			SakerFileProvider fp = pathconfig.getFileProviderIfPresent(fpkey);
-			if (fp == null) {
-				if (fpkey.equals(LocalFileProvider.getProviderKeyStatic())) {
-					fp = LocalFileProvider.getInstance();
-				} else {
+			ExecutionPathConfiguration pathconfig = database.getPathConfiguration();
+			for (RootFileProviderKey fpkey : database.getTrackedFileProviderKeys()) {
+				SakerFileProvider fp = pathconfig.getFileProviderIfPresent(fpkey);
+				if (fp == null) {
+					if (fpkey.equals(LocalFileProvider.getProviderKeyStatic())) {
+						fp = LocalFileProvider.getInstance();
+					} else {
+						continue;
+					}
+				}
+				NavigableSet<SakerPath> trackedpaths = database.getTrackedFilePaths(fpkey);
+				if (trackedpaths.isEmpty()) {
 					continue;
 				}
-			}
-			NavigableSet<SakerPath> trackedpaths = database.getTrackedFilePaths(fpkey);
-			if (trackedpaths.isEmpty()) {
-				continue;
-			}
-			NavigableSet<SakerPath> watchedpaths = getWatchedPathsSet(fpkey);
-			NavigableSet<SakerPath> recheckerpathset = getRecheckerPathsSet(fpkey);
-			Set<SakerPath> dbinvalidatedfpdirpaths = dbinvalidateddirectorypaths.get(fpkey);
-			if (dbinvalidatedfpdirpaths == null) {
-				dbinvalidatedfpdirpaths = Collections.emptyNavigableSet();
-			}
-			for (SakerPath p : trackedpaths) {
-				SakerPath parent = p.getParent();
-				if (parent == null) {
-					//shouldn't really ever happen, as the tracked paths should have at least one path names
-					continue;
+				NavigableSet<SakerPath> watchedpaths = getWatchedPathsSet(fpkey);
+				NavigableSet<SakerPath> recheckerpathset = getRecheckerPathsSet(fpkey);
+				Set<SakerPath> dbinvalidatedfpdirpaths = dbinvalidateddirectorypaths.get(fpkey);
+				if (dbinvalidatedfpdirpaths == null) {
+					dbinvalidatedfpdirpaths = Collections.emptyNavigableSet();
 				}
-				if (watchedpaths.contains(parent)) {
-					//parent is already being watched. 
-					//we still need to invalidate the entry in the database
-					//but only if we haven't invalidated the entries of the directory during watching
-					if (!dbinvalidatedfpdirpaths.contains(parent)) {
-						try {
-							FileEntry attrs = fp.getFileAttributes(p);
-							database.invalidateEntryOffline(fpkey, p, attrs);
-						} catch (IOException e) {
-							//failed to read the attributes of a tracked file in the database
-							database.invalidateHardOffline(fpkey, p);
-							recheckerpathset.add(p);
-							//XXX do we need to print this?
-							e.printStackTrace();
-						}
+				for (SakerPath p : trackedpaths) {
+					SakerPath parent = p.getParent();
+					if (parent == null) {
+						//shouldn't really ever happen, as the tracked paths should have at least one path names
+						continue;
 					}
-					//continue, dont add watcher
-					continue;
-				}
-
-				//the parent path is not yet watched, watch it.
-
-				NavigableMap<SakerPath, FileEventListener.ListenerToken> listeners = this.listeners.computeIfAbsent(fp,
-						Functionals.concurrentSkipListMapComputer());
-				NavigableSet<SakerPath> dirdatabasetrackedpaths = SakerPathFiles
-						.getPathSubSetDirectoryChildren(trackedpaths, parent, true);
-				NonSakerDirectoryChangeHandleFileEventListener listener = new NonSakerDirectoryChangeHandleFileEventListener(
-						fpkey, fp, parent, l -> {
-							listeners.remove(parent, l);
-							watchedpaths.remove(parent);
-						}, dirdatabasetrackedpaths, recheckerpathset, database);
-				try {
-					ListenerToken ltoken;
-					synchronized (listener) {
-						ltoken = fp.addFileEventListener(parent, listener);
-						listener.listenerToken = ltoken;
-
-						try {
-							FileEntry attrs = fp.getFileAttributes(p);
-							database.invalidateEntryOffline(fpkey, p, attrs);
-						} catch (IOException e) {
-							//failed to read the attributes of a tracked file in the database
-							database.invalidateHardOffline(fpkey, p);
-							recheckerpathset.add(p);
-							//XXX do we need to print this?
-							e.printStackTrace();
-							//NO continue. we need to finish the listener installing
+					if (watchedpaths.contains(parent)) {
+						//parent is already being watched. 
+						//we still need to invalidate the entry in the database
+						//but only if we haven't invalidated the entries of the directory during watching
+						if (!dbinvalidatedfpdirpaths.contains(parent)) {
+							try {
+								FileEntry attrs = fp.getFileAttributes(p);
+								database.invalidateEntryOffline(fpkey, p, attrs);
+							} catch (IOException e) {
+								//failed to read the attributes of a tracked file in the database
+								database.invalidateHardOffline(fpkey, p);
+								recheckerpathset.add(p);
+								//XXX do we need to print this?
+								e.printStackTrace();
+							}
 						}
+						//continue, dont add watcher
+						continue;
 					}
-					watchedpaths.add(parent);
-					FileEventListener.ListenerToken prev = listeners.putIfAbsent(parent, ltoken);
-					if (prev != null) {
-						//internal error, the listener was installed multiple times
-						//should NEVER happen, but handle it by removing the listener nonetheless
-						ltoken.removeListener();
-						if (TestFlag.ENABLED) {
-							//fail during testing, recover in production
-							throw new AssertionError();
+
+					//the parent path is not yet watched, watch it.
+
+					NavigableMap<SakerPath, FileEventListener.ListenerToken> listeners = this.listeners
+							.computeIfAbsent(fp, Functionals.concurrentSkipListMapComputer());
+					NavigableSet<SakerPath> dirdatabasetrackedpaths = SakerPathFiles
+							.getPathSubSetDirectoryChildren(trackedpaths, parent, true);
+					NonSakerDirectoryChangeHandleFileEventListener listener = new NonSakerDirectoryChangeHandleFileEventListener(
+							fpkey, fp, parent, l -> {
+								listeners.remove(parent, l);
+								watchedpaths.remove(parent);
+							}, dirdatabasetrackedpaths, recheckerpathset, database);
+					try {
+						ListenerToken ltoken;
+						synchronized (listener) {
+							ltoken = fp.addFileEventListener(parent, listener);
+							listener.listenerToken = ltoken;
+
+							try {
+								FileEntry attrs = fp.getFileAttributes(p);
+								database.invalidateEntryOffline(fpkey, p, attrs);
+							} catch (IOException e) {
+								//failed to read the attributes of a tracked file in the database
+								database.invalidateHardOffline(fpkey, p);
+								recheckerpathset.add(p);
+								//XXX do we need to print this?
+								e.printStackTrace();
+								//NO continue. we need to finish the listener installing
+							}
 						}
+						watchedpaths.add(parent);
+						FileEventListener.ListenerToken prev = listeners.putIfAbsent(parent, ltoken);
+						if (prev != null) {
+							//internal error, the listener was installed multiple times
+							//should NEVER happen, but handle it by removing the listener nonetheless
+							ltoken.removeListener();
+							if (TestFlag.ENABLED) {
+								//fail during testing, recover in production
+								throw new AssertionError();
+							}
+						}
+					} catch (IOException e) {
+						//failed to add the file listener to the parent directory
+						//we don't hard fail with the content database, as the given file provider might not support file watching
+						//    print the exception nonetheless
+						e.printStackTrace();
+						recheckerpathset.addAll(dirdatabasetrackedpaths);
+						database.invalidateOffline(fpkey, parent);
 					}
-				} catch (IOException e) {
-					//failed to add the file listener to the parent directory
-					//we don't hard fail with the content database, as the given file provider might not support file watching
-					//    print the exception nonetheless
-					e.printStackTrace();
-					recheckerpathset.addAll(dirdatabasetrackedpaths);
-					database.invalidateOffline(fpkey, parent);
 				}
 			}
 		}
@@ -186,25 +188,31 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 		return currentDatabase;
 	}
 
-	public synchronized void stopIfWatching() {
-		checkClosed();
-		if (this.currentDatabase != null) {
-			stopImpl();
+	public void stopIfWatching() {
+		synchronized (this) {
+			checkClosed();
+			if (this.currentDatabase != null) {
+				stopImpl();
+			}
 		}
 	}
 
-	public synchronized void stopClearCachedDirectories() {
-		checkClosed();
-		checkWatching();
-		stopImpl();
-		this.rootDirectoryCache.clear();
+	public void stopClearCachedDirectories() {
+		synchronized (this) {
+			checkClosed();
+			checkWatching();
+			stopImpl();
+			this.rootDirectoryCache.clear();
+		}
 	}
 
-	public synchronized void stopRecheckPathsOpt() {
-		checkClosed();
-		checkWatching();
-		this.currentDatabase.recheckContentChangesOffline(pathsToRecheck);
-		stopImpl();
+	public void stopRecheckPathsOpt() {
+		synchronized (this) {
+			checkClosed();
+			checkWatching();
+			this.currentDatabase.recheckContentChangesOffline(pathsToRecheck);
+			stopImpl();
+		}
 	}
 
 	public ProviderPathSakerDirectory getCachedRootDirectory(SakerPath rootsakerpath) {
@@ -212,15 +220,17 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 	}
 
 	@Override
-	public synchronized void close() throws IOException {
-		if (closed) {
-			return;
+	public void close() throws IOException {
+		synchronized (this) {
+			if (closed) {
+				return;
+			}
+			closed = true;
+			if (this.currentDatabase != null) {
+				stopImpl();
+			}
+			rootDirectoryCache.clear();
 		}
-		closed = true;
-		if (this.currentDatabase != null) {
-			stopImpl();
-		}
-		rootDirectoryCache.clear();
 	}
 
 	private void stopImpl() {

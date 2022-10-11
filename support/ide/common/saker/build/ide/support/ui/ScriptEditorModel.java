@@ -819,11 +819,13 @@ public class ScriptEditorModel implements Closeable {
 			}
 		}
 
-		public synchronized ScriptSyntaxModel getUpToDateModel() throws InterruptedException {
-			if (this.postedUpdateCounter != this.processedUpdateCounter) {
-				waitUpdaterThread();
+		public ScriptSyntaxModel getUpToDateModel() throws InterruptedException {
+			synchronized (this) {
+				if (this.postedUpdateCounter != this.processedUpdateCounter) {
+					waitUpdaterThread();
+				}
+				return model;
 			}
-			return model;
 		}
 
 		public ScriptSyntaxModel getModel() {
@@ -841,30 +843,34 @@ public class ScriptEditorModel implements Closeable {
 			};
 		}
 
-		public synchronized void textChange(TextRegionChange change, String fullinput) {
-			String prevfullinput = this.fullInput;
-			this.fullInput = fullinput;
-			if (regionChanges == null) {
-				if (!Objects.equals(prevfullinput, fullinput)) {
-					postUpdateLocked();
+		public void textChange(TextRegionChange change, String fullinput) {
+			synchronized (this) {
+				String prevfullinput = this.fullInput;
+				this.fullInput = fullinput;
+				if (regionChanges == null) {
+					if (!Objects.equals(prevfullinput, fullinput)) {
+						postUpdateLocked();
+					}
+					return;
 				}
-				return;
+				this.regionChanges.add(change);
+				postUpdateLocked();
 			}
-			this.regionChanges.add(change);
-			postUpdateLocked();
 		}
 
-		public synchronized void textChange(List<TextRegionChange> changes, String fullinput) {
-			String prevfullinput = this.fullInput;
-			this.fullInput = fullinput;
-			if (regionChanges == null) {
-				if (!Objects.equals(prevfullinput, fullinput)) {
-					postUpdateLocked();
+		public void textChange(List<TextRegionChange> changes, String fullinput) {
+			synchronized (this) {
+				String prevfullinput = this.fullInput;
+				this.fullInput = fullinput;
+				if (regionChanges == null) {
+					if (!Objects.equals(prevfullinput, fullinput)) {
+						postUpdateLocked();
+					}
+					return;
 				}
-				return;
+				this.regionChanges.addAll(changes);
+				postUpdateLocked();
 			}
-			this.regionChanges.addAll(changes);
-			postUpdateLocked();
 		}
 
 		public void invalidateModel() {
@@ -881,13 +887,15 @@ public class ScriptEditorModel implements Closeable {
 			}
 		}
 
-		public synchronized void update(String fullinput) {
-			if (Objects.equals(this.fullInput, fullinput)) {
-				return;
+		public void update(String fullinput) {
+			synchronized (this) {
+				if (Objects.equals(this.fullInput, fullinput)) {
+					return;
+				}
+				this.fullInput = fullinput;
+				this.regionChanges = null;
+				postUpdateLocked();
 			}
-			this.fullInput = fullinput;
-			this.regionChanges = null;
-			postUpdateLocked();
 		}
 	}
 

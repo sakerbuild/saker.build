@@ -278,92 +278,95 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	}
 
 	@SuppressWarnings("try") // unused FileLock in try
-	public synchronized final void init() throws IOException {
-		checkUnstarted();
+	public final void init() throws IOException {
+		synchronized (this) {
+			checkUnstarted();
 
-		try {
-			Path storagedirectory = LocalFileProvider.toRealPath(constructLaunchParameters.getStorageDirectory());
-			EnvironmentParameters params = EnvironmentParameters.builder(sakerJarPath)
-					.setStorageDirectory(storagedirectory)
-					.setUserParameters(constructLaunchParameters.getUserParameters())
-					.setThreadFactor(constructLaunchParameters.getThreadFactor()).build();
-
-			Path lockpath = storagedirectory.resolve(DAEMON_LOCK_FILE_NAME);
-			LocalFileProvider.getInstance().createDirectories(storagedirectory);
-
-			DaemonLaunchParameters.Builder builder = DaemonLaunchParameters.builder(constructLaunchParameters);
-
-			Integer serverport = constructLaunchParameters.getPort();
-			if (serverport != null) {
-				InetAddress serverBindAddress;
-				if (constructLaunchParameters.isActsAsServer()) {
-					serverBindAddress = null;
-				} else {
-					serverBindAddress = InetAddress.getLoopbackAddress();
-				}
-
-				int useport = serverport < 0 ? DaemonLaunchParameters.DEFAULT_PORT : serverport;
-
-				boolean actsascluster = constructLaunchParameters.isActsAsCluster();
-
-				int daemonInstanceIndex = -1;
-
-				lockFile = new RandomAccessFile(lockpath.toFile(), "rw");
-				FileChannel channel = lockFile.getChannel();
-				for (int i = 0; i < DAEMON_INSTANCE_INDEX_END; i++) {
-					FileLock flock = channel.tryLock(FILE_LOCK_REGION_START + i * FILE_LOCK_DATA_LENGTH,
-							FILE_LOCK_DATA_LENGTH, false);
-					if (flock == null) {
-						continue;
-					}
-					daemonInstanceIndex = i;
-					fileLock = flock;
-					break;
-				}
-				if (fileLock == null) {
-					throw new IOException("Failed to start daemon server, unable to acquire lock. Already running "
-							+ DAEMON_INSTANCE_INDEX_END + " daemons?");
-				}
-
-				//lock the data as well to lock initialization 
-				try (FileLock datalock = channel.lock(FILE_LOCK_DATA_LENGTH * daemonInstanceIndex,
-						FILE_LOCK_DATA_LENGTH, false)) {
-					environment = createSakerEnvironment(params);
-
-					server = new DaemonRMIServer(serverSocketFactory, useport, serverBindAddress, actsascluster);
-					writeDaemonInformationToLockFile(lockFile, daemonInstanceIndex, server.getPort(), sslKeystorePath);
-				}
-			} else {
-				environment = createSakerEnvironment(params);
-			}
-			buildExecutionInvoker = new EnvironmentBuildExecutionInvoker(environment);
-
-			builder.setStorageDirectory(SakerPath.valueOf(environment.getStorageDirectoryPath()));
-			builder.setThreadFactor(environment.getThreadFactor());
-			builder.setPort(server == null ? null : server.getPort());
-			launchParameters = builder.build();
-
-			state = STATE_INITIALIZED;
-		} catch (Throwable e) {
 			try {
-				IOUtils.addExc(e, IOUtils.closeExc(server, environment, fileLock, lockFile));
-				server = null;
-				environment = null;
-				fileLock = null;
-				lockFile = null;
-				buildExecutionInvoker = null;
-				launchParameters = null;
+				Path storagedirectory = LocalFileProvider.toRealPath(constructLaunchParameters.getStorageDirectory());
+				EnvironmentParameters params = EnvironmentParameters.builder(sakerJarPath)
+						.setStorageDirectory(storagedirectory)
+						.setUserParameters(constructLaunchParameters.getUserParameters())
+						.setThreadFactor(constructLaunchParameters.getThreadFactor()).build();
 
-				clusterClientConnectingThreadGroup = null;
-				if (clusterClientConnectingWorkPool != null) {
-					clusterClientConnectingWorkPool.exit();
-					clusterClientConnectingWorkPool = null;
+				Path lockpath = storagedirectory.resolve(DAEMON_LOCK_FILE_NAME);
+				LocalFileProvider.getInstance().createDirectories(storagedirectory);
+
+				DaemonLaunchParameters.Builder builder = DaemonLaunchParameters.builder(constructLaunchParameters);
+
+				Integer serverport = constructLaunchParameters.getPort();
+				if (serverport != null) {
+					InetAddress serverBindAddress;
+					if (constructLaunchParameters.isActsAsServer()) {
+						serverBindAddress = null;
+					} else {
+						serverBindAddress = InetAddress.getLoopbackAddress();
+					}
+
+					int useport = serverport < 0 ? DaemonLaunchParameters.DEFAULT_PORT : serverport;
+
+					boolean actsascluster = constructLaunchParameters.isActsAsCluster();
+
+					int daemonInstanceIndex = -1;
+
+					lockFile = new RandomAccessFile(lockpath.toFile(), "rw");
+					FileChannel channel = lockFile.getChannel();
+					for (int i = 0; i < DAEMON_INSTANCE_INDEX_END; i++) {
+						FileLock flock = channel.tryLock(FILE_LOCK_REGION_START + i * FILE_LOCK_DATA_LENGTH,
+								FILE_LOCK_DATA_LENGTH, false);
+						if (flock == null) {
+							continue;
+						}
+						daemonInstanceIndex = i;
+						fileLock = flock;
+						break;
+					}
+					if (fileLock == null) {
+						throw new IOException("Failed to start daemon server, unable to acquire lock. Already running "
+								+ DAEMON_INSTANCE_INDEX_END + " daemons?");
+					}
+
+					//lock the data as well to lock initialization 
+					try (FileLock datalock = channel.lock(FILE_LOCK_DATA_LENGTH * daemonInstanceIndex,
+							FILE_LOCK_DATA_LENGTH, false)) {
+						environment = createSakerEnvironment(params);
+
+						server = new DaemonRMIServer(serverSocketFactory, useport, serverBindAddress, actsascluster);
+						writeDaemonInformationToLockFile(lockFile, daemonInstanceIndex, server.getPort(),
+								sslKeystorePath);
+					}
+				} else {
+					environment = createSakerEnvironment(params);
 				}
-				state = STATE_UNSTARTED;
-			} catch (Throwable e2) {
-				e.addSuppressed(e2);
+				buildExecutionInvoker = new EnvironmentBuildExecutionInvoker(environment);
+
+				builder.setStorageDirectory(SakerPath.valueOf(environment.getStorageDirectoryPath()));
+				builder.setThreadFactor(environment.getThreadFactor());
+				builder.setPort(server == null ? null : server.getPort());
+				launchParameters = builder.build();
+
+				state = STATE_INITIALIZED;
+			} catch (Throwable e) {
+				try {
+					IOUtils.addExc(e, IOUtils.closeExc(server, environment, fileLock, lockFile));
+					server = null;
+					environment = null;
+					fileLock = null;
+					lockFile = null;
+					buildExecutionInvoker = null;
+					launchParameters = null;
+
+					clusterClientConnectingThreadGroup = null;
+					if (clusterClientConnectingWorkPool != null) {
+						clusterClientConnectingWorkPool.exit();
+						clusterClientConnectingWorkPool = null;
+					}
+					state = STATE_UNSTARTED;
+				} catch (Throwable e2) {
+					e.addSuppressed(e2);
+				}
+				throw e;
 			}
-			throw e;
 		}
 	}
 
@@ -643,80 +646,82 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 	@Override
 	@SuppressWarnings("try")
-	public synchronized final void close() {
-		boolean interrupted = false;
-		try {
-			state = STATE_CLOSED;
+	public final void close() {
+		synchronized (this) {
+			boolean interrupted = false;
+			try {
+				state = STATE_CLOSED;
 
-			ThreadGroup connthreadgroup = clusterClientConnectingThreadGroup;
-			if (connthreadgroup != null) {
-				connthreadgroup.interrupt();
-				//signal exit to the thread pool, but don't wait for it yet.
-				try {
-					clusterClientConnectingWorkPool.exit();
-				} catch (Exception e) {
-					//shouldn't happen but print anyway
-					e.printStackTrace();
-				}
-			}
-			synchronized (loadedProjectCacheKeys) {
-				List<ProjectCacheKey> keys = ImmutableUtils.makeImmutableList(loadedProjectCacheKeys);
-				loadedProjectCacheKeys.clear();
-				for (ProjectCacheKey pck : keys) {
+				ThreadGroup connthreadgroup = clusterClientConnectingThreadGroup;
+				if (connthreadgroup != null) {
+					connthreadgroup.interrupt();
+					//signal exit to the thread pool, but don't wait for it yet.
 					try {
-						environment.invalidateCachedDataWaitExecutions(pck);
-					} catch (InterruptedException e) {
-						//reinterrupt at end
-						interrupted = true;
+						clusterClientConnectingWorkPool.exit();
+					} catch (Exception e) {
+						//shouldn't happen but print anyway
+						e.printStackTrace();
 					}
 				}
-			}
-
-			//close the environment first so builds finish
-			IOUtils.closePrint(environment);
-
-			RMIServer server = this.server;
-			//the following resources should be closed on a background daemon thread
-			//as this method can be called through RMI,
-			//we need to perform this on a different thread to make sure that the response
-			//of the close() method arrives to the caller.
-			ThreadUtils.startDaemonThread(() -> {
-				if (server != null) {
-					try {
-						server.closeWait();
-					} catch (IOException | InterruptedException e) {
-						e.printStackTrace();
-					} catch (Throwable e) {
-						//print any exception
+				synchronized (loadedProjectCacheKeys) {
+					List<ProjectCacheKey> keys = ImmutableUtils.makeImmutableList(loadedProjectCacheKeys);
+					loadedProjectCacheKeys.clear();
+					for (ProjectCacheKey pck : keys) {
 						try {
-							closeImpl();
-						} catch (Throwable e2) {
-							e.addSuppressed(e2);
+							environment.invalidateCachedDataWaitExecutions(pck);
+						} catch (InterruptedException e) {
+							//reinterrupt at end
+							interrupted = true;
 						}
-						e.printStackTrace();
-						throw e;
 					}
 				}
 
-				closeImpl();
-			});
+				//close the environment first so builds finish
+				IOUtils.closePrint(environment);
 
-			IOUtils.closePrint(this.fileLock, this.lockFile);
-			this.fileLock = null;
-			this.lockFile = null;
+				RMIServer server = this.server;
+				//the following resources should be closed on a background daemon thread
+				//as this method can be called through RMI,
+				//we need to perform this on a different thread to make sure that the response
+				//of the close() method arrives to the caller.
+				ThreadUtils.startDaemonThread(() -> {
+					if (server != null) {
+						try {
+							server.closeWait();
+						} catch (IOException | InterruptedException e) {
+							e.printStackTrace();
+						} catch (Throwable e) {
+							//print any exception
+							try {
+								closeImpl();
+							} catch (Throwable e2) {
+								e.addSuppressed(e2);
+							}
+							e.printStackTrace();
+							throw e;
+						}
+					}
 
-			if (connthreadgroup != null) {
-				//wait for the thread pool
-				try {
-					clusterClientConnectingWorkPool.close();
-				} catch (Exception e) {
-					//shouldn't happen but print anyway
-					e.printStackTrace();
+					closeImpl();
+				});
+
+				IOUtils.closePrint(this.fileLock, this.lockFile);
+				this.fileLock = null;
+				this.lockFile = null;
+
+				if (connthreadgroup != null) {
+					//wait for the thread pool
+					try {
+						clusterClientConnectingWorkPool.close();
+					} catch (Exception e) {
+						//shouldn't happen but print anyway
+						e.printStackTrace();
+					}
 				}
-			}
-		} finally {
-			if (interrupted) {
-				Thread.currentThread().interrupt();
+			} finally {
+				if (interrupted) {
+					Thread.currentThread().interrupt();
+				}
 			}
 		}
 	}
