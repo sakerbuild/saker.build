@@ -87,6 +87,7 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 				try {
 					cond.await();
 				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
 					throw new InterruptedIOException();
 				}
 			}
@@ -169,6 +170,7 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 			try {
 				cond.await();
 			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
 				throw new InterruptedIOException();
 			}
 		}
@@ -187,6 +189,7 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 			try {
 				cond.await();
 			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
 				throw new InterruptedIOException();
 			}
 		}
@@ -223,6 +226,7 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 				try {
 					cond.await();
 				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
 					throw new InterruptedIOException();
 				}
 			}
@@ -360,6 +364,7 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 				try {
 					cond.await();
 				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
 					throw new InterruptedIOException();
 				}
 			}
@@ -397,6 +402,7 @@ public class ReadWriteBufferOutputStream extends OutputStream implements ByteSou
 				try {
 					cond.await();
 				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
 					throw new InterruptedIOException();
 				}
 			}

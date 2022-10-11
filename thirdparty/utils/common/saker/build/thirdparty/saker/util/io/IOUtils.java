@@ -17,11 +17,14 @@ package saker.build.thirdparty.saker.util.io;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.ServiceConfigurationError;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
 import java.util.function.Function;
 
 import saker.build.thirdparty.saker.util.ArrayIterator;
@@ -689,6 +692,128 @@ public class IOUtils {
 				//throw errors as they directly are
 				throw ObjectUtils.sneakyThrow(t);
 			}
+		}
+	}
+
+	/**
+	 * Acquires the lock in interruptable mode, and throws {@link InterruptedIOException} if the current thread is
+	 * interrupted.
+	 * <p>
+	 * If the locking is interrupted, the current thread interrupt status will be set.
+	 * 
+	 * @param lock
+	 *            The lock to acquire.
+	 * @param message
+	 *            The message to instantiate the new {@link InterruptedIOException} with. (May be <code>null</code>)
+	 * @throws NullPointerException
+	 *             If the lock is <code>null</code>.
+	 * @throws InterruptedIOException
+	 *             If the current thread is interrupted while acquiring the lock.
+	 * @see Lock#lockInterruptibly()
+	 * @see InterruptedIOException#InterruptedIOException(String)
+	 * @since saker.util 0.8.4
+	 */
+	public static void lockIO(Lock lock, String message) throws NullPointerException, InterruptedIOException {
+		Objects.requireNonNull(lock, "lock");
+		try {
+			lock.lockInterruptibly();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new InterruptedIOException(message);
+		}
+	}
+
+	/**
+	 * Acquires the lock in interruptable mode, and throws {@link InterruptedIOException} if the current thread is
+	 * interrupted.
+	 * <p>
+	 * If the locking is interrupted, the current thread interrupt status will be set.
+	 * 
+	 * @param lock
+	 *            The lock to acquire.
+	 * @throws NullPointerException
+	 *             If the lock is <code>null</code>.
+	 * @throws InterruptedIOException
+	 *             If the current thread is interrupted while acquiring the lock.
+	 * @see Lock#lockInterruptibly()
+	 * @see InterruptedIOException#InterruptedIOException()
+	 * @since saker.util 0.8.4
+	 */
+	public static void lockIO(Lock lock) throws NullPointerException, InterruptedIOException {
+		Objects.requireNonNull(lock, "lock");
+		try {
+			lock.lockInterruptibly();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new InterruptedIOException();
+		}
+	}
+
+	/**
+	 * Attempts to acquire the lock in interruptable mode, and throws {@link InterruptedIOException} if the current
+	 * thread is interrupted.
+	 * <p>
+	 * If the locking is interrupted, the current thread interrupt status will be set.
+	 * 
+	 * @param lock
+	 *            The lock to acquire.
+	 * @param time
+	 *            The maximum time to wait for the lock.
+	 * @param unit
+	 *            The time unit of the {@code time} argument.
+	 * @param message
+	 *            The message to instantiate the new {@link InterruptedIOException} with. (May be <code>null</code>)
+	 * @return <code>true</code> if the lock was acquired and <code>false</code> if the waiting time elapsed before the
+	 *             lock was acquired.
+	 * @throws NullPointerException
+	 *             If the lock is <code>null</code>.
+	 * @throws InterruptedIOException
+	 *             If the current thread is interrupted while acquiring the lock.
+	 * @see Lock#tryLock(long, TimeUnit)
+	 * @see InterruptedIOException#InterruptedIOException(String)
+	 * @since saker.util 0.8.4
+	 */
+	public static boolean tryLockIO(Lock lock, long time, TimeUnit unit, String message)
+			throws NullPointerException, InterruptedIOException {
+		Objects.requireNonNull(lock, "lock");
+		try {
+			return lock.tryLock(time, unit);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new InterruptedIOException(message);
+		}
+	}
+
+	/**
+	 * Attempts to acquire the lock in interruptable mode, and throws {@link InterruptedIOException} if the current
+	 * thread is interrupted.
+	 * <p>
+	 * If the locking is interrupted, the current thread interrupt status will be set.
+	 * 
+	 * @param lock
+	 *            The lock to acquire.
+	 * @param time
+	 *            The maximum time to wait for the lock.
+	 * @param unit
+	 *            The time unit of the {@code time} argument.
+	 * @return <code>true</code> if the lock was acquired and <code>false</code> if the waiting time elapsed before the
+	 *             lock was acquired.
+	 * @throws NullPointerException
+	 *             If the lock is <code>null</code>.
+	 * @throws InterruptedIOException
+	 *             If the current thread is interrupted while acquiring the lock.
+	 * @see Lock#tryLock(long, TimeUnit)
+	 * @see InterruptedIOException#InterruptedIOException()
+	 * @since saker.util 0.8.4
+	 */
+	public static boolean tryLockIO(Lock lock, long time, TimeUnit unit)
+			throws NullPointerException, InterruptedIOException {
+		Objects.requireNonNull(lock, "lock");
+		try {
+			return lock.tryLock(time, unit);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new InterruptedIOException();
 		}
 	}
 
