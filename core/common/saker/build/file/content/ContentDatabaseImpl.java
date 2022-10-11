@@ -1660,12 +1660,7 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 	}
 
 	protected static void acquireLockForIO(Lock lock) throws InterruptedIOException {
-		try {
-			lock.lockInterruptibly();
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-			throw new InterruptedIOException("I/O operation interrupted.");
-		}
+		IOUtils.lockIO(lock, "I/O operation interrupted.");
 	}
 
 	@Override

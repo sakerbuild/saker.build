@@ -214,13 +214,7 @@ public class ClassPathLoadManager implements Closeable {
 		String locationid = classpathlocation.getIdentifier();
 		Path loaddir = getClassPathLoadDirectory(locationid);
 		Lock lock = getClassPathLoadDirectoryLoadStateLock(loaddir);
-		try {
-			lock.lockInterruptibly();
-		} catch (InterruptedException e) {
-			//set back the interrupt flag
-			Thread.currentThread().interrupt();
-			throw new InterruptedIOException("Acquiring class path load lock interrupted.");
-		}
+		IOUtils.lockIO(lock, "Acquiring class path load lock interrupted.");
 		try {
 			checkClosed();
 			ClassPathLoadState loadstate = loadDirectoryLoadStates.get(loaddir);
@@ -260,13 +254,7 @@ public class ClassPathLoadManager implements Closeable {
 		SakerPathFiles.requireAbsolutePath(classpathloaddirectory);
 		classpathloaddirectory = classpathloaddirectory.normalize();
 		Lock lock = getClassPathLoadDirectoryLoadStateLock(classpathloaddirectory);
-		try {
-			lock.lockInterruptibly();
-		} catch (InterruptedException e) {
-			//set back the interrupt flag
-			Thread.currentThread().interrupt();
-			throw new InterruptedIOException("Acquiring class path load lock interrupted.");
-		}
+		IOUtils.lockIO(lock, "Acquiring class path load lock interrupted.");
 		try {
 			checkClosed();
 			ClassPathLoadState loadstate = loadDirectoryLoadStates.get(classpathloaddirectory);
@@ -476,13 +464,7 @@ public class ClassPathLoadManager implements Closeable {
 		}
 
 		public ClassPathLock createLock(ClassPathLocation classpathlocation) throws IOException {
-			try {
-				accessLock.lockInterruptibly();
-			} catch (InterruptedException e) {
-				//set back the interrupt flag
-				Thread.currentThread().interrupt();
-				throw new InterruptedIOException("Acquiring class path load state lock interrupted.");
-			}
+			IOUtils.lockIO(accessLock, "Acquiring class path load state lock interrupted.");
 			try {
 				StateLoadLockImpl result = new StateLoadLockImpl();
 				ensureClassPathLoadedLocked(classpathlocation, result);

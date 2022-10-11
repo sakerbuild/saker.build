@@ -844,13 +844,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 			return present.getTargetConfiguration();
 		}
 		Lock lock = scriptLoadLock.computeIfAbsent(path, x -> ThreadUtils.newExclusiveLock());
-		try {
-			lock.lockInterruptibly();
-		} catch (InterruptedException e) {
-			//set back the interrupt flag
-			Thread.currentThread().interrupt();
-			throw new InterruptedIOException("Interrupted while acquiring script load lock.");
-		}
+		IOUtils.lockIO(lock, "Interrupted while acquiring script load lock.");
 		try {
 			present = scriptCache.get(path);
 			if (present != null) {

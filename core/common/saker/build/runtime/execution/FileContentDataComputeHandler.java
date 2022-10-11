@@ -31,6 +31,7 @@ import saker.build.file.content.ContentDescriptor;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
 import saker.build.thirdparty.saker.util.function.Functionals;
+import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 
 public class FileContentDataComputeHandler {
@@ -63,13 +64,7 @@ public class FileContentDataComputeHandler {
 		}
 		Lock computelock = fileComputeLocks.computeIfAbsent(new ComputedFileDataKey(filepath, computer),
 				x -> ThreadUtils.newExclusiveLock());
-		try {
-			computelock.lockInterruptibly();
-		} catch (InterruptedException e) {
-			// set back the interrupt flag
-			Thread.currentThread().interrupt();
-			throw new InterruptedIOException("Failed to acquire file compute lock.");
-		}
+		IOUtils.lockIO(computelock, "Failed to acquire file compute lock.");
 		try {
 			presentcomputed = computermap.get(computer);
 			if (presentcomputed != null) {
