@@ -61,6 +61,10 @@ public interface ClassLoaderDataFinder extends Closeable {
 	 * Gets the bytes of a resource specified by the given name.
 	 * <p>
 	 * The name is a slash (<code>'/'</code>) separated path to the resource to be found.
+	 * <p>
+	 * Implementations of this functions should strive to be interrupt tolerant. Meaning that if they get interrupted
+	 * while loading the bytes of the resources, they should store the interrupt flag, and retry the loading. After
+	 * done, reinterrupt the current thread so the interrupt status is not lost.
 	 * 
 	 * @param name
 	 *            The name of the resource.

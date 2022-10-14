@@ -1829,7 +1829,7 @@ public class ThreadUtils {
 				continue;
 			}
 			if (t == ct) {
-				//put back to join later
+				//put back to join later (possibly on another thread)
 				threads.add(tref);
 				throw new IllegalThreadStateException("Trying to join current thread.");
 			}
@@ -1839,18 +1839,16 @@ public class ThreadUtils {
 					break;
 				} catch (InterruptedException e) {
 					// we got interrupted during joining
-					// shut down the remaining threads
-					if (!interrupted) {
-						t.interrupt();
-						for (Iterator<? extends R> it = threads.iterator(); it.hasNext();) {
-							R tref2 = it.next();
-							Thread t2 = tref2.get();
-							if (t2 != null) {
-								t2.interrupt();
-							}
+					// propagate interrupt to the remaining threads
+					t.interrupt();
+					for (Iterator<? extends R> it = threads.iterator(); it.hasNext();) {
+						R tref2 = it.next();
+						Thread t2 = tref2.get();
+						if (t2 != null) {
+							t2.interrupt();
 						}
-						interrupted = true;
 					}
+					interrupted = true;
 				}
 				// join this thread again, we were just signaled interruption
 			}
@@ -1879,14 +1877,12 @@ public class ThreadUtils {
 					break;
 				} catch (InterruptedException e) {
 					// we got interrupted during joining
-					// shut down the remaining threads
-					if (!interrupted) {
-						t.interrupt();
-						for (int j = i + 1; j < count; j++) {
-							threadindexer.apply(j).interrupt();
-						}
-						interrupted = true;
+					// propagate interrupt to the remaining threads
+					t.interrupt();
+					for (int j = i + 1; j < count; j++) {
+						threadindexer.apply(j).interrupt();
 					}
+					interrupted = true;
 				}
 				// join this thread again, we were just signaled interruption
 			}
@@ -2025,6 +2021,17 @@ public class ThreadUtils {
 			this.item = item;
 			this.next = next;
 		}
+	}
+
+	static {
+		//the following code ensures that the classes are loaded
+		//along with the ThreadUtils class
+		//pre-loading these classes can be necessary, as if the actual thread that is loading
+		//these classes get interrupted, then the class loading may fail based on the used classloader
+		//therefore we load them now, by creating a reference to them
+		@SuppressWarnings("unused")
+		Class<?> c = StateNode.class;
+		c = ExceptionState.class;
 	}
 
 	private static class ExceptionState {
@@ -2491,7 +2498,7 @@ public class ThreadUtils {
 			ARFU_state.updateAndGet(this, PoolState::close);
 			parallelSupplier.notifyStateChange();
 
-			waitThreadSync();
+			waitThreadSyncPropagateInterrupt();
 		}
 
 		@Override
@@ -2545,6 +2552,37 @@ public class ThreadUtils {
 						break;
 					}
 					threadsStateNotifyCondition.awaitUninterruptibly();
+				}
+			} finally {
+				threadsStateNotifyLock.unlock();
+			}
+		}
+
+		private void waitThreadSyncPropagateInterrupt() {
+			threadsStateNotifyLock.lock();
+			try {
+				while (true) {
+					PoolState s = this.state;
+					if (!s.isAnyTaskRunning()) {
+						if (s.hasException()) {
+							if (ARFU_state.compareAndSet(this, s, s.withoutException())) {
+								ParallelExecutionException exc = s.constructException();
+								throw exc;
+							}
+							//failed to swap the state, retry
+							continue;
+						}
+						//no exception, we can just break out of the waiting loop
+						break;
+					}
+					try {
+						threadsStateNotifyCondition.await();
+					} catch (InterruptedException e) {
+						for (Iterator<Thread> it = threads.iterator(); it.hasNext();) {
+							Thread t = it.next();
+							t.interrupt();
+						}
+					}
 				}
 			} finally {
 				threadsStateNotifyLock.unlock();
