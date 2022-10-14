@@ -316,11 +316,12 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		PopulateState ps = this.populatedState;
 		if (ps.state != POPULATED_STATE_POPULATED) {
 			//synchronize so no population is being done concurrently
-			ps.lock.lock();
+			Lock lock = ps.lock;
+			lock.lock();
 			try {
 				this.populatedState = PopulateState.populated();
 			} finally {
-				ps.lock.unlock();
+				lock.unlock();
 			}
 		}
 		//clear the files
@@ -358,7 +359,8 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 	public void ensurePopulated() {
 		PopulateState ps = populatedState;
 		if (ps.state != POPULATED_STATE_POPULATED) {
-			ps.lock.lock();
+			Lock lock = ps.lock;
+			lock.lock();
 			try {
 				PopulateState ps2 = populatedState;
 				if (ps2.state == POPULATED_STATE_POPULATED) {
@@ -367,7 +369,7 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 				}
 				executePopulation();
 			} finally {
-				ps.lock.unlock();
+				lock.unlock();
 			}
 		}
 	}
@@ -487,7 +489,8 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 				//the file was put in place, success
 				return null;
 			}
-			ps.lock.lock();
+			Lock lock = ps.lock;
+			lock.lock();
 			try {
 				//synchronize to ensure that any concurrent population requests finish before we put the populated file
 				PopulateState ps2 = populatedState;
@@ -507,7 +510,7 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 				}
 				//don't use the populated file, as the full population completed meanwhile
 			} finally {
-				ps.lock.unlock();
+				lock.unlock();
 			}
 			//the directory was populated meanwhile
 			//perform the absent insertion for the populated state
@@ -577,7 +580,8 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		SakerFileBase populated = populateSingleImpl(name);
 		if (populated != null) {
 			SakerFileBase.internal_setParent(populated, this);
-			ps.lock.lock();
+			Lock lock = ps.lock;
+			lock.lock();
 			try {
 				//synchronize to ensure that any concurrent population requests finish before we put the populated file
 				PopulateState ps2 = populatedState;
@@ -596,7 +600,7 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 					return populated;
 				}
 			} finally {
-				ps.lock.unlock();
+				lock.unlock();
 			}
 			//the directory was populated meanwhile. simply get.
 			got = trackedfiles.get(name);
