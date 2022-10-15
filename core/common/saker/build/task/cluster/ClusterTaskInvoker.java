@@ -76,8 +76,6 @@ public class ClusterTaskInvoker implements TaskInvoker {
 
 	@Override
 	public void run(TaskInvocationContext context) throws Exception {
-		ThreadUtils.setInheritableDefaultThreadFactor(environment.getThreadFactor());
-
 		try (ThreadWorkPool workpool = ThreadUtils.newDynamicWorkPool("Cluster-worker-")) {
 			while (true) {
 				Iterable<TaskInvocationEvent> events = context.poll();

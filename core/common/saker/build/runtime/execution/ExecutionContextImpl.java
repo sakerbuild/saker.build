@@ -212,7 +212,6 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		secretInputReader = parameters.getSecretInputReader();
 
 		this.progressMonitor = parameters.getProgressMonitor();
-		ThreadUtils.setInheritableDefaultThreadFactor(environment.getThreadFactor());
 
 		ExecutionPathConfiguration pathconfiguration = parameters.getPathConfiguration();
 		ExecutionScriptConfiguration scriptconfiguration = parameters.getScriptConfiguration();
