@@ -219,6 +219,10 @@ final class RMIStream implements Closeable {
 		public default boolean isPreventGarbageCollection() {
 			return false;
 		}
+
+		public default boolean isPendingResponse() {
+			return false;
+		}
 	}
 
 	private interface SimpleCommandHandler extends CommandHandler {
@@ -242,36 +246,59 @@ final class RMIStream implements Closeable {
 		}
 	}
 
+	private interface PendingResponseSimpleCommandHandler extends SimpleCommandHandler {
+		@Override
+		public default boolean isPendingResponse() {
+			return true;
+		}
+	}
+
+	private interface PendingResponseGarbageCollectionPreventingCommandHandler extends CommandHandler {
+		@Override
+		public void accept(RMIStream stream, DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction)
+				throws IOException;
+
+		@Override
+		public default boolean isPreventGarbageCollection() {
+			return true;
+		}
+
+		@Override
+		public default boolean isPendingResponse() {
+			return true;
+		}
+	}
+
 	//package private so testcases can access and override it if necessary
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	static final CommandHandler[] COMMAND_HANDLERS = new CommandHandler[COMMAND_END_VALUE];
 	static {
 		COMMAND_HANDLERS[COMMAND_NEWINSTANCE] = (GarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstance;
-		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_REDISPATCH] = (GarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstanceRedispatch;
+		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstanceRedispatch;
 		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_UNKNOWNCLASS] = (GarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstanceUnknownClass;
-		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_UNKNOWNCLASS_REDISPATCH] = (GarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstanceUnknownClassRedispatch;
+		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_UNKNOWNCLASS_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstanceUnknownClassRedispatch;
 		COMMAND_HANDLERS[COMMAND_METHODCALL] = (GarbageCollectionPreventingCommandHandler) RMIStream::handleCommandMethodCall;
-		COMMAND_HANDLERS[COMMAND_METHODCALL_REDISPATCH] = (GarbageCollectionPreventingCommandHandler) RMIStream::handleCommandMethodCallRedispatch;
-		COMMAND_HANDLERS[COMMAND_METHODRESULT] = (GarbageCollectionPreventingCommandHandler) RMIStream::handleCommandMethodResult;
+		COMMAND_HANDLERS[COMMAND_METHODCALL_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandMethodCallRedispatch;
+		COMMAND_HANDLERS[COMMAND_METHODRESULT] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandMethodResult;
 		//new instance result doesn't prevent garbage collection, as it only reads a remote index
-		COMMAND_HANDLERS[COMMAND_UNKNOWN_NEWINSTANCE_RESULT] = (SimpleCommandHandler) RMIStream::handleCommandNewInstanceUnknownClassResult;
-		COMMAND_HANDLERS[COMMAND_METHODRESULT_FAIL] = (SimpleCommandHandler) RMIStream::handleCommandMethodResultFailure;
-		COMMAND_HANDLERS[COMMAND_NEWINSTANCERESULT_FAIL] = (SimpleCommandHandler) RMIStream::handleCommandNewInstanceResultFailure;
+		COMMAND_HANDLERS[COMMAND_UNKNOWN_NEWINSTANCE_RESULT] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandNewInstanceUnknownClassResult;
+		COMMAND_HANDLERS[COMMAND_METHODRESULT_FAIL] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandMethodResultFailure;
+		COMMAND_HANDLERS[COMMAND_NEWINSTANCERESULT_FAIL] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandNewInstanceResultFailure;
 		COMMAND_HANDLERS[COMMAND_NEW_VARIABLES] = (SimpleCommandHandler) RMIStream::handleCommandNewVariables;
 		COMMAND_HANDLERS[COMMAND_GET_CONTEXT_VAR] = (SimpleCommandHandler) RMIStream::handleCommandGetContextVariable;
-		COMMAND_HANDLERS[COMMAND_GET_CONTEXT_VAR_RESPONSE] = (SimpleCommandHandler) RMIStream::handleCommandGetContextVariableResult;
-		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_RESULT] = (SimpleCommandHandler) RMIStream::handleCommandNewInstanceResult;
-		COMMAND_HANDLERS[COMMAND_NEW_VARIABLES_RESULT] = (SimpleCommandHandler) RMIStream::handleCommandNewVariablesResult;
+		COMMAND_HANDLERS[COMMAND_GET_CONTEXT_VAR_RESPONSE] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandGetContextVariableResult;
+		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_RESULT] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandNewInstanceResult;
+		COMMAND_HANDLERS[COMMAND_NEW_VARIABLES_RESULT] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandNewVariablesResult;
 		COMMAND_HANDLERS[COMMAND_CLOSE_VARIABLES] = (SimpleCommandHandler) RMIStream::handleCommandCloseVariables;
 		COMMAND_HANDLERS[COMMAND_PING] = (SimpleCommandHandler) RMIStream::handleCommandPing;
-		COMMAND_HANDLERS[COMMAND_PONG] = (SimpleCommandHandler) RMIStream::handleCommandPong;
+		COMMAND_HANDLERS[COMMAND_PONG] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandPong;
 		COMMAND_HANDLERS[COMMAND_CACHED_CLASS] = (SimpleCommandHandler) RMIStream::handleCommandCachedClass;
 		COMMAND_HANDLERS[COMMAND_CACHED_CONSTRUCTOR] = (SimpleCommandHandler) RMIStream::handleCommandCachedConstructor;
 		COMMAND_HANDLERS[COMMAND_CACHED_CLASSLOADER] = (SimpleCommandHandler) RMIStream::handleCommandCachedClassLoader;
 		COMMAND_HANDLERS[COMMAND_CACHED_METHOD] = (SimpleCommandHandler) RMIStream::handleCommandCachedMethod;
 		COMMAND_HANDLERS[COMMAND_CACHED_FIELD] = (SimpleCommandHandler) RMIStream::handleCommandCachedField;
 		COMMAND_HANDLERS[COMMAND_INTERRUPT_REQUEST] = (SimpleCommandHandler) RMIStream::handleCommandInterruptRequest;
-		COMMAND_HANDLERS[COMMAND_DIRECT_REQUEST_FORBIDDEN] = (SimpleCommandHandler) RMIStream::handleCommandDirectRequestForbidden;
+		COMMAND_HANDLERS[COMMAND_DIRECT_REQUEST_FORBIDDEN] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandDirectRequestForbidden;
 		COMMAND_HANDLERS[COMMAND_METHODCALL_ASYNC] = (GarbageCollectionPreventingCommandHandler) RMIStream::handleCommandMethodCallAsync;
 	}
 
@@ -400,8 +427,12 @@ final class RMIStream implements Closeable {
 		//handle exception
 	}*/
 
+	private static final AtomicReferenceFieldUpdater<RMIStream, RequestHandlerState> ARFU_requestHandlerState = AtomicReferenceFieldUpdater
+			.newUpdater(RMIStream.class, RequestHandlerState.class, "requestHandlerState");
+
 	protected final RMIConnection connection;
 	protected final RequestHandler requestHandler;
+	protected volatile RequestHandlerState requestHandlerState = RequestHandlerState.INTIAL;
 	protected final RequestScopeHandler requestScopeHandler;
 
 	protected final BlockOutputStream blockOut;
@@ -695,7 +726,16 @@ final class RMIStream implements Closeable {
 									} else {
 										currentaction = null;
 									}
-									connection.offerStreamTask(this);
+									if (commandhandler.isPendingResponse()) {
+										requestHandlerAddResponseCount();
+									}
+									try {
+										connection.offerStreamTask(this);
+									} catch (Throwable e) {
+										//remove the pending response if we failed to reach the command handling
+										requestHandlerRemoveResponseCount();
+										throw e;
+									}
 									commandhandler.accept(RMIStream.this, in, currentaction);
 								}
 								break;
@@ -728,7 +768,7 @@ final class RMIStream implements Closeable {
 				streamerrorexc = e;
 			}
 			//close the request handler, as the stream reading is exiting
-			requestHandler.close();
+			closeRequestHandler();
 			if (streamerrorexc != null) {
 				streamError(streamerrorexc);
 				//the stream error exception was handled
@@ -791,12 +831,50 @@ final class RMIStream implements Closeable {
 		connection.offerStreamTask(new RunInputRunnable());
 	}
 
+	private void closeRequestHandler() {
+		while (true) {
+			RequestHandlerState state = this.requestHandlerState;
+			if (state.closed) {
+				return;
+			}
+			RequestHandlerState nstate = state.close();
+			if (ARFU_requestHandlerState.compareAndSet(this, state, nstate)) {
+				if (nstate.unprocessedResponseCount == 0) {
+					requestHandler.close();
+				}
+				break;
+			}
+		}
+	}
+
+	private void requestHandlerAddResponseCount() {
+		while (true) {
+			RequestHandlerState state = this.requestHandlerState;
+			if (ARFU_requestHandlerState.compareAndSet(this, state, state.addResponseCount())) {
+				break;
+			}
+		}
+	}
+
+	private void requestHandlerRemoveResponseCount() {
+		while (true) {
+			RequestHandlerState state = this.requestHandlerState;
+			RequestHandlerState nstate = state.removeResponseCount();
+			if (ARFU_requestHandlerState.compareAndSet(this, state, nstate)) {
+				if (nstate.closed && nstate.unprocessedResponseCount == 0) {
+					requestHandler.close();
+				}
+				break;
+			}
+		}
+	}
+
 	@Override
 	public void close() throws IOException {
 		try {
 			writeStreamCloseIfNotWritten();
 		} finally {
-			requestHandler.close();
+			closeRequestHandler();
 		}
 	}
 
@@ -2178,91 +2256,111 @@ final class RMIStream implements Closeable {
 	}
 
 	private void handleCommandPong(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		int reqid = in.readInt();
-		requestHandler.addResponse(reqid, new PingResponse());
+		try {
+			int reqid = in.readInt();
+			requestHandler.addResponse(reqid, new PingResponse());
+		} finally {
+			requestHandlerRemoveResponseCount();
+		}
 	}
 
 	private void handleCommandNewVariablesResult(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		int reqid = in.readInt();
 		try {
-			int remoteid = in.readInt();
+			int reqid = in.readInt();
+			try {
+				int remoteid = in.readInt();
 
-			if (remoteid == RMIVariables.NO_OBJECT_ID) {
+				if (remoteid == RMIVariables.NO_OBJECT_ID) {
+					requestHandler.addResponse(reqid,
+							new NewVariablesFailedResponse(new RMICallFailedException("Failed to create variables.")));
+				} else {
+					requestHandler.addResponse(reqid, new NewVariablesResponse(remoteid));
+				}
+			} catch (IOException e) {
 				requestHandler.addResponse(reqid,
-						new NewVariablesFailedResponse(new RMICallFailedException("Failed to create variables.")));
-			} else {
-				requestHandler.addResponse(reqid, new NewVariablesResponse(remoteid));
+						new NewVariablesFailedResponse(new RMIIOFailureException("Failed to read response.", e)));
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
+				requestHandler.addResponse(reqid,
+						new NewVariablesFailedResponse(new RMICallFailedException("Failed to read response.", e)));
 			}
-		} catch (IOException e) {
-			requestHandler.addResponse(reqid,
-					new NewVariablesFailedResponse(new RMIIOFailureException("Failed to read response.", e)));
-		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-				| ServiceConfigurationError e) {
-			requestHandler.addResponse(reqid,
-					new NewVariablesFailedResponse(new RMICallFailedException("Failed to read response.", e)));
+		} finally {
+			requestHandlerRemoveResponseCount();
 		}
 	}
 
 	private void handleCommandNewInstanceResult(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		int reqid = in.readInt();
-		boolean interrupted = false;
-		int interruptreqcount = 0;
 		try {
-			int remoteindex = in.readInt();
-			int compressedinterruptstatus = in.readInt();
+			int reqid = in.readInt();
+			boolean interrupted = false;
+			int interruptreqcount = 0;
+			try {
+				int remoteindex = in.readInt();
+				int compressedinterruptstatus = in.readInt();
 
-			interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
-			interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
+				interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
+				interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
 
-			requestHandler.addResponse(reqid, new NewInstanceResponse(interrupted, interruptreqcount, remoteindex));
-		} catch (IOException e) {
-			requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
-					new RMIIOFailureException("Failed to read new instance result.", e)));
-		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-				| ServiceConfigurationError e) {
-			requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
-					new RMICallFailedException("Failed to read new instance result.", e)));
+				requestHandler.addResponse(reqid, new NewInstanceResponse(interrupted, interruptreqcount, remoteindex));
+			} catch (IOException e) {
+				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
+						new RMIIOFailureException("Failed to read new instance result.", e)));
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
+				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
+						new RMICallFailedException("Failed to read new instance result.", e)));
+			}
+		} finally {
+			requestHandlerRemoveResponseCount();
 		}
 	}
 
 	private void handleCommandGetContextVariableResult(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		RMIVariables vars = readVariablesValidate(in);
-		int reqid = in.readInt();
 		try {
-			Object obj = readObject(vars, in);
+			RMIVariables vars = readVariablesValidate(in);
+			int reqid = in.readInt();
+			try {
+				Object obj = readObject(vars, in);
 
-			requestHandler.addResponse(reqid, new GetContextVariableResponse(obj));
-		} catch (IOException e) {
-			requestHandler.addResponse(reqid,
-					new GetContextVariableFailedResponse(new RMIIOFailureException("Failed to read response.", e)));
-		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-				| ServiceConfigurationError e) {
-			requestHandler.addResponse(reqid,
-					new GetContextVariableFailedResponse(new RMICallFailedException("Failed to read response.", e)));
+				requestHandler.addResponse(reqid, new GetContextVariableResponse(obj));
+			} catch (IOException e) {
+				requestHandler.addResponse(reqid,
+						new GetContextVariableFailedResponse(new RMIIOFailureException("Failed to read response.", e)));
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
+				requestHandler.addResponse(reqid, new GetContextVariableFailedResponse(
+						new RMICallFailedException("Failed to read response.", e)));
+			}
+		} finally {
+			requestHandlerRemoveResponseCount();
 		}
 	}
 
 	private void handleCommandDirectRequestForbidden(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		int reqid = in.readInt();
-		short cmd = in.readShort();
-		switch (cmd) {
-			case COMMAND_METHODRESULT_FAIL: {
-				requestHandler.addResponse(reqid, DirectForbiddenMethodCallResponse.INSTANCE);
-				break;
+		try {
+			int reqid = in.readInt();
+			short cmd = in.readShort();
+			switch (cmd) {
+				case COMMAND_METHODRESULT_FAIL: {
+					requestHandler.addResponse(reqid, DirectForbiddenMethodCallResponse.INSTANCE);
+					break;
+				}
+				case COMMAND_NEWINSTANCERESULT_FAIL: {
+					requestHandler.addResponse(reqid, DirectForbiddenNewInstanceResponse.INSTANCE);
+					break;
+				}
+				case COMMAND_UNKNOWN_NEWINSTANCE_RESULT: {
+					requestHandler.addResponse(reqid, DirectForbiddenUnknownNewInstanceResponse.INSTANCE);
+					break;
+				}
+				default: {
+					requestHandler.addResponse(reqid, new CommandFailedResponse(new RMICallForbiddenException(
+							EXCEPTION_MESSAGE_DIRECT_REQUESTS_FORBIDDEN + " (Unknown command: " + cmd + ")")));
+					break;
+				}
 			}
-			case COMMAND_NEWINSTANCERESULT_FAIL: {
-				requestHandler.addResponse(reqid, DirectForbiddenNewInstanceResponse.INSTANCE);
-				break;
-			}
-			case COMMAND_UNKNOWN_NEWINSTANCE_RESULT: {
-				requestHandler.addResponse(reqid, DirectForbiddenUnknownNewInstanceResponse.INSTANCE);
-				break;
-			}
-			default: {
-				requestHandler.addResponse(reqid, new CommandFailedResponse(new RMICallForbiddenException(
-						EXCEPTION_MESSAGE_DIRECT_REQUESTS_FORBIDDEN + " (Unknown command: " + cmd + ")")));
-				break;
-			}
+		} finally {
+			requestHandlerRemoveResponseCount();
 		}
 	}
 
@@ -2357,74 +2455,87 @@ final class RMIStream implements Closeable {
 	}
 
 	private void handleCommandNewInstanceUnknownClassResult(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		int reqid = in.readInt();
-		boolean interrupted = false;
-		int interruptreqcount = 0;
 		try {
-			RMIVariables variables = readVariablesValidate(in);
-			int compressedinterruptstatus = in.readInt();
-			int remoteindex = in.readInt();
-			Set<Class<?>> interfaces;
+			int reqid = in.readInt();
+			boolean interrupted = false;
+			int interruptreqcount = 0;
 			try {
-				interfaces = readClassesSet(in, variables);
-			} catch (ClassSetPartiallyReadException e) {
-				interfaces = e.getReadClasses();
+				RMIVariables variables = readVariablesValidate(in);
+				int compressedinterruptstatus = in.readInt();
+				int remoteindex = in.readInt();
+				Set<Class<?>> interfaces;
+				try {
+					interfaces = readClassesSet(in, variables);
+				} catch (ClassSetPartiallyReadException e) {
+					interfaces = e.getReadClasses();
+				}
+
+				interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
+				interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
+
+				requestHandler.addResponse(reqid,
+						new UnknownNewInstanceResponse(interrupted, interruptreqcount, remoteindex, interfaces));
+			} catch (IOException e) {
+				requestHandler.addResponse(reqid, new UnknownNewInstanceFailedResponse(interrupted, interruptreqcount,
+						new RMIIOFailureException("Failed to read new instance result.", e)));
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
+				requestHandler.addResponse(reqid, new UnknownNewInstanceFailedResponse(interrupted, interruptreqcount,
+						new RMICallFailedException("Failed to read new instance result.", e)));
 			}
-
-			interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
-			interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
-
-			requestHandler.addResponse(reqid,
-					new UnknownNewInstanceResponse(interrupted, interruptreqcount, remoteindex, interfaces));
-		} catch (IOException e) {
-			requestHandler.addResponse(reqid, new UnknownNewInstanceFailedResponse(interrupted, interruptreqcount,
-					new RMIIOFailureException("Failed to read new instance result.", e)));
-		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-				| ServiceConfigurationError e) {
-			requestHandler.addResponse(reqid, new UnknownNewInstanceFailedResponse(interrupted, interruptreqcount,
-					new RMICallFailedException("Failed to read new instance result.", e)));
+		} finally {
+			requestHandlerRemoveResponseCount();
 		}
 	}
 
 	private void handleCommandNewInstanceResultFailure(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		int reqid = in.readInt();
-		boolean interrupted = false;
-		int interruptreqcount = 0;
 		try {
-			int compressedinterruptstatus = in.readInt();
-			Throwable exc = readException(in);
+			int reqid = in.readInt();
+			boolean interrupted = false;
+			int interruptreqcount = 0;
+			try {
+				int compressedinterruptstatus = in.readInt();
+				Throwable exc = readException(in);
 
-			interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
-			interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
+				interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
+				interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
 
-			requestHandler.addResponse(reqid, new NewInstanceFailedResponse(interrupted, interruptreqcount, exc));
-		} catch (RMIRuntimeException e) {
-			requestHandler.addResponse(reqid, new UnknownNewInstanceFailedResponse(interrupted, interruptreqcount, e));
-		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-				| ServiceConfigurationError e) {
-			requestHandler.addResponse(reqid, new UnknownNewInstanceFailedResponse(interrupted, interruptreqcount,
-					new RMICallFailedException("Failed to read remote exception.", e)));
+				requestHandler.addResponse(reqid, new NewInstanceFailedResponse(interrupted, interruptreqcount, exc));
+			} catch (RMIRuntimeException e) {
+				requestHandler.addResponse(reqid,
+						new UnknownNewInstanceFailedResponse(interrupted, interruptreqcount, e));
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
+				requestHandler.addResponse(reqid, new UnknownNewInstanceFailedResponse(interrupted, interruptreqcount,
+						new RMICallFailedException("Failed to read remote exception.", e)));
+			}
+		} finally {
+			requestHandlerRemoveResponseCount();
 		}
 	}
 
 	private void handleCommandMethodResultFailure(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		int reqid = in.readInt();
-		boolean interrupted = false;
-		int interruptreqcount = 0;
 		try {
-			int compressedinterruptstatus = in.readInt();
-			Throwable exc = readException(in);
+			int reqid = in.readInt();
+			boolean interrupted = false;
+			int interruptreqcount = 0;
+			try {
+				int compressedinterruptstatus = in.readInt();
+				Throwable exc = readException(in);
 
-			interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
-			interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
+				interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
+				interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
 
-			requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount, exc));
-		} catch (RMIRuntimeException e) {
-			requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount, e));
-		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-				| ServiceConfigurationError e) {
-			requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
-					new RMICallFailedException("Failed to read remote exception.", e)));
+				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount, exc));
+			} catch (RMIRuntimeException e) {
+				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount, e));
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
+				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
+						new RMICallFailedException("Failed to read remote exception.", e)));
+			}
+		} finally {
+			requestHandlerRemoveResponseCount();
 		}
 	}
 
@@ -2490,6 +2601,7 @@ final class RMIStream implements Closeable {
 			}
 		} finally {
 			gcaction.decreasePendingRequestCount();
+			requestHandlerRemoveResponseCount();
 		}
 	}
 
@@ -2568,6 +2680,7 @@ final class RMIStream implements Closeable {
 			}
 		} finally {
 			gcaction.decreasePendingRequestCount();
+			requestHandlerRemoveResponseCount();
 		}
 	}
 
@@ -2690,6 +2803,7 @@ final class RMIStream implements Closeable {
 			}
 		} finally {
 			gcaction.decreasePendingRequestCount();
+			requestHandlerRemoveResponseCount();
 		}
 	}
 
@@ -2739,6 +2853,7 @@ final class RMIStream implements Closeable {
 			}
 		} finally {
 			gcaction.decreasePendingRequestCount();
+			requestHandlerRemoveResponseCount();
 		}
 	}
 
@@ -4173,6 +4288,35 @@ final class RMIStream implements Closeable {
 		@Override
 		public String toString() {
 			return "[Class " + className + " from class loader " + classLoaderSupplier + "]";
+		}
+
+	}
+
+	private static class RequestHandlerState {
+		public static final RequestHandlerState INTIAL = new RequestHandlerState(false, 0);
+
+		public final boolean closed;
+		public final int unprocessedResponseCount;
+
+		private RequestHandlerState(boolean closed, int unprocessedResponseCount) {
+			this.closed = closed;
+			this.unprocessedResponseCount = unprocessedResponseCount;
+		}
+
+		public RequestHandlerState close() {
+			return new RequestHandlerState(true, unprocessedResponseCount);
+		}
+
+		public RequestHandlerState addResponseCount() {
+			return new RequestHandlerState(closed, unprocessedResponseCount + 1);
+		}
+
+		public RequestHandlerState removeResponseCount() {
+			int ncount = unprocessedResponseCount - 1;
+			if (ncount < 0) {
+				throw new IllegalStateException("No pending responses.");
+			}
+			return new RequestHandlerState(closed, ncount);
 		}
 
 	}

@@ -3228,11 +3228,21 @@ public class ThreadUtils {
 
 		@Override
 		protected boolean tryRelease(int ignored) {
-			if (getExclusiveOwnerThread() != Thread.currentThread()) {
-				throw new IllegalMonitorStateException("Exclusive lock is not owned by current thread.");
+			Thread ownerthread = getExclusiveOwnerThread();
+			Thread currentthread = Thread.currentThread();
+			if (ownerthread != currentthread) {
+				StringBuilder sb = new StringBuilder();
+				sb.append("Exclusive lock is not owned by current thread: ");
+				sb.append(currentthread);
+				if (ownerthread != null) {
+					sb.append(" but by: ");
+					sb.append(ownerthread);
+				}
+				throw new IllegalMonitorStateException(sb.toString());
 			}
 			if (!compareAndSetState(STATE_LOCKED, STATE_AVAILABLE)) {
-				return false;
+				//this state CAS should always succeed, as we already checked that this thread is the lock owner
+				throw new IllegalStateException("Invalid lock state");
 			}
 			setExclusiveOwnerThread(null);
 			return true;
