@@ -63,10 +63,16 @@ public class InitRunDaemonTest extends SakerTestCase {
 			excthread.start();
 
 			daemonenv.run();
+			excthread.join();
+
+			Throwable threadexc = excthread.takeException();
+			if (threadexc != null) {
+				threadexc.addSuppressed(new RuntimeException("stacktrace"));
+				throw threadexc;
+			}
+
 			//the run() should only return if we close the daemon environment in the separate thread
 			assertTrue(threadquit[0]);
-
-			excthread.joinThrow();
 		}
 	}
 
