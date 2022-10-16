@@ -47,6 +47,7 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.Lock;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.ToIntBiFunction;
 
@@ -190,6 +191,9 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 	}
 
 	private static final class ContentHandleImpl implements ContentHandle {
+		//a cached Supplier instance for calculating the disk contents
+		private static final Function<ContentHandleImpl, ContentDescriptor> DISK_CONTENT_CALCULATOR = ContentHandleImpl::calculateDiskContent;
+
 		@SuppressWarnings("rawtypes")
 		private static final AtomicReferenceFieldUpdater<ContentDatabaseImpl.ContentHandleImpl, Supplier> ARFU_diskContent = AtomicReferenceFieldUpdater
 				.newUpdater(ContentDatabaseImpl.ContentHandleImpl.class, Supplier.class, "diskContent");
@@ -201,6 +205,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		private volatile UserContentState userContent;
 		private volatile Supplier<? extends ContentDescriptor> diskContent;
 		private BasicFileAttributes diskAttributes;
+
+		private final Lock stateLock = ThreadUtils.newExclusiveLock();
 
 		public ContentHandleImpl(ContentDatabaseImpl db, ProviderHolderPathKey pathKey,
 				ContentDescriptorSupplier contentsupplier) {
@@ -221,17 +227,19 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 			this.diskContent = null;
 		}
 
-		private LazySupplier<ContentDescriptor> createDiskContentSupplier() {
-			return LazySupplier.of(() -> {
-				try {
-					return contentSupplier.get(pathKey);
-				} catch (FileNotFoundException | NoSuchFileException e) {
-				} catch (IOException e) {
-					//XXX do we need to print the exception here?
-					e.printStackTrace();
-				}
-				return null;
-			});
+		private ContentDescriptor calculateDiskContent() {
+			try {
+				return contentSupplier.get(pathKey);
+			} catch (FileNotFoundException | NoSuchFileException e) {
+			} catch (IOException e) {
+				//XXX do we need to print the exception here?
+				e.printStackTrace();
+			}
+			return null;
+		}
+
+		private LazySupplier<ContentDescriptor> createDiskContentLazySupplier() {
+			return LazySupplier.of(this, DISK_CONTENT_CALCULATOR);
 		}
 
 		@Override
@@ -242,18 +250,27 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		//don't set the disk content to null during invalidation, as we don't want discovery to reset the contents anymore
 
 		public void invalidate() {
-			synchronized (this) {
-				this.diskContent = createDiskContentSupplier();
+			LazySupplier<ContentDescriptor> dcsupplier = createDiskContentLazySupplier();
+
+			final Lock lock = stateLock;
+			lock.lock();
+			try {
+				this.diskContent = dcsupplier;
 				this.diskAttributes = null;
+			} finally {
+				lock.unlock();
 			}
 		}
 
 		public void invalidateWithPosixPermissions(Set<PosixFilePermission> permissions) {
-			synchronized (this) {
-				//XXX enum set based immutable
-				permissions = ImmutableUtils.makeImmutableNavigableSet(permissions);
+			//these can be instantiated outside of the lock
+			//XXX enum set based immutable
+			permissions = ImmutableUtils.makeImmutableNavigableSet(permissions);
+			Supplier<ContentDescriptor> dcsupplier = createDiskContentLazySupplier();
 
-				Supplier<ContentDescriptor> dcsupplier = createDiskContentSupplier();
+			final Lock lock = stateLock;
+			lock.lock();
+			try {
 				this.diskContent = dcsupplier;
 				//XXX the disk attributes could be queried alongside the permissions
 				this.diskAttributes = null;
@@ -299,36 +316,49 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 								diskcontents, permissions);
 					}
 				}
+			} finally {
+				lock.unlock();
 			}
 		}
 
 		public void invalidateOffline() {
-			this.diskContent = createDiskContentSupplier();
+			this.diskContent = createDiskContentLazySupplier();
 			this.diskAttributes = null;
 		}
 
 		public void invalidateHardOffline() {
-			this.diskContent = createDiskContentSupplier();
+			this.diskContent = createDiskContentLazySupplier();
 			this.diskAttributes = null;
 			this.userContent = null;
 		}
 
 		public void setDiskAttributesOffline(BasicFileAttributes diskattributes) {
-			this.diskContent = createDiskContentSupplier();
+			this.diskContent = createDiskContentLazySupplier();
 			this.diskAttributes = diskattributes;
 		}
 
 		public void setContent(ContentDescriptor usercontent, ContentDescriptor diskcontent,
 				BasicFileAttributes diskattributes, Set<PosixFilePermission> expectedposixpermissions) {
-			synchronized (this) {
-				this.userContent = UserContentState.create(usercontent, diskcontent, expectedposixpermissions);
-				this.diskContent = Functionals.valSupplier(diskcontent);
+			//these can be instantiated outside of the lock
+			UserContentState usercontentstate = UserContentState.create(usercontent, diskcontent,
+					expectedposixpermissions);
+			Supplier<ContentDescriptor> diskcontentsupplier = Functionals.valSupplier(diskcontent);
+
+			final Lock lock = stateLock;
+			lock.lock();
+			try {
+				this.userContent = usercontentstate;
+				this.diskContent = diskcontentsupplier;
 				this.diskAttributes = diskattributes;
+			} finally {
+				lock.unlock();
 			}
 		}
 
 		public void discoverAttributes(FileEntry attributes, FileEntry trackattributes) {
-			synchronized (this) {
+			final Lock lock = stateLock;
+			lock.lock();
+			try {
 				if (contentSupplier != CommonContentDescriptorSupplier.FILE_ATTRIBUTES) {
 					if (this.diskContent == null) {
 						this.diskAttributes = trackattributes;
@@ -340,6 +370,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 						Functionals.valSupplier(FileAttributesContentDescriptor.create(pathKey, attributes)))) {
 					this.diskAttributes = trackattributes;
 				}
+			} finally {
+				lock.unlock();
 			}
 		}
 
@@ -428,7 +460,7 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		private Supplier<? extends ContentDescriptor> getActualDiskContentSupplier() {
 			Supplier<? extends ContentDescriptor> diskcontentsupplier = diskContent;
 			if (diskcontentsupplier == null) {
-				LazySupplier<ContentDescriptor> nsupplier = createDiskContentSupplier();
+				LazySupplier<ContentDescriptor> nsupplier = createDiskContentLazySupplier();
 				if (ARFU_diskContent.compareAndSet(this, null, nsupplier)) {
 					diskcontentsupplier = nsupplier;
 				} else {
