@@ -19,7 +19,6 @@ import java.io.DataOutput;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InterruptedIOException;
-import java.io.PrintStream;
 import java.io.RandomAccessFile;
 import java.lang.ref.WeakReference;
 import java.net.ConnectException;
@@ -44,6 +43,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.locks.Lock;
 
 import javax.net.ServerSocketFactory;
 import javax.net.SocketFactory;
@@ -183,8 +183,13 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	private ThreadGroup clusterClientConnectingThreadGroup;
 
 	//may be a weak set as the keys stay referenced by the cache 
-	//synchronize on the set when accessed
+	/**
+	 * Locked by {@link #projectCacheKeysLock}.
+	 */
 	private final Set<ProjectCacheKey> loadedProjectCacheKeys = Collections.newSetFromMap(new WeakHashMap<>());
+
+	private final Lock projectCacheKeysLock = ThreadUtils.newExclusiveLock();
+	private final Lock stateLock = ThreadUtils.newExclusiveLock();
 
 	public LocalDaemonEnvironment(Path sakerJarPath, DaemonLaunchParameters launchParameters,
 			DaemonOutputController outputController, SocketFactory connectionsocketfactory) {
@@ -277,96 +282,103 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		return environment.getEnvironmentIdentifier();
 	}
 
-	@SuppressWarnings("try") // unused FileLock in try
 	public final void init() throws IOException {
-		synchronized (this) {
-			checkUnstarted();
+		final Lock lock = stateLock;
+		IOUtils.lockIO(lock, "Initialization interrupted.");
+		try {
+			initLocked();
+		} finally {
+			lock.unlock();
+		}
+	}
 
-			try {
-				Path storagedirectory = LocalFileProvider.toRealPath(constructLaunchParameters.getStorageDirectory());
-				EnvironmentParameters params = EnvironmentParameters.builder(sakerJarPath)
-						.setStorageDirectory(storagedirectory)
-						.setUserParameters(constructLaunchParameters.getUserParameters())
-						.setThreadFactor(constructLaunchParameters.getThreadFactor()).build();
+	@SuppressWarnings("try") // unused FileLock in try
+	private void initLocked() throws IOException {
+		checkUnstarted();
 
-				Path lockpath = storagedirectory.resolve(DAEMON_LOCK_FILE_NAME);
-				LocalFileProvider.getInstance().createDirectories(storagedirectory);
+		try {
+			Path storagedirectory = LocalFileProvider.toRealPath(constructLaunchParameters.getStorageDirectory());
+			EnvironmentParameters params = EnvironmentParameters.builder(sakerJarPath)
+					.setStorageDirectory(storagedirectory)
+					.setUserParameters(constructLaunchParameters.getUserParameters())
+					.setThreadFactor(constructLaunchParameters.getThreadFactor()).build();
 
-				DaemonLaunchParameters.Builder builder = DaemonLaunchParameters.builder(constructLaunchParameters);
+			Path lockpath = storagedirectory.resolve(DAEMON_LOCK_FILE_NAME);
+			LocalFileProvider.getInstance().createDirectories(storagedirectory);
 
-				Integer serverport = constructLaunchParameters.getPort();
-				if (serverport != null) {
-					InetAddress serverBindAddress;
-					if (constructLaunchParameters.isActsAsServer()) {
-						serverBindAddress = null;
-					} else {
-						serverBindAddress = InetAddress.getLoopbackAddress();
-					}
+			DaemonLaunchParameters.Builder builder = DaemonLaunchParameters.builder(constructLaunchParameters);
 
-					int useport = serverport < 0 ? DaemonLaunchParameters.DEFAULT_PORT : serverport;
-
-					boolean actsascluster = constructLaunchParameters.isActsAsCluster();
-
-					int daemonInstanceIndex = -1;
-
-					lockFile = new RandomAccessFile(lockpath.toFile(), "rw");
-					FileChannel channel = lockFile.getChannel();
-					for (int i = 0; i < DAEMON_INSTANCE_INDEX_END; i++) {
-						FileLock flock = channel.tryLock(FILE_LOCK_REGION_START + i * FILE_LOCK_DATA_LENGTH,
-								FILE_LOCK_DATA_LENGTH, false);
-						if (flock == null) {
-							continue;
-						}
-						daemonInstanceIndex = i;
-						fileLock = flock;
-						break;
-					}
-					if (fileLock == null) {
-						throw new IOException("Failed to start daemon server, unable to acquire lock. Already running "
-								+ DAEMON_INSTANCE_INDEX_END + " daemons?");
-					}
-
-					//lock the data as well to lock initialization 
-					try (FileLock datalock = channel.lock(FILE_LOCK_DATA_LENGTH * daemonInstanceIndex,
-							FILE_LOCK_DATA_LENGTH, false)) {
-						environment = createSakerEnvironment(params);
-
-						server = new DaemonRMIServer(serverSocketFactory, useport, serverBindAddress, actsascluster);
-						writeDaemonInformationToLockFile(lockFile, daemonInstanceIndex, server.getPort(),
-								sslKeystorePath);
-					}
+			Integer serverport = constructLaunchParameters.getPort();
+			if (serverport != null) {
+				InetAddress serverBindAddress;
+				if (constructLaunchParameters.isActsAsServer()) {
+					serverBindAddress = null;
 				} else {
-					environment = createSakerEnvironment(params);
+					serverBindAddress = InetAddress.getLoopbackAddress();
 				}
-				buildExecutionInvoker = new EnvironmentBuildExecutionInvoker(environment);
 
-				builder.setStorageDirectory(SakerPath.valueOf(environment.getStorageDirectoryPath()));
-				builder.setThreadFactor(environment.getThreadFactor());
-				builder.setPort(server == null ? null : server.getPort());
-				launchParameters = builder.build();
+				int useport = serverport < 0 ? DaemonLaunchParameters.DEFAULT_PORT : serverport;
 
-				state = STATE_INITIALIZED;
-			} catch (Throwable e) {
-				try {
-					IOUtils.addExc(e, IOUtils.closeExc(server, environment, fileLock, lockFile));
-					server = null;
-					environment = null;
-					fileLock = null;
-					lockFile = null;
-					buildExecutionInvoker = null;
-					launchParameters = null;
+				boolean actsascluster = constructLaunchParameters.isActsAsCluster();
 
-					clusterClientConnectingThreadGroup = null;
-					if (clusterClientConnectingWorkPool != null) {
-						clusterClientConnectingWorkPool.exit();
-						clusterClientConnectingWorkPool = null;
+				int daemonInstanceIndex = -1;
+
+				lockFile = new RandomAccessFile(lockpath.toFile(), "rw");
+				FileChannel channel = lockFile.getChannel();
+				for (int i = 0; i < DAEMON_INSTANCE_INDEX_END; i++) {
+					FileLock flock = channel.tryLock(FILE_LOCK_REGION_START + i * FILE_LOCK_DATA_LENGTH,
+							FILE_LOCK_DATA_LENGTH, false);
+					if (flock == null) {
+						continue;
 					}
-					state = STATE_UNSTARTED;
-				} catch (Throwable e2) {
-					e.addSuppressed(e2);
+					daemonInstanceIndex = i;
+					fileLock = flock;
+					break;
 				}
-				throw e;
+				if (fileLock == null) {
+					throw new IOException("Failed to start daemon server, unable to acquire lock. Already running "
+							+ DAEMON_INSTANCE_INDEX_END + " daemons?");
+				}
+
+				//lock the data as well to lock initialization 
+				try (FileLock datalock = channel.lock(FILE_LOCK_DATA_LENGTH * daemonInstanceIndex,
+						FILE_LOCK_DATA_LENGTH, false)) {
+					environment = createSakerEnvironment(params);
+
+					server = new DaemonRMIServer(serverSocketFactory, useport, serverBindAddress, actsascluster);
+					writeDaemonInformationToLockFile(lockFile, daemonInstanceIndex, server.getPort(), sslKeystorePath);
+				}
+			} else {
+				environment = createSakerEnvironment(params);
 			}
+			buildExecutionInvoker = new EnvironmentBuildExecutionInvoker(environment);
+
+			builder.setStorageDirectory(SakerPath.valueOf(environment.getStorageDirectoryPath()));
+			builder.setThreadFactor(environment.getThreadFactor());
+			builder.setPort(server == null ? null : server.getPort());
+			launchParameters = builder.build();
+
+			state = STATE_INITIALIZED;
+		} catch (Throwable e) {
+			try {
+				IOUtils.addExc(e, IOUtils.closeExc(server, environment, fileLock, lockFile));
+				server = null;
+				environment = null;
+				fileLock = null;
+				lockFile = null;
+				buildExecutionInvoker = null;
+				launchParameters = null;
+
+				clusterClientConnectingThreadGroup = null;
+				if (clusterClientConnectingWorkPool != null) {
+					clusterClientConnectingWorkPool.exit();
+					clusterClientConnectingWorkPool = null;
+				}
+				state = STATE_UNSTARTED;
+			} catch (Throwable e2) {
+				e.addSuppressed(e2);
+			}
+			throw e;
 		}
 	}
 
@@ -423,7 +435,6 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	/**
 	 * Same as calling {@link #init()} and {@link #startAfterInitialization()} after each other.
 	 */
-	@SuppressWarnings("try")
 	public final void start() throws IOException {
 		init();
 		startAfterInitialization();
@@ -438,9 +449,6 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		} else {
 			clusterClientConnectingThreadGroup = new ThreadGroup("Daemon client connector");
 		}
-		//the thread group is daemon, but the thread tool threads are not
-		//this is not to exit the process if we don't accept connections
-		clusterClientConnectingThreadGroup.setDaemon(true);
 		clusterClientConnectingWorkPool = ThreadUtils.newDynamicWorkPool(clusterClientConnectingThreadGroup,
 				"cluster-client-");
 		for (AddressResolver addr : connectToAsClusterAddresses) {
@@ -466,7 +474,6 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		return getRunningDaemonInfos(LocalFileProvider.toRealPath(storagedirectory));
 	}
 
-	@SuppressWarnings("try")
 	public static List<RunningDaemonConnectionInfo> getRunningDaemonInfos(Path storagedirectory) throws IOException {
 		List<RunningDaemonConnectionInfo> result = new ArrayList<>();
 		Path lockpath = storagedirectory.resolve(DAEMON_LOCK_FILE_NAME);
@@ -478,7 +485,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		}
 	}
 
-	@SuppressWarnings("try")
+	@SuppressWarnings("try") // unused FileLock in try
 	private static void collectDaemonInfosFromLockFile(List<RunningDaemonConnectionInfo> result, RandomAccessFile f)
 			throws IOException {
 		//XXX there is a race condition when concurrently creating deamons
@@ -557,7 +564,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 				}
 				switch (format) {
 					case DAEMON_CONNECTION_FORMAT_TCP: {
-						result.add(new RunningDaemonConnectionInfo(resport));
+						result.add(RunningDaemonConnectionInfo.createTCP(resport));
 						break;
 					}
 					case DAEMON_CONNECTION_FORMAT_SSL: {
@@ -575,8 +582,8 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 							} else {
 								kspathstr = null;
 							}
-							RunningDaemonConnectionInfo info = new RunningDaemonConnectionInfo(resport);
-							info.sslKeystorePath = kspathstr;
+							RunningDaemonConnectionInfo info = RunningDaemonConnectionInfo.createSSL(resport,
+									kspathstr);
 							result.add(info);
 						} catch (RuntimeException e) {
 							//some decoding exception or other things. don't throw, can be silently ignored
@@ -645,83 +652,97 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	}
 
 	@Override
-	@SuppressWarnings("try")
 	public final void close() {
-		synchronized (this) {
-			boolean interrupted = false;
+		final Lock lock = stateLock;
+		lock.lock();
+		try {
+			closeLocked();
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	private void closeLocked() {
+		boolean interrupted = false;
+		try {
+			state = STATE_CLOSED;
+
+			ThreadGroup connthreadgroup = clusterClientConnectingThreadGroup;
+			if (connthreadgroup != null) {
+				connthreadgroup.interrupt();
+				//signal exit to the thread pool, but don't wait for it yet.
+				try {
+					clusterClientConnectingWorkPool.exit();
+				} catch (Exception e) {
+					//shouldn't happen but print anyway
+					e.printStackTrace();
+				}
+			}
+			Collection<ProjectCacheKey> keys;
+			projectCacheKeysLock.lock();
 			try {
-				state = STATE_CLOSED;
-
-				ThreadGroup connthreadgroup = clusterClientConnectingThreadGroup;
-				if (connthreadgroup != null) {
-					connthreadgroup.interrupt();
-					//signal exit to the thread pool, but don't wait for it yet.
-					try {
-						clusterClientConnectingWorkPool.exit();
-					} catch (Exception e) {
-						//shouldn't happen but print anyway
-						e.printStackTrace();
-					}
-				}
-				synchronized (loadedProjectCacheKeys) {
-					List<ProjectCacheKey> keys = ImmutableUtils.makeImmutableList(loadedProjectCacheKeys);
-					loadedProjectCacheKeys.clear();
-					for (ProjectCacheKey pck : keys) {
-						try {
-							environment.invalidateCachedDataWaitExecutions(pck);
-						} catch (InterruptedException e) {
-							//reinterrupt at end
-							interrupted = true;
-						}
-					}
-				}
-
-				//close the environment first so builds finish
-				IOUtils.closePrint(environment);
-
-				RMIServer server = this.server;
-				//the following resources should be closed on a background daemon thread
-				//as this method can be called through RMI,
-				//we need to perform this on a different thread to make sure that the response
-				//of the close() method arrives to the caller.
-				ThreadUtils.startDaemonThread(() -> {
-					if (server != null) {
-						try {
-							server.closeWait();
-						} catch (IOException | InterruptedException e) {
-							e.printStackTrace();
-						} catch (Throwable e) {
-							//print any exception
-							try {
-								closeImpl();
-							} catch (Throwable e2) {
-								e.addSuppressed(e2);
-							}
-							e.printStackTrace();
-							throw e;
-						}
-					}
-
-					closeImpl();
-				});
-
-				IOUtils.closePrint(this.fileLock, this.lockFile);
-				this.fileLock = null;
-				this.lockFile = null;
-
-				if (connthreadgroup != null) {
-					//wait for the thread pool
-					try {
-						clusterClientConnectingWorkPool.close();
-					} catch (Exception e) {
-						//shouldn't happen but print anyway
-						e.printStackTrace();
-					}
-				}
+				keys = new HashSet<>(loadedProjectCacheKeys);
+				loadedProjectCacheKeys.clear();
 			} finally {
-				if (interrupted) {
-					Thread.currentThread().interrupt();
+				projectCacheKeysLock.unlock();
+			}
+			while (true) {
+				try {
+					environment.invalidateCachedDatasWaitExecutions(keys::contains);
+					break;
+				} catch (InterruptedException e) {
+					//reinterrupt at end
+					interrupted = true;
+					//try again
+					continue;
 				}
+			}
+
+			//close the environment first so builds finish
+			IOUtils.closePrint(environment);
+
+			RMIServer server = this.server;
+			//the following resources should be closed on a background daemon thread
+			//as this method can be called through RMI,
+			//we need to perform this on a different thread to make sure that the response
+			//of the close() method arrives to the caller.
+			ThreadUtils.startDaemonThread(() -> {
+				if (server != null) {
+					try {
+						server.closeWait();
+					} catch (IOException | InterruptedException e) {
+						e.printStackTrace();
+					} catch (Throwable e) {
+						//print any exception
+						try {
+							closeImpl();
+						} catch (Throwable e2) {
+							e.addSuppressed(e2);
+						}
+						e.printStackTrace();
+						throw e;
+					}
+				}
+
+				closeImpl();
+			});
+
+			IOUtils.closePrint(this.fileLock, this.lockFile);
+			this.fileLock = null;
+			this.lockFile = null;
+
+			if (connthreadgroup != null) {
+				//wait for the thread pool
+				try {
+					clusterClientConnectingWorkPool.close();
+				} catch (Exception e) {
+					//shouldn't happen but print anyway
+					e.printStackTrace();
+				}
+			}
+		} finally {
+			if (interrupted) {
+				Thread.currentThread().interrupt();
 			}
 		}
 	}
@@ -845,8 +866,11 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		try {
 			ProjectCacheKey cachekey = new ProjectCacheKey(environment, workingdir);
 			DaemonProjectHandle result = environment.getCachedData(cachekey);
-			synchronized (loadedProjectCacheKeys) {
+			projectCacheKeysLock.lock();
+			try {
 				loadedProjectCacheKeys.add(cachekey);
+			} finally {
+				projectCacheKeysLock.unlock();
 			}
 			return result;
 		} catch (IOException e) {
@@ -860,8 +884,17 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		protected final int port;
 		protected String sslKeystorePath;
 
-		protected RunningDaemonConnectionInfo(int port) {
+		protected static RunningDaemonConnectionInfo createTCP(int port) {
+			return new RunningDaemonConnectionInfo(port, null);
+		}
+
+		protected static RunningDaemonConnectionInfo createSSL(int port, String sslKeystorePath) {
+			return new RunningDaemonConnectionInfo(port, sslKeystorePath);
+		}
+
+		protected RunningDaemonConnectionInfo(int port, String sslKeystorePath) {
 			this.port = port;
+			this.sslKeystorePath = sslKeystorePath;
 		}
 
 		public int getPort() {
