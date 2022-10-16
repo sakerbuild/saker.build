@@ -213,12 +213,7 @@ public class SakerProjectCache implements ProjectCacheHandle {
 
 	@Override
 	public void close() throws IOException {
-		synchronized (this) {
-			if (closed) {
-				return;
-			}
-			closed = true;
-		}
+		closed = true;
 		usageLock.acquireUninterruptibly();
 		try {
 			waitExecutionFinalizerThreadNonInterruptible(false);
