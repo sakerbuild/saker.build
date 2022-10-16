@@ -464,13 +464,15 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 
 	private volatile boolean dirty = false;
 
-	private BuildTaskResultDatabase taskResults = new BuildTaskResultDatabase();
+	private BuildTaskResultDatabase taskResults = BuildTaskResultDatabase.empty();
 
 	private ClassLoaderResolver classLoaderResolver;
 
 	private boolean trackHandleAttributes = false;
 
 	private PathProtectionSettings protectionSettings;
+
+	private final Lock descriptorFileIOLock = ThreadUtils.newExclusiveLock();
 
 	public ContentDatabaseImpl(DatabaseConfiguration databaseconfig, ExecutionPathConfiguration pathconfig) {
 		Objects.requireNonNull(databaseconfig, "database configuration");
@@ -653,13 +655,17 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 	}
 
 	public void setTaskResults(BuildTaskResultDatabase taskresults) {
-		synchronized (this) {
+		final Lock lock = descriptorFileIOLock;
+		lock.lock();
+		try {
 			if (taskresults == this.taskResults) {
 				//unchanged
 				return;
 			}
 			this.taskResults = taskresults;
 			setDirty();
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -668,8 +674,12 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 	}
 
 	public void flush() throws IOException {
-		synchronized (this) {
+		final Lock lock = descriptorFileIOLock;
+		lock.lock();
+		try {
 			flushLocked();
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -1160,8 +1170,12 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 
 	@Override
 	public void close() throws IOException {
-		synchronized (this) {
+		final Lock lock = descriptorFileIOLock;
+		lock.lock();
+		try {
 			flushLocked();
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -1614,10 +1628,12 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 	}
 
 	public void clean() {
-		setDirty();
-		providerKeyPathDependencies.clear();
-		taskResults.clear();
-		synchronized (this) {
+		final Lock lock = descriptorFileIOLock;
+		lock.lock();
+		try {
+			setDirty();
+			this.providerKeyPathDependencies.clear();
+			this.taskResults = BuildTaskResultDatabase.empty();
 			if (!isPersisting()) {
 				return;
 			}
@@ -1628,6 +1644,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 				// XXX handle exception somehow?
 				e.printStackTrace();
 			}
+		} finally {
+			lock.unlock();
 		}
 	}
 

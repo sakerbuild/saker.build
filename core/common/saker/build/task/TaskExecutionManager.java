@@ -99,6 +99,7 @@ import saker.build.runtime.execution.FileDataComputer;
 import saker.build.runtime.execution.SakerLog;
 import saker.build.runtime.execution.SecretInputReader;
 import saker.build.runtime.params.ExecutionPathConfiguration;
+import saker.build.scripting.ScriptInformationProvider;
 import saker.build.scripting.ScriptPosition;
 import saker.build.task.InnerTaskExecutionParameters.CoordinatorDuplicationPredicate;
 import saker.build.task.TaskExecutionManager.ManagerTaskFutureImpl.FutureState;
@@ -4247,11 +4248,13 @@ public final class TaskExecutionManager {
 		this.taskIdFutures = new ConcurrentHashMap<>(Math.max(64, taskIdTaskResults.size() * 4 / 3));
 	}
 
-	public BuildTaskResultDatabase getTaskResults() {
+	public BuildTaskResultDatabase getTaskResults(
+			NavigableMap<SakerPath, ScriptInformationProvider> scriptInformationProviders) {
 		if (initTaskResults != null && !executedAnyTask) {
 			return initTaskResults;
 		}
-		return new BuildTaskResultDatabase(resultTaskIdTaskResults, abandonedTaskIdResults, cacheableTaskResults);
+		return BuildTaskResultDatabase.create(resultTaskIdTaskResults, abandonedTaskIdResults, cacheableTaskResults,
+				scriptInformationProviders);
 	}
 
 	public TaskResultCollectionImpl getResultCollection() {

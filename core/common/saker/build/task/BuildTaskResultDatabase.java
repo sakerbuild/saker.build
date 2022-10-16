@@ -32,7 +32,6 @@ import java.util.Set;
 import saker.build.file.path.SakerPath;
 import saker.build.ide.configuration.IDEConfiguration;
 import saker.build.ide.configuration.SimpleIDEConfiguration;
-import saker.build.meta.PropertyNames;
 import saker.build.scripting.ScriptInformationProvider;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
@@ -44,6 +43,15 @@ import testing.saker.build.flag.TestFlag;
 public class BuildTaskResultDatabase implements Externalizable {
 	private static final long serialVersionUID = 1L;
 
+	private static final BuildTaskResultDatabase EMPTY_INSTANCE = new BuildTaskResultDatabase();
+	static {
+		EMPTY_INSTANCE.taskIdTaskResults = Collections.emptyMap();
+		EMPTY_INSTANCE.abandonedTaskIdResults = Collections.emptyMap();
+		EMPTY_INSTANCE.cacheableTaskIdResults = Collections.emptyMap();
+		EMPTY_INSTANCE.scriptInformationProviders = Collections.emptyNavigableMap();
+		EMPTY_INSTANCE.ideConfigs = Collections.emptySet();
+	}
+
 	protected Map<TaskIdentifier, TaskExecutionResult<?>> taskIdTaskResults;
 	protected NavigableMap<SakerPath, ScriptInformationProvider> scriptInformationProviders;
 
@@ -53,21 +61,25 @@ public class BuildTaskResultDatabase implements Externalizable {
 	private transient Collection<IDEConfiguration> ideConfigs = null;
 
 	/**
-	 * Creates a new result database with empty contents.
+	 * For {@link Externalizable}.
 	 */
 	public BuildTaskResultDatabase() {
-		this.taskIdTaskResults = Collections.emptyMap();
-		this.abandonedTaskIdResults = Collections.emptyMap();
-		this.cacheableTaskIdResults = Collections.emptyMap();
-		this.scriptInformationProviders = Collections.emptyNavigableMap();
 	}
 
-	public BuildTaskResultDatabase(Map<TaskIdentifier, TaskExecutionResult<?>> taskIdTaskResults,
+	public static BuildTaskResultDatabase empty() {
+		return EMPTY_INSTANCE;
+	}
+
+	public static BuildTaskResultDatabase create(Map<TaskIdentifier, TaskExecutionResult<?>> taskIdTaskResults,
 			Map<TaskIdentifier, TaskExecutionResult<?>> abandonedTaskIdResults,
-			Map<TaskIdentifier, TaskExecutionResult<?>> cacheableTaskIdResults) {
-		this.taskIdTaskResults = new HashMap<>(taskIdTaskResults);
-		this.abandonedTaskIdResults = new HashMap<>(abandonedTaskIdResults);
-		this.cacheableTaskIdResults = new HashMap<>(cacheableTaskIdResults);
+			Map<TaskIdentifier, TaskExecutionResult<?>> cacheableTaskIdResults,
+			NavigableMap<SakerPath, ScriptInformationProvider> scriptInformationProviders) {
+		BuildTaskResultDatabase result = new BuildTaskResultDatabase();
+		result.taskIdTaskResults = new HashMap<>(taskIdTaskResults);
+		result.abandonedTaskIdResults = new HashMap<>(abandonedTaskIdResults);
+		result.cacheableTaskIdResults = new HashMap<>(cacheableTaskIdResults);
+		result.scriptInformationProviders = ImmutableUtils.makeImmutableNavigableMap(scriptInformationProviders);
+		return result;
 	}
 
 	public Collection<? extends IDEConfiguration> getIDEConfigurations() {
@@ -87,12 +99,7 @@ public class BuildTaskResultDatabase implements Externalizable {
 		return result;
 	}
 
-	public void setScriptInformationProviders(
-			NavigableMap<SakerPath, ScriptInformationProvider> scriptInformationProviders) {
-		this.scriptInformationProviders = scriptInformationProviders;
-	}
-
-	public Map<SakerPath, ? extends ScriptInformationProvider> getScriptInformationProviders() {
+	public NavigableMap<SakerPath, ? extends ScriptInformationProvider> getScriptInformationProviders() {
 		return scriptInformationProviders;
 	}
 
@@ -131,13 +138,6 @@ public class BuildTaskResultDatabase implements Externalizable {
 			throw TaskExecutionManager.createFailException(taskid, failexc, abortexceptions);
 		}
 		return ter.getOutput();
-	}
-
-	public void clear() {
-		this.taskIdTaskResults = Collections.emptyMap();
-		this.abandonedTaskIdResults = Collections.emptyMap();
-		this.cacheableTaskIdResults = Collections.emptyMap();
-		this.scriptInformationProviders = Collections.emptyNavigableMap();
 	}
 
 	@Override

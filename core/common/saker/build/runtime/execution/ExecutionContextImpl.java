@@ -18,7 +18,6 @@ package saker.build.runtime.execution;
 import java.io.Closeable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InterruptedIOException;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Collections;
@@ -497,17 +496,17 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 					throw e;
 				}
 			} finally {
-				results = manager.getTaskResults();
-				resultCollection = manager.getResultCollection();
-				NavigableMap<SakerPath, ScriptInformationProvider> scriptinfoproviders = new TreeMap<>(
-						prevresults == null ? Collections.emptyNavigableMap()
-								: prevresults.getScriptInformationProviders());
+				NavigableMap<SakerPath, ScriptInformationProvider> scriptinfoproviders = prevresults == null
+						? new TreeMap<>()
+						: new TreeMap<>(prevresults.getScriptInformationProviders());
 				for (Entry<SakerPath, TargetConfigurationReadingResult> entry : this.scriptCache.entrySet()) {
 					ScriptInformationProvider infoprovider = entry.getValue().getInformationProvider();
 					if (infoprovider != null) {
 						scriptinfoproviders.put(entry.getKey(), infoprovider);
 					}
 				}
+				results = manager.getTaskResults(scriptinfoproviders);
+				resultCollection = manager.getResultCollection();
 				SakerPath wdir = getWorkingDirectoryPath();
 				for (ConcurrentAppendAccumulator<ExceptionView> eviews : ignoredExceptionViews.values()) {
 					//print the exceptions as a temporary solution
@@ -519,7 +518,6 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 				for (ExceptionView ev : nonTaskIgnoredExceptionViews) {
 					SakerLog.printFormatException(ev, wdir);
 				}
-				results.setScriptInformationProviders(scriptinfoproviders);
 				contentDatabase.setTaskResults(results);
 			}
 		} finally {
