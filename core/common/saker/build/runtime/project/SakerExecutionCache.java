@@ -71,8 +71,6 @@ public class SakerExecutionCache implements Closeable {
 
 	private FileProviderKey currentCoordinatorProviderKey;
 	private ExecutionPathConfiguration currentPathConfiguration;
-	//TODO why does this field exist?
-	private ExecutionPathConfiguration[] currentPathConfigurationReference;
 	private ExecutionRepositoryConfiguration currentRepositoryConfiguration;
 	private ExecutionScriptConfiguration currentScriptConfiguration;
 	private Map<String, String> currentUserParameters;
@@ -98,15 +96,11 @@ public class SakerExecutionCache implements Closeable {
 	}
 
 	public SakerEnvironment getRecordingEnvironment() {
-		synchronized (this) {
-			return recordingEnvironment;
-		}
+		return recordingEnvironment;
 	}
 
 	public SakerEnvironmentImpl getEnvironment() {
-		synchronized (this) {
-			return environment;
-		}
+		return environment;
 	}
 
 	public void recordEnvironmentPropertyAccess(EnvironmentProperty<?> environmentproperty) {
@@ -133,8 +127,6 @@ public class SakerExecutionCache implements Closeable {
 				userparameters = Collections.emptyMap();
 			}
 			if (currentPathConfiguration != null) {
-				//we need to set this anyway
-				currentPathConfigurationReference[0] = pathconfig;
 				//some runtime exception can happen if the configurations still hold reference to RMI objects which have their connections closed
 				//they won't equal in this case, consider the configuration changed.
 				if (isConfigurationsEqual(pathconfig, repositoryconfig, scriptconfig, userparameters,
@@ -293,7 +285,6 @@ public class SakerExecutionCache implements Closeable {
 				//assign everything at the end, so if any loading exception happens, the class doesn't stay in an inconsistent state
 				currentCoordinatorProviderKey = coordinatorproviderkey;
 				currentPathConfiguration = pathconfig;
-				currentPathConfigurationReference = npathconfigref;
 				currentRepositoryConfiguration = repositoryconfig;
 				currentScriptConfiguration = scriptconfig;
 				currentUserParameters = userparameters;
@@ -412,7 +403,6 @@ public class SakerExecutionCache implements Closeable {
 
 	private void clearCurrentConfiguration() throws IOException {
 		currentPathConfiguration = null;
-		currentPathConfigurationReference = null;
 		currentRepositoryConfiguration = null;
 		currentScriptConfiguration = null;
 		currentUserParameters = null;
