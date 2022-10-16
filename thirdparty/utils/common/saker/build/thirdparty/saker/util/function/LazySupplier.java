@@ -37,12 +37,14 @@ public final class LazySupplier<T> implements Supplier<T> {
 	/**
 	 * Creates a new lazy supplier that uses the argument supplier to compute the lazy value.
 	 * 
+	 * @param <Type>
+	 *            The type of the lazily computed object.
 	 * @param initer
 	 *            The value computer.
 	 * @return The created lazy supplier.
 	 */
 	public static <Type> LazySupplier<Type> of(Supplier<? extends Type> initer) {
-		return new LazySupplier<>(initer);
+		return new LazySupplier<>(new SupplierLazyState<>(initer));
 	}
 
 	/**
@@ -54,22 +56,38 @@ public final class LazySupplier<T> implements Supplier<T> {
 	 * wishes to reference the created lazy supplier in its computing function. Some computer functions may have an
 	 * use-case for this, as the computer function may have side effects.
 	 * 
+	 * @param <Type>
+	 *            The type of the lazily computed object.
 	 * @param initer
 	 *            The value computer.
 	 * @return The created lazy supplier.
 	 */
 	public static <Type> LazySupplier<Type> of(Function<? super LazySupplier<? extends Type>, Type> initer) {
-		return new LazySupplier<>(initer);
+		return new LazySupplier<>(new FunctionLazyState<>(initer));
+	}
+
+	/**
+	 * Creates a new lazy supplier that passes the given argument to the calculator function.
+	 * 
+	 * @param <ArgType>
+	 *            The type of the argument to pass to the initialization function.
+	 * @param <Type>
+	 *            The type of the lazily computed object.
+	 * @param arg
+	 *            The argument to pass to the initializer. May be <code>null</code>.
+	 * @param initer
+	 *            The value computer.
+	 * @return The created lazy supplier.
+	 * @since saker.util 0.8.4
+	 */
+	public static <ArgType, Type> LazySupplier<Type> of(ArgType arg, Function<? super ArgType, Type> initer) {
+		return new LazySupplier<>(new FunctionArgLazyState<>(arg, initer));
 	}
 
 	private volatile Object state;
 
-	private LazySupplier(Function<? super LazySupplier<? extends T>, T> initer) {
-		this.state = new FunctionLazyState<>(initer);
-	}
-
-	private LazySupplier(Supplier<? extends T> initer) {
-		this.state = new SupplierLazyState<>(initer);
+	private LazySupplier(LazyState<T> state) {
+		this.state = state;
 	}
 
 	/**
@@ -253,6 +271,23 @@ public final class LazySupplier<T> implements Supplier<T> {
 		@Override
 		public T getInitialValue(LazySupplier<T> supplier) {
 			return initer.apply(supplier);
+		}
+	}
+
+	private static class FunctionArgLazyState<A, T> extends LazyState<T> {
+		private static final long serialVersionUID = 1L;
+
+		protected final A arg;
+		protected final Function<? super A, ? extends T> initer;
+
+		public FunctionArgLazyState(A arg, Function<? super A, ? extends T> initer) {
+			this.arg = arg;
+			this.initer = initer;
+		}
+
+		@Override
+		public T getInitialValue(LazySupplier<T> supplier) {
+			return initer.apply(arg);
 		}
 	}
 
