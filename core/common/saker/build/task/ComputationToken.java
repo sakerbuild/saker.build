@@ -19,11 +19,14 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
 import java.util.function.BooleanSupplier;
 
 import saker.apiextract.api.ExcludeApi;
 import saker.build.meta.PropertyNames;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.trace.InternalBuildTraceImpl;
 import saker.build.util.exc.ExceptionView;
 import testing.saker.build.flag.TestFlag;
@@ -62,13 +65,18 @@ public class ComputationToken implements AutoCloseable {
 
 	private static final Map<Object, Integer> allocatedTokens = new IdentityHashMap<>();
 	private static final Set<Object> priorityAllocators = ObjectUtils.newIdentityHashSet();
-	private static final Object allocationLock = new Object();
+	private static final Lock allocationLock = ThreadUtils.newExclusiveLock();
+	private static final Condition allocationCondition = allocationLock.newCondition();
 
 	@ExcludeApi
 	public static void wakeUpWaiters(Object allocator) {
 		//TODO wake up only waiters for the given allocator
-		synchronized (allocationLock) {
-			allocationLock.notifyAll();
+		final Lock lock = allocationLock;
+		lock.lock();
+		try {
+			allocationCondition.signalAll();
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -78,36 +86,37 @@ public class ComputationToken implements AutoCloseable {
 			return new ComputationToken(allocator, 0);
 		}
 		boolean priorityadded = false;
-		synchronized (allocationLock) {
-			try {
-				while (true) {
-					Integer prev = allocatedTokens.computeIfPresent(allocator, (a, allocated) -> allocated + count);
-					if (prev != null) {
-						//there was already tokens allocated to the given allocator
-						return new ComputationToken(allocator, count);
-					}
-					int sum = getAllocatedCount();
-					//not yet allocated any tokens to the allocator
-					if (sum < MAX_TOKEN_COUNT) {
-						//we can allocate the given amount
-						//sum + count > MAX_TOKEN_COUNT is acceptable as we prefer overallocation over underutilization
-						allocatedTokens.putIfAbsent(allocator, count);
-						return new ComputationToken(allocator, count);
-					}
-					//sum is already equals or greater than the max token count, wait for the deallocation to occur
-					if (!priorityadded) {
-						priorityAllocators.add(allocator);
-						priorityadded = true;
-					}
-					allocationLock.wait();
+		final Lock lock = allocationLock;
+		lock.lockInterruptibly();
+		try {
+			while (true) {
+				Integer prev = allocatedTokens.computeIfPresent(allocator, (a, allocated) -> allocated + count);
+				if (prev != null) {
+					//there was already tokens allocated to the given allocator
+					return new ComputationToken(allocator, count);
 				}
-			} finally {
-				if (priorityadded) {
-					if (priorityAllocators.remove(allocator)) {
-						allocationLock.notifyAll();
-					}
+				int sum = getAllocatedCount();
+				//not yet allocated any tokens to the allocator
+				if (sum < MAX_TOKEN_COUNT) {
+					//we can allocate the given amount
+					//sum + count > MAX_TOKEN_COUNT is acceptable as we prefer overallocation over underutilization
+					allocatedTokens.putIfAbsent(allocator, count);
+					return new ComputationToken(allocator, count);
+				}
+				//sum is already equals or greater than the max token count, wait for the deallocation to occur
+				if (!priorityadded) {
+					priorityAllocators.add(allocator);
+					priorityadded = true;
+				}
+				allocationCondition.await();
+			}
+		} finally {
+			if (priorityadded) {
+				if (priorityAllocators.remove(allocator)) {
+					allocationCondition.signalAll();
 				}
 			}
+			lock.unlock();
 		}
 	}
 
@@ -118,7 +127,9 @@ public class ComputationToken implements AutoCloseable {
 			return new ComputationToken(allocator, 0);
 		}
 		boolean priorityadded = false;
-		synchronized (allocationLock) {
+		final Lock lock = allocationLock;
+		lock.lockInterruptibly();
+		try {
 			try {
 				while (true) {
 					Integer prev = allocatedTokens.computeIfPresent(allocator, (a, allocated) -> allocated + count);
@@ -142,15 +153,17 @@ public class ComputationToken implements AutoCloseable {
 						priorityAllocators.add(allocator);
 						priorityadded = true;
 					}
-					allocationLock.wait();
+					allocationCondition.await();
 				}
 			} finally {
 				if (priorityadded) {
 					if (priorityAllocators.remove(allocator)) {
-						allocationLock.notifyAll();
+						allocationCondition.signalAll();
 					}
 				}
 			}
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -160,7 +173,9 @@ public class ComputationToken implements AutoCloseable {
 		if (count <= 0) {
 			return new ComputationToken(allocator, 0);
 		}
-		synchronized (allocationLock) {
+		final Lock lock = allocationLock;
+		lock.lockInterruptibly();
+		try {
 			while (true) {
 				if (abortedsupplier.getAsBoolean()) {
 					return null;
@@ -177,8 +192,10 @@ public class ComputationToken implements AutoCloseable {
 					//sum is already equals or greater than the max token count, wait for the deallocation to occur
 				}
 				//else there are priority allocators present. let them allocate before us
-				allocationLock.wait();
+				allocationCondition.await();
 			}
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -191,9 +208,13 @@ public class ComputationToken implements AutoCloseable {
 	}
 
 	private static void deallocateAll(Object allocator) {
-		synchronized (allocationLock) {
+		final Lock lock = allocationLock;
+		lock.lock();
+		try {
 			allocatedTokens.remove(allocator);
-			allocationLock.notifyAll();
+			allocationCondition.signalAll();
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -201,8 +222,12 @@ public class ComputationToken implements AutoCloseable {
 		if (count <= 0) {
 			return;
 		}
-		synchronized (allocationLock) {
+		final Lock lock = allocationLock;
+		lock.lock();
+		try {
 			deallocateLocked(allocator, count);
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -219,7 +244,7 @@ public class ComputationToken implements AutoCloseable {
 			}
 			return iav - count;
 		});
-		allocationLock.notifyAll();
+		allocationCondition.signalAll();
 	}
 
 	public static int getMaxTokenCount() {
@@ -255,7 +280,9 @@ public class ComputationToken implements AutoCloseable {
 		if (allocator == null) {
 			return true;
 		}
-		synchronized (allocationLock) {
+		final Lock lock = allocationLock;
+		lock.lock();
+		try {
 			int sum = getAllocatedCount();
 			if (sum - MAX_TOKEN_COUNT >= allocated || !priorityAllocators.isEmpty()) {
 				//deallocate ourselves if
@@ -267,6 +294,8 @@ public class ComputationToken implements AutoCloseable {
 				}
 				return true;
 			}
+		} finally {
+			lock.unlock();
 		}
 		return false;
 	}
