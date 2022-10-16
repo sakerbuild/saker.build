@@ -21,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.locks.Lock;
 
 import javax.tools.DocumentationTool;
 import javax.tools.JavaCompiler;
@@ -29,6 +30,7 @@ import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.classloader.JarClassLoaderDataFinder;
 import saker.build.thirdparty.saker.util.classloader.MultiDataClassLoader;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.util.config.ReferencePolicy;
 import saker.build.util.java.JavaTools;
 
@@ -40,6 +42,8 @@ public class JavaCompilerAccessor {
 
 	private static final Map<String, JarClassLoaderDataFinder> jdkJarDataFinders = new ConcurrentSkipListMap<>();
 	private static final Map<String, Reference<ClassLoader>> jdkJars = new ConcurrentSkipListMap<>();
+
+	private static final Map<String, Lock> jarLoaderLocks = new ConcurrentSkipListMap<>();
 
 	private JavaCompilerAccessor() {
 		throw new UnsupportedOperationException();
@@ -66,19 +70,34 @@ public class JavaCompilerAccessor {
 		return Class.forName(name, false, getJDKToolsClassLoader());
 	}
 
-	public synchronized static ClassLoader getJDKToolsClassLoader() throws IOException {
-		ClassLoader cl = ObjectUtils.getReference(jdkJars.get(TOOLS_JAR_NAME));
-		if (cl == null) {
-			JarClassLoaderDataFinder datafinder = jdkJarDataFinders.get(TOOLS_JAR_NAME);
+	public static ClassLoader getJDKToolsClassLoader() throws IOException {
+		return getJarClassLoader(TOOLS_JAR_NAME);
+	}
+
+	private static ClassLoader getJarClassLoader(String jarname) throws IOException {
+		ClassLoader cl = ObjectUtils.getReference(jdkJars.get(jarname));
+		if (cl != null) {
+			return cl;
+		}
+		Lock lock = jarLoaderLocks.computeIfAbsent(jarname, x -> ThreadUtils.newExclusiveLock());
+		lock.lock();
+		try {
+			cl = ObjectUtils.getReference(jdkJars.get(jarname));
+			if (cl != null) {
+				return cl;
+			}
+			JarClassLoaderDataFinder datafinder = jdkJarDataFinders.get(jarname);
 			if (datafinder == null) {
-				Path jdkjarpath = getJDKJarPath(TOOLS_JAR_NAME);
+				Path jdkjarpath = getJDKJarPath(jarname);
 				datafinder = new JarClassLoaderDataFinder(jdkjarpath);
-				jdkJarDataFinders.put(TOOLS_JAR_NAME, datafinder);
+				jdkJarDataFinders.put(jarname, datafinder);
 			}
 			cl = new MultiDataClassLoader((ClassLoader) null, datafinder);
-			jdkJars.put(TOOLS_JAR_NAME, ReferencePolicy.createReference(cl));
+			jdkJars.put(jarname, ReferencePolicy.createReference(cl));
+			return cl;
+		} finally {
+			lock.unlock();
 		}
-		return cl;
 	}
 
 	public static ClassLoader getJDKToolsClassLoaderIfLoaded() {
