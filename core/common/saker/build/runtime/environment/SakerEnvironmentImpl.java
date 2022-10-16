@@ -41,6 +41,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -120,7 +121,11 @@ public final class SakerEnvironmentImpl implements Closeable {
 	private SakerDataCache dataCache;
 
 	private volatile boolean closed = false;
-	private final Object runningExecutionsLock = new Object();
+	private final Lock runningExecutionsLock = ThreadUtils.newExclusiveLock();
+	private final Condition runningExecutionsEmptyCondition = runningExecutionsLock.newCondition();
+	/**
+	 * Access while locked on {@link #runningExecutionsLock}.
+	 */
 	private Set<ExecutionKey> runningExecutions = new HashSet<>();
 
 	private ClassLoaderResolverRegistry classLoaderRegistry;
@@ -207,15 +212,14 @@ public final class SakerEnvironmentImpl implements Closeable {
 		};
 		//daemon thread group, auto-destroys if no threads are running
 		executionthreadgroup.setDaemon(true);
-		TaskRunnerThread<?> thread;
-		synchronized (this) {
-			if (closed) {
-				throw new IllegalStateException("Closed.");
-			}
 
-			thread = new TaskRunnerThread<>(executionthreadgroup, this, parameters, project, taskid, task,
-					uncaughtexceptions::clearAndIterable);
+		if (closed) {
+			throw new IllegalStateException("Closed.");
 		}
+
+		TaskRunnerThread<?> thread = new TaskRunnerThread<>(executionthreadgroup, this, parameters, project, taskid,
+				task, uncaughtexceptions::clearAndIterable);
+
 		thread.start();
 		boolean interrupted = false;
 		while (true) {
@@ -447,29 +451,33 @@ public final class SakerEnvironmentImpl implements Closeable {
 
 	public void invalidateEnvironmentPropertiesWaitExecutions(
 			Collection<? super EnvironmentProperty<?>> environmentproperties) throws InterruptedException {
-		synchronized (runningExecutionsLock) {
-			while (!runningExecutions.isEmpty()) {
-				runningExecutionsLock.wait();
-			}
+		final Lock lock = runningExecutionsLock;
+		lock.lockInterruptibly();
+		try {
+			waitRunningExceptionsEmptyLocked();
 			checkedEnvironmentProperties.keySet().removeAll(environmentproperties);
+		} finally {
+			lock.unlock();
 		}
 	}
 
 	public void invalidateEnvironmentPropertiesWaitExecutions(
 			Predicate<? super EnvironmentProperty<?>> environmentpropertypredicate) throws InterruptedException {
-		synchronized (runningExecutionsLock) {
-			while (!runningExecutions.isEmpty()) {
-				runningExecutionsLock.wait();
-			}
+		final Lock lock = runningExecutionsLock;
+		lock.lockInterruptibly();
+		try {
+			waitRunningExceptionsEmptyLocked();
 			checkedEnvironmentProperties.keySet().removeIf(environmentpropertypredicate);
+		} finally {
+			lock.unlock();
 		}
 	}
 
 	public void clearCachedDatasWaitExecutions() throws InterruptedException {
-		synchronized (runningExecutionsLock) {
-			while (!runningExecutions.isEmpty()) {
-				runningExecutionsLock.wait();
-			}
+		final Lock lock = runningExecutionsLock;
+		lock.lockInterruptibly();
+		try {
+			waitRunningExceptionsEmptyLocked();
 			//replace with a new data cache
 			SakerDataCache dc = dataCache;
 			try {
@@ -477,6 +485,8 @@ public final class SakerEnvironmentImpl implements Closeable {
 			} finally {
 				dc.close();
 			}
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -486,21 +496,25 @@ public final class SakerEnvironmentImpl implements Closeable {
 	}
 
 	public void invalidateCachedDataWaitExecutions(CacheKey<?, ?> cachekey) throws InterruptedException {
-		synchronized (runningExecutionsLock) {
-			while (!runningExecutions.isEmpty()) {
-				runningExecutionsLock.wait();
-			}
+		final Lock lock = runningExecutionsLock;
+		lock.lockInterruptibly();
+		try {
+			waitRunningExceptionsEmptyLocked();
 			dataCache.invalidate(cachekey);
+		} finally {
+			lock.unlock();
 		}
 	}
 
 	public void invalidateCachedDatasWaitExecutions(Predicate<? super CacheKey<?, ?>> predicate)
 			throws InterruptedException {
-		synchronized (runningExecutionsLock) {
-			while (!runningExecutions.isEmpty()) {
-				runningExecutionsLock.wait();
-			}
+		final Lock lock = runningExecutionsLock;
+		lock.lockInterruptibly();
+		try {
+			waitRunningExceptionsEmptyLocked();
 			dataCache.invalidateIf(predicate);
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -536,11 +550,15 @@ public final class SakerEnvironmentImpl implements Closeable {
 
 	public Object getStartExecutionKey() throws IllegalStateException {
 		ExecutionKey key = new ExecutionKey();
-		synchronized (runningExecutionsLock) {
+		final Lock lock = runningExecutionsLock;
+		lock.lock();
+		try {
 			if (closed) {
 				throw new IllegalStateException("Environment closed.");
 			}
 			runningExecutions.add(key);
+		} finally {
+			lock.unlock();
 		}
 		return key;
 	}
@@ -551,55 +569,54 @@ public final class SakerEnvironmentImpl implements Closeable {
 			return;
 		}
 		ExecutionKey realkey = (ExecutionKey) executionkey;
-		synchronized (runningExecutionsLock) {
-			if (runningExecutions.remove(realkey)) {
-				runningExecutionsLock.notifyAll();
+		final Lock lock = runningExecutionsLock;
+		lock.lock();
+		try {
+			if (runningExecutions.remove(realkey) && runningExecutions.isEmpty()) {
+				runningExecutionsEmptyCondition.signalAll();
 			}
+		} finally {
+			lock.unlock();
 		}
 	}
 
 	@Override
 	public void close() throws IOException {
-		synchronized (this) {
-			if (closed) {
-				return;
-			}
-			closed = true;
-			IOException exc = null;
-			InterruptedException interruptexception = null;
-			try {
-				synchronized (runningExecutionsLock) {
-					while (!runningExecutions.isEmpty()) {
-						try {
-							runningExecutionsLock.wait();
-						} catch (InterruptedException e) {
-							interruptexception = e;
-						}
-					}
-				}
-				exc = IOUtils.closeExc(exc, dataCache);
+		closed = true;
+		waitRunningExceptionsEmptyUninterruptibly();
+		IOException exc = null;
+		exc = IOUtils.closeExc(exc, dataCache);
 
-				exc = IOUtils.closeExc(exc, repositoryManager);
-				exc = IOUtils.closeExc(exc, classPathManager);
+		exc = IOUtils.closeExc(exc, repositoryManager);
+		exc = IOUtils.closeExc(exc, classPathManager);
 
-				unredirectStandardIOIfInstalled();
-				try {
-					environmentThreadGroup.destroy();
-				} catch (IllegalThreadStateException e) {
-					if (!environmentThreadGroup.isDestroyed()) {
-						ThreadUtils.dumpThreadGroupStackTraces(System.err, environmentThreadGroup);
-						exc = IOUtils.addExc(exc, new IOException("Failed to destroy Environment ThreadGroup.", e));
-					}
-				}
-				if (exc != null) {
-					exc.addSuppressed(interruptexception);
-				}
-				IOUtils.throwExc(exc);
-			} finally {
-				if (interruptexception != null) {
-					Thread.currentThread().interrupt();
-				}
+		unredirectStandardIOIfInstalled();
+		try {
+			environmentThreadGroup.destroy();
+		} catch (IllegalThreadStateException e) {
+			if (!environmentThreadGroup.isDestroyed()) {
+				ThreadUtils.dumpThreadGroupStackTraces(System.err, environmentThreadGroup);
+				exc = IOUtils.addExc(exc, new IOException("Failed to destroy Environment ThreadGroup.", e));
 			}
+		}
+		IOUtils.throwExc(exc);
+	}
+
+	private void waitRunningExceptionsEmptyLocked() throws InterruptedException {
+		while (!runningExecutions.isEmpty()) {
+			runningExecutionsEmptyCondition.await();
+		}
+	}
+
+	private void waitRunningExceptionsEmptyUninterruptibly() {
+		final Lock lock = runningExecutionsLock;
+		lock.lock();
+		try {
+			while (!runningExecutions.isEmpty()) {
+				runningExecutionsEmptyCondition.awaitUninterruptibly();
+			}
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -882,7 +899,7 @@ public final class SakerEnvironmentImpl implements Closeable {
 		}
 	}
 
-	private static class ExecutionKey {
+	private static final class ExecutionKey {
 		public ExecutionKey() {
 		}
 	}
@@ -1059,13 +1076,13 @@ public final class SakerEnvironmentImpl implements Closeable {
 	 * Caller should lock on {@link JVMSynchronizationObjects#getStandardIOLock()}.
 	 */
 	private void unredirectStandardIOLockedImpl() {
-		IOUtils.closePrint(stdIn, stdOutPrint, stdErrPrint);
-
 		//XXX we should only set the i/o when it is actually the ones we replaced?
-
 		System.setIn(realStdIn);
 		System.setOut(realStdOut);
 		System.setErr(realStdErr);
+
+		//close the replaced ones after setting back the originals, so the possible exception is printed to the original streams
+		IOUtils.closePrint(stdIn, stdOutPrint, stdErrPrint);
 
 		realStdOut = null;
 		realStdErr = null;
