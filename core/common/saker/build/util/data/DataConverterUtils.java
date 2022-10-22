@@ -237,9 +237,9 @@ public class DataConverterUtils {
 
 		private static final Object NON_EXIST_DEFAULT_VALUE = new Object();
 
-		protected TaskResultResolver taskResultResolver;
-		protected Map<String, ?> map;
-		protected Class<?> targetClass;
+		protected final TaskResultResolver taskResultResolver;
+		protected final Map<String, ?> map;
+		protected final Class<?> targetClass;
 		/**
 		 * Indicating, that a toString call is in progress<br>
 		 * StackOverFlowError can happen, when the map contains the proxy itself
@@ -263,7 +263,7 @@ public class DataConverterUtils {
 
 		@Override
 		public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-			synchronized (this) {
+			synchronized (MappedInterfaceInvocationHandler.this) {
 				int arglen = args == null ? 0 : args.length;
 				String methodname = method.getName();
 				switch (arglen) {

@@ -216,7 +216,7 @@ public class TaskUtils {
 		}
 
 		public ClassSakerIOInfo get(Class<?> clazz) {
-			synchronized (this) {
+			synchronized (ClassInfoCache.this) {
 				ClassSakerIOInfo result = ObjectUtils.getReference(classInfos.get(clazz));
 				if (result == null) {
 					result = new ClassSakerIOInfo(clazz);

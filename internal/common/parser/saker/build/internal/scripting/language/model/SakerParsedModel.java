@@ -609,7 +609,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 	private DerivedData getUpToDateDerivedData() throws IOException, ScriptParsingFailedException {
 		DerivedData derived;
-		synchronized (this) {
+		synchronized (SakerParsedModel.this) {
 			//null out async parser as we do it in this thread
 			this.asyncParseDerivedVersion = null;
 			derived = this.derived;
@@ -652,7 +652,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			//do not start async threads when testing
 			return;
 		}
-		synchronized (this) {
+		synchronized (SakerParsedModel.this) {
 			if (this.derived != null) {
 				//already has data
 				return;
@@ -663,7 +663,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			this.asyncParseDerivedThread = ThreadUtils.startDaemonThread("Async script parser", () -> {
 				try {
 					String sdcontents = readScriptDataContents(baseInputSupplier);
-					synchronized (this) {
+					synchronized (SakerParsedModel.this) {
 						if (this.asyncParseDerivedVersion != nversion) {
 							return;
 						}
@@ -677,7 +677,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 						}
 					}
 					ParsingResult parsed = parseModelImpl(sdcontents);
-					synchronized (this) {
+					synchronized (SakerParsedModel.this) {
 						if (this.asyncParseDerivedVersion != nversion) {
 							return;
 						}
@@ -716,7 +716,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		try {
 			ParsingResult parseresult = parseModelImpl(sdata);
 			DerivedData derived = new DerivedData(this, parseresult);
-			synchronized (this) {
+			synchronized (SakerParsedModel.this) {
 				//null out async parser as we do it in this thread
 				this.asyncParseDerivedVersion = null;
 				this.derivedVersion = sdata;
@@ -798,7 +798,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			System.out.println("SakerParsedModel.updateModel() repair finished in "
 					+ (System.nanoTime() - nanos) / 1_000_000 + " ms");
 			nanos = System.nanoTime();
-			synchronized (this) {
+			synchronized (SakerParsedModel.this) {
 				//null out async parser as we do it in this thread
 				this.asyncParseDerivedVersion = null;
 				this.derivedVersion = repaired.getStatement().getRawValue();
@@ -3608,7 +3608,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 	@Override
 	public void invalidateModel() {
-		synchronized (this) {
+		synchronized (SakerParsedModel.this) {
 			this.derivedVersion = null;
 			//don't null out the derived as we could reuse it if the contents are the same
 		}

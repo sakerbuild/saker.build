@@ -1064,7 +1064,7 @@ public final class SakerIDEProject {
 	}
 
 	protected void close() throws IOException {
-		synchronized (this) {
+		synchronized (SakerIDEProject.this) {
 			plugin.removePluginResourceListener(pluginResourceListener);
 			IOException exc = null;
 			ProjectCacheHandle projecthandle = ARFU_retrievedProjectHandle.getAndSet(this, null);

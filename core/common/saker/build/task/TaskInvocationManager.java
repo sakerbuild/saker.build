@@ -844,7 +844,7 @@ public class TaskInvocationManager implements Closeable {
 		@Override
 		protected void allClustersFailed() {
 			finished = true;
-			synchronized (this) {
+			synchronized (TaskExecutionRequestImpl.this) {
 				this.notifyAll();
 			}
 		}
@@ -852,7 +852,7 @@ public class TaskInvocationManager implements Closeable {
 		public void executionSuccessful(R taskresult) {
 			finished = true;
 			result = taskresult;
-			synchronized (this) {
+			synchronized (TaskExecutionRequestImpl.this) {
 				this.notifyAll();
 			}
 		}
@@ -860,7 +860,7 @@ public class TaskInvocationManager implements Closeable {
 		public void executionException(Throwable e) {
 			finished = true;
 			resultException = e;
-			synchronized (this) {
+			synchronized (TaskExecutionRequestImpl.this) {
 				this.notifyAll();
 			}
 		}
@@ -882,7 +882,7 @@ public class TaskInvocationManager implements Closeable {
 			}
 			finished = true;
 			resultException = new IllegalStateException("Task execution request closed.", cause);
-			synchronized (this) {
+			synchronized (TaskExecutionRequestImpl.this) {
 				this.notifyAll();
 			}
 			super.fail(invocationcontext, cause);
@@ -891,7 +891,7 @@ public class TaskInvocationManager implements Closeable {
 		private void failWithStartedExecution(TaskInvocationContext invocationContext, Throwable cause) {
 			finished = true;
 			resultException = new ClusterTaskExecutionFailedException(cause);
-			synchronized (this) {
+			synchronized (TaskExecutionRequestImpl.this) {
 				this.notifyAll();
 			}
 		}
@@ -930,7 +930,7 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		public void waitForResult() throws InterruptedException {
-			synchronized (this) {
+			synchronized (TaskExecutionRequestImpl.this) {
 				while (true) {
 					if (this.finished) {
 						return;
@@ -1828,7 +1828,7 @@ public class TaskInvocationManager implements Closeable {
 			if (sr != null) {
 				return sr.get();
 			}
-			synchronized (this) {
+			synchronized (InvokerSelectionFutureSupplier.this) {
 				while (true) {
 					sr = result;
 					if (sr != null) {
@@ -1856,7 +1856,7 @@ public class TaskInvocationManager implements Closeable {
 
 		public void setResult(Supplier<? extends SelectionResult> result) {
 			if (ARFU_result.compareAndSet(this, null, result)) {
-				synchronized (this) {
+				synchronized (InvokerSelectionFutureSupplier.this) {
 					this.notifyAll();
 				}
 			}

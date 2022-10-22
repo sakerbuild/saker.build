@@ -319,7 +319,7 @@ public final class TaskExecutionManager {
 		}
 
 		public void setIdentifier(String identifier) {
-			synchronized (this) {
+			synchronized (IdentifierByteSink.this) {
 				if (identifier == null) {
 					this.identifier = null;
 					this.stringIdentifier = "";
@@ -344,7 +344,7 @@ public final class TaskExecutionManager {
 		}
 
 		public void finishLastLine() {
-			synchronized (this) {
+			synchronized (IdentifierByteSink.this) {
 				finishLastLineLocked();
 			}
 		}
@@ -370,7 +370,7 @@ public final class TaskExecutionManager {
 			}
 			int off = buf.getOffset();
 			int len = buf.getLength();
-			synchronized (this) {
+			synchronized (IdentifierByteSink.this) {
 				ByteArrayRegion id = identifier;
 				if (id == null) {
 					synchronized (realSinkFlushingLock) {
@@ -3116,7 +3116,7 @@ public final class TaskExecutionManager {
 		protected void finished(TaskExecutionManager execmanager, TaskExecutionResult<R> taskresult)
 				throws IllegalStateException {
 			FutureState s = this.futureState;
-			synchronized (this) {
+			synchronized (ManagerTaskFutureImpl.this) {
 				Set<TaskIdentifier> createdbystore = this.createdByTaskIds;
 				Set<TaskIdentifier> taskcreatedbys = taskresult.getCreatedByTaskIds();
 				if (createdbystore != null) {
@@ -3312,7 +3312,7 @@ public final class TaskExecutionManager {
 		}
 
 		protected void storeCreatedBy(TaskIdentifier taskid) {
-			synchronized (this) {
+			synchronized (ManagerTaskFutureImpl.this) {
 				Set<TaskIdentifier> ids = createdByTaskIds;
 				if (ids == null) {
 					ids = ConcurrentHashMap.newKeySet();

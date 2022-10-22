@@ -40,7 +40,7 @@ public class ExecutionOrderer {
 	}
 
 	public void enter(String id) throws InterruptedException {
-		synchronized (this) {
+		synchronized (ExecutionOrderer.this) {
 			try {
 				if (Thread.interrupted()) {
 					//check interruption before entering
@@ -75,7 +75,7 @@ public class ExecutionOrderer {
 	}
 
 	public String getNextSection() {
-		synchronized (this) {
+		synchronized (ExecutionOrderer.this) {
 			return order.peekFirst();
 		}
 	}
@@ -87,7 +87,7 @@ public class ExecutionOrderer {
 	@Override
 	public String toString() {
 		String orderstr;
-		synchronized (this) {
+		synchronized (ExecutionOrderer.this) {
 			orderstr = order.toString();
 		}
 		return getClass().getSimpleName() + "[" + orderstr + "]";

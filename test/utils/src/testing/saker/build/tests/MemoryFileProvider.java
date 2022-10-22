@@ -219,7 +219,7 @@ public class MemoryFileProvider implements SakerFileProvider {
 		}
 
 		public boolean isLocked() {
-			synchronized (this) {
+			synchronized (MemoryFile.this) {
 				return locker != null;
 			}
 		}

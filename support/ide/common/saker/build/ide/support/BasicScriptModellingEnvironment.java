@@ -110,7 +110,7 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 	}
 
 	public void setConfiguration(ScriptModellingEnvironmentConfiguration configuration) {
-		synchronized (this) {
+		synchronized (BasicScriptModellingEnvironment.this) {
 			//XXX delta check the configuration changes instead of uninstalling all
 //			Set<PathKey> prevexcludedsearchpaths = this.configuration.getExcludedSearchPaths();
 //			ExecutionScriptConfiguration prevscriptconfig = this.configuration.getScriptConfiguration();
@@ -264,7 +264,7 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 
 	@Override
 	public void close() throws IOException {
-		synchronized (this) {
+		synchronized (BasicScriptModellingEnvironment.this) {
 			if (closed) {
 				return;
 			}
@@ -280,7 +280,7 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 
 	@Override
 	public NavigableSet<SakerPath> getTrackedScriptPaths() {
-		synchronized (this) {
+		synchronized (BasicScriptModellingEnvironment.this) {
 			if (closed) {
 				return Collections.emptyNavigableSet();
 			}
@@ -291,7 +291,7 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 	@Override
 	public ScriptSyntaxModel getModel(SakerPath scriptpath) {
 		SakerPathFiles.requireAbsolutePath(scriptpath);
-		synchronized (this) {
+		synchronized (BasicScriptModellingEnvironment.this) {
 			if (closed) {
 				return null;
 			}
@@ -439,7 +439,7 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 		}
 
 		public void initToken(FileEventListener.ListenerToken token) {
-			synchronized (this) {
+			synchronized (DirectoryWatcher.this) {
 				if (!ARFU_token.compareAndSet(this, null, token)) {
 					throw new IllegalStateException();
 				}
@@ -467,7 +467,7 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 		@Override
 		public void changed(String filename) {
 			synchronized (environment) {
-				synchronized (this) {
+				synchronized (DirectoryWatcher.this) {
 					//this check needs to be in synchronized, as if we're not yet initialized, we still want to examine the event
 					if (token == null) {
 						return;
@@ -484,7 +484,7 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 				return;
 			}
 			synchronized (environment) {
-				synchronized (this) {
+				synchronized (DirectoryWatcher.this) {
 					removeListenerImpl(t);
 					environment.reinstallAbandonedDirectoryWatcherLocked(fileProvider, path, watchers, this);
 				}
@@ -498,7 +498,7 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 				return;
 			}
 			synchronized (environment) {
-				synchronized (this) {
+				synchronized (DirectoryWatcher.this) {
 					removeListenerImpl(t);
 					environment.reinstallAbandonedDirectoryWatcherLocked(fileProvider, path, watchers, this);
 				}

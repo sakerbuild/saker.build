@@ -186,7 +186,7 @@ public class DerivedData {
 	}
 
 	private void ensureScriptIdentifiers() {
-		synchronized (this) {
+		synchronized (DerivedData.this) {
 			//test one of the fields to see if we already computed it
 			if (simpleLiteralContents != null) {
 				return;

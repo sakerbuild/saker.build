@@ -820,7 +820,7 @@ public class ScriptEditorModel implements Closeable {
 		}
 
 		public ScriptSyntaxModel getUpToDateModel() throws InterruptedException {
-			synchronized (this) {
+			synchronized (ModelReference.this) {
 				if (this.postedUpdateCounter != this.processedUpdateCounter) {
 					waitUpdaterThread();
 				}
@@ -844,7 +844,7 @@ public class ScriptEditorModel implements Closeable {
 		}
 
 		public void textChange(TextRegionChange change, String fullinput) {
-			synchronized (this) {
+			synchronized (ModelReference.this) {
 				String prevfullinput = this.fullInput;
 				this.fullInput = fullinput;
 				if (regionChanges == null) {
@@ -859,7 +859,7 @@ public class ScriptEditorModel implements Closeable {
 		}
 
 		public void textChange(List<TextRegionChange> changes, String fullinput) {
-			synchronized (this) {
+			synchronized (ModelReference.this) {
 				String prevfullinput = this.fullInput;
 				this.fullInput = fullinput;
 				if (regionChanges == null) {
@@ -874,7 +874,7 @@ public class ScriptEditorModel implements Closeable {
 		}
 
 		public void invalidateModel() {
-			synchronized (this) {
+			synchronized (ModelReference.this) {
 				ALFU_postedUpdateCounter.incrementAndGet(this);
 				this.regionChanges = null;
 				this.invalidated = true;
@@ -888,7 +888,7 @@ public class ScriptEditorModel implements Closeable {
 		}
 
 		public void update(String fullinput) {
-			synchronized (this) {
+			synchronized (ModelReference.this) {
 				if (Objects.equals(this.fullInput, fullinput)) {
 					return;
 				}

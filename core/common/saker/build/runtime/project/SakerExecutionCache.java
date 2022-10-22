@@ -104,13 +104,13 @@ public class SakerExecutionCache implements Closeable {
 	}
 
 	public void recordEnvironmentPropertyAccess(EnvironmentProperty<?> environmentproperty) {
-		synchronized (this) {
+		synchronized (SakerExecutionCache.this) {
 			queriedEnvironmentProperties.add(environmentproperty);
 		}
 	}
 
 	public void recordCacheKeyAccess(CacheKey<?, ?> key) {
-		synchronized (this) {
+		synchronized (SakerExecutionCache.this) {
 			queriedCacheKeys.add(key);
 		}
 	}
@@ -121,7 +121,7 @@ public class SakerExecutionCache implements Closeable {
 			SakerFileProvider coordinatorfileprovider, ClassLoaderResolverRegistry executionclregistry,
 			boolean forcluster, RepositoryBuildSharedObjectProvider sharedObjectProvider)
 			throws InterruptedException, IOException, Exception {
-		synchronized (this) {
+		synchronized (SakerExecutionCache.this) {
 			FileProviderKey coordinatorproviderkey = coordinatorfileprovider.getProviderKey();
 			if (userparameters == null) {
 				userparameters = Collections.emptyMap();
@@ -352,32 +352,32 @@ public class SakerExecutionCache implements Closeable {
 	}
 
 	public Map<String, ? extends BuildRepository> getLoadedBuildRepositories() {
-		synchronized (this) {
+		synchronized (SakerExecutionCache.this) {
 			return loadedBuildRepositories;
 		}
 	}
 
 	public Map<String, ? extends RepositoryBuildEnvironment> getLoadedRepositoryBuildEnvironments() {
-		synchronized (this) {
+		synchronized (SakerExecutionCache.this) {
 			return loadedRepositoryBuildEnvironments;
 		}
 	}
 
 	public Map<ExecutionScriptConfiguration.ScriptProviderLocation, ScriptAccessorClassPathData> getLoadedScriptProviderLocators() {
-		synchronized (this) {
+		synchronized (SakerExecutionCache.this) {
 			return loadedScriptProviderLocators;
 		}
 	}
 
 	public void clear() throws IOException {
-		synchronized (this) {
+		synchronized (SakerExecutionCache.this) {
 			clearCurrentConfiguration();
 		}
 	}
 
 	@Override
 	public void close() throws IOException {
-		synchronized (this) {
+		synchronized (SakerExecutionCache.this) {
 			clearCurrentConfiguration();
 		}
 	}

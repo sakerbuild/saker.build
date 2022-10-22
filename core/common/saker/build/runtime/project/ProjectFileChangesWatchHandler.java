@@ -69,7 +69,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 
 	public void watch(ContentDatabaseImpl database, Map<String, ? extends SakerDirectory> rootdirs,
 			FileContentDataComputeHandler filecomputedatahandler) {
-		synchronized (this) {
+		synchronized (ProjectFileChangesWatchHandler.this) {
 			checkClosed();
 			checkStopped();
 			this.currentDatabase = database;
@@ -144,7 +144,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 							}, dirdatabasetrackedpaths, recheckerpathset, database);
 					try {
 						ListenerToken ltoken;
-						synchronized (listener) {
+						synchronized (listener.lock) {
 							ltoken = fp.addFileEventListener(parent, listener);
 							listener.listenerToken = ltoken;
 
@@ -189,7 +189,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 	}
 
 	public void stopIfWatching() {
-		synchronized (this) {
+		synchronized (ProjectFileChangesWatchHandler.this) {
 			checkClosed();
 			if (this.currentDatabase != null) {
 				stopImpl();
@@ -198,7 +198,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 	}
 
 	public void stopClearCachedDirectories() {
-		synchronized (this) {
+		synchronized (ProjectFileChangesWatchHandler.this) {
 			checkClosed();
 			checkWatching();
 			stopImpl();
@@ -207,7 +207,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 	}
 
 	public void stopRecheckPathsOpt() {
-		synchronized (this) {
+		synchronized (ProjectFileChangesWatchHandler.this) {
 			checkClosed();
 			checkWatching();
 			this.currentDatabase.recheckContentChangesOffline(pathsToRecheck);
@@ -221,11 +221,8 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 
 	@Override
 	public void close() throws IOException {
-		synchronized (this) {
-			if (closed) {
-				return;
-			}
-			closed = true;
+		closed = true;
+		synchronized (ProjectFileChangesWatchHandler.this) {
 			if (this.currentDatabase != null) {
 				stopImpl();
 			}
@@ -330,7 +327,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 				ChangeHandleFileEventListener listener = new ChangeHandleFileEventListener(fp, mpath, fpkey, pdir,
 						watchedpathsset, containingmap, dirdatabasetrackedfiles, recheckerpathset,
 						filecomputedatahandler, database);
-				synchronized (listener) {
+				synchronized (listener.lock) {
 					ListenerToken ltoken;
 					try {
 						ltoken = fp.addFileEventListener(mpath, listener);
@@ -410,8 +407,8 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 
 	private static class DatabaseDirectoryRecheckPathAdderFileEventLister implements FileEventListener {
 		protected SakerPath sakerPath;
-		private NavigableSet<SakerPath> directoryDatabaseTrackedFiles;
-		private NavigableSet<SakerPath> databaseRecheckPathsSet;
+		protected NavigableSet<SakerPath> directoryDatabaseTrackedFiles;
+		protected NavigableSet<SakerPath> databaseRecheckPathsSet;
 
 		public DatabaseDirectoryRecheckPathAdderFileEventLister(SakerPath sakerPath,
 				NavigableSet<SakerPath> directoryDatabaseTrackedFiles,
@@ -440,16 +437,18 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 	}
 
 	private static class ChangeHandleFileEventListener extends DatabaseDirectoryRecheckPathAdderFileEventLister {
-		private RootFileProviderKey providerKey;
-		private SakerFileProvider fileProvider;
-		private ProviderPathSakerDirectory directory;
+		protected RootFileProviderKey providerKey;
+		protected SakerFileProvider fileProvider;
+		protected ProviderPathSakerDirectory directory;
 
-		private Map<SakerPath, ?> containingMap;
-		private Set<SakerPath> watchedContainerSet;
+		protected Map<SakerPath, ?> containingMap;
+		protected Set<SakerPath> watchedContainerSet;
 
-		private FileEventListener.ListenerToken listenerToken;
-		private FileContentDataComputeHandler fileComputeHandler;
-		private ContentDatabaseImpl database;
+		protected FileEventListener.ListenerToken listenerToken;
+		protected FileContentDataComputeHandler fileComputeHandler;
+		protected ContentDatabaseImpl database;
+
+		protected final Object lock = this;
 
 		public ChangeHandleFileEventListener(SakerFileProvider fileProvider, SakerPath path,
 				RootFileProviderKey providerKey, ProviderPathSakerDirectory directory,
@@ -479,7 +478,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 			}
 			//XXX Note: slight code duplication below
 			if (directory.isAnyPopulated()) {
-				synchronized (this) {
+				synchronized (lock) {
 					ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = directory.getTrackedFilesMap();
 					try {
 						FileEntry attrs = fileProvider.getFileAttributes(path);
@@ -502,7 +501,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 					}
 				}
 			} else {
-				synchronized (this) {
+				synchronized (lock) {
 					ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = directory.getTrackedFilesMap();
 					SakerFile presentfile = trackedfiles.get(filename);
 					if (presentfile == null) {
@@ -536,7 +535,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 		public void eventsMissed() {
 			super.eventsMissed();
 
-			synchronized (this) {
+			synchronized (lock) {
 				ListenerToken lt = listenerToken;
 				if (lt != null) {
 					lt.removeListener();
@@ -549,7 +548,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 		public void listenerAbandoned() {
 			super.listenerAbandoned();
 
-			synchronized (this) {
+			synchronized (lock) {
 				error();
 			}
 		}
@@ -564,13 +563,15 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 
 	private static class NonSakerDirectoryChangeHandleFileEventListener
 			extends DatabaseDirectoryRecheckPathAdderFileEventLister {
-		private final RootFileProviderKey providerKey;
-		private final SakerFileProvider fileProvider;
+		protected final RootFileProviderKey providerKey;
+		protected final SakerFileProvider fileProvider;
 
-		private Consumer<? super NonSakerDirectoryChangeHandleFileEventListener> mapRemover;
+		protected Consumer<? super NonSakerDirectoryChangeHandleFileEventListener> mapRemover;
 
-		private FileEventListener.ListenerToken listenerToken;
-		private ContentDatabaseImpl database;
+		protected FileEventListener.ListenerToken listenerToken;
+		protected ContentDatabaseImpl database;
+
+		protected final Object lock = this;
 
 		public NonSakerDirectoryChangeHandleFileEventListener(RootFileProviderKey providerKey,
 				SakerFileProvider fileProvider, SakerPath sakerPath,
@@ -594,7 +595,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 		public void eventsMissed() {
 			super.eventsMissed();
 
-			synchronized (this) {
+			synchronized (lock) {
 				error();
 				listenerToken.removeListener();
 			}
@@ -604,7 +605,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 		public void listenerAbandoned() {
 			super.listenerAbandoned();
 
-			synchronized (this) {
+			synchronized (lock) {
 				error();
 			}
 		}
