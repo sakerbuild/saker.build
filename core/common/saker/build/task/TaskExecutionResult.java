@@ -47,6 +47,7 @@ import saker.build.task.event.TaskExecutionEvent;
 import saker.build.task.exception.IllegalTaskOperationException;
 import saker.build.task.exception.TaskIdentifierConflictException;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.thirdparty.saker.util.ArrayUtils;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
@@ -54,6 +55,8 @@ import saker.build.trace.InternalBuildTraceImpl;
 import testing.saker.build.flag.TestFlag;
 
 public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizable {
+	private static final IDEConfiguration[] EMPTY_IDE_CONFIGURATIONS_ARRAY = new IDEConfiguration[0];
+
 	private static final long serialVersionUID = 1L;
 
 	public static final class FileDependencies implements Externalizable {
@@ -534,6 +537,10 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		}
 	}
 
+	@SuppressWarnings("rawtypes")
+	private static final AtomicReferenceFieldUpdater<TaskExecutionResult, IDEConfiguration[]> ARFU_ideConfigurations = AtomicReferenceFieldUpdater
+			.newUpdater(TaskExecutionResult.class, IDEConfiguration[].class, "ideConfigurations");
+
 	protected TaskIdentifier taskId;
 	protected TaskFactory<R> factory;
 	protected R output;
@@ -549,7 +556,7 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 	protected TaskDependencies dependencies;
 	protected TaskExecutionParameters parameters;
 
-	protected Collection<IDEConfiguration> ideConfigurations;
+	protected volatile IDEConfiguration[] ideConfigurations;
 
 	protected SakerPath executionBuildDirectory;
 	protected SakerPath executionWorkingDirectory;
@@ -571,7 +578,7 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		this.taskId = taskId;
 		this.factory = factory;
 		this.parameters = parameters;
-		this.ideConfigurations = new ArrayList<>();
+		this.ideConfigurations = EMPTY_IDE_CONFIGURATIONS_ARRAY;
 
 		this.createdByTaskIds = ConcurrentHashMap.newKeySet();
 		this.taggedOutputs = new ConcurrentHashMap<>();
@@ -694,21 +701,43 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 	}
 
 	public void addIDEConfiguration(IDEConfiguration config) {
-		synchronized (ideConfigurations) {
-			this.ideConfigurations.add(config);
+		while (true) {
+			IDEConfiguration[] currentarray = this.ideConfigurations;
+			IDEConfiguration[] narray;
+			if (currentarray.length == 0) {
+				narray = new IDEConfiguration[] { config };
+			} else {
+				narray = ArrayUtils.appended(currentarray, config);
+			}
+			if (ARFU_ideConfigurations.compareAndSet(this, currentarray, narray)) {
+				break;
+			}
+			//try again
 		}
 	}
 
 	public void addIDEConfigurations(Collection<? extends IDEConfiguration> configs) {
-		synchronized (ideConfigurations) {
-			this.ideConfigurations.addAll(configs);
+		IDEConfiguration[] addarray = configs.toArray(EMPTY_IDE_CONFIGURATIONS_ARRAY);
+		if (addarray.length == 0) {
+			return;
+		}
+		while (true) {
+			IDEConfiguration[] currentarray = this.ideConfigurations;
+			IDEConfiguration[] narray;
+			if (currentarray.length == 0) {
+				narray = addarray;
+			} else {
+				narray = ArrayUtils.concat(currentarray, addarray);
+			}
+			if (ARFU_ideConfigurations.compareAndSet(this, currentarray, narray)) {
+				break;
+			}
+			//try again
 		}
 	}
 
 	public Collection<IDEConfiguration> getIDEConfigurations() {
-		synchronized (ideConfigurations) {
-			return new ArrayList<>(ideConfigurations);
-		}
+		return ImmutableUtils.asUnmodifiableArrayList(ideConfigurations);
 	}
 
 	public void addTaggedOutput(Object tag, Object value) {
@@ -790,7 +819,7 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		out.writeObject(parameters);
 
 		SerialUtils.writeExternalCollection(out, createdByTaskIds);
-		SerialUtils.writeExternalCollection(out, ideConfigurations);
+		SerialUtils.writeExternalArray(out, ideConfigurations);
 
 		SerialUtils.writeExternalCollection(out, printedLines);
 		try {
@@ -848,7 +877,7 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 
 		//TODO the created by task ids collection should be read as immutable
 		createdByTaskIds = SerialUtils.readExternalCollection(ConcurrentHashMap.newKeySet(), in);
-		ideConfigurations = SerialUtils.readExternalImmutableList(in);
+		ideConfigurations = SerialUtils.readExternalArray(in, IDEConfiguration[]::new);
 		printedLines = SerialUtils.readExternalImmutableList(in);
 
 		try {
