@@ -39,6 +39,7 @@ import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.ServiceConfigurationError;
 import java.util.Set;
 import java.util.SortedMap;
@@ -515,10 +516,8 @@ public final class TaskExecutionManager {
 
 		protected final transient TaskDependencies resultDependencies;
 
-		//the property dependencies maps are not concurrent maps, so they allow null values
-		//users should synchronize on them!
-		protected final Map<EnvironmentProperty<?>, Object> environmentPropertyDependencies = new HashMap<>();
-		protected final Map<ExecutionProperty<?>, Object> executionPropertyDependencies = new HashMap<>();
+		protected final Map<EnvironmentProperty<?>, Optional<?>> environmentPropertyDependencies = new ConcurrentHashMap<>();
+		protected final Map<ExecutionProperty<?>, Optional<?>> executionPropertyDependencies = new ConcurrentHashMap<>();
 
 		@SuppressWarnings("rawtypes")
 		private static final AtomicIntegerFieldUpdater<TaskExecutionManager.TaskExecutorContext> AIFU_finishCounter = AtomicIntegerFieldUpdater
@@ -1333,17 +1332,17 @@ public final class TaskExecutionManager {
 		public <T> void reportEnvironmentDependency(EnvironmentProperty<T> environmentproperty, T expectedvalue) {
 			Objects.requireNonNull(environmentproperty, "property");
 			runOnUnfinished(() -> {
-				synchronized (this.environmentPropertyDependencies) {
-					if (this.environmentPropertyDependencies.containsKey(environmentproperty)) {
-						Object prev = this.environmentPropertyDependencies.get(environmentproperty);
-						if (!Objects.equals(prev, expectedvalue)) {
-							throw new IllegalTaskOperationException("Reported multiple environment dependency for: "
-									+ environmentproperty + " with " + expectedvalue + " and " + prev, taskId);
-						}
-					} else {
-						this.environmentPropertyDependencies.put(environmentproperty, expectedvalue);
+				this.environmentPropertyDependencies.compute(environmentproperty, (k, prev) -> {
+					if (prev == null) {
+						return Optional.ofNullable(expectedvalue);
 					}
-				}
+					if (!Objects.equals(prev.orElse(null), expectedvalue)) {
+						throw new IllegalTaskOperationException("Reported multiple environment dependency for: "
+								+ environmentproperty + " with " + expectedvalue + " and " + prev, taskId);
+					}
+					//no change
+					return prev;
+				});
 			});
 		}
 
@@ -1351,17 +1350,17 @@ public final class TaskExecutionManager {
 		public <T> void reportExecutionDependency(ExecutionProperty<T> executionproperty, T expectedvalue) {
 			Objects.requireNonNull(executionproperty, "property");
 			runOnUnfinished(() -> {
-				synchronized (this.executionPropertyDependencies) {
-					if (this.executionPropertyDependencies.containsKey(executionproperty)) {
-						Object prev = this.executionPropertyDependencies.get(executionproperty);
-						if (!Objects.equals(prev, expectedvalue)) {
-							throw new IllegalTaskOperationException("Reported multiple execution dependency for: "
-									+ executionproperty + " with " + expectedvalue + " and " + prev, taskId);
-						}
-					} else {
-						this.executionPropertyDependencies.put(executionproperty, expectedvalue);
+				this.executionPropertyDependencies.compute(executionproperty, (k, prev) -> {
+					if (prev == null) {
+						return Optional.ofNullable(expectedvalue);
 					}
-				}
+					if (!Objects.equals(prev.orElse(null), expectedvalue)) {
+						throw new IllegalTaskOperationException("Reported multiple execution dependency for: "
+								+ executionproperty + " with " + expectedvalue + " and " + prev, taskId);
+					}
+					//no change
+					return prev;
+				});
 			});
 		}
 
@@ -1622,16 +1621,12 @@ public final class TaskExecutionManager {
 				this.resultDependencies.setTaggedFileDependencies(ImmutableUtils.unmodifiableMap(taggedfiledeps));
 			}
 			//create a new map, as the one we use is synchronized map
-			HashMap<EnvironmentProperty<?>, Object> envpropdeps;
-			synchronized (environmentPropertyDependencies) {
-				envpropdeps = new HashMap<>(environmentPropertyDependencies);
-			}
+			Map<EnvironmentProperty<?>, Object> envpropdeps = new HashMap<>(environmentPropertyDependencies);
+			replaceOptionalValuesWithTheirValues(envpropdeps);
 			resultDependencies.setEnvironmentPropertyDependencies(envpropdeps);
 
-			HashMap<ExecutionProperty<?>, Object> execpropdeps;
-			synchronized (executionPropertyDependencies) {
-				execpropdeps = new HashMap<>(executionPropertyDependencies);
-			}
+			HashMap<ExecutionProperty<?>, Object> execpropdeps = new HashMap<>(executionPropertyDependencies);
+			replaceOptionalValuesWithTheirValues(execpropdeps);
 			resultDependencies.setExecutionPropertyDependencies(execpropdeps);
 
 			for (ConcurrentPrependAccumulator<TaskDependencyFutureImpl<?>> deplist : unaddedTaskOutputDetectorTaskDependencyFutures
@@ -1654,6 +1649,13 @@ public final class TaskExecutionManager {
 				}
 			}
 			unaddedTaskOutputDetectorTaskDependencyFutures.clear();
+		}
+
+		protected static void replaceOptionalValuesWithTheirValues(Map<?, Object> envpropdeps) {
+			for (Entry<?, Object> entry : envpropdeps.entrySet()) {
+				Optional<?> optval = (Optional<?>) entry.getValue();
+				entry.setValue(optval.orElse(null));
+			}
 		}
 
 		@Override

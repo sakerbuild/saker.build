@@ -24,6 +24,7 @@ import saker.build.runtime.execution.ExecutionContext;
 import saker.build.task.Task;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskFactory;
+import saker.build.task.exception.IllegalTaskOperationException;
 import saker.build.util.property.IDEConfigurationRequiredExecutionProperty;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
@@ -34,7 +35,7 @@ public class ExecutionDependencyTaskTest extends CollectingMetricEnvironmentTest
 	public static class PropertyDependentTaskFactory implements TaskFactory<String>, Task<String>, Externalizable {
 		private static final long serialVersionUID = 1L;
 
-		private String baseResult;
+		protected String baseResult;
 
 		public PropertyDependentTaskFactory() {
 		}
@@ -91,7 +92,49 @@ public class ExecutionDependencyTaskTest extends CollectingMetricEnvironmentTest
 
 		@Override
 		public String toString() {
-			return "PropertyDependentTaskFactory [" + (baseResult != null ? "baseResult=" + baseResult : "") + "]";
+			return "PropertyDependentTaskFactory [" + "baseResult=" + baseResult + "]";
+		}
+	}
+
+	private static class MultiPropertyDependentTaskFactory extends PropertyDependentTaskFactory {
+		private static final long serialVersionUID = 1L;
+
+		public MultiPropertyDependentTaskFactory() {
+			super();
+		}
+
+		public MultiPropertyDependentTaskFactory(String baseResult) {
+			super(baseResult);
+		}
+
+		@Override
+		public String run(TaskContext taskcontext) throws Exception {
+			boolean val = taskcontext.getTaskUtilities()
+					.getReportExecutionDependency(IDEConfigurationRequiredExecutionProperty.INSTANCE);
+			taskcontext.reportExecutionDependency(IDEConfigurationRequiredExecutionProperty.INSTANCE, val);
+			return baseResult + "_multi:" + val;
+		}
+	}
+
+	private static class MultiDifferentPropertyDependentTaskFactory extends PropertyDependentTaskFactory {
+		private static final long serialVersionUID = 1L;
+
+		public MultiDifferentPropertyDependentTaskFactory() {
+			super();
+		}
+
+		public MultiDifferentPropertyDependentTaskFactory(String baseResult) {
+			super(baseResult);
+		}
+
+		@Override
+		public String run(TaskContext taskcontext) throws Exception {
+			boolean val = taskcontext.getTaskUtilities()
+					.getReportExecutionDependency(IDEConfigurationRequiredExecutionProperty.INSTANCE);
+			//an exception is expected when trying to report the same dependency again with a different value
+			assertException(IllegalTaskOperationException.class, () -> taskcontext
+					.reportExecutionDependency(IDEConfigurationRequiredExecutionProperty.INSTANCE, !val));
+			return baseResult + "_multidiff:" + val;
 		}
 	}
 
@@ -117,6 +160,14 @@ public class ExecutionDependencyTaskTest extends CollectingMetricEnvironmentTest
 		parameters.setRequiresIDEConfiguration(false);
 		runTask("main", main);
 		assertMap(getMetric().getRunTaskIdResults()).contains(strTaskId("ider"), "base:false").noRemaining();
+
+		runTask("multi", new ChildTaskStarterTaskFactory().add(strTaskId("ider_multi"),
+				new MultiPropertyDependentTaskFactory("base")));
+		assertMap(getMetric().getRunTaskIdResults()).contains(strTaskId("ider_multi"), "base_multi:false");
+
+		runTask("multidiff", new ChildTaskStarterTaskFactory().add(strTaskId("ider_multidiff"),
+				new MultiDifferentPropertyDependentTaskFactory("base")));
+		assertMap(getMetric().getRunTaskIdResults()).contains(strTaskId("ider_multidiff"), "base_multidiff:false");
 	}
 
 }
