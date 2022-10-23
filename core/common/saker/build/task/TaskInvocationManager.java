@@ -1258,7 +1258,7 @@ public class TaskInvocationManager implements Closeable {
 		private final ListenerInnerTaskInvocationHandler<R> invocationListener;
 		private volatile InnerTaskInvocationHandle<R> handle;
 
-		private final Object responseLock = new Object();
+		private final BooleanLatch responseLatch = BooleanLatch.newBooleanLatch();
 
 		private final ConcurrentPrependAccumulator<InnerTaskResultHolder<R>> presentResults = new ConcurrentPrependAccumulator<>();
 
@@ -1320,9 +1320,7 @@ public class TaskInvocationManager implements Closeable {
 			this.handle = resulthandle;
 
 			int f = AIFU_flags.updateAndGet(this, c -> c | FLAG_HAD_RESPONSE);
-			synchronized (responseLock) {
-				responseLock.notifyAll();
-			}
+			responseLatch.signal();
 			if (((f & FLAG_CANCEL_DUPLICATION) == FLAG_CANCEL_DUPLICATION)) {
 				callRMIAsyncAssert(resulthandle, InnerTaskInvocationHandle.METHOD_CANCEL_DUPLICATION);
 			}
@@ -1337,9 +1335,7 @@ public class TaskInvocationManager implements Closeable {
 			invocationListener.notifyNoMoreResults();
 			request.failInit(invocationContext, e);
 			AIFU_flags.updateAndGet(this, c -> c | FLAG_HAD_RESPONSE);
-			synchronized (responseLock) {
-				responseLock.notifyAll();
-			}
+			responseLatch.signal();
 		}
 
 		@Override
@@ -1347,9 +1343,7 @@ public class TaskInvocationManager implements Closeable {
 			invocationListener.hardFailed(cause);
 			request.fail(invocationContext, cause);
 			AIFU_flags.updateAndGet(this, c -> c | FLAG_HAD_RESPONSE);
-			synchronized (responseLock) {
-				responseLock.notifyAll();
-			}
+			responseLatch.signal();
 		}
 
 		@Override
@@ -1357,9 +1351,7 @@ public class TaskInvocationManager implements Closeable {
 			invocationListener.closed(cause);
 			request.close(invocationContext, cause);
 			AIFU_flags.updateAndGet(this, c -> c | (FLAG_HAD_RESPONSE | FLAG_CLOSED | FLAG_CANCEL_DUPLICATION));
-			synchronized (responseLock) {
-				responseLock.notifyAll();
-			}
+			responseLatch.signal();
 		}
 
 		@Override
@@ -1368,9 +1360,7 @@ public class TaskInvocationManager implements Closeable {
 			//TODO unsuitability exception?
 			request.fail(invocationContext, null);
 			AIFU_flags.updateAndGet(this, c -> c | FLAG_HAD_RESPONSE);
-			synchronized (responseLock) {
-				responseLock.notifyAll();
-			}
+			responseLatch.signal();
 		}
 
 		@Override
@@ -1441,17 +1431,7 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		private void waitForClusterResponse() throws InterruptedException {
-			if (((this.flags & FLAG_HAD_RESPONSE) != FLAG_HAD_RESPONSE)) {
-				synchronized (responseLock) {
-					while (true) {
-						if (((this.flags & FLAG_HAD_RESPONSE) == FLAG_HAD_RESPONSE)) {
-							break;
-						}
-
-						responseLock.wait();
-					}
-				}
-			}
+			responseLatch.await();
 		}
 
 		@Override
