@@ -289,7 +289,8 @@ public final class SakerEnvironmentImpl implements Closeable {
 	public void unredirectStandardIO() {
 		synchronized (JVMSynchronizationObjects.getStandardIOLock()) {
 			if (realStdOut == null) {
-				throw new IllegalStateException("Standard IO was not redirected.");
+				//was not redirected, or already unredirected via close() or something, return silently
+				return;
 			}
 			unredirectStandardIOLockedImpl();
 		}
@@ -590,7 +591,7 @@ public final class SakerEnvironmentImpl implements Closeable {
 		exc = IOUtils.closeExc(exc, repositoryManager);
 		exc = IOUtils.closeExc(exc, classPathManager);
 
-		unredirectStandardIOIfInstalled();
+		unredirectStandardIO();
 		try {
 			environmentThreadGroup.destroy();
 		} catch (IllegalThreadStateException e) {
@@ -1062,14 +1063,6 @@ public final class SakerEnvironmentImpl implements Closeable {
 			}
 			return contextfunction.apply(context);
 		};
-	}
-
-	private void unredirectStandardIOIfInstalled() {
-		synchronized (JVMSynchronizationObjects.getStandardIOLock()) {
-			if (realStdOut != null) {
-				unredirectStandardIOLockedImpl();
-			}
-		}
 	}
 
 	/**

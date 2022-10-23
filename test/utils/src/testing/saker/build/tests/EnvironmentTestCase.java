@@ -440,7 +440,15 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 				} finally {
 					env.unredirectStandardIO();
 					env.getClassLoaderResolverRegistry().unregister(TEST_CLASSLOADER_RESOLVER_ID, testclresolver);
-					env.clearCachedDatasWaitExecutions();
+					try {
+						env.clearCachedDatasWaitExecutions();
+					} catch (InterruptedException e) {
+						// reinterrupt
+						Thread.currentThread().interrupt();
+					} catch (Exception e) {
+						//in some case this fails somewhy
+						e.printStackTrace();
+					}
 				}
 			} catch (AssertionError e) {
 				throw e;
