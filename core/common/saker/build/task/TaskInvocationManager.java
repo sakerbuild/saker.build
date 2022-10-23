@@ -71,6 +71,7 @@ import saker.build.thirdparty.saker.util.function.LazySupplier;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMIArrayListWrapper;
+import saker.build.thirdparty.saker.util.thread.BooleanLatch;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
@@ -823,7 +824,7 @@ public class TaskInvocationManager implements Closeable {
 
 		private R result;
 		private Throwable resultException;
-		private volatile boolean finished = false;
+		private final BooleanLatch finishedLatch = BooleanLatch.newBooleanLatch();
 
 		public TaskExecutionRequestImpl(Collection<TaskInvocationContextImpl> invocationContexts,
 				TaskFactory<R> factory, TaskInvocationConfiguration capabilities, SelectionResult selectionresult,
@@ -843,26 +844,17 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		protected void allClustersFailed() {
-			finished = true;
-			synchronized (TaskExecutionRequestImpl.this) {
-				this.notifyAll();
-			}
+			finishedLatch.signal();
 		}
 
 		public void executionSuccessful(R taskresult) {
-			finished = true;
 			result = taskresult;
-			synchronized (TaskExecutionRequestImpl.this) {
-				this.notifyAll();
-			}
+			finishedLatch.signal();
 		}
 
 		public void executionException(Throwable e) {
-			finished = true;
 			resultException = e;
-			synchronized (TaskExecutionRequestImpl.this) {
-				this.notifyAll();
-			}
+			finishedLatch.signal();
 		}
 
 		@Override
@@ -876,24 +868,18 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		public void close(TaskInvocationContext invocationcontext, Throwable cause) {
-			if (finished) {
+			if (finishedLatch.isSignalled()) {
 				//already finished, closing is okay
 				return;
 			}
-			finished = true;
 			resultException = new IllegalStateException("Task execution request closed.", cause);
-			synchronized (TaskExecutionRequestImpl.this) {
-				this.notifyAll();
-			}
+			finishedLatch.signal();
 			super.fail(invocationcontext, cause);
 		}
 
 		private void failWithStartedExecution(TaskInvocationContext invocationContext, Throwable cause) {
-			finished = true;
 			resultException = new ClusterTaskExecutionFailedException(cause);
-			synchronized (TaskExecutionRequestImpl.this) {
-				this.notifyAll();
-			}
+			finishedLatch.signal();
 		}
 
 		public TaskInvocationConfiguration getCapabilities() {
@@ -930,14 +916,7 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		public void waitForResult() throws InterruptedException {
-			synchronized (TaskExecutionRequestImpl.this) {
-				while (true) {
-					if (this.finished) {
-						return;
-					}
-					this.wait();
-				}
-			}
+			finishedLatch.await();
 		}
 
 		public Optional<R> getResultOptional() {
