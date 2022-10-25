@@ -54,6 +54,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
@@ -1539,11 +1540,8 @@ public final class TaskExecutionManager {
 				synchronized (executionStdIOLockAcquireLock) {
 					StandardIOLock iolock = acquiredExecutionStdIOLock;
 					if (iolock != null) {
-						SakerLog.warning().out(this).println("Standard IO lock wasn't released by task.");
-						iolock = acquiredExecutionStdIOLock;
-						if (iolock != null) {
-							iolock.close();
-						}
+						SakerLog.warning().out(this).println("Standard IO lock wasn't released by task: " + taskId);
+						iolock.close();
 					}
 				}
 				if (interrupted) {
@@ -3029,6 +3027,7 @@ public final class TaskExecutionManager {
 		protected final TaskIdentifier taskId;
 		protected final ConcurrentLinkedQueue<WaiterThreadHandle> waitingThreads = new ConcurrentLinkedQueue<>();
 
+		private final Lock createdByTaskIdsLock = ThreadUtils.newExclusiveLock();
 		private volatile Set<TaskIdentifier> createdByTaskIds;
 
 		protected final ConcurrentPrependAccumulator<ManagerTaskFutureImpl<?>> ancestors = new ConcurrentPrependAccumulator<>();
@@ -3124,15 +3123,8 @@ public final class TaskExecutionManager {
 
 		protected void finished(TaskExecutionManager execmanager, TaskExecutionResult<R> taskresult)
 				throws IllegalStateException {
+			finishCreatedBy(taskresult);
 			FutureState s = this.futureState;
-			synchronized (ManagerTaskFutureImpl.this) {
-				Set<TaskIdentifier> createdbystore = this.createdByTaskIds;
-				Set<TaskIdentifier> taskcreatedbys = taskresult.getCreatedByTaskIds();
-				if (createdbystore != null) {
-					taskcreatedbys.addAll(createdbystore);
-				}
-				this.createdByTaskIds = taskcreatedbys;
-			}
 			setResultState(execmanager, s,
 					new FinishedFutureState(s.getFactory(), s.getInvocationConfiguration(), taskresult));
 		}
@@ -3321,13 +3313,32 @@ public final class TaskExecutionManager {
 		}
 
 		protected void storeCreatedBy(TaskIdentifier taskid) {
-			synchronized (ManagerTaskFutureImpl.this) {
+			Lock lock = createdByTaskIdsLock;
+			lock.lock();
+			try {
 				Set<TaskIdentifier> ids = createdByTaskIds;
 				if (ids == null) {
 					ids = ConcurrentHashMap.newKeySet();
 					createdByTaskIds = ids;
 				}
 				ids.add(taskid);
+			} finally {
+				lock.unlock();
+			}
+		}
+
+		private void finishCreatedBy(TaskExecutionResult<R> taskresult) {
+			Lock lock = createdByTaskIdsLock;
+			lock.lock();
+			try {
+				Set<TaskIdentifier> createdbystore = this.createdByTaskIds;
+				Set<TaskIdentifier> taskcreatedbys = taskresult.getCreatedByTaskIds();
+				if (createdbystore != null) {
+					taskcreatedbys.addAll(createdbystore);
+				}
+				this.createdByTaskIds = taskcreatedbys;
+			} finally {
+				lock.unlock();
 			}
 		}
 
