@@ -1774,8 +1774,12 @@ public class TaskInvocationManager implements Closeable {
 				.newUpdater(TaskInvocationManager.InvokerSelectionFutureSupplier.class, Supplier.class, "result");
 
 		private volatile Supplier<? extends SelectionResult> result;
+		//XXX instead of using a boolean latch, and a result field
+		//    we could have a class that is the latch, and contains a generic field for the result as well
+		//    something like a ReferenceLatch
+		private final BooleanLatch resultReadyLatch = BooleanLatch.newBooleanLatch();
 
-		private Exception localSelectionException;
+		private final Exception localSelectionException;
 
 		public InvokerSelectionFutureSupplier(Exception localselectionexception) {
 			this.localSelectionException = localselectionexception;
@@ -1787,19 +1791,19 @@ public class TaskInvocationManager implements Closeable {
 			if (sr != null) {
 				return sr.get();
 			}
-			synchronized (InvokerSelectionFutureSupplier.this) {
-				while (true) {
-					sr = result;
-					if (sr != null) {
-						return sr.get();
-					}
-					try {
-						this.wait();
-					} catch (InterruptedException e) {
-						IOUtils.addExc(e, localSelectionException);
-						throw new TaskEnvironmentSelectionFailedException(e);
-					}
+			try {
+				resultReadyLatch.await();
+				sr = result;
+				if (sr == null) {
+					throw new IllegalStateException("Internal state error, result was set to null");
 				}
+				return sr.get();
+			} catch (InterruptedException e) {
+				//keep the interrupt flag on the current thread, 
+				//as we're not throwing the InterruptedException directly
+				Thread.currentThread().interrupt();
+				IOUtils.addExc(e, localSelectionException);
+				throw new TaskEnvironmentSelectionFailedException(e);
 			}
 		}
 
@@ -1815,9 +1819,7 @@ public class TaskInvocationManager implements Closeable {
 
 		public void setResult(Supplier<? extends SelectionResult> result) {
 			if (ARFU_result.compareAndSet(this, null, result)) {
-				synchronized (InvokerSelectionFutureSupplier.this) {
-					this.notifyAll();
-				}
+				resultReadyLatch.signal();
 			}
 		}
 	}
