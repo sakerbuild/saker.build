@@ -49,6 +49,7 @@ import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
@@ -172,6 +173,7 @@ import saker.build.thirdparty.saker.util.io.PriorityMultiplexOutputStream;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
+import saker.build.thirdparty.saker.util.thread.BooleanLatch;
 import saker.build.thirdparty.saker.util.thread.ParallelExecutionException;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ParallelRunner;
@@ -496,6 +498,13 @@ public final class TaskExecutionManager {
 				.newUpdater(TaskExecutionManager.TaskExecutorContext.class, TaskOutputChangeDetector.class,
 						"reportedOutputChangeDetector");
 
+		@SuppressWarnings("rawtypes")
+		private static final AtomicIntegerFieldUpdater<TaskExecutionManager.TaskExecutorContext> AIFU_finishCounter = AtomicIntegerFieldUpdater
+				.newUpdater(TaskExecutionManager.TaskExecutorContext.class, "finishCounter");
+		@SuppressWarnings("rawtypes")
+		private static final AtomicReferenceFieldUpdater<TaskExecutionManager.TaskExecutorContext, BooleanLatch> ARFU_finishLatch = AtomicReferenceFieldUpdater
+				.newUpdater(TaskExecutionManager.TaskExecutorContext.class, BooleanLatch.class, "finishLatch");
+
 		protected final TaskExecutionManager executionManager;
 		protected final ExecutionContextImpl executionContext;
 		protected final TaskExecutionResult<?> prevTaskResult;
@@ -519,18 +528,19 @@ public final class TaskExecutionManager {
 		protected final Map<EnvironmentProperty<?>, Optional<?>> environmentPropertyDependencies = new ConcurrentHashMap<>();
 		protected final Map<ExecutionProperty<?>, Optional<?>> executionPropertyDependencies = new ConcurrentHashMap<>();
 
-		@SuppressWarnings("rawtypes")
-		private static final AtomicIntegerFieldUpdater<TaskExecutionManager.TaskExecutorContext> AIFU_finishCounter = AtomicIntegerFieldUpdater
-				.newUpdater(TaskExecutionManager.TaskExecutorContext.class, "finishCounter");
-		@SuppressWarnings("unused")
+		/**
+		 * The number of running operations on this task context.
+		 * <p>
+		 * Negative if the task is finished.
+		 * 
+		 * @see #runOnUnfinished(Runnable)
+		 * @see #runOnUnfinished(Supplier)
+		 */
 		private volatile int finishCounter;
 
-		@SuppressWarnings("rawtypes")
-		private static final AtomicReferenceFieldUpdater<TaskExecutionManager.TaskExecutorContext, Object> ARFU_finishSync = AtomicReferenceFieldUpdater
-				.newUpdater(TaskExecutionManager.TaskExecutorContext.class, Object.class, "finishSync");
-		private volatile Object finishSync;
+		private volatile BooleanLatch finishLatch;
 
-		private ConcurrentHashMap<Object, FileDependencyCollector> taggedFileDependencyCollectors = new ConcurrentHashMap<>();
+		private final ConcurrentMap<Object, FileDependencyCollector> taggedFileDependencyCollectors = new ConcurrentHashMap<>();
 
 		private final UnsyncByteArrayOutputStream stdOut = new UnsyncByteArrayOutputStream();
 		private final UnsyncByteArrayOutputStream stdErr = new UnsyncByteArrayOutputStream();
@@ -889,45 +899,42 @@ public final class TaskExecutionManager {
 		}
 
 		protected <T> T runOnUnfinished(Supplier<T> function) {
-			AIFU_finishCounter.updateAndGet(this, i -> {
-				if (i < 0) {
-					throw new IllegalTaskOperationException("Task is already finished.", taskId);
-				}
-				return i + 1;
-			});
+			incrementFinishCounter();
 			try {
 				return function.get();
 			} finally {
-				int c = AIFU_finishCounter.decrementAndGet(this);
-				if (c == 0) {
-					Object fsync = finishSync;
-					if (fsync != null) {
-						synchronized (fsync) {
-							fsync.notifyAll();
-						}
-					}
-				}
+				decrementFinishCounter();
 			}
 		}
 
 		protected void runOnUnfinished(Runnable function) {
-			AIFU_finishCounter.updateAndGet(this, i -> {
-				if (i < 0) {
-					throw new IllegalTaskOperationException("Task is already finished.", taskId);
-				}
-				return i + 1;
-			});
+			incrementFinishCounter();
 			try {
 				function.run();
 			} finally {
-				int c = AIFU_finishCounter.decrementAndGet(this);
-				if (c == 0) {
-					Object fsync = finishSync;
-					if (fsync != null) {
-						synchronized (fsync) {
-							fsync.notifyAll();
-						}
-					}
+				decrementFinishCounter();
+			}
+		}
+
+		private void incrementFinishCounter() {
+			while (true) {
+				int i = this.finishCounter;
+				if (i < 0) {
+					throw new IllegalTaskOperationException("Task is already finished.", taskId);
+				}
+				if (AIFU_finishCounter.compareAndSet(this, i, i + 1)) {
+					break;
+				}
+				//try again
+			}
+		}
+
+		private void decrementFinishCounter() {
+			int c = AIFU_finishCounter.decrementAndGet(this);
+			if (c == 0) {
+				BooleanLatch fsync = finishLatch;
+				if (fsync != null) {
+					fsync.signal();
 				}
 			}
 		}
@@ -1461,12 +1468,7 @@ public final class TaskExecutionManager {
 		protected void executionFinished() throws InterruptedException, InnerTaskExecutionException {
 			boolean interrupted = false;
 			try {
-				//there is still a call pending on the task context
-				Object fsync = new Object();
-				if (!ARFU_finishSync.compareAndSet(this, null, fsync)) {
-					//shouldnt ever happen, but just in case
-					fsync = this.finishSync;
-				}
+				BooleanLatch fsync = null;
 				//join all inner tasks
 				//try to set the flag to finished, to ensure that no more inner tasks are started
 				//if successful, great, we can finish the task
@@ -1499,12 +1501,11 @@ public final class TaskExecutionManager {
 									}
 								} catch (InterruptedException ie) {
 									//interrupt the inner task and all the remainings
-									if (!interrupted) {
-										h.interrupt();
-										for (ManagerInnerTaskResults<?> ith : innerTasks) {
-											ith.interrupt();
-										}
-										interrupted = true;
+									//propagate each interrupt to the tasks (it used to propagate only the first one)
+									interrupted = true;
+									h.interrupt();
+									for (ManagerInnerTaskResults<?> ith : innerTasks) {
+										ith.interrupt();
 									}
 									//try to wait for this one again
 									continue;
@@ -1520,12 +1521,18 @@ public final class TaskExecutionManager {
 					if (AIFU_finishCounter.compareAndSet(this, 0, -1)) {
 						break;
 					}
-					synchronized (fsync) {
-						if (AIFU_finishCounter.compareAndSet(this, 0, -1)) {
-							break;
+					//there is still an operation pending on the task context
+					if (fsync == null) {
+						fsync = BooleanLatch.newBooleanLatch();
+						if (!ARFU_finishLatch.compareAndSet(this, null, fsync)) {
+							//shouldnt ever happen, but just in case
+							fsync = this.finishLatch;
 						}
-						fsync.wait();
 					}
+					if (AIFU_finishCounter.compareAndSet(this, 0, -1)) {
+						break;
+					}
+					fsync.await();
 				} while (!AIFU_finishCounter.compareAndSet(this, 0, -1));
 				IOUtils.throwExc(innerexc);
 			} finally {
