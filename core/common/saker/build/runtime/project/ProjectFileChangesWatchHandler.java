@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
@@ -51,6 +52,7 @@ import saker.build.file.provider.SakerPathFiles;
 import saker.build.runtime.execution.FileContentDataComputeHandler;
 import saker.build.runtime.execution.SakerLog;
 import saker.build.runtime.params.ExecutionPathConfiguration;
+import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
@@ -165,9 +167,14 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 	private void uninstallWatchers() {
 		watchedPaths.clear();
 
+		List<Entry<SakerFileProvider, ConcurrentNavigableMap<SakerPath, ListenerToken>>> listenerlist;
+		//use a separate collection for the listeners to limit scope of locking
+		synchronized (listeners) {
+			listenerlist = ImmutableUtils.makeImmutableList(listeners.entrySet());
+			listeners.clear();
+		}
 		//XXX maybe parallelize this
-		for (Entry<SakerFileProvider, ? extends NavigableMap<SakerPath, FileEventListener.ListenerToken>> entry : listeners
-				.entrySet()) {
+		for (Entry<SakerFileProvider, ? extends NavigableMap<SakerPath, FileEventListener.ListenerToken>> entry : listenerlist) {
 			NavigableMap<SakerPath, ListenerToken> listeners = entry.getValue();
 			if (ObjectUtils.isNullOrEmpty(listeners)) {
 				//no listeners, nothing to remove, continue to avoid RMI call
@@ -176,7 +183,6 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 			SakerFileProvider fp = entry.getKey();
 			fp.removeFileEventListeners(listeners.values());
 		}
-		listeners.clear();
 	}
 
 	private void watchLocked(ContentDatabaseImpl database, Map<String, ? extends SakerDirectory> rootdirs,
@@ -245,18 +251,19 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 
 				//the parent path is not yet watched, watch it.
 
-				NavigableMap<SakerPath, FileEventListener.ListenerToken> listeners = this.listeners.computeIfAbsent(fp,
-						Functionals.concurrentSkipListMapComputer());
+				NavigableMap<SakerPath, FileEventListener.ListenerToken> listeners = getListenerTokensMap(fp);
 				NavigableSet<SakerPath> dirdatabasetrackedpaths = SakerPathFiles
 						.getPathSubSetDirectoryChildren(trackedpaths, parent, true);
 				NonSakerDirectoryChangeHandleFileEventListener listener = new NonSakerDirectoryChangeHandleFileEventListener(
-						fpkey, fp, parent, l -> {
+						fpkey, parent, l -> {
 							listeners.remove(parent, l);
 							watchedpaths.remove(parent);
 						}, dirdatabasetrackedpaths, recheckerpathset, database);
 				try {
 					ListenerToken ltoken;
-					synchronized (listener.lock) {
+					final Lock lock = listener.lock;
+					lock.lock();
+					try {
 						ltoken = fp.addFileEventListener(parent, listener);
 						listener.listenerToken = ltoken;
 
@@ -271,6 +278,8 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 							e.printStackTrace();
 							//NO continue. we need to finish the listener installing
 						}
+					} finally {
+						lock.unlock();
 					}
 					watchedpaths.add(parent);
 					FileEventListener.ListenerToken prev = listeners.putIfAbsent(parent, ltoken);
@@ -312,11 +321,8 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 		SakerFileProvider fp = pathkey.getFileProvider();
 		RootFileProviderKey fpkey = pathkey.getFileProviderKey();
 
-		NavigableMap<SakerPath, FileEventListener.ListenerToken> containingmap;
+		NavigableMap<SakerPath, FileEventListener.ListenerToken> containingmap = getListenerTokensMap(fp);
 		NavigableSet<SakerPath> watchedpathsset = getWatchedPathsSet(fpkey);
-		synchronized (listeners) {
-			containingmap = listeners.computeIfAbsent(fp, Functionals.concurrentSkipListMapComputer());
-		}
 		NavigableSet<SakerPath> dirdatabasetrackedfiles;
 		if (database == null) {
 			dirdatabasetrackedfiles = Collections.emptyNavigableSet();
@@ -351,7 +357,9 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 				ChangeHandleFileEventListener listener = new ChangeHandleFileEventListener(fp, mpath, fpkey, pdir,
 						watchedpathsset, containingmap, dirdatabasetrackedfiles, recheckerpathset,
 						filecomputedatahandler, database);
-				synchronized (listener.lock) {
+				final Lock lock = listener.lock;
+				lock.lock();
+				try {
 					ListenerToken ltoken;
 					try {
 						ltoken = fp.addFileEventListener(mpath, listener);
@@ -376,6 +384,8 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 						dbinvalidateddirectorypaths.add(mpath);
 					}
 					containingmap.put(mpath, ltoken);
+				} finally {
+					lock.unlock();
 				}
 
 				watchedpathsset.add(mpath);
@@ -429,6 +439,12 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 		return pathsToRecheck.computeIfAbsent(fpkey, Functionals.concurrentSkipListSetComputer());
 	}
 
+	private NavigableMap<SakerPath, FileEventListener.ListenerToken> getListenerTokensMap(SakerFileProvider fp) {
+		synchronized (listeners) {
+			return listeners.computeIfAbsent(fp, Functionals.concurrentSkipListMapComputer());
+		}
+	}
+
 	private static class DatabaseDirectoryRecheckPathAdderFileEventLister implements FileEventListener {
 		protected SakerPath sakerPath;
 		protected NavigableSet<SakerPath> directoryDatabaseTrackedFiles;
@@ -461,18 +477,19 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 	}
 
 	private static class ChangeHandleFileEventListener extends DatabaseDirectoryRecheckPathAdderFileEventLister {
-		protected RootFileProviderKey providerKey;
-		protected SakerFileProvider fileProvider;
-		protected ProviderPathSakerDirectory directory;
+		protected final RootFileProviderKey providerKey;
+		protected final SakerFileProvider fileProvider;
+		protected final ProviderPathSakerDirectory directory;
 
-		protected Map<SakerPath, ?> containingMap;
-		protected Set<SakerPath> watchedContainerSet;
+		protected final Map<SakerPath, ?> containingMap;
+		protected final Set<SakerPath> watchedContainerSet;
+
+		protected final FileContentDataComputeHandler fileComputeHandler;
+		protected final ContentDatabaseImpl database;
+
+		protected final Lock lock = ThreadUtils.newExclusiveLock();
 
 		protected FileEventListener.ListenerToken listenerToken;
-		protected FileContentDataComputeHandler fileComputeHandler;
-		protected ContentDatabaseImpl database;
-
-		protected final Object lock = this;
 
 		public ChangeHandleFileEventListener(SakerFileProvider fileProvider, SakerPath path,
 				RootFileProviderKey providerKey, ProviderPathSakerDirectory directory,
@@ -501,21 +518,17 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 				database.invalidateOffline(providerKey, path);
 			}
 			//XXX Note: slight code duplication below
-			if (directory.isAnyPopulated()) {
-				synchronized (lock) {
-					ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = directory.getTrackedFilesMap();
+			final Lock lock = this.lock;
+			lock.lock();
+			try {
+				ProviderPathSakerDirectory directory = this.directory;
+				ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = directory.getTrackedFilesMap();
+				if (directory.isAnyPopulated()) {
 					try {
 						FileEntry attrs = fileProvider.getFileAttributes(path);
 						if (attrs.isDirectory()) {
 							SakerFile presentfile = trackedfiles.get(filename);
-							if (presentfile instanceof SakerDirectory
-									&& !(presentfile instanceof MarkerSakerDirectory)) {
-								//a directory is already present there
-								//changes to a directory contents will be applied when the appropriate listener is called
-							} else {
-								//add it as a directory
-								directory.addPopulatedDirectory(filename);
-							}
+							updateChangedDirectoryWithPresentFile(filename, directory, presentfile);
 						} else {
 							directory.addPopulatedFile(filename);
 						}
@@ -523,10 +536,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 						//failed to get the attributes for the file, consider it deleted
 						trackedfiles.remove(filename);
 					}
-				}
-			} else {
-				synchronized (lock) {
-					ConcurrentNavigableMap<String, SakerFileBase> trackedfiles = directory.getTrackedFilesMap();
+				} else {
 					SakerFile presentfile = trackedfiles.get(filename);
 					if (presentfile == null) {
 						//no file is present for this name, nothing was populated, okay
@@ -535,14 +545,7 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 						try {
 							FileEntry attrs = fileProvider.getFileAttributes(path);
 							if (attrs.isDirectory()) {
-								if (presentfile instanceof SakerDirectory
-										&& !(presentfile instanceof MarkerSakerDirectory)) {
-									//a directory is already present there
-									//changes to a directory contents will be applied when the appropriate listener is called
-								} else {
-									//add it as a directory
-									directory.addPopulatedDirectory(filename);
-								}
+								updateChangedDirectoryWithPresentFile(filename, directory, presentfile);
 							} else {
 								directory.addPopulatedFile(filename);
 							}
@@ -552,6 +555,19 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 						}
 					}
 				}
+			} finally {
+				lock.unlock();
+			}
+		}
+
+		private static void updateChangedDirectoryWithPresentFile(String filename, ProviderPathSakerDirectory directory,
+				SakerFile presentfile) {
+			if (presentfile instanceof SakerDirectory && !(presentfile instanceof MarkerSakerDirectory)) {
+				//a directory is already present there
+				//changes to a directory contents will be applied when the appropriate listener is called
+			} else {
+				//add it as a directory
+				directory.addPopulatedDirectory(filename);
 			}
 		}
 
@@ -559,12 +575,16 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 		public void eventsMissed() {
 			super.eventsMissed();
 
-			synchronized (lock) {
+			final Lock lock = this.lock;
+			lock.lock();
+			try {
 				ListenerToken lt = listenerToken;
 				if (lt != null) {
 					lt.removeListener();
 				}
 				error();
+			} finally {
+				lock.unlock();
 			}
 		}
 
@@ -572,8 +592,12 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 		public void listenerAbandoned() {
 			super.listenerAbandoned();
 
-			synchronized (lock) {
+			final Lock lock = this.lock;
+			lock.lock();
+			try {
 				error();
+			} finally {
+				lock.unlock();
 			}
 		}
 
@@ -588,23 +612,20 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 	private static class NonSakerDirectoryChangeHandleFileEventListener
 			extends DatabaseDirectoryRecheckPathAdderFileEventLister {
 		protected final RootFileProviderKey providerKey;
-		protected final SakerFileProvider fileProvider;
 
-		protected Consumer<? super NonSakerDirectoryChangeHandleFileEventListener> mapRemover;
+		protected final Consumer<? super NonSakerDirectoryChangeHandleFileEventListener> mapRemover;
+		protected final ContentDatabaseImpl database;
+
+		protected final Lock lock = ThreadUtils.newExclusiveLock();
 
 		protected FileEventListener.ListenerToken listenerToken;
-		protected ContentDatabaseImpl database;
 
-		protected final Object lock = this;
-
-		public NonSakerDirectoryChangeHandleFileEventListener(RootFileProviderKey providerKey,
-				SakerFileProvider fileProvider, SakerPath sakerPath,
+		public NonSakerDirectoryChangeHandleFileEventListener(RootFileProviderKey providerKey, SakerPath sakerPath,
 				Consumer<? super NonSakerDirectoryChangeHandleFileEventListener> mapRemover,
 				NavigableSet<SakerPath> dirdatabasetrackedfiles, NavigableSet<SakerPath> recheckerpathset,
 				ContentDatabaseImpl database) {
 			super(sakerPath, dirdatabasetrackedfiles, recheckerpathset);
 			this.providerKey = providerKey;
-			this.fileProvider = fileProvider;
 			this.mapRemover = mapRemover;
 			this.database = database;
 		}
@@ -619,9 +640,13 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 		public void eventsMissed() {
 			super.eventsMissed();
 
-			synchronized (lock) {
+			final Lock lock = this.lock;
+			lock.lock();
+			try {
 				error();
 				listenerToken.removeListener();
+			} finally {
+				lock.unlock();
 			}
 		}
 
@@ -629,8 +654,12 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 		public void listenerAbandoned() {
 			super.listenerAbandoned();
 
-			synchronized (lock) {
+			final Lock lock = this.lock;
+			lock.lock();
+			try {
 				error();
+			} finally {
+				lock.unlock();
 			}
 		}
 
