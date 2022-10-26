@@ -1,6 +1,10 @@
 package saker.build.ide.support.util;
 
+import java.io.Externalizable;
 import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.CopyOption;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileAlreadyExistsException;
@@ -20,12 +24,21 @@ import saker.build.file.provider.FileProviderKey;
 import saker.build.file.provider.RootFileProviderKey;
 import saker.build.file.provider.SakerFileProvider;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
+import saker.build.thirdparty.saker.util.StringUtils;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 
 public class EmptySakerFileProvider implements SakerFileProvider {
-	private static final class EmptyProviderRootFileProviderKey implements RootFileProviderKey {
+	private static final class EmptyProviderRootFileProviderKey implements RootFileProviderKey, Externalizable {
+		private static final long serialVersionUID = 1L;
+
 		private UUID uuid;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public EmptyProviderRootFileProviderKey() {
+		}
 
 		public EmptyProviderRootFileProviderKey(UUID uuid) {
 			this.uuid = uuid;
@@ -60,6 +73,25 @@ public class EmptySakerFileProvider implements SakerFileProvider {
 				return false;
 			return true;
 		}
+
+		@Override
+		public String toString() {
+			StringBuilder builder = new StringBuilder(getClass().getSimpleName());
+			builder.append('[');
+			builder.append(uuid);
+			builder.append(']');
+			return builder.toString();
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			out.writeObject(uuid);
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			uuid = (UUID) in.readObject();
+		}
 	}
 
 	private final NavigableSet<String> roots;
@@ -68,7 +100,7 @@ public class EmptySakerFileProvider implements SakerFileProvider {
 	public EmptySakerFileProvider(NavigableSet<String> roots) {
 		this.roots = roots;
 		this.fileProviderKey = new EmptyProviderRootFileProviderKey(
-				UUID.nameUUIDFromBytes(ImmutableUtils.makeImmutableNavigableSet(roots).toString().getBytes()));
+				UUID.nameUUIDFromBytes(StringUtils.toStringJoin(";", roots).getBytes(StandardCharsets.UTF_8)));
 	}
 
 	@Override
