@@ -51,12 +51,17 @@ public final class SakerNativeWatchKey {
 	protected int lastPollInvocationId = -1;
 	protected volatile int pollId = 0;
 
-	protected final ReadWriteLock keyLock = new ReentrantReadWriteLock();
+	protected final Lock keyReadLock;
+	protected final Lock keyWriteLock;
 	protected final Object pollLock = new Object();
 
 	protected SakerNativeWatchKey(SakerWatchService service, KeyConfig config) {
 		this.service = service;
 		this.config = config;
+
+		ReadWriteLock keylock = new ReentrantReadWriteLock();
+		keyReadLock = keylock.readLock();
+		keyWriteLock = keylock.writeLock();
 	}
 
 	public void initNative(long nativeKey, SakerUserWatchKey firstkey) {
@@ -94,7 +99,7 @@ public final class SakerNativeWatchKey {
 		//    result: only 2 or less polling was invoked for multiple threads
 
 		int pollid = AIFU_pollId.getAndIncrement(this);
-		Lock rlock = keyLock.readLock();
+		Lock rlock = keyReadLock;
 		rlock.lock();
 		try {
 			long ptr = this.nativePtr;

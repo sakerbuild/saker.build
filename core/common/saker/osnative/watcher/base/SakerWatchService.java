@@ -71,10 +71,15 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 
 	protected volatile long nativeServicePtr;
 
-	protected final ReadWriteLock serviceLock = new ReentrantReadWriteLock();
+	protected final Lock serviceReadLock;
+	protected final Lock serviceWriteLock;
 
 	public SakerWatchService(long nativeServicePtr) {
 		this.nativeServicePtr = nativeServicePtr;
+
+		ReadWriteLock servicelock = new ReentrantReadWriteLock();
+		serviceReadLock = servicelock.readLock();
+		serviceWriteLock = servicelock.writeLock();
 	}
 
 	@Override
@@ -159,7 +164,7 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 
 	@Override
 	public void close() throws IOException {
-		Lock wlock = serviceLock.writeLock();
+		Lock wlock = serviceWriteLock;
 		wlock.lock();
 		try {
 			long serviceptr = nativeServicePtr;
@@ -228,7 +233,7 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 		if (nativekey == null) {
 			return null;
 		}
-		Lock nrlock = nativekey.keyLock.readLock();
+		Lock nrlock = nativekey.keyReadLock;
 		nrlock.lock();
 		try {
 			long nptr = nativekey.nativePtr;
@@ -257,7 +262,7 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 		Path normalizedpath = path.toAbsolutePath().normalize();
 		int flags = makeEventFlag(events, modifiers);
 		KeyConfig config = new KeyConfig(getUseKeyConfigFlag(flags) & SakerNativeWatchKey.MASK_QUERY, normalizedpath);
-		Lock rlock = serviceLock.readLock();
+		Lock rlock = serviceReadLock;
 		rlock.lock();
 		try {
 			long nativeservice = this.nativeServicePtr;
@@ -333,7 +338,7 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 	boolean isValidKey(SakerNativeWatchKey key) {
 		//no need to lock on the service lock, as that will lock on the keys when closing
 		//    see resetKey(SakerNativeWatchKey)
-		Lock rlock = key.keyLock.readLock();
+		Lock rlock = key.keyReadLock;
 		rlock.lock();
 		try {
 			long serviceptr = nativeServicePtr;
@@ -357,7 +362,7 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 		//therefore the service hasn't closed themself yet, therefore it will lock on the key lock
 		//therefore, if we only lock on the key lock, and see that the pointer is non null
 		//then we can be sure that the service won't be closed until the key write lock is acquired
-		Lock rlock = key.keyLock.readLock();
+		Lock rlock = key.keyReadLock;
 		rlock.lock();
 		try {
 			long ptr = key.nativePtr;
@@ -407,7 +412,7 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 	}
 
 	void closeKey(SakerNativeWatchKey key) {
-		Lock rlock = serviceLock.readLock();
+		Lock rlock = serviceReadLock;
 		rlock.lock();
 		try {
 			long serviceptr = nativeServicePtr;
@@ -421,7 +426,7 @@ public abstract class SakerWatchService implements RegisteringWatchService {
 	}
 
 	private void closeNativeKeyServiceLocked(SakerNativeWatchKey key, long nativeservice) {
-		Lock keylock = key.keyLock.writeLock();
+		Lock keylock = key.keyWriteLock;
 		keylock.lock();
 		try {
 			long keyptr = key.nativePtr;
