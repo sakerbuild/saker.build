@@ -36,6 +36,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -1667,12 +1669,15 @@ public class TaskInvocationManager implements Closeable {
 	}
 
 	private static class TaskInvocationContextImpl implements TaskInvocationContext {
+		private final Lock eventLock = ThreadUtils.newExclusiveLock();
+		private final Condition eventCondition = eventLock.newCondition();
+
+		private final UUID environmentIdentifier;
+
 		private List<TaskInvocationEvent> events = new ArrayList<>();
 		private int pollEndIndex = 0;
-		private final Object eventLock = new Object();
 		private volatile boolean closed = false;
 		private Throwable closeException;
-		private final UUID environmentIdentifier;
 
 		public TaskInvocationContextImpl(UUID environmentIdentifier) {
 			this.environmentIdentifier = environmentIdentifier;
@@ -1703,7 +1708,9 @@ public class TaskInvocationManager implements Closeable {
 		public void close(Throwable e) {
 			List<TaskInvocationEvent> evlist;
 			IllegalStateException failexc;
-			synchronized (eventLock) {
+			final Lock lock = eventLock;
+			lock.lock();
+			try {
 				evlist = this.events;
 
 				closed = true;
@@ -1711,9 +1718,11 @@ public class TaskInvocationManager implements Closeable {
 				events = Collections.emptyList();
 				pollEndIndex = 0;
 
-				eventLock.notifyAll();
+				eventCondition.signalAll();
 
 				failexc = createClosedException(closeException);
+			} finally {
+				lock.unlock();
 			}
 			for (TaskInvocationEvent ev : evlist) {
 				ev.close(failexc);
@@ -1726,27 +1735,36 @@ public class TaskInvocationManager implements Closeable {
 
 		public void addEvent(TaskInvocationEvent event) {
 			Throwable closeex;
+			final Lock lock = eventLock;
+			lock.lock();
 			event_add_block:
-			synchronized (eventLock) {
+			try {
 				closeex = closeException;
 				if (closed) {
 					break event_add_block;
 				}
 				events.add(event);
-				eventLock.notify();
+				eventCondition.signal();
 				return;
+			} finally {
+				lock.unlock();
 			}
 			event.close(createClosedException(closeex));
 		}
 
 		@Override
 		public Iterable<TaskInvocationEvent> poll() throws InterruptedException {
-			synchronized (eventLock) {
-				while (!closed) {
-					List<TaskInvocationEvent> evlist = events;
+			final Lock lock = eventLock;
+			lock.lock();
+			try {
+				if (closed) {
+					return null;
+				}
+				List<TaskInvocationEvent> evlist = events;
+				do {
 					int eventcount = evlist.size();
 					if (pollEndIndex >= eventcount) {
-						eventLock.wait();
+						eventCondition.await();
 						continue;
 					}
 
@@ -1762,7 +1780,9 @@ public class TaskInvocationManager implements Closeable {
 						continue;
 					}
 					return result;
-				}
+				} while (!closed);
+			} finally {
+				lock.unlock();
 			}
 			return null;
 		}
