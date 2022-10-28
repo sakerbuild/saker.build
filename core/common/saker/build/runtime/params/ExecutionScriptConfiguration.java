@@ -87,7 +87,7 @@ public final class ExecutionScriptConfiguration {
 		 *            The location of the scripting language provider.
 		 * @throws NullPointerException
 		 *             If the provider location is <code>null</code>.
-		 * @see {@link ScriptProviderLocation#getBuiltin()}
+		 * @see ScriptProviderLocation#getBuiltin()
 		 */
 		public ScriptOptionsConfig(Map<String, String> options, ScriptProviderLocation providerLocation)
 				throws NullPointerException {

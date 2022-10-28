@@ -1583,7 +1583,7 @@ public class ThreadUtils {
 	 * @return The number of threads that have been written to the output.
 	 * @throws NullPointerException
 	 *             If the print stream is <code>null</code>.
-	 * @see {@link #hasParentThreadGroup(Thread, ThreadGroup)}
+	 * @see #hasParentThreadGroup(Thread, ThreadGroup)
 	 */
 	public static int dumpThreadGroupStackTraces(PrintStream ps, ThreadGroup threadgroup) throws NullPointerException {
 		ps.println(threadgroup + ": ");

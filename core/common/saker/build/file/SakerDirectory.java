@@ -137,7 +137,7 @@ public interface SakerDirectory extends SakerFile {
 	 * @return The child directory with the specified file name. Never <code>null</code>.
 	 * @throws IllegalArgumentException
 	 *             If the file name is invalid or <code>null</code>.
-	 * @see {@link #getDirectoryCreateIfAbsent(String)}
+	 * @see #getDirectoryCreateIfAbsent(String)
 	 */
 	public SakerDirectory getDirectoryCreate(String name) throws IllegalArgumentException;
 

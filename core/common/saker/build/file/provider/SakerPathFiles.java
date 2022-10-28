@@ -1126,7 +1126,7 @@ public class SakerPathFiles {
 	 * @return The directory at the given path or <code>null</code> if it cannot be created.
 	 * @throws NullPointerException
 	 *             If the path is <code>null</code>.
-	 * @see {@link SakerDirectory#getDirectoryCreateIfAbsent(String)}
+	 * @see SakerDirectory#getDirectoryCreateIfAbsent(String)
 	 */
 	public static SakerDirectory resolveDirectoryAtPathCreateIfAbsent(TaskContext taskcontext, SakerPath path)
 			throws NullPointerException {

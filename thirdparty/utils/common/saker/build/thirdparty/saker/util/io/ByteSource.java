@@ -273,7 +273,7 @@ public interface ByteSource extends Closeable {
 	 *             In case of I/O error.
 	 * @throws NullPointerException
 	 *             If the buffer is <code>null</code>.
-	 * @see {@link #read(ByteRegion)}
+	 * @see #read(ByteRegion)
 	 */
 	public static int redirectReadCall(ByteSource proxy, ByteRegion buffer) throws IOException, NullPointerException {
 		Objects.requireNonNull(buffer, "buffer");

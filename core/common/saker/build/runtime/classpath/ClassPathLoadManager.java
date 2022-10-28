@@ -248,7 +248,7 @@ public class ClassPathLoadManager implements Closeable {
 	 * @return A handle to the loaded classpath.
 	 * @throws IOException
 	 *             In case of I/O error, or the classpath is not successfully loaded at the location.
-	 * @see {@link ClassPathLock#getClassPathLoadDirectory()}
+	 * @see ClassPathLock#getClassPathLoadDirectory()
 	 */
 	public ClassPathLock loadDirectClassPath(Path classpathloaddirectory) throws IOException {
 		SakerPathFiles.requireAbsolutePath(classpathloaddirectory);
@@ -286,7 +286,7 @@ public class ClassPathLoadManager implements Closeable {
 	 * @param location
 	 *            The classpath location.
 	 * @return The load directory.
-	 * @see {@link ClassPathLoader#loadTo(ProviderHolderPathKey)}
+	 * @see ClassPathLoader#loadTo(ProviderHolderPathKey)
 	 * @see ClassPathLock#getClassPathLoadDirectory()
 	 */
 	public Path getClassPathLoadDirectoryPath(ClassPathLocation location) {

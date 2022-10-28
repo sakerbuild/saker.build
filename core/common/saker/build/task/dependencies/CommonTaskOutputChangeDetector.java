@@ -80,7 +80,7 @@ public class CommonTaskOutputChangeDetector {
 	 * @return The output change detector.
 	 * @throws NullPointerException
 	 *             If the argument is <code>null</code>.
-	 * @see {@link Class#isInstance(Object)}
+	 * @see Class#isInstance(Object)
 	 */
 	public static TaskOutputChangeDetector isInstanceOf(Class<?> type) throws NullPointerException {
 		Objects.requireNonNull(type, "type");
@@ -109,7 +109,7 @@ public class CommonTaskOutputChangeDetector {
 	 * @return The output change detector.
 	 * @throws NullPointerException
 	 *             If the argument is <code>null</code>.
-	 * @see {@link Class#isInstance(Object)}
+	 * @see Class#isInstance(Object)
 	 */
 	public static TaskOutputChangeDetector notInstanceOf(Class<?> type) throws NullPointerException {
 		Objects.requireNonNull(type, "type");
@@ -129,7 +129,7 @@ public class CommonTaskOutputChangeDetector {
 	 * @return The output change detector.
 	 * @throws NullPointerException
 	 *             If the argument is <code>null</code>.
-	 * @see {@link Class#isInstance(Object)}
+	 * @see Class#isInstance(Object)
 	 */
 	public static TaskOutputChangeDetector instanceOf(Class<?> type, boolean expectedinstanceof)
 			throws NullPointerException {

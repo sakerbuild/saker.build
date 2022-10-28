@@ -3300,7 +3300,7 @@ public class ObjectUtils {
 	 *             If any of the arguments are <code>null</code>.
 	 * @throws IllegalArgumentException
 	 *             If the sets are ordered differently.
-	 * @see {@link #requireSameComparators(SortedSet, SortedSet)}
+	 * @see #requireSameComparators(SortedSet, SortedSet)
 	 */
 	public static <E> int compareOrderedSets(SortedSet<? extends E> left, SortedSet<? extends E> right)
 			throws NullPointerException, IllegalArgumentException {

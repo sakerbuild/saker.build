@@ -683,7 +683,7 @@ public interface SakerFileProvider {
 	 *             order.
 	 * @throws IOException
 	 *             In case of I/O error.
-	 * @see {@link #getDirectoryEntries(SakerPath)}
+	 * @see #getDirectoryEntries(SakerPath)
 	 */
 	@RMIWrap(RMITreeSetStringElementWrapper.class)
 	@RMIExceptionRethrow(RemoteIOException.class)

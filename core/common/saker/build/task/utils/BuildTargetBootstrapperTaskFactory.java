@@ -161,7 +161,7 @@ public final class BuildTargetBootstrapperTaskFactory
 	 *             If path requirements are violated.
 	 * @throws Exception
 	 *             If the build target bootstrapping fails.
-	 * @see {@link ExecutionContext#getTargetConfiguration(TaskContext, SakerFile)}
+	 * @see ExecutionContext#getTargetConfiguration(TaskContext, SakerFile)
 	 * @see TaskExecutionParameters#setBuildDirectory(SakerPath)
 	 */
 	public static BuildFileTargetTaskIdentifier runBootstrapping(TaskContext taskcontext, SakerPath buildFilePath,

@@ -64,7 +64,6 @@ public class DateUtils {
 	 * <li>60&nbsp;000: <code>1 minute 0 seconds</code></li>
 	 * <li>60&nbsp;123: <code>1 minute 0.123 seconds</code></li>
 	 * <li>3&nbsp;600&nbsp;000: <code>1 hour 0 minutes 0 seconds</code></li>
-	 * <li></li>
 	 * </ul>
 	 * 
 	 * @param ms

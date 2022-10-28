@@ -713,7 +713,7 @@ public interface TaskExecutionUtilities {
 	 *             If any of the arguments or elements are <code>null</code>.
 	 * @throws IllegalTaskOperationException
 	 *             If a task identifier is the same as the caller.
-	 * @see {@link TaskContext#startTask(TaskIdentifier, TaskFactory, TaskExecutionParameters)}
+	 * @see TaskContext#startTask(TaskIdentifier, TaskFactory, TaskExecutionParameters)
 	 */
 	public default void startTasks(@RMISerialize Map<? extends TaskIdentifier, ? extends TaskFactory<?>> tasks)
 			throws TaskIdentifierConflictException, NullPointerException, IllegalTaskOperationException {
@@ -736,7 +736,7 @@ public interface TaskExecutionUtilities {
 	 *             If any of the arguments or elements are <code>null</code>.
 	 * @throws IllegalTaskOperationException
 	 *             If a task identifier is the same as the caller.
-	 * @see {@link TaskContext#startTask(TaskIdentifier, TaskFactory, TaskExecutionParameters)}
+	 * @see TaskContext#startTask(TaskIdentifier, TaskFactory, TaskExecutionParameters)
 	 */
 	public default void startTasks(@RMISerialize Map<? extends TaskIdentifier, ? extends TaskFactory<?>> tasks,
 			TaskExecutionParameters parameters)
@@ -892,7 +892,7 @@ public interface TaskExecutionUtilities {
 	 * @return The directory at the given path or <code>null</code> if it cannot be created.
 	 * @throws NullPointerException
 	 *             If the path is <code>null</code>.
-	 * @see {@link SakerDirectory#getDirectoryCreateIfAbsent(String)}
+	 * @see SakerDirectory#getDirectoryCreateIfAbsent(String)
 	 * @see SakerPathFiles#resolveDirectoryAtPathCreateIfAbsent(TaskContext, SakerPath)
 	 */
 	public SakerDirectory resolveDirectoryAtPathCreateIfAbsent(SakerPath path) throws NullPointerException;
