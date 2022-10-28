@@ -28,6 +28,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.Lock;
 import java.util.function.Supplier;
 
 import saker.build.file.provider.FileProviderKey;
@@ -63,11 +64,14 @@ import saker.build.thirdparty.saker.util.classloader.SingleClassLoaderResolver;
 import saker.build.thirdparty.saker.util.function.LazySupplier;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.ResourceCloser;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.util.cache.CacheKey;
 
 public class SakerExecutionCache implements Closeable {
 	private final SakerEnvironmentImpl environment;
 	private final SakerEnvironment recordingEnvironment;
+
+	private final Lock accessLock = ThreadUtils.newExclusiveLock();
 
 	private FileProviderKey currentCoordinatorProviderKey;
 	private ExecutionPathConfiguration currentPathConfiguration;
@@ -104,14 +108,22 @@ public class SakerExecutionCache implements Closeable {
 	}
 
 	public void recordEnvironmentPropertyAccess(EnvironmentProperty<?> environmentproperty) {
-		synchronized (SakerExecutionCache.this) {
+		final Lock lock = accessLock;
+		lock.lock();
+		try {
 			queriedEnvironmentProperties.add(environmentproperty);
+		} finally {
+			lock.unlock();
 		}
 	}
 
 	public void recordCacheKeyAccess(CacheKey<?, ?> key) {
-		synchronized (SakerExecutionCache.this) {
+		final Lock lock = accessLock;
+		lock.lock();
+		try {
 			queriedCacheKeys.add(key);
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -121,7 +133,9 @@ public class SakerExecutionCache implements Closeable {
 			SakerFileProvider coordinatorfileprovider, ClassLoaderResolverRegistry executionclregistry,
 			boolean forcluster, RepositoryBuildSharedObjectProvider sharedObjectProvider)
 			throws InterruptedException, IOException, Exception {
-		synchronized (SakerExecutionCache.this) {
+		final Lock lock = accessLock;
+		lock.lockInterruptibly();
+		try {
 			FileProviderKey coordinatorproviderkey = coordinatorfileprovider.getProviderKey();
 			if (userparameters == null) {
 				userparameters = Collections.emptyMap();
@@ -298,6 +312,8 @@ public class SakerExecutionCache implements Closeable {
 				loadedScriptProviderLocators = ImmutableUtils.unmodifiableMap(loadedscriptlocators);
 				return true;
 			}
+		} finally {
+			lock.unlock();
 		}
 	}
 
@@ -352,33 +368,53 @@ public class SakerExecutionCache implements Closeable {
 	}
 
 	public Map<String, ? extends BuildRepository> getLoadedBuildRepositories() {
-		synchronized (SakerExecutionCache.this) {
+		final Lock lock = accessLock;
+		lock.lock();
+		try {
 			return loadedBuildRepositories;
+		} finally {
+			lock.unlock();
 		}
 	}
 
 	public Map<String, ? extends RepositoryBuildEnvironment> getLoadedRepositoryBuildEnvironments() {
-		synchronized (SakerExecutionCache.this) {
+		final Lock lock = accessLock;
+		lock.lock();
+		try {
 			return loadedRepositoryBuildEnvironments;
+		} finally {
+			lock.unlock();
 		}
 	}
 
 	public Map<ExecutionScriptConfiguration.ScriptProviderLocation, ScriptAccessorClassPathData> getLoadedScriptProviderLocators() {
-		synchronized (SakerExecutionCache.this) {
+		final Lock lock = accessLock;
+		lock.lock();
+		try {
 			return loadedScriptProviderLocators;
+		} finally {
+			lock.unlock();
 		}
 	}
 
 	public void clear() throws IOException {
-		synchronized (SakerExecutionCache.this) {
+		final Lock lock = accessLock;
+		lock.lock();
+		try {
 			clearCurrentConfiguration();
+		} finally {
+			lock.unlock();
 		}
 	}
 
 	@Override
 	public void close() throws IOException {
-		synchronized (SakerExecutionCache.this) {
+		final Lock lock = accessLock;
+		lock.lock();
+		try {
 			clearCurrentConfiguration();
+		} finally {
+			lock.unlock();
 		}
 	}
 
