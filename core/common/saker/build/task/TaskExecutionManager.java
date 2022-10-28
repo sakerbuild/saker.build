@@ -549,7 +549,8 @@ public final class TaskExecutionManager {
 		private final ByteSource stdIn = new ByteSource() {
 			@Override
 			public int read(ByteRegion buffer) throws IOException {
-				synchronized (executionStdIOLockAcquireLock) {
+				executionStdIOLockAcquireLock.lock();
+				try {
 					if (acquiredExecutionStdIOLock == null) {
 						throw new TaskStandardIOLockIllegalStateException("Standard IO lock was not acquired.");
 					}
@@ -567,13 +568,21 @@ public final class TaskExecutionManager {
 						contextStdIn = realin;
 					}
 					return realin.read(buffer);
+				} finally {
+					executionStdIOLockAcquireLock.unlock();
 				}
 			}
 		};
 		private final Object streamFlushingLock = new Object();
 		private volatile int flushedStdOutOffset = 0;
 
-		private final Object executionStdIOLockAcquireLock = new Object();
+		/**
+		 * A lock that synchronizes access to {@link #acquireStandardIOLock()}.
+		 */
+		//Note: There could be reasons to make this lock reentrant, like recursively writing/reading via
+		//the standard IO, but its considered generally bad practice, so unless there's a real use-case
+		//we disallow it for now by using an exclusive lock
+		private final Lock executionStdIOLockAcquireLock = ThreadUtils.newExclusiveLock();
 		private volatile StandardIOLock acquiredExecutionStdIOLock;
 		private volatile ByteSource contextStdIn;
 
@@ -643,7 +652,8 @@ public final class TaskExecutionManager {
 			this.identifiedStdOut = new IdentifierByteSink(stdOut, streamFlushingLock) {
 				@Override
 				protected void writtenBytes() {
-					synchronized (executionStdIOLockAcquireLock) {
+					executionStdIOLockAcquireLock.lock();
+					try {
 						synchronized (streamFlushingLock) {
 							int offset = flushedStdOutOffset;
 							int size = stdOut.size();
@@ -679,6 +689,8 @@ public final class TaskExecutionManager {
 								}
 							}
 						}
+					} finally {
+						executionStdIOLockAcquireLock.unlock();
 					}
 				}
 			};
@@ -964,12 +976,15 @@ public final class TaskExecutionManager {
 		@Override
 		public void acquireStandardIOLock() throws InterruptedException, TaskStandardIOLockIllegalStateException {
 			runOnUnfinished(() -> {
-				synchronized (executionStdIOLockAcquireLock) {
+				try {
+					executionStdIOLockAcquireLock.lockInterruptibly();
 					try {
 						acquireStandardIOLockLocked();
-					} catch (InterruptedException e) {
-						throw ObjectUtils.sneakyThrow(e);
+					} finally {
+						executionStdIOLockAcquireLock.unlock();
 					}
+				} catch (InterruptedException e) {
+					throw ObjectUtils.sneakyThrow(e);
 				}
 			});
 		}
@@ -977,8 +992,11 @@ public final class TaskExecutionManager {
 		@Override
 		public void releaseStandardIOLock() throws TaskStandardIOLockIllegalStateException {
 			runOnUnfinished(() -> {
-				synchronized (executionStdIOLockAcquireLock) {
+				executionStdIOLockAcquireLock.lock();
+				try {
 					releaseStandardIOLockLocked();
+				} finally {
+					executionStdIOLockAcquireLock.unlock();
 				}
 			});
 		}
@@ -1004,21 +1022,24 @@ public final class TaskExecutionManager {
 		private String readTaskSecret(SecretInputReader secretreader, String titleinfo, String message, String prompt,
 				String secretidentifier) {
 			return runOnUnfinished(() -> {
-				synchronized (executionStdIOLockAcquireLock) {
-					if (acquiredExecutionStdIOLock == null) {
-						try {
+				try {
+					executionStdIOLockAcquireLock.lockInterruptibly();
+					try {
+						if (acquiredExecutionStdIOLock == null) {
 							acquireStandardIOLockLocked();
-						} catch (InterruptedException e) {
-							Thread.currentThread().interrupt();
-							return null;
+							try {
+								return secretreader.readSecret(titleinfo, message, prompt, secretidentifier);
+							} finally {
+								releaseStandardIOLockLocked();
+							}
 						}
-						try {
-							return secretreader.readSecret(titleinfo, message, prompt, secretidentifier);
-						} finally {
-							releaseStandardIOLockLocked();
-						}
+						return secretreader.readSecret(titleinfo, message, prompt, secretidentifier);
+					} finally {
+						executionStdIOLockAcquireLock.unlock();
 					}
-					return secretreader.readSecret(titleinfo, message, prompt, secretidentifier);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					return null;
 				}
 			});
 		}
@@ -1537,12 +1558,15 @@ public final class TaskExecutionManager {
 				} while (!AIFU_finishCounter.compareAndSet(this, 0, -1));
 				IOUtils.throwExc(innerexc);
 			} finally {
-				synchronized (executionStdIOLockAcquireLock) {
+				executionStdIOLockAcquireLock.lock();
+				try {
 					StandardIOLock iolock = acquiredExecutionStdIOLock;
 					if (iolock != null) {
 						SakerLog.warning().out(this).println("Standard IO lock wasn't released by task: " + taskId);
 						iolock.close();
 					}
+				} finally {
+					executionStdIOLockAcquireLock.unlock();
 				}
 				if (interrupted) {
 					Thread.currentThread().interrupt();
