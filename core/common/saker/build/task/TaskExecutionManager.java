@@ -59,6 +59,7 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import saker.build.cache.BuildCacheAccessor;
@@ -506,6 +507,11 @@ public final class TaskExecutionManager {
 		private static final AtomicReferenceFieldUpdater<TaskExecutionManager.TaskExecutorContext, BooleanLatch> ARFU_finishLatch = AtomicReferenceFieldUpdater
 				.newUpdater(TaskExecutionManager.TaskExecutorContext.class, BooleanLatch.class, "finishLatch");
 
+		//cached lambdas for less object instantiation
+		private static final Function<? super TaskExecutorContext<?>, SakerDirectory> METHOD_REFERENCE_COMPUTE_TASK_WORKING_DIRECTORY = TaskExecutorContext::computeTaskWorkingDirectory;
+		private static final Function<? super TaskExecutorContext<?>, SakerDirectory> METHOD_REFERENCE_COMPUTE_TASK_BUILD_DIRECTORY = TaskExecutorContext::computeTaskBuildDirectory;
+		private static final Function<? super ExecutionProgressMonitor, TaskProgressMonitor> METHOD_REFERENCE_EXECUTION_PROGRESS_MONITOR_START_TASK_PROGRESS = ExecutionProgressMonitor::startTaskProgress;
+
 		protected final TaskExecutionManager executionManager;
 		protected final ExecutionContextImpl executionContext;
 		protected final TaskExecutionResult<?> prevTaskResult;
@@ -602,7 +608,7 @@ public final class TaskExecutionManager {
 		private final Supplier<SakerDirectory> workingDirectorySupplier;
 		private final Supplier<SakerDirectory> buildDirectorySupplier;
 
-		private final Supplier<SecretInputReader> secretReaderSupplier;
+		private final SecretInputReader secretInputReader;
 
 		protected final ConcurrentPrependAccumulator<ManagerInnerTaskResults<?>> innerTasks = new ConcurrentPrependAccumulator<>();
 
@@ -633,21 +639,17 @@ public final class TaskExecutionManager {
 				this.taskBuildTrace.deltas(deltas.allFileDeltas.getFileDeltas());
 			}
 
-			SakerPath wdirpath = taskDirectoryContext.getTaskWorkingDirectoryPath();
-			SakerPath builddirpath = taskDirectoryContext.getRelativeTaskBuildDirectoryPath();
-
-			workingDirectorySupplier = LazySupplier.of(() -> {
-				return resolveDirectoryAtPathCreate(wdirpath);
-			});
-			buildDirectorySupplier = builddirpath == null || executionManager.buildSakerDirectory == null
-					? Functionals.nullSupplier()
-					: LazySupplier.of(() -> {
-						return resolveDirectoryAtRelativePathCreate(executionManager.buildSakerDirectory, builddirpath);
-					});
+			workingDirectorySupplier = LazySupplier.of(this, METHOD_REFERENCE_COMPUTE_TASK_WORKING_DIRECTORY);
+			if (executionManager.buildSakerDirectory == null) {
+				buildDirectorySupplier = Functionals.nullSupplier();
+			} else {
+				buildDirectorySupplier = LazySupplier.of(this, METHOD_REFERENCE_COMPUTE_TASK_BUILD_DIRECTORY);
+			}
 
 			this.prevTaskOutput = prevTaskResult == null ? null : prevTaskResult.getOutput();
 
-			this.taskProgressMonitor = LazySupplier.of(executionManager.progressMonitor::startTaskProgress);
+			this.taskProgressMonitor = LazySupplier.of(executionManager.progressMonitor,
+					METHOD_REFERENCE_EXECUTION_PROGRESS_MONITOR_START_TASK_PROGRESS);
 
 			this.identifiedStdOut = new IdentifierByteSink(stdOut, streamFlushingLock) {
 				@Override
@@ -696,17 +698,25 @@ public final class TaskExecutionManager {
 			};
 
 			SecretInputReader secretreader = executioncontext.getSecretInputReader();
-			if (secretreader == null) {
-				secretReaderSupplier = Functionals.nullSupplier();
-			} else {
-				secretReaderSupplier = LazySupplier.of(() -> new SecretInputReader() {
+			if (secretreader != null) {
+				secretInputReader = new SecretInputReader() {
 					@Override
 					public String readSecret(String titleinfo, String message, String prompt, String secretidentifier) {
 						return TaskExecutorContext.this.readTaskSecret(secretreader, titleinfo, message, prompt,
 								secretidentifier);
 					}
-				});
+				};
+			} else {
+				secretInputReader = null;
 			}
+		}
+
+		protected SakerDirectory computeTaskBuildDirectory() {
+			SakerPath builddir = this.taskDirectoryContext.getRelativeTaskBuildDirectoryPath();
+			if (builddir == null) {
+				return null;
+			}
+			return resolveDirectoryAtRelativePathCreate(executionManager.buildSakerDirectory, builddir);
 		}
 
 		protected void requireCalledOnMainThread(boolean allowinnertask) {
@@ -1028,7 +1038,7 @@ public final class TaskExecutionManager {
 
 		@Override
 		public SecretInputReader getSecretReader() {
-			return secretReaderSupplier.get();
+			return secretInputReader;
 		}
 
 		protected TaskInvocationConfiguration getCapabilityConfiguration() {
@@ -1277,6 +1287,10 @@ public final class TaskExecutionManager {
 		@Override
 		public SakerDirectory getTaskWorkingDirectory() {
 			return workingDirectorySupplier.get();
+		}
+
+		protected SakerDirectory computeTaskWorkingDirectory() {
+			return resolveDirectoryAtPathCreate(taskDirectoryContext.getTaskWorkingDirectoryPath());
 		}
 
 		@Override
