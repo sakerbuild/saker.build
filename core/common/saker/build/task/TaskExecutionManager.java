@@ -1022,25 +1022,7 @@ public final class TaskExecutionManager {
 		private String readTaskSecret(SecretInputReader secretreader, String titleinfo, String message, String prompt,
 				String secretidentifier) {
 			return runOnUnfinished(() -> {
-				try {
-					executionStdIOLockAcquireLock.lockInterruptibly();
-					try {
-						if (acquiredExecutionStdIOLock == null) {
-							acquireStandardIOLockLocked();
-							try {
-								return secretreader.readSecret(titleinfo, message, prompt, secretidentifier);
-							} finally {
-								releaseStandardIOLockLocked();
-							}
-						}
-						return secretreader.readSecret(titleinfo, message, prompt, secretidentifier);
-					} finally {
-						executionStdIOLockAcquireLock.unlock();
-					}
-				} catch (InterruptedException e) {
-					Thread.currentThread().interrupt();
-					return null;
-				}
+				return secretreader.readSecret(titleinfo, message, prompt, secretidentifier);
 			});
 		}
 
