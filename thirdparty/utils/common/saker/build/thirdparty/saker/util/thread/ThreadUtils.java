@@ -3240,11 +3240,13 @@ public class ThreadUtils {
 				}
 				throw new IllegalMonitorStateException(sb.toString());
 			}
+			//clear the exclusive owner before the state change, otherwise we could end up in
+			//an inconsistent state if someone locks right away
+			setExclusiveOwnerThread(null);
 			if (!compareAndSetState(STATE_LOCKED, STATE_AVAILABLE)) {
 				//this state CAS should always succeed, as we already checked that this thread is the lock owner
 				throw new IllegalStateException("Invalid lock state");
 			}
-			setExclusiveOwnerThread(null);
 			return true;
 		}
 
