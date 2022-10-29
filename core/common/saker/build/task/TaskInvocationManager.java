@@ -131,18 +131,17 @@ public class TaskInvocationManager implements Closeable {
 		public void doneNoMoreResults();
 	}
 
-	private SakerEnvironmentImpl environment;
-	private ExecutionContextImpl executionContext;
-	private SakerEnvironment localTesterEnvironment;
+	private final SakerEnvironmentImpl environment;
+	private final ExecutionContextImpl executionContext;
+	private final SakerEnvironment localTesterEnvironment;
+	private final LazySupplier<?> clusterStartSupplier;
+	private final Collection<? extends TaskInvokerFactory> invokerFactories;
+	private final InnerTaskInvocationManager innerTaskInvoker;
 
 	private ThreadUtils.ThreadWorkPool invokerPool;
-	private LazySupplier<?> clusterStartSupplier;
 	private Collection<TaskInvocationContextImpl> invocationContexts;
 
 	private volatile boolean closed = false;
-	private Collection<? extends TaskInvokerFactory> invokerFactories;
-
-	private InnerTaskInvocationManager innerTaskInvoker;
 
 	public TaskInvocationManager(ExecutionContextImpl executioncontext,
 			Collection<? extends TaskInvokerFactory> taskinvokerfactories, ThreadGroup clusterInteractionThreadGroup) {
@@ -229,24 +228,6 @@ public class TaskInvocationManager implements Closeable {
 			}
 		}
 		return result;
-	}
-
-	public static class TaskInvocationResult<R> {
-		private final Optional<R> result;
-		private final Throwable thrownException;
-
-		public TaskInvocationResult(Optional<R> result, Throwable thrownException) {
-			this.result = result;
-			this.thrownException = thrownException;
-		}
-
-		public Optional<R> getResult() {
-			return result;
-		}
-
-		public Throwable getThrownException() {
-			return thrownException;
-		}
 	}
 
 	public <R> TaskInvocationResult<R> invokeTaskRunning(TaskFactory<R> factory,
@@ -349,7 +330,6 @@ public class TaskInvocationManager implements Closeable {
 			TaskExecutorContext<?> taskcontext, TaskDuplicationPredicate duplicationPredicate,
 			TaskInvocationConfiguration configuration, Set<UUID> allowedenvironmentids, int maximumenvironmentfactor) {
 		ConcurrentLinkedQueue<ListenerInnerTaskInvocationHandler<R>> invocationhandles = new ConcurrentLinkedQueue<>();
-		final Object resultwaiterlock = new Object();
 		Exception invokerexceptions = null;
 		int computationtokencount = configuration.getRequestedComputationTokenCount();
 		boolean postedtolocalenv = false;
@@ -383,14 +363,16 @@ public class TaskInvocationManager implements Closeable {
 
 		//TODO handle if all the clusters fail, and throw a proper initialization exception at the right time
 
-		InvokerTaskResultsHandler<R> fut = new InvokerTaskResultsHandler<>(invocationhandles, resultwaiterlock,
-				duplicationcancellable, taskcontext);
+		final Lock resultwaiterlock = ThreadUtils.newExclusiveLock();
+		final Condition resultwaitercondition = resultwaiterlock.newCondition();
+		InvokerTaskResultsHandler<R> fut = new InvokerTaskResultsHandler<>(taskcontext, invocationhandles,
+				duplicationcancellable, resultwaiterlock, resultwaitercondition);
 
 		if (posttoenvironmentpredicate.test(environment.getEnvironmentIdentifier())) {
 			boolean hasdiffs = hasAnyEnvironmentPropertyDifferenceWithLocalEnvironment(selectionresult);
 			if (!hasdiffs) {
-				ListenerInnerTaskInvocationHandler<R> listener = new ListenerInnerTaskInvocationHandler<>(
-						resultwaiterlock, taskcontext);
+				ListenerInnerTaskInvocationHandler<R> listener = new ListenerInnerTaskInvocationHandler<>(taskcontext,
+						resultwaiterlock, resultwaitercondition);
 				try {
 					InnerTaskInvocationHandle<R> handle = innerTaskInvoker.invokeInnerTask(taskfactory, taskcontext,
 							listener, taskcontext, computationtokencount, duplicationPredicate,
@@ -415,8 +397,8 @@ public class TaskInvocationManager implements Closeable {
 				if (!posttoenvironmentpredicate.test(invocationcontext.getEnvironmentIdentifier())) {
 					continue;
 				}
-				ListenerInnerTaskInvocationHandler<R> listener = new ListenerInnerTaskInvocationHandler<>(
-						resultwaiterlock, taskcontext);
+				ListenerInnerTaskInvocationHandler<R> listener = new ListenerInnerTaskInvocationHandler<>(taskcontext,
+						resultwaiterlock, resultwaitercondition);
 				InnerClusterExecutionEventImpl<R> eventimpl = new InnerClusterExecutionEventImpl<>(invocationcontext,
 						request, listener);
 				listener.handle = eventimpl;
@@ -478,6 +460,32 @@ public class TaskInvocationManager implements Closeable {
 			} catch (Exception e) {
 				executionContext.reportIgnoredException(e);
 			}
+		}
+	}
+
+	protected static void callRMIAsyncAssert(Object obj, Method m, Object... args) {
+		try {
+			RMIVariables.invokeRemoteMethodAsyncOrLocal(obj, m, args);
+		} catch (InvocationTargetException | IllegalAccessException | IllegalArgumentException e) {
+			throw new AssertionError(e);
+		}
+	}
+
+	public static class TaskInvocationResult<R> {
+		private final Optional<R> result;
+		private final Throwable thrownException;
+
+		public TaskInvocationResult(Optional<R> result, Throwable thrownException) {
+			this.result = result;
+			this.thrownException = thrownException;
+		}
+
+		public Optional<R> getResult() {
+			return result;
+		}
+
+		public Throwable getThrownException() {
+			return thrownException;
 		}
 	}
 
@@ -1465,14 +1473,6 @@ public class TaskInvocationManager implements Closeable {
 		}
 	}
 
-	protected static void callRMIAsyncAssert(Object obj, Method m, Object... args) {
-		try {
-			RMIVariables.invokeRemoteMethodAsyncOrLocal(obj, m, args);
-		} catch (InvocationTargetException | IllegalAccessException | IllegalArgumentException e) {
-			throw new AssertionError(e);
-		}
-	}
-
 	@RMIWrap(TaskClusterExecutionEventRMIWrapper.class)
 	private static class TaskClusterExecutionEventImpl<R> implements ClusterExecutionEvent<R> {
 		private final TaskInvocationContext invocationContext;
@@ -1845,19 +1845,23 @@ public class TaskInvocationManager implements Closeable {
 	}
 
 	private static class InvokerTaskResultsHandler<R> implements InnerTaskResults<R>, ManagerInnerTaskResults<R> {
-		private ConcurrentLinkedQueue<ListenerInnerTaskInvocationHandler<R>> invocationHandles;
-		private final Object resultWaiterLock;
-		private boolean duplicationCancellable;
+		private final TaskExecutorContext<?> taskContext;
+		private final ConcurrentLinkedQueue<ListenerInnerTaskInvocationHandler<R>> invocationHandles;
+		private final Lock resultWaiterLock;
+		private final Condition resultWaiterCondition;
+		private final boolean duplicationCancellable;
+
 		private volatile boolean allClustersFailed;
 		private boolean locallyRunnable;
-		private TaskExecutorContext<?> taskContext;
 
-		public InvokerTaskResultsHandler(ConcurrentLinkedQueue<ListenerInnerTaskInvocationHandler<R>> invocationHandles,
-				Object resultwaiterlock, boolean duplicationCancellable, TaskExecutorContext<?> taskcontext) {
-			this.invocationHandles = invocationHandles;
-			this.resultWaiterLock = resultwaiterlock;
-			this.duplicationCancellable = duplicationCancellable;
+		public InvokerTaskResultsHandler(TaskExecutorContext<?> taskcontext,
+				ConcurrentLinkedQueue<ListenerInnerTaskInvocationHandler<R>> invocationHandles,
+				boolean duplicationCancellable, Lock resultwaiterlock, Condition resultWaiterCondition) {
 			this.taskContext = taskcontext;
+			this.invocationHandles = invocationHandles;
+			this.duplicationCancellable = duplicationCancellable;
+			this.resultWaiterLock = resultwaiterlock;
+			this.resultWaiterCondition = resultWaiterCondition;
 		}
 
 		public void setLocallyRunnable(boolean locallyRunnable) {
@@ -1866,8 +1870,11 @@ public class TaskInvocationManager implements Closeable {
 
 		public void allClustersFailed() {
 			allClustersFailed = true;
-			synchronized (resultWaiterLock) {
-				resultWaiterLock.notifyAll();
+			resultWaiterLock.lock();
+			try {
+				resultWaiterCondition.signalAll();
+			} finally {
+				resultWaiterLock.unlock();
 			}
 		}
 
@@ -1918,7 +1925,8 @@ public class TaskInvocationManager implements Closeable {
 				if (!availihit.hasNext()) {
 					return null;
 				}
-				synchronized (resultWaiterLock) {
+				resultWaiterLock.lockInterruptibly();
+				try {
 					boolean hadhandler = false;
 					do {
 						ListenerInnerTaskInvocationHandler<R> ih = availihit.next();
@@ -1947,9 +1955,11 @@ public class TaskInvocationManager implements Closeable {
 						}
 						//clear the iterator so it is garbage collectable while waiting
 						availihit = null;
-						resultWaiterLock.wait();
+						resultWaiterCondition.await();
 						continue;
 					}
+				} finally {
+					resultWaiterLock.unlock();
 				}
 				try {
 					InnerTaskResultHolder<R> availpresent = availih.getResultIfPresent();
@@ -2072,19 +2082,23 @@ public class TaskInvocationManager implements Closeable {
 		private static final AtomicReferenceFieldUpdater<TaskInvocationManager.ListenerInnerTaskInvocationHandler, TaskResultReadyCountState> ARFU_readyState = AtomicReferenceFieldUpdater
 				.newUpdater(TaskInvocationManager.ListenerInnerTaskInvocationHandler.class,
 						TaskResultReadyCountState.class, "readyState");
+
+		private final TaskExecutorContext<?> taskContext;
+		private final Lock resultWaiterLock;
+		private final Condition resultWaiterCondition;
+
 		private volatile TaskResultReadyCountState readyState = TaskResultReadyCountState.ZERO;
 
 		protected InnerTaskInvocationHandle<R> handle;
 		private volatile boolean ended;
 
-		private final Object resultWaiterLock;
-		private final TaskExecutorContext<?> taskContext;
-
 		private final Set<InnerTaskInstanceInvocationHandleImpl> startedTaskInvocations = ConcurrentHashMap.newKeySet();
 
-		public ListenerInnerTaskInvocationHandler(Object resultWaiterLock, TaskExecutorContext<?> taskcontext) {
-			this.resultWaiterLock = resultWaiterLock;
+		public ListenerInnerTaskInvocationHandler(TaskExecutorContext<?> taskcontext, Lock resultWaiterLock,
+				Condition resultWaiterCondition) {
 			this.taskContext = taskcontext;
+			this.resultWaiterLock = resultWaiterLock;
+			this.resultWaiterCondition = resultWaiterCondition;
 		}
 
 		public void oneDone(InnerTaskInstanceInvocationHandleImpl handle) {
@@ -2171,34 +2185,43 @@ public class TaskInvocationManager implements Closeable {
 
 		private void notifyResultReadyImpl(boolean lastresult) {
 			ARFU_readyState.updateAndGet(this, TaskResultReadyCountState::addReady);
-			synchronized (resultWaiterLock) {
+			resultWaiterLock.lock();
+			try {
 				if (lastresult) {
 					//set the ended flag in the lock
 					ended = true;
-					resultWaiterLock.notifyAll();
+					resultWaiterCondition.signalAll();
 				} else {
 					if (ended) {
 						//there might be scenarios when the "no more result" notification arrives before the 
 						// "result ready" notification. in this case we need to notify all
-						resultWaiterLock.notifyAll();
+						resultWaiterCondition.signalAll();
 					} else {
-						resultWaiterLock.notify();
+						resultWaiterCondition.signal();
 					}
 				}
+			} finally {
+				resultWaiterLock.unlock();
 			}
 		}
 
 		@Override
 		public void notifyNoMoreResults() {
-			synchronized (resultWaiterLock) {
+			resultWaiterLock.lock();
+			try {
 				ended = true;
-				resultWaiterLock.notifyAll();
+				resultWaiterCondition.signalAll();
+			} finally {
+				resultWaiterLock.unlock();
 			}
 		}
 
 		public void notifyStateChange() {
-			synchronized (resultWaiterLock) {
-				resultWaiterLock.notifyAll();
+			resultWaiterLock.lock();
+			try {
+				resultWaiterCondition.signalAll();
+			} finally {
+				resultWaiterLock.unlock();
 			}
 		}
 
@@ -2253,9 +2276,12 @@ public class TaskInvocationManager implements Closeable {
 				}
 				continue;
 			}
-			synchronized (resultWaiterLock) {
+			resultWaiterLock.lock();
+			try {
 				this.ended = true;
-				resultWaiterLock.notifyAll();
+				resultWaiterCondition.signalAll();
+			} finally {
+				resultWaiterLock.unlock();
 			}
 		}
 
