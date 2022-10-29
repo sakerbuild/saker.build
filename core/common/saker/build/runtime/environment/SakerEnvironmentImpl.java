@@ -43,6 +43,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -121,7 +122,8 @@ public final class SakerEnvironmentImpl implements Closeable {
 	private SakerDataCache dataCache;
 
 	private volatile boolean closed = false;
-	private final Lock runningExecutionsLock = ThreadUtils.newExclusiveLock();
+	//this Lock should be reentrant, as some closing mechanisms may be reentrant (SakerProjectCache - SakerExecutionCache)
+	private final Lock runningExecutionsLock = new ReentrantLock();
 	private final Condition runningExecutionsEmptyCondition = runningExecutionsLock.newCondition();
 	/**
 	 * Access while locked on {@link #runningExecutionsLock}.
