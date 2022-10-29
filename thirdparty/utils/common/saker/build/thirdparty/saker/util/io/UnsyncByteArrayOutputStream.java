@@ -180,7 +180,7 @@ public class UnsyncByteArrayOutputStream extends OutputStream implements ByteSin
 	 *             If the byte source is <code>null</code>.
 	 * @since saker.util 0.8.2
 	 */
-	public int readFrom(ByteSource in, int count) throws IOException {
+	public int readFrom(ByteSource in, int count) throws IOException, NullPointerException {
 		Objects.requireNonNull(in, "in");
 		if (count <= 0) {
 			return 0;

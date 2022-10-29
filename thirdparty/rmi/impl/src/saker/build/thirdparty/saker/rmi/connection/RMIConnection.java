@@ -901,7 +901,7 @@ public final class RMIConnection implements AutoCloseable {
 		});
 	}
 
-	public static void clearContextClassLoaderOfCurrentThread() {
+	protected static void clearContextClassLoaderOfCurrentThread() {
 		try {
 			Thread.currentThread().setContextClassLoader(null);
 		} catch (UnsupportedOperationException e) {

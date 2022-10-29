@@ -174,8 +174,6 @@ public class RMIServer implements AutoCloseable {
 	 * Returns the address of the endpoint this server socket is bound to.
 	 * 
 	 * @return The socket address.
-	 * @throws IllegalStateException
-	 *             If the RMI server was already started previously.
 	 * @see ServerSocket#getLocalSocketAddress()
 	 */
 	public final SocketAddress getLocalSocketAddress() {
@@ -186,6 +184,9 @@ public class RMIServer implements AutoCloseable {
 	 * Starts the accepting of connections on a separate thread.
 	 * <p>
 	 * This method is the same as calling {@link #start(ThreadGroup)} with <code>null</code> thread group.
+	 * 
+	 * @throws IllegalStateException
+	 *             If the RMI server was already started previously.
 	 */
 	public final void start() throws IllegalStateException {
 		start((ThreadGroup) null);
