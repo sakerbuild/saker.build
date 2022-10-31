@@ -226,22 +226,6 @@ class ProxyGenerator {
 				}
 				continue;
 			}
-			if (forbidden) {
-				MethodVisitor mrefv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, key.name, key.descriptor,
-						null, null);
-				mrefv.visitCode();
-
-				mrefv.visitFieldInsn(Opcodes.GETSTATIC, thisclassinternalname, methodfieldname,
-						METHODTRANSFERROPERTIES_DESCRIPTOR);
-				mrefv.visitMethodInsn(Opcodes.INVOKESTATIC, REMOTEPROXYOBJECT_INTERNAL_NAME,
-						"forbiddenThrowableInternal",
-						"(" + METHODTRANSFERROPERTIES_DESCRIPTOR + ")" + JAVA_LANG_THROWABLE_DESCRIPTOR, false);
-				mrefv.visitInsn(Opcodes.ATHROW);
-
-				mrefv.visitMaxs(0, 0);
-				mrefv.visitEnd();
-				continue;
-			}
 
 			MethodVisitor mw = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, key.name, key.descriptor, null,
 					null);
@@ -255,42 +239,53 @@ class ProxyGenerator {
 					REMOTEINVOCATIONRMIFAILUREEXCEPTION_INTERNAL_NAME);
 			mw.visitLabel(rmibodystart);
 
-			if (cacheresult) {
-				mw.visitVarInsn(Opcodes.ALOAD, 0);
-				mw.visitFieldInsn(Opcodes.GETFIELD, thisclassinternalname, cachefieldname, cachehelperfielddescriptor);
-				mw.visitInsn(Opcodes.DUP);
-				mw.visitVarInsn(Opcodes.ASTORE, 1);
-				mw.visitTypeInsn(Opcodes.INSTANCEOF, RMICACHEHELPER_INTERNAL_NAME);
-				Label resultreadylabel = new Label();
-				mw.visitJumpInsn(Opcodes.IFEQ, resultreadylabel);
-
-				mw.visitVarInsn(Opcodes.ALOAD, 1);
-				mw.visitTypeInsn(Opcodes.CHECKCAST, RMICACHEHELPER_INTERNAL_NAME);
-				loadCallInvokerMethodInstructionParameters(mw, thisclassinternalname, methodfieldname, key);
-				String methoddescriptor;
-				if (collectstatistics) {
-					mw.visitFieldInsn(Opcodes.GETSTATIC, markerclassinternalname,
-							PROXY_MARKER_RMI_STATISTICS_FIELD_NAME, RMISTATISTICS_DESCRIPTOR);
-					methoddescriptor = "(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
-							+ "[Ljava/lang/Object;" + RMISTATISTICS_DESCRIPTOR + ")Ljava/lang/Object;";
-				} else {
-					methoddescriptor = "(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
-							+ "[Ljava/lang/Object;)Ljava/lang/Object;";
-				}
-				mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, RMICACHEHELPER_INTERNAL_NAME, "call", methoddescriptor,
-						false);
-				mw.visitInsn(Opcodes.DUP);
-				mw.visitVarInsn(Opcodes.ALOAD, 0);
-				mw.visitInsn(Opcodes.SWAP);
-				mw.visitFieldInsn(Opcodes.PUTFIELD, thisclassinternalname, cachefieldname, cachehelperfielddescriptor);
-				writeObjectReturnInstructions(mw, mr);
-
-				mw.visitLabel(resultreadylabel);
-				mw.visitVarInsn(Opcodes.ALOAD, 1);
-				writeObjectReturnInstructions(mw, mr);
+			if (forbidden) {
+				mw.visitFieldInsn(Opcodes.GETSTATIC, thisclassinternalname, methodfieldname,
+						METHODTRANSFERROPERTIES_DESCRIPTOR);
+				mw.visitMethodInsn(Opcodes.INVOKESTATIC, REMOTEPROXYOBJECT_INTERNAL_NAME, "forbiddenThrowableInternal",
+						"(" + METHODTRANSFERROPERTIES_DESCRIPTOR + ")" + JAVA_LANG_THROWABLE_DESCRIPTOR, false);
+				mw.visitInsn(Opcodes.ATHROW);
 			} else {
-				writeCallInvokerMethodReturnInstructions(mw, thisclassinternalname, methodfieldname, mr, key,
-						"callMethodInternal", collectstatistics, markerclassinternalname);
+				//the method call is not forbidden
+				if (cacheresult) {
+					mw.visitVarInsn(Opcodes.ALOAD, 0);
+					mw.visitFieldInsn(Opcodes.GETFIELD, thisclassinternalname, cachefieldname,
+							cachehelperfielddescriptor);
+					mw.visitInsn(Opcodes.DUP);
+					mw.visitVarInsn(Opcodes.ASTORE, 1);
+					mw.visitTypeInsn(Opcodes.INSTANCEOF, RMICACHEHELPER_INTERNAL_NAME);
+					Label resultreadylabel = new Label();
+					mw.visitJumpInsn(Opcodes.IFEQ, resultreadylabel);
+
+					mw.visitVarInsn(Opcodes.ALOAD, 1);
+					mw.visitTypeInsn(Opcodes.CHECKCAST, RMICACHEHELPER_INTERNAL_NAME);
+					loadCallInvokerMethodInstructionParameters(mw, thisclassinternalname, methodfieldname, key);
+					String methoddescriptor;
+					if (collectstatistics) {
+						mw.visitFieldInsn(Opcodes.GETSTATIC, markerclassinternalname,
+								PROXY_MARKER_RMI_STATISTICS_FIELD_NAME, RMISTATISTICS_DESCRIPTOR);
+						methoddescriptor = "(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
+								+ "[Ljava/lang/Object;" + RMISTATISTICS_DESCRIPTOR + ")Ljava/lang/Object;";
+					} else {
+						methoddescriptor = "(" + REMOTEPROXYOBJECT_DESCRIPTOR + METHODTRANSFERROPERTIES_DESCRIPTOR
+								+ "[Ljava/lang/Object;)Ljava/lang/Object;";
+					}
+					mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, RMICACHEHELPER_INTERNAL_NAME, "call", methoddescriptor,
+							false);
+					mw.visitInsn(Opcodes.DUP);
+					mw.visitVarInsn(Opcodes.ALOAD, 0);
+					mw.visitInsn(Opcodes.SWAP);
+					mw.visitFieldInsn(Opcodes.PUTFIELD, thisclassinternalname, cachefieldname,
+							cachehelperfielddescriptor);
+					writeObjectReturnInstructions(mw, mr);
+
+					mw.visitLabel(resultreadylabel);
+					mw.visitVarInsn(Opcodes.ALOAD, 1);
+					writeObjectReturnInstructions(mw, mr);
+				} else {
+					writeCallInvokerMethodReturnInstructions(mw, thisclassinternalname, methodfieldname, mr, key,
+							"callMethodInternal", collectstatistics, markerclassinternalname);
+				}
 			}
 
 			mw.visitLabel(rmibodyend);
@@ -298,12 +293,12 @@ class ProxyGenerator {
 
 			int excvarnum = getMethodVariableSlot(mr.key.argTypes);
 
-			mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, Type.getInternalName(Throwable.class), "getCause",
+			mw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, THROWABLE_INTERNAL_NAME, "getCause",
 					"()" + JAVA_LANG_THROWABLE_DESCRIPTOR, false);
 
 			//used for debugging only
 //			mrefv.visitInsn(DUP);
-//			mrefv.visitMethodInsn(INVOKEVIRTUAL, Type.getInternalName(Throwable.class), "printStackTrace", "()V", false);
+//			mrefv.visitMethodInsn(INVOKEVIRTUAL, THROWABLE_INTERNAL_NAME, "printStackTrace", "()V", false);
 
 			if (defaultonfailure) {
 				mw.visitVarInsn(Opcodes.ASTORE, excvarnum);

@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import saker.build.thirdparty.saker.rmi.exception.RMICallFailedException;
 import saker.build.thirdparty.saker.rmi.exception.RMICallForbiddenException;
+import saker.build.thirdparty.saker.rmi.exception.RMIContextVariableNotFoundException;
 import saker.build.thirdparty.saker.rmi.exception.RMIIOFailureException;
 import saker.build.thirdparty.saker.rmi.exception.RMIObjectTransferFailureException;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
@@ -250,6 +251,9 @@ public class RMIVariables implements AutoCloseable {
 	 * <p>
 	 * The remote variable is always retrieved as a remote proxy. No exceptions to this, transfer properties are not
 	 * taken into account.
+	 * <p>
+	 * The {@link RMIVariables} instance doesn't cache the remote context variables by name. This function will always
+	 * make a request to the remote endpoint to get the variable.
 	 * 
 	 * @param variablename
 	 *            The name of the variable.
@@ -264,6 +268,95 @@ public class RMIVariables implements AutoCloseable {
 			return stream.getRemoteContextVariable(this, variablename);
 		} catch (IOException e) {
 			throw new RMIIOFailureException(e);
+		} finally {
+			removeOngoingRequest();
+		}
+	}
+
+	/**
+	 * Invokes the given method on the remote context variable with the specified name.
+	 * <p>
+	 * The method will invoke a remote method on the given {@linkplain #getRemoteContextVariable(String) context
+	 * variable}. The advantage of this is that it can be done in a single rather than first retrieving the variable
+	 * using {@link #getRemoteContextVariable(String)} and later calling the method, which would require two request to
+	 * the other endpoint.
+	 * <p>
+	 * In addition, this method will not take the behavioural configuration of the given method into account. That is,
+	 * only the object transfer properties from the method configuration are relevant. <br>
+	 * {@linkplain MethodTransferProperties#isDefaultOnFailure() Default implementations} are not called,
+	 * {@linkplain MethodTransferProperties#getRedirectMethod() method redirections} are not invoked, call results are
+	 * not {@linkplain MethodTransferProperties#isCacheResult() cached}, and exceptions are not
+	 * {@linkplain MethodTransferProperties#getRMIExceptionRethrowConstructor() rethrown}. The method is not checked if
+	 * it is {@linkplain MethodTransferProperties#isForbidden() forbidden}, and will be called remotely regardless.
+	 * 
+	 * @param variablename
+	 *            The name of the variable.
+	 * @param method
+	 *            The method to call.
+	 * @param arguments
+	 *            The arguments to pass to the invoked method.
+	 * @return The result of the invocation.
+	 * @throws RMIRuntimeException
+	 *             If the RMI call failed.
+	 * @throws InvocationTargetException
+	 *             If the method threw an exception.
+	 * @throws RMIContextVariableNotFoundException
+	 *             If the context variable with the given name was not found on the other endpoint
+	 * @see #invokeContextVariableMethod(String, MethodTransferProperties, Object...)
+	 * @since saker.rmi 0.8.3
+	 */
+	public Object invokeContextVariableMethod(String variablename, Method method, Object... arguments)
+			throws RMIRuntimeException, InvocationTargetException, RMIContextVariableNotFoundException {
+		return invokeContextVariableMethod(variablename, getPropertiesCheckClosed().getExecutableProperties(method),
+				arguments);
+	}
+
+	/**
+	 * Invokes the given method on the remote context variable with the specified name.
+	 * <p>
+	 * The method will invoke a remote method on the given {@linkplain #getRemoteContextVariable(String) context
+	 * variable}. The advantage of this is that it can be done in a single rather than first retrieving the variable
+	 * using {@link #getRemoteContextVariable(String)} and later calling the method, which would require two request to
+	 * the other endpoint.
+	 * <p>
+	 * In addition, this method will not take the behavioural configuration of the given method into account. That is,
+	 * only the object transfer properties from the method configuration are relevant. <br>
+	 * {@linkplain MethodTransferProperties#isDefaultOnFailure() Default implementations} are not called,
+	 * {@linkplain MethodTransferProperties#getRedirectMethod() method redirections} are not invoked, call results are
+	 * not {@linkplain MethodTransferProperties#isCacheResult() cached}, and exceptions are not
+	 * {@linkplain MethodTransferProperties#getRMIExceptionRethrowConstructor() rethrown}. The method is not checked if
+	 * it is {@linkplain MethodTransferProperties#isForbidden() forbidden}, and will be called remotely regardless.
+	 * 
+	 * @param variablename
+	 *            The name of the variable.
+	 * @param method
+	 *            The method to call.
+	 * @param arguments
+	 *            The arguments to pass to the invoked method.
+	 * @return The result of the invocation.
+	 * @throws RMIRuntimeException
+	 *             If the RMI call failed.
+	 * @throws InvocationTargetException
+	 *             If the method threw an exception.
+	 * @throws RMIContextVariableNotFoundException
+	 *             If the context variable with the given name was not found on the other endpoint
+	 * @since saker.rmi 0.8.3
+	 */
+	public Object invokeContextVariableMethod(String variablename, MethodTransferProperties method, Object... arguments)
+			throws RMIRuntimeException, InvocationTargetException, RMIContextVariableNotFoundException {
+		if (connection.getProtocolVersion() < RMIConnection.PROTOCOL_VERSION_2) {
+			//fallback method for earlier protocol versions
+			Object variable = getRemoteContextVariable(variablename);
+			if (variable == null) {
+				throw new RMIContextVariableNotFoundException(variablename);
+			}
+			RemoteProxyObject remoteproxyobj = (RemoteProxyObject) variable;
+			return invokeAllowedNonRedirectMethod(remoteproxyobj.remoteId, method, arguments);
+		}
+
+		addOngoingRequest();
+		try {
+			return stream.callContextVariableMethod(this, variablename, method, arguments);
 		} finally {
 			removeOngoingRequest();
 		}
