@@ -872,7 +872,10 @@ public interface TaskContext extends TaskResultResolver, TaskDirectoryContext, T
 	 * <p>
 	 * The display identifier is not prepended to the lines of this output. The contents written to standard err will
 	 * not be replayed when the task is not rerun due to no deltas.
-	 * 
+	 * <p>
+	 * The returned sink is not thread-safe, the caller must ensure proper synchronization, otherwise bytes written to
+	 * the sink may be lost, or scrambled.
+	 *
 	 * @return The standard error for this task.
 	 */
 	@RMICacheResult
