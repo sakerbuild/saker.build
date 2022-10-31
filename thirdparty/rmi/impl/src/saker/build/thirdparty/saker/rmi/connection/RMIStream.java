@@ -23,6 +23,7 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InvalidClassException;
+import java.io.InvalidObjectException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamClass;
@@ -80,7 +81,6 @@ import saker.build.thirdparty.saker.util.io.StreamPair;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncBufferedInputStream;
 import saker.build.thirdparty.saker.util.io.function.IOBiConsumer;
-import saker.build.thirdparty.saker.util.io.function.IOTriFunction;
 import saker.build.thirdparty.saker.util.ref.StrongSoftReference;
 
 // suppress the warnings of unused resource in try-with-resource body
@@ -153,7 +153,11 @@ final class RMIStream implements Closeable {
 	private static final short OBJECT_CHAR_ARRAY = 27;
 	private static final short OBJECT_CLASSLOADER = 28;
 	private static final short OBJECT_FIELD = 29;
-	private static final short OBJECT_READER_END_VALUE = 30;
+	//since protocol version 2
+	private static final short OBJECT_WRAPPER2 = 30;
+	private static final short OBJECT_SERIALIZED2 = 31;
+
+	private static final short OBJECT_READER_END_VALUE = 32;
 
 	private static final short CLASS_DETAILS = 0;
 	private static final short CLASS_INDEX = 1;
@@ -171,11 +175,14 @@ final class RMIStream implements Closeable {
 	private static final short FIELD_DETAILS = 0;
 	private static final short FIELD_INDEX = 1;
 
+	interface RMIObjectReaderFunction<T> {
+		public T readObject(RMIStream stream, RMIVariables vars, DataInputUnsyncByteArrayInputStream input)
+				throws IOException, ClassNotFoundException;
+	}
+
 	//package private so testcases can access and override it if necessary
-	@SuppressWarnings({ "unchecked", "rawtypes" })
-	static final IOTriFunction<RMIStream, RMIVariables, DataInputUnsyncByteArrayInputStream, Object>[] OBJECT_READERS = new IOTriFunction[OBJECT_READER_END_VALUE];
-	private static final IOTriFunction<RMIStream, RMIVariables, DataInputUnsyncByteArrayInputStream, Object> OBJECT_READER_UNKNOWN = (
-			s, vars, in) -> {
+	static final RMIObjectReaderFunction<?>[] OBJECT_READERS = new RMIObjectReaderFunction<?>[OBJECT_READER_END_VALUE];
+	private static final RMIObjectReaderFunction<?> OBJECT_READER_UNKNOWN = (s, vars, in) -> {
 		throw new RMICallFailedException("Unknown object type.");
 	};
 	static {
@@ -199,6 +206,8 @@ final class RMIStream implements Closeable {
 		OBJECT_READERS[OBJECT_CONSTRUCTOR] = (s, vars, in) -> s.readConstructor(in);
 		OBJECT_READERS[OBJECT_SERIALIZED] = (s, vars, in) -> s.readSerializedObject(in);
 		OBJECT_READERS[OBJECT_WRAPPER] = RMIStream::readWrappedObject;
+		OBJECT_READERS[OBJECT_WRAPPER2] = RMIStream::readWrapped2Object;
+		OBJECT_READERS[OBJECT_SERIALIZED2] = (s, vars, in) -> s.readSerialized2Object(in);
 
 		OBJECT_READERS[OBJECT_BYTE_ARRAY] = (s, vars, in) -> readObjectByteArray(in);
 		OBJECT_READERS[OBJECT_SHORT_ARRAY] = (s, vars, in) -> readObjectShortArray(in);
@@ -270,7 +279,6 @@ final class RMIStream implements Closeable {
 	}
 
 	//package private so testcases can access and override it if necessary
-	@SuppressWarnings({ "unchecked", "rawtypes" })
 	static final CommandHandler[] COMMAND_HANDLERS = new CommandHandler[COMMAND_END_VALUE];
 	static {
 		COMMAND_HANDLERS[COMMAND_NEWINSTANCE] = (GarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstance;
@@ -1162,11 +1170,7 @@ final class RMIStream implements Closeable {
 			simplewriter.accept(out, obj);
 			return true;
 		}
-		RMITransferPropertiesHolder properties = variables.getProperties();
-		if (properties == null) {
-			//variables close check just in case it gets closed meanwhile
-			throw new RMIObjectTransferFailureException("RMI variables is no longer available.");
-		}
+		RMITransferPropertiesHolder properties = variables.getPropertiesCheckClosed();
 		ClassTransferProperties<?> objclassproperties = properties.getClassProperties(objclass);
 		if (objclassproperties != null) {
 			RMIObjectWriteHandler writehandler = objclassproperties.getWriteHandler();
@@ -1195,8 +1199,10 @@ final class RMIStream implements Closeable {
 		try {
 			array = (Object[]) obj;
 		} catch (ClassCastException e) {
-			throw new RMIObjectTransferFailureException(
-					"Failed to cast object to array. (" + obj.getClass() + ":" + obj + ")", e);
+			InvalidObjectException te = new InvalidObjectException(
+					"Failed to cast object to array. (" + obj.getClass() + ":" + obj + ")");
+			te.initCause(e);
+			throw te;
 		}
 		writeObjectObjectArrayImpl(variables, out, componenttype, array, componentwriter);
 	}
@@ -1437,37 +1443,73 @@ final class RMIStream implements Closeable {
 		try {
 			en = (Enum<?>) obj;
 		} catch (ClassCastException e) {
-			throw new RMIObjectTransferFailureException(
-					"Failed to cast object to Enum. (" + obj.getClass() + ":" + obj + ")", e);
+			InvalidObjectException te = new InvalidObjectException(
+					"Failed to cast object to Enum. (" + obj.getClass() + ":" + obj + ")");
+			te.initCause(e);
+			throw te;
 		}
 		writeObjectEnum(out, en);
 	}
 
-	private void writeSerializedObject(Object obj, DataOutputUnsyncByteArrayOutputStream out) {
+	private void writeSerializedObject(Object obj, DataOutputUnsyncByteArrayOutputStream out) throws IOException {
 		Class<? extends Object> objclass = obj.getClass();
 		if (ReflectUtils.isEnumOrEnumAnonymous(objclass)) {
 			writeObjectEnumImpl(out, objclass, ((Enum<?>) obj).name());
 			return;
 		}
-		out.writeShort(OBJECT_SERIALIZED);
-		try (ObjectOutputStream oos = new RMISerializeObjectOutputStream(out, connection)) {
-			oos.writeObject(obj);
-		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-				| ServiceConfigurationError e) {
-			throw new RMIObjectTransferFailureException(
-					"Failed to transfer object as serializable. (" + obj.getClass() + ":" + obj + ")", e);
+
+		if (connection.getProtocolVersion() >= RMIConnection.PROTOCOL_VERSION_2) {
+			//protocol includes the number of bytes written
+			out.writeShort(OBJECT_SERIALIZED2);
+
+			int sizeoffset = out.size();
+			out.writeInt(0);
+			try {
+				try (ObjectOutputStream oos = new RMISerializeObjectOutputStream(out, connection)) {
+					oos.writeObject(obj);
+				}
+			} finally {
+				out.replaceInt(out.size() - sizeoffset - 4, sizeoffset);
+			}
+		} else {
+			out.writeShort(OBJECT_SERIALIZED);
+			try (ObjectOutputStream oos = new RMISerializeObjectOutputStream(out, connection)) {
+				oos.writeObject(obj);
+			}
 		}
 	}
 
-	private Object readSerializedObject(DataInputUnsyncByteArrayInputStream in) {
+	private Object readSerializedObject(DataInputUnsyncByteArrayInputStream in)
+			throws IOException, ClassNotFoundException {
 		//TODO handle serialization security-wise
 		try (ObjectInputStream ois = new RMISerializeObjectInputStream(StreamUtils.closeProtectedInputStream(in),
 				connection)) {
 			return ois.readObject();
-		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-				| ServiceConfigurationError e) {
-			throw new RMIObjectTransferFailureException("Failed to read serializable object.", e);
 		}
+	}
+
+	private Object readSerialized2Object(DataInputUnsyncByteArrayInputStream in)
+			throws IOException, ClassNotFoundException {
+		//TODO handle serialization security-wise
+		int bytecount = in.readInt();
+		ByteArrayRegion inregion = in.toByteArrayRegion();
+		DataInputUnsyncByteArrayInputStream limitreader = new DataInputUnsyncByteArrayInputStream(inregion.getArray(),
+				inregion.getOffset(), bytecount);
+		//skip the bytes after constructing the reader for the externalizable
+		in.skipBytes(bytecount);
+
+		Object result;
+		try (ObjectInputStream ois = new RMISerializeObjectInputStream(limitreader, connection)) {
+			result = ois.readObject();
+		}
+		if (connection.isObjectTransferByteChecks()) {
+			int avail = limitreader.available();
+			if (avail > 0) {
+				throw new RMIObjectTransferFailureException("Serializable stream wasn't read fully by "
+						+ ObjectUtils.classNameOf(result) + ". (Remaining " + avail + " bytes)");
+			}
+		}
+		return result;
 	}
 
 	private RMIObjectInput getObjectInputForVariables(RMIVariables variables, DataInputUnsyncByteArrayInputStream in) {
@@ -1502,7 +1544,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private boolean writeExternalizableObject(RMIVariables variables, Object obj,
-			DataOutputUnsyncByteArrayOutputStream out) {
+			DataOutputUnsyncByteArrayOutputStream out) throws IOException {
 		if (obj instanceof Externalizable) {
 			out.writeShort(OBJECT_EXTERNALIZABLE);
 			Class<?> clazz = obj.getClass();
@@ -1511,59 +1553,58 @@ final class RMIStream implements Closeable {
 			out.writeInt(0);
 			try {
 				((Externalizable) obj).writeExternal(new RMIObjectOutputImpl(variables, this, out));
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				throw new RMIObjectTransferFailureException(
-						"Failed to transfer object as externalizable. (" + obj.getClass() + ":" + obj + ")", e);
+			} finally {
+				out.replaceInt(out.size() - sizeoffset - 4, sizeoffset);
 			}
-			out.replaceInt(out.size() - sizeoffset - 4, sizeoffset);
 			return true;
 		}
 		return false;
 	}
 
 	private Object readExternalizableObject(RMIVariables variables, DataInputUnsyncByteArrayInputStream in)
-			throws IOException {
+			throws IOException, ClassNotFoundException {
 		Class<?> clazz = readClass(in).get(connection);
+		Externalizable instance;
 		try {
-			Externalizable instance;
-			try {
-				//cast down to externalizable, to avoid malicious client instantiating other kinds of classes
-				instance = ReflectUtils.newInstance(clazz.asSubclass(Externalizable.class));
-			} catch (NoSuchMethodException e) {
-				InvalidClassException te = new InvalidClassException(clazz.getName(), "no valid constructor");
-				te.initCause(e);
-				throw te;
-			} catch (ClassCastException e) {
-				InvalidClassException te = new InvalidClassException(clazz.getName(), "not externalizable");
-				te.initCause(e);
-				throw te;
-			}
-			int bytecount = in.readInt();
-			try {
-				ByteArrayRegion inregion = in.toByteArrayRegion();
-				DataInputUnsyncByteArrayInputStream limitreader = new DataInputUnsyncByteArrayInputStream(
-						inregion.getArray(), inregion.getOffset(), bytecount);
-				instance.readExternal(getObjectInputForVariables(variables, limitreader));
-				int avail = limitreader.available();
-				if (avail > 0) {
-					throw new RMIObjectTransferFailureException("Externalizable " + clazz.getName()
-							+ " didn't read input fully. (Remaining " + avail + " bytes)");
-				}
-				in.skipBytes(bytecount);
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				throw new RMIObjectTransferFailureException("Failed to read externalizable. (" + clazz + ")", e);
-			}
-			return instance;
+			//cast down to externalizable, to avoid malicious client instantiating other kinds of classes
+			instance = ReflectUtils.newInstance(clazz.asSubclass(Externalizable.class));
+		} catch (NoSuchMethodException e) {
+			InvalidClassException te = new InvalidClassException(clazz.getName(), "no valid constructor");
+			te.initCause(e);
+			throw te;
+		} catch (ClassCastException e) {
+			InvalidClassException te = new InvalidClassException(clazz.getName(), "class is not Externalizable");
+			te.initCause(e);
+			throw te;
 		} catch (InvocationTargetException e) {
-			throw new RMIObjectTransferFailureException(e.getTargetException());
-		} catch (InstantiationException | IllegalAccessException | IllegalArgumentException | SecurityException e) {
-			throw new RMIObjectTransferFailureException(e);
+			InvalidClassException te = new InvalidClassException(clazz.getName(), "failed to invoke constructor");
+			te.initCause(e.getCause());
+			throw te;
+		} catch (Exception e) {
+			InvalidClassException te = new InvalidClassException(clazz.getName(), "failed to invoke constructor");
+			te.initCause(e);
+			throw te;
 		}
+		int bytecount = in.readInt();
+		ByteArrayRegion inregion = in.toByteArrayRegion();
+		DataInputUnsyncByteArrayInputStream limitreader = new DataInputUnsyncByteArrayInputStream(inregion.getArray(),
+				inregion.getOffset(), bytecount);
+		//skip the bytes after constructing the reader for the externalizable
+		in.skipBytes(bytecount);
+
+		instance.readExternal(getObjectInputForVariables(variables, limitreader));
+		if (connection.isObjectTransferByteChecks()) {
+			int avail = limitreader.available();
+			if (avail > 0) {
+				throw new RMIObjectTransferFailureException("Externalizable " + clazz.getName()
+						+ " didn't read input fully. (Remaining " + avail + " bytes)");
+			}
+		}
+		return instance;
 	}
 
-	private Object readObjectArray(RMIVariables vars, DataInputUnsyncByteArrayInputStream in) throws IOException {
+	private Object readObjectArray(RMIVariables vars, DataInputUnsyncByteArrayInputStream in)
+			throws IOException, ClassNotFoundException {
 		Class<?> component = this.readClass(in).get(connection);
 		int len = in.readInt();
 		Object array = Array.newInstance(component, len);
@@ -1574,7 +1615,7 @@ final class RMIStream implements Closeable {
 		return array;
 	}
 
-	private Object readEnum(DataInputUnsyncByteArrayInputStream in) throws IOException {
+	private Object readEnum(DataInputUnsyncByteArrayInputStream in) throws IOException, ClassNotFoundException {
 		@SuppressWarnings("rawtypes")
 		Class enumtype = this.readClass(in).get(connection);
 		@SuppressWarnings({ "rawtypes", "unchecked" })
@@ -1582,9 +1623,10 @@ final class RMIStream implements Closeable {
 		return result;
 	}
 
-	Object readObject(RMIVariables vars, DataInputUnsyncByteArrayInputStream in) throws IOException {
+	Object readObject(RMIVariables vars, DataInputUnsyncByteArrayInputStream in)
+			throws IOException, ClassNotFoundException {
 		short type = in.readShort();
-		IOTriFunction<RMIStream, RMIVariables, DataInputUnsyncByteArrayInputStream, Object> reader;
+		RMIObjectReaderFunction<?> reader;
 		try {
 			reader = OBJECT_READERS[type];
 		} catch (ArrayIndexOutOfBoundsException e) {
@@ -1592,7 +1634,7 @@ final class RMIStream implements Closeable {
 			// so its probably more efficient (?) to handle in a try-catch, than by using an if-else
 			reader = OBJECT_READER_UNKNOWN;
 		}
-		return reader.accept(this, vars, in);
+		return reader.readObject(this, vars, in);
 	}
 
 	private void writeClass(Class<?> clazz, DataOutputUnsyncByteArrayOutputStream out) {
@@ -1791,7 +1833,7 @@ final class RMIStream implements Closeable {
 			try {
 				Class<?> c = cres.get(connection);
 				result.add(c);
-			} catch (RMIObjectTransferFailureException e) {
+			} catch (ClassNotFoundException e) {
 				if (partialexc == null) {
 					partialexc = new ClassSetPartiallyReadException(result);
 				} else {
@@ -1825,7 +1867,8 @@ final class RMIStream implements Closeable {
 		writeConstructorData(constructorres, out);
 	}
 
-	private Constructor<?> readConstructor(DataInputUnsyncByteArrayInputStream in) throws IOException {
+	private Constructor<?> readConstructor(DataInputUnsyncByteArrayInputStream in)
+			throws IOException, ClassNotFoundException {
 		RMICommCache<ConstructorReflectionElementSupplier> cache = commConstructors;
 		short cmd = in.readShort();
 		switch (cmd) {
@@ -1878,7 +1921,8 @@ final class RMIStream implements Closeable {
 		writeFieldData(fres, out);
 	}
 
-	private Field readField(DataInputUnsyncByteArrayInputStream in, Object relativeobject) throws IOException {
+	private Field readField(DataInputUnsyncByteArrayInputStream in, Object relativeobject)
+			throws IOException, ClassNotFoundException {
 		RMICommCache<FieldReflectionElementSupplier> cache = commFields;
 		short cmd = in.readShort();
 		switch (cmd) {
@@ -1959,7 +2003,8 @@ final class RMIStream implements Closeable {
 		writeMethodData(methodres, out);
 	}
 
-	private Method readMethod(DataInputUnsyncByteArrayInputStream in, Object relativeobject) throws IOException {
+	private Method readMethod(DataInputUnsyncByteArrayInputStream in, Object relativeobject)
+			throws IOException, ClassNotFoundException {
 		RMICommCache<MethodReflectionElementSupplier> cache = commMethods;
 		short cmd = in.readShort();
 		switch (cmd) {
@@ -2034,23 +2079,62 @@ final class RMIStream implements Closeable {
 	}
 
 	private Object readWrappedObject(RMIVariables variables, DataInputUnsyncByteArrayInputStream in)
-			throws IOException {
-		Class<?> clazz = readClass(in).get(connection);
+			throws IOException, ClassNotFoundException {
+		Class<?> wrapperclass = readClass(in).get(connection);
 		RMIWrapper wrapper;
 		try {
 			//cast down the class to ensure that the wrapper is only instantiated if it actually implements the RMIWrapper
 			//this is to avoid malicious client to provide a non-rmi wrapper wrapper class during transmit
-			wrapper = ReflectUtils.newInstance(clazz.asSubclass(RMIWrapper.class));
+			wrapper = ReflectUtils.newInstance(wrapperclass.asSubclass(RMIWrapper.class));
 		} catch (InvocationTargetException e) {
-			throw new RMIObjectTransferFailureException("Failed to instantiate RMIWrapper: " + clazz, e.getCause());
+			InvalidClassException te = new InvalidClassException(wrapperclass.getName(),
+					"Failed to instantiate RMIWrapper.");
+			te.initCause(e.getCause());
+			throw te;
 		} catch (Exception e) {
-			throw new RMIObjectTransferFailureException(
-					new InvalidClassException(clazz.getName(), "Failed to instantiate RMIWrapper: " + clazz));
+			InvalidClassException te = new InvalidClassException(wrapperclass.getName(),
+					"Failed to instantiate RMIWrapper.");
+			te.initCause(e);
+			throw te;
 		}
+		wrapper.readWrapped(getObjectInputForVariables(variables, in));
+		return wrapper.resolveWrapped();
+	}
+
+	private Object readWrapped2Object(RMIVariables variables, DataInputUnsyncByteArrayInputStream in)
+			throws IOException, ClassNotFoundException {
+		Class<?> wrapperclass = readClass(in).get(connection);
+		RMIWrapper wrapper;
 		try {
-			wrapper.readWrapped(getObjectInputForVariables(variables, in));
+			//cast down the class to ensure that the wrapper is only instantiated if it actually implements the RMIWrapper
+			//this is to avoid malicious client to provide a non-rmi wrapper wrapper class during transmit
+			wrapper = ReflectUtils.newInstance(wrapperclass.asSubclass(RMIWrapper.class));
+		} catch (InvocationTargetException e) {
+			InvalidClassException te = new InvalidClassException(wrapperclass.getName(),
+					"Failed to instantiate RMIWrapper.");
+			te.initCause(e.getCause());
+			throw te;
 		} catch (Exception e) {
-			throw new RMIObjectTransferFailureException("Failed to read RMI wrapped object. (" + clazz + ")", e);
+			InvalidClassException te = new InvalidClassException(wrapperclass.getName(),
+					"Failed to instantiate RMIWrapper.");
+			te.initCause(e);
+			throw te;
+		}
+
+		int bytecount = in.readInt();
+		ByteArrayRegion inregion = in.toByteArrayRegion();
+		DataInputUnsyncByteArrayInputStream limitreader = new DataInputUnsyncByteArrayInputStream(inregion.getArray(),
+				inregion.getOffset(), bytecount);
+		//skip the bytes after constructing the reader for the externalizable
+		in.skipBytes(bytecount);
+
+		wrapper.readWrapped(getObjectInputForVariables(variables, limitreader));
+		if (connection.isObjectTransferByteChecks()) {
+			int avail = limitreader.available();
+			if (avail > 0) {
+				throw new RMIObjectTransferFailureException("RMIWrapper " + wrapperclass.getName()
+						+ " didn't read input fully. (Remaining " + avail + " bytes)");
+			}
 		}
 		return wrapper.resolveWrapped();
 	}
@@ -2062,19 +2146,38 @@ final class RMIStream implements Closeable {
 		try {
 			wrapper = ReflectUtils.invokeConstructor(constructor, obj);
 		} catch (InvocationTargetException e) {
-			throw new RMIObjectTransferFailureException("Failed to instantiate RMIWrapper: " + wrapperclass,
-					e.getCause());
+			InvalidClassException te = new InvalidClassException(wrapperclass.getName(),
+					"Failed to instantiate RMIWrapper.");
+			te.initCause(e.getCause());
+			throw te;
 		} catch (Exception e) {
-			throw new RMIObjectTransferFailureException("Failed to instantiate RMIWrapper: " + wrapperclass, e);
+			InvalidClassException te = new InvalidClassException(wrapperclass.getName(),
+					"Failed to instantiate RMIWrapper.");
+			te.initCause(e);
+			throw te;
 		}
-		out.writeShort(OBJECT_WRAPPER);
-		writeClass(wrapperclass, out);
-		wrapper.writeWrapped(new RMIObjectOutputImpl(variables, this, out, obj));
+		if (connection.getProtocolVersion() >= RMIConnection.PROTOCOL_VERSION_2) {
+			//protocol includes the number of bytes written
+			out.writeShort(OBJECT_WRAPPER2);
+			writeClass(wrapperclass, out);
+
+			int sizeoffset = out.size();
+			out.writeInt(0);
+			try {
+				wrapper.writeWrapped(new RMIObjectOutputImpl(variables, this, out, obj));
+			} finally {
+				out.replaceInt(out.size() - sizeoffset - 4, sizeoffset);
+			}
+		} else {
+			out.writeShort(OBJECT_WRAPPER);
+			writeClass(wrapperclass, out);
+			wrapper.writeWrapped(new RMIObjectOutputImpl(variables, this, out, obj));
+		}
 	}
 
 	@SuppressWarnings("unchecked")
 	private static Constructor<? extends RMIWrapper> getRMIWrapperConstructor(Class<?> paramtype,
-			Class<? extends RMIWrapper> wrapperclass) {
+			Class<? extends RMIWrapper> wrapperclass) throws InvalidClassException {
 		try {
 			//get directly if possible
 			return wrapperclass.getDeclaredConstructor(paramtype);
@@ -2089,8 +2192,8 @@ final class RMIStream implements Closeable {
 				return (Constructor<? extends RMIWrapper>) c;
 			}
 		}
-		throw new RMIObjectTransferFailureException("No appropriate RMIWrapper constructor found for parameter type: "
-				+ paramtype + " in " + wrapperclass.getName());
+		throw new InvalidClassException("No appropriate RMIWrapper constructor found for parameter type: " + paramtype
+				+ " in " + wrapperclass.getName());
 	}
 
 	private static void writeRemoteObject(int remoteid, DataOutputUnsyncByteArrayOutputStream out) {
@@ -2142,7 +2245,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private Object[] readMethodParameters(RMIVariables variables, DataInputUnsyncByteArrayInputStream in)
-			throws IOException {
+			throws IOException, ClassNotFoundException {
 		short len = in.readShort();
 		if (len == 0) {
 			return ObjectUtils.EMPTY_OBJECT_ARRAY;
@@ -2276,9 +2379,6 @@ final class RMIStream implements Closeable {
 				} else {
 					requestHandler.addResponse(reqid, new NewVariablesResponse(remoteid));
 				}
-			} catch (IOException e) {
-				requestHandler.addResponse(reqid,
-						new NewVariablesFailedResponse(new RMIIOFailureException("Failed to read response.", e)));
 			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
 					| ServiceConfigurationError e) {
 				requestHandler.addResponse(reqid,
@@ -2302,9 +2402,6 @@ final class RMIStream implements Closeable {
 				interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
 
 				requestHandler.addResponse(reqid, new NewInstanceResponse(interrupted, interruptreqcount, remoteindex));
-			} catch (IOException e) {
-				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
-						new RMIIOFailureException("Failed to read new instance result.", e)));
 			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
 					| ServiceConfigurationError e) {
 				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
@@ -2323,9 +2420,6 @@ final class RMIStream implements Closeable {
 				Object obj = readObject(vars, in);
 
 				requestHandler.addResponse(reqid, new GetContextVariableResponse(obj));
-			} catch (IOException e) {
-				requestHandler.addResponse(reqid,
-						new GetContextVariableFailedResponse(new RMIIOFailureException("Failed to read response.", e)));
 			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
 					| ServiceConfigurationError e) {
 				requestHandler.addResponse(reqid, new GetContextVariableFailedResponse(
@@ -2475,9 +2569,6 @@ final class RMIStream implements Closeable {
 
 				requestHandler.addResponse(reqid,
 						new UnknownNewInstanceResponse(interrupted, interruptreqcount, remoteindex, interfaces));
-			} catch (IOException e) {
-				requestHandler.addResponse(reqid, new UnknownNewInstanceFailedResponse(interrupted, interruptreqcount,
-						new RMIIOFailureException("Failed to read new instance result.", e)));
 			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
 					| ServiceConfigurationError e) {
 				requestHandler.addResponse(reqid, new UnknownNewInstanceFailedResponse(interrupted, interruptreqcount,
@@ -2753,7 +2844,7 @@ final class RMIStream implements Closeable {
 					return;
 				}
 
-				transfermethod = getPropertiesCheckClosed(variables).getExecutableProperties(method);
+				transfermethod = variables.getPropertiesCheckClosed().getExecutableProperties(method);
 				args = readMethodParameters(variables, in);
 			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
 					| ServiceConfigurationError e) {
@@ -2790,7 +2881,7 @@ final class RMIStream implements Closeable {
 					return;
 				}
 
-				MethodTransferProperties transfermethod = getPropertiesCheckClosed(variables)
+				MethodTransferProperties transfermethod = variables.getPropertiesCheckClosed()
 						.getExecutableProperties(method);
 				Object[] args = readMethodParameters(variables, in);
 
@@ -2811,14 +2902,6 @@ final class RMIStream implements Closeable {
 		if (!responseadded) {
 			throw new RMICallFailedException("RMI redispatch call site is no longer available.");
 		}
-	}
-
-	private static RMITransferPropertiesHolder getPropertiesCheckClosed(RMIVariables variables) {
-		RMITransferPropertiesHolder properties = variables.getProperties();
-		if (properties == null) {
-			throw new RMICallFailedException("Variables is closed.");
-		}
-		return properties;
 	}
 
 	private static Object readMethodInvokeObject(RMIVariables variables, int localid) {
@@ -2843,9 +2926,6 @@ final class RMIStream implements Closeable {
 				interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
 
 				requestHandler.addResponse(reqid, new MethodCallResponse(interrupted, interruptreqcount, value));
-			} catch (IOException e) {
-				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
-						new RMIIOFailureException("Failed to read method result.", e)));
 			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
 					| ServiceConfigurationError e) {
 				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
@@ -3253,7 +3333,12 @@ final class RMIStream implements Closeable {
 		Semaphore gcsemaphore = variables.gcCommandSemaphore;
 		gcsemaphore.acquireUninterruptibly();
 		try {
-			writeMethodParameters(variables, method, arguments, out);
+			try {
+				writeMethodParameters(variables, method, arguments, out);
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
+				throw new RMIObjectTransferFailureException("Failed to write method call parameters.", e);
+			}
 			flushCommand(buffer);
 		} finally {
 			gcsemaphore.release();
@@ -3282,7 +3367,12 @@ final class RMIStream implements Closeable {
 		Semaphore gcsemaphore = variables.gcCommandSemaphore;
 		gcsemaphore.acquireUninterruptibly();
 		try {
-			writeMethodParameters(variables, method, arguments, out);
+			try {
+				writeMethodParameters(variables, method, arguments, out);
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
+				throw new RMIObjectTransferFailureException("Failed to write method call parameters.", e);
+			}
 			flushCommand(buffer);
 		} finally {
 			gcsemaphore.release();
@@ -3310,7 +3400,12 @@ final class RMIStream implements Closeable {
 		Semaphore gcsemaphore = variables.gcCommandSemaphore;
 		gcsemaphore.acquireUninterruptibly();
 		try {
-			writeMethodParameters(variables, constructor, arguments, out);
+			try {
+				writeMethodParameters(variables, constructor, arguments, out);
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
+				throw new RMIObjectTransferFailureException("Failed to write constructor call parameters.", e);
+			}
 			flushCommand(buffer);
 		} finally {
 			gcsemaphore.release();
@@ -3321,7 +3416,7 @@ final class RMIStream implements Closeable {
 			String classname, String[] argumentclassnames, Object[] arguments, Integer dispatch) throws IOException {
 		if (argumentclassnames.length != arguments.length) {
 			throw new RMICallFailedException("Length of argument types doesn't match provided argument object count: "
-					+ argumentclassnames + " != " + arguments.length);
+					+ argumentclassnames.length + " != " + arguments.length);
 		}
 		checkClosed();
 		StrongSoftReference<DataOutputUnsyncByteArrayOutputStream> buffer = connection.getCachedByteBuffer();
@@ -3344,11 +3439,16 @@ final class RMIStream implements Closeable {
 		Semaphore gcsemaphore = variables.gcCommandSemaphore;
 		gcsemaphore.acquireUninterruptibly();
 		try {
-			for (int i = 0; i < argumentclassnames.length; i++) {
-				out.writeUTF(argumentclassnames[0]);
-				Object obj = arguments[i];
-				writeObjectUsingWriteHandler(RMIObjectWriteHandler.defaultWriter(), variables, obj, out,
-						ObjectUtils.classOf(obj));
+			try {
+				for (int i = 0; i < argumentclassnames.length; i++) {
+					out.writeUTF(argumentclassnames[0]);
+					Object obj = arguments[i];
+					writeObjectUsingWriteHandler(RMIObjectWriteHandler.defaultWriter(), variables, obj, out,
+							ObjectUtils.classOf(obj));
+				}
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
+				throw new RMIObjectTransferFailureException("Failed to write constructor call parameters.", e);
 			}
 			flushCommand(buffer);
 		} finally {
@@ -3365,6 +3465,8 @@ final class RMIStream implements Closeable {
 		StrongSoftReference<DataOutputUnsyncByteArrayOutputStream> buffer = connection.getCachedByteBuffer();
 		DataOutputUnsyncByteArrayOutputStream out = buffer.get();
 
+		int sizebefore = out.size();
+
 		out.writeShort(COMMAND_METHODRESULT);
 		out.writeInt(reqid);
 		writeVariables(variables, out);
@@ -3374,8 +3476,19 @@ final class RMIStream implements Closeable {
 		Semaphore gcsemaphore = variables.gcCommandSemaphore;
 		gcsemaphore.acquireUninterruptibly();
 		try {
-			writeObjectUsingWriteHandler(executableproperties.getReturnValueWriter(), variables, returnvalue, out,
-					executableproperties.getReturnType());
+			try {
+				writeObjectUsingWriteHandler(executableproperties.getReturnValueWriter(), variables, returnvalue, out,
+						executableproperties.getReturnType());
+			} catch (Exception e) {
+				//failed to write the return value for some reason
+
+				//remove all previously written data from the buffer
+				out.reduceSize(sizebefore);
+
+				//write a fail result
+				writeCommandExceptionResult(COMMAND_METHODRESULT_FAIL, reqid, e, currentthreadinterrupted,
+						interruptreqcount);
+			}
 			flushCommand(buffer);
 		} finally {
 			gcsemaphore.release();
@@ -3826,10 +3939,10 @@ final class RMIStream implements Closeable {
 		}
 
 		@Override
-		public ClassLoader get(RMIConnection connection) throws RMIObjectTransferFailureException {
+		public ClassLoader get(RMIConnection connection) throws ClassNotFoundException {
 			Optional<ClassLoader> clopt = getClassLoaderByIdOptional(connection, classLoaderId);
 			if (clopt == null) {
-				throw new RMIObjectTransferFailureException("Class loader not found with id: " + classLoaderId);
+				throw new ClassNotFoundException("Class loader not found with id: " + classLoaderId);
 			}
 			return clopt.orElse(null);
 		}
@@ -3866,7 +3979,7 @@ final class RMIStream implements Closeable {
 	}
 
 	interface ClassReflectionElementSupplier extends ReflectionElementSupplier {
-		public Class<?> get(RMIConnection connection) throws RMIObjectTransferFailureException;
+		public Class<?> get(RMIConnection connection) throws ClassNotFoundException;
 
 		public String getClassName();
 
@@ -3874,13 +3987,13 @@ final class RMIStream implements Closeable {
 	}
 
 	interface ClassLoaderReflectionElementSupplier extends ReflectionElementSupplier {
-		public ClassLoader get(RMIConnection connection) throws RMIObjectTransferFailureException;
+		public ClassLoader get(RMIConnection connection) throws ClassNotFoundException;
 
 		public String getClassLoaderId();
 	}
 
 	interface ConstructorReflectionElementSupplier extends ReflectionElementSupplier {
-		public Constructor<?> get(RMIConnection connection) throws RMIObjectTransferFailureException;
+		public Constructor<?> get(RMIConnection connection) throws ClassNotFoundException;
 
 		public ClassReflectionElementSupplier getDeclaringClass();
 
@@ -3888,7 +4001,7 @@ final class RMIStream implements Closeable {
 	}
 
 	interface MethodReflectionElementSupplier extends ReflectionElementSupplier {
-		public Method get(RMIConnection connection, Object relativeobject) throws RMIObjectTransferFailureException;
+		public Method get(RMIConnection connection, Object relativeobject) throws ClassNotFoundException;
 
 		public ClassReflectionElementSupplier getDeclaringClass();
 
@@ -3898,7 +4011,7 @@ final class RMIStream implements Closeable {
 	}
 
 	interface FieldReflectionElementSupplier extends ReflectionElementSupplier {
-		public Field get(RMIConnection connection, Object relativeobject) throws RMIObjectTransferFailureException;
+		public Field get(RMIConnection connection, Object relativeobject) throws ClassNotFoundException;
 
 		public ClassReflectionElementSupplier getDeclaringClass();
 
@@ -3917,7 +4030,7 @@ final class RMIStream implements Closeable {
 		}
 
 		@Override
-		public Field get(RMIConnection connection, Object relativeobject) throws RMIObjectTransferFailureException {
+		public Field get(RMIConnection connection, Object relativeobject) throws ClassNotFoundException {
 			if (relativeobject != null) {
 				Class<?> hierarchyclass = ReflectUtils.findTypeWithNameInHierarchy(relativeobject.getClass(),
 						declaringClass.getClassName());
@@ -3997,7 +4110,7 @@ final class RMIStream implements Closeable {
 		}
 
 		@Override
-		public Constructor<?> get(RMIConnection connection) throws RMIObjectTransferFailureException {
+		public Constructor<?> get(RMIConnection connection) throws ClassNotFoundException {
 			Class<?> declclass = declaringClass.get(connection);
 			ClassLoader declcl = declclass.getClassLoader();
 			Class<?>[] paramtypes = loadParameterTypeClasses(declcl, parameterTypes, this);
@@ -4035,7 +4148,7 @@ final class RMIStream implements Closeable {
 		}
 
 		@Override
-		public Method get(RMIConnection connection, Object relativeobject) throws RMIObjectTransferFailureException {
+		public Method get(RMIConnection connection, Object relativeobject) throws ClassNotFoundException {
 			if (relativeobject != null) {
 				Class<?> hierarchyclass = ReflectUtils.findTypeWithNameInHierarchy(relativeobject.getClass(),
 						declaringClass.getClassName());
@@ -4235,13 +4348,8 @@ final class RMIStream implements Closeable {
 		}
 
 		@Override
-		public Class<?> get(RMIConnection connection) throws RMIObjectTransferFailureException {
-			try {
-				return Class.forName(className, false, classLoaderSupplier.get(connection));
-			} catch (ClassNotFoundException e) {
-				throw new RMIObjectTransferFailureException(
-						"Class not found: " + className + " in classloader: " + classLoaderSupplier, e);
-			}
+		public Class<?> get(RMIConnection connection) throws ClassNotFoundException {
+			return Class.forName(className, false, classLoaderSupplier.get(connection));
 		}
 
 		@Override

@@ -87,12 +87,21 @@ public final class RMIConnection implements AutoCloseable {
 	 * The latest protocol version.
 	 */
 	//IMPORTANT: In the event of incrementing this protocol version, tests should be made that ensures proper rmi connection handshakes
-	public static final short PROTOCOL_VERSION_LATEST = 0x0001;
+	public static final short PROTOCOL_VERSION_LATEST = 0x0002;
 
 	/**
 	 * The protocol version of the first RMI library release.
 	 */
 	public static final int PROTOCOL_VERSION_1 = 0x0001;
+	/**
+	 * Version 2.
+	 * <p>
+	 * Modifies the object protocol to include the byte count of the transferred data in case of serializing wrapped
+	 * objects and serializable objects.
+	 * 
+	 * @since saker.rmi 0.8.3
+	 */
+	public static final int PROTOCOL_VERSION_2 = 0x0002;
 
 	/**
 	 * I/O error listener interface to get notified about connection errors.
@@ -192,9 +201,11 @@ public final class RMIConnection implements AutoCloseable {
 	private final ConcurrentPrependAccumulator<StrongSoftReference<DataOutputUnsyncByteArrayOutputStream>> bufferCache = new ConcurrentPrependAccumulator<>();
 
 	private ConcurrentSkipListMap<Integer, RequestThreadState> requestThreadStates = new ConcurrentSkipListMap<>();
-	private short protocolVersion;
+	private final short protocolVersion;
 
 	private RMIStatistics statistics;
+
+	private final boolean objectTransferByteChecks;
 
 	/**
 	 * Only set if the {@link RMIConnection} manages its own task pool, and no {@link Executor} was set via
@@ -228,6 +239,7 @@ public final class RMIConnection implements AutoCloseable {
 		if (options.collectStatistics) {
 			this.statistics = new RMIStatistics();
 		}
+		this.objectTransferByteChecks = options.objectTransferByteChecks;
 	}
 
 	boolean isCustomExecutor() {
@@ -240,6 +252,10 @@ public final class RMIConnection implements AutoCloseable {
 
 	RequestScopeHandler getRequestScopeHandler() {
 		return requestScopeHandler;
+	}
+
+	boolean isObjectTransferByteChecks() {
+		return objectTransferByteChecks;
 	}
 
 	private void initTaskFields(RMIOptions options) {
@@ -265,6 +281,7 @@ public final class RMIConnection implements AutoCloseable {
 		if (options.collectStatistics) {
 			this.statistics = new RMIStatistics();
 		}
+		this.objectTransferByteChecks = options.objectTransferByteChecks;
 
 		this.streamConnector = new IOSupplier<StreamPair>() {
 			private final PendingStreamTracker pendingTracker = new PendingStreamTracker() {

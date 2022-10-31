@@ -315,7 +315,7 @@ public class RMIVariables implements AutoCloseable {
 	 */
 	public Object newRemoteInstance(Constructor<?> constructor, Object... arguments)
 			throws RMIRuntimeException, InvocationTargetException {
-		return newRemoteInstance(this.properties.getExecutableProperties(constructor), arguments);
+		return newRemoteInstance(getPropertiesCheckClosed().getExecutableProperties(constructor), arguments);
 	}
 
 	/**
@@ -368,7 +368,7 @@ public class RMIVariables implements AutoCloseable {
 	 */
 	public Object invokeRemoteStaticMethod(Method method, Object... arguments)
 			throws RMIRuntimeException, InvocationTargetException {
-		return invokeRemoteStaticMethod(this.properties.getExecutableProperties(method), arguments);
+		return invokeRemoteStaticMethod(getPropertiesCheckClosed().getExecutableProperties(method), arguments);
 	}
 
 	/**
@@ -438,7 +438,7 @@ public class RMIVariables implements AutoCloseable {
 		RMIVariables variables = RemoteProxyObject.getCheckVariables(remoteproxyobj);
 		try {
 			return variables.invokeRemoteMethodInternal(remoteproxyobj.remoteId,
-					variables.properties.getExecutableProperties(method), arguments);
+					variables.getPropertiesCheckClosed().getExecutableProperties(method), arguments);
 		} finally {
 			RemoteProxyObject.reachabilityFence(remoteproxyobj);
 		}
@@ -526,7 +526,7 @@ public class RMIVariables implements AutoCloseable {
 		RMIVariables variables = RemoteProxyObject.getCheckVariables(remoteproxyobj);
 		try {
 			return variables.invokeMethod(remoteproxyobj.remoteId, remoteobject,
-					variables.properties.getExecutableProperties(method), arguments);
+					variables.getPropertiesCheckClosed().getExecutableProperties(method), arguments);
 		} finally {
 			RemoteProxyObject.reachabilityFence(remoteproxyobj);
 		}
@@ -633,7 +633,7 @@ public class RMIVariables implements AutoCloseable {
 		RMIVariables variables = RemoteProxyObject.getCheckVariables(remoteproxyobj);
 		try {
 			variables.invokeRemoteMethodAsync(remoteproxyobj.remoteId,
-					variables.properties.getExecutableProperties(method), arguments);
+					variables.getPropertiesCheckClosed().getExecutableProperties(method), arguments);
 		} finally {
 			RemoteProxyObject.reachabilityFence(remoteproxyobj);
 		}
@@ -705,7 +705,7 @@ public class RMIVariables implements AutoCloseable {
 		RMIVariables variables = RemoteProxyObject.getCheckVariables(remoteproxyobj);
 		try {
 			variables.invokeRemoteMethodAsync(remoteproxyobj.remoteId,
-					variables.properties.getExecutableProperties(method), arguments);
+					variables.getPropertiesCheckClosed().getExecutableProperties(method), arguments);
 		} finally {
 			RemoteProxyObject.reachabilityFence(remoteproxyobj);
 		}
@@ -1118,6 +1118,14 @@ public class RMIVariables implements AutoCloseable {
 	}
 
 	RMITransferPropertiesHolder getProperties() {
+		return properties;
+	}
+
+	RMITransferPropertiesHolder getPropertiesCheckClosed() {
+		RMITransferPropertiesHolder properties = this.properties;
+		if (properties == null) {
+			throw new RMICallFailedException("Variables is closed.");
+		}
 		return properties;
 	}
 

@@ -15,6 +15,7 @@
  */
 package saker.build.thirdparty.saker.rmi.connection;
 
+import java.io.Externalizable;
 import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.Objects;
@@ -24,6 +25,7 @@ import javax.net.SocketFactory;
 
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection.OnlyClassLoaderResolver;
 import saker.build.thirdparty.saker.rmi.exception.RMICallForbiddenException;
+import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 
 /**
@@ -43,6 +45,8 @@ public final class RMIOptions {
 	int maxStreamCount = -1;
 	boolean allowDirectRequests = true;
 	boolean collectStatistics = false;
+
+	boolean objectTransferByteChecks = false;
 
 	/**
 	 * Creates a new instance with default values.
@@ -67,6 +71,7 @@ public final class RMIOptions {
 		this.maxStreamCount = copy.maxStreamCount;
 		this.allowDirectRequests = copy.allowDirectRequests;
 		this.collectStatistics = copy.collectStatistics;
+		this.objectTransferByteChecks = copy.objectTransferByteChecks;
 	}
 
 	/**
@@ -260,6 +265,25 @@ public final class RMIOptions {
 	}
 
 	/**
+	 * Sets if byte boundary checks should be performed during RMI transfer.
+	 * <p>
+	 * If checks are enabled, then the object deserialization will fail in case of {@link Externalizable} or
+	 * {@linkplain RMIWrapper wrapped} objects when the deserializing doesn't read all bytes that were written during
+	 * serialization.
+	 * <p>
+	 * The default value is <code>false</code>.
+	 *
+	 * @param docheck
+	 *            <code>true</code> to enable byte checks.
+	 * @return <code>this</code>
+	 * @since saker.rmi 0.8.3
+	 */
+	public RMIOptions objectTransferByteChecks(boolean docheck) {
+		this.objectTransferByteChecks = docheck;
+		return this;
+	}
+
+	/**
 	 * Initiates the connection with the given parameters.
 	 * <p>
 	 * This instance can be reused after calling this method.
@@ -360,40 +384,43 @@ public final class RMIOptions {
 	public String toString() {
 		StringBuilder builder = new StringBuilder(getClass().getName());
 		builder.append("[");
-		if (classLoaderResolver != null) {
-			builder.append("classLoaderResolver=");
-			builder.append(classLoaderResolver);
-			builder.append(", ");
-		}
-		if (nullClassLoader != null) {
-			builder.append("nullClassLoader=");
-			builder.append(nullClassLoader);
-			builder.append(", ");
-		}
-		if (properties != null) {
-			builder.append("properties=");
-			builder.append(properties);
-			builder.append(", ");
-		}
-		if (workerThreadGroup != null) {
-			builder.append("workerThreadGroup=");
-			builder.append(workerThreadGroup);
-			builder.append(", ");
-		}
-		if (executor != null) {
-			builder.append("executor=");
-			builder.append(executor);
-			builder.append(", ");
-		}
 		builder.append("maxStreamCount=");
 		builder.append(maxStreamCount);
 		if (maxStreamCount < 0) {
 			builder.append(" (default)");
 		}
-		builder.append(", allowDirectRequests=");
-		builder.append(allowDirectRequests);
-		builder.append(", collectStatistics=");
-		builder.append(collectStatistics);
+		if (classLoaderResolver != null) {
+			builder.append(", classLoaderResolver=");
+			builder.append(classLoaderResolver);
+		}
+		if (nullClassLoader != null) {
+			builder.append(", nullClassLoader=");
+			builder.append(nullClassLoader);
+		}
+		if (properties != null) {
+			builder.append(", properties=");
+			builder.append(properties);
+		}
+		if (workerThreadGroup != null) {
+			builder.append(", workerThreadGroup=");
+			builder.append(workerThreadGroup);
+		}
+		if (executor != null) {
+			builder.append(", executor=");
+			builder.append(executor);
+		}
+		if (allowDirectRequests) {
+			builder.append(", allowDirectRequests=");
+			builder.append(allowDirectRequests);
+		}
+		if (collectStatistics) {
+			builder.append(", collectStatistics=");
+			builder.append(collectStatistics);
+		}
+		if (objectTransferByteChecks) {
+			builder.append(", objectTransferByteChecks=");
+			builder.append(objectTransferByteChecks);
+		}
 		builder.append("]");
 		return builder.toString();
 	}
