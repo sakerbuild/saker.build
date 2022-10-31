@@ -441,6 +441,8 @@ public class TaskInvocationManager implements Closeable {
 			fut.setRequest(request);
 			for (TaskInvocationContextImpl invocationcontext : invocationContexts) {
 				if (!posttoenvironmentpredicate.test(invocationcontext.getEnvironmentIdentifier())) {
+					//the event isnt posted to this invocation context, remove it from the request
+					request.removeInvocationContext(invocationcontext);
 					continue;
 				}
 				ListenerInnerTaskInvocationHandler<R> listener = new ListenerInnerTaskInvocationHandler<>(taskcontext,
@@ -825,16 +827,22 @@ public class TaskInvocationManager implements Closeable {
 	}
 
 	private abstract static class BaseInvocationRequest implements InvocationRequest {
-		protected final Set<TaskInvocationContext> failedContexts = ConcurrentHashMap.newKeySet();
+		/**
+		 * The set of invocation contexts that are still active.
+		 */
+		protected final Set<TaskInvocationContext> openContexts = ConcurrentHashMap.newKeySet();
+		/**
+		 * Contains the failure exceptions for each invocation context if they failed.
+		 */
 		protected final Map<TaskInvocationContext, Throwable> contextFailExceptions = new ConcurrentHashMap<>();
 
 		public BaseInvocationRequest(Collection<? extends TaskInvocationContext> invocationcontexts) {
-			failedContexts.addAll(invocationcontexts);
+			openContexts.addAll(invocationcontexts);
 		}
 
 		@Override
 		public boolean isActive() {
-			return !failedContexts.isEmpty();
+			return !openContexts.isEmpty();
 		}
 
 		@Override
@@ -845,7 +853,7 @@ public class TaskInvocationManager implements Closeable {
 					present.addSuppressed(cause);
 				}
 			}
-			removeFailedContext(invocationcontext);
+			removeInvocationContext(invocationcontext);
 		}
 
 		protected final void closeImpl(TaskInvocationContext invocationcontext, Throwable cause) {
@@ -853,15 +861,15 @@ public class TaskInvocationManager implements Closeable {
 				//only add the exception if there wasn't any previous exceptions
 				contextFailExceptions.computeIfAbsent(invocationcontext, (k) -> cause);
 			}
-			removeFailedContext(invocationcontext);
+			removeInvocationContext(invocationcontext);
 		}
 
 		public abstract void close(TaskInvocationContext invocationcontext, Throwable cause);
 
 		protected abstract void allClustersFailed();
 
-		private void removeFailedContext(TaskInvocationContext invocationcontext) {
-			if (failedContexts.remove(invocationcontext) && failedContexts.isEmpty()) {
+		protected final void removeInvocationContext(TaskInvocationContext invocationcontext) {
+			if (openContexts.remove(invocationcontext) && openContexts.isEmpty()) {
 				allClustersFailed();
 			}
 		}
