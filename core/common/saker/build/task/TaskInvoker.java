@@ -17,6 +17,17 @@ package saker.build.task;
 
 import saker.build.task.TaskInvocationManager.TaskInvocationContext;
 
+/**
+ * A task invoker performs polling of executions of task events in a given invocation context.
+ */
 public interface TaskInvoker {
+	/**
+	 * Runs the invoker on the given context.
+	 * 
+	 * @param context
+	 *            The context to run on.
+	 * @throws Exception
+	 *             In case of failure.
+	 */
 	public void run(TaskInvocationContext context) throws Exception;
 }

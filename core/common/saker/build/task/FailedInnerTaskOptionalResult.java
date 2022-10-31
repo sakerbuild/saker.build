@@ -45,7 +45,7 @@ public class FailedInnerTaskOptionalResult<R> implements InnerTaskResultHolder<R
 
 	@Override
 	public R getResult() throws InnerTaskExecutionException {
-		throw new InnerTaskExecutionException(cause);
+		throw new InnerTaskExecutionException(message, cause);
 	}
 
 	@Override
@@ -63,6 +63,17 @@ public class FailedInnerTaskOptionalResult<R> implements InnerTaskResultHolder<R
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 		message = (String) in.readObject();
 		cause = (Throwable) in.readObject();
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder builder = new StringBuilder(getClass().getSimpleName());
+		builder.append("[message=");
+		builder.append(message);
+		builder.append(", cause=");
+		builder.append(cause);
+		builder.append("]");
+		return builder.toString();
 	}
 
 }

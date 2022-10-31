@@ -119,9 +119,14 @@ public class ClusterTaskInvoker implements TaskInvoker {
 	}
 
 	protected <R> void handleInnerTaskExecutionEvent(InnerClusterExecutionEvent<R> event) {
-		SelectionResult selectionresult = event.getSelectionResult();
+		Throwable serialexc = event.getSerializationException();
+		if (serialexc != null) {
+			event.fail(serialexc);
+			return;
+		}
+
 		if (SakerEnvironmentImpl.hasAnyEnvironmentPropertyDifference(suitableTesterSakerEnvironment,
-				selectionresult.getQualifierEnvironmentProperties())) {
+				event.getSelectionResult().getQualifierEnvironmentProperties())) {
 			event.failUnsuitable();
 			return;
 		}
@@ -133,26 +138,63 @@ public class ClusterTaskInvoker implements TaskInvoker {
 					clustertaskcontext, event, realtaskcontext, event.getComputationTokenCount(),
 					event.getDuplicationPredicate(), event.getMaximumEnvironmentFactor());
 			event.setInvocationHandle(resulthandle);
-		} catch (Exception e) {
+		} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+				| StackOverflowError e) {
 			event.failInvocationStart(e);
+		} catch (Throwable e) {
+			try {
+				event.failInvocationStart(e);
+			} catch (Throwable e2) {
+				e.addSuppressed(e2);
+			}
+			throw e;
 		}
 	}
 
 	protected void handleExecutionEnvironmentSelectionEvent(ExecutionEnvironmentSelectionEvent event) {
+		Throwable serialexc = event.getSerializationException();
+		if (serialexc != null) {
+			event.fail(serialexc);
+			return;
+		}
+
 		TaskExecutionEnvironmentSelector selector = event.getEnvironmentSelector();
 		EnvironmentSelectionResult envselectionresult;
 		try {
 			envselectionresult = selector.isSuitableExecutionEnvironment(suitableTesterSakerEnvironment);
-		} catch (Exception e) {
+		} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+				| StackOverflowError e) {
 			event.failUnsuitable(e);
 			return;
+		} catch (Throwable e) {
+			try {
+				event.failUnsuitable(e);
+			} catch (Throwable e2) {
+				e.addSuppressed(e2);
+			}
+			throw e;
 		}
 		if (envselectionresult != null) {
 			SelectionResult eventselectionresult = new SelectionResult(environment.getEnvironmentIdentifier(),
 					envselectionresult.getQualifierEnvironmentProperties(), ImmutableUtils.makeImmutableHashSet(
 							SakerEnvironmentImpl.getEnvironmentPropertyDifferences(suitableTesterSakerEnvironment,
 									event.getDependentProperties()).keySet()));
-			event.succeed(eventselectionresult);
+			try {
+				event.succeed(eventselectionresult);
+			} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+					| StackOverflowError e) {
+				//failed to write the success notification, or some other error happened, write as fail
+				//this shouldn't happen, as the SelectionResult handles serialization failures by itself
+				//but do this nonetheless to avoid possible halting due to no response
+				event.fail(e);
+			} catch (Throwable e) {
+				try {
+					event.fail(e);
+				} catch (Throwable e2) {
+					e.addSuppressed(e2);
+				}
+				throw e;
+			}
 		} else {
 			event.failUnsuitable();
 		}
@@ -161,6 +203,12 @@ public class ClusterTaskInvoker implements TaskInvoker {
 	//suppress unused resource in try
 	@SuppressWarnings("try")
 	protected <R> void handleTaskExecutionEvent(ClusterExecutionEvent<R> event) {
+		Throwable serialexc = event.getSerializationException();
+		if (serialexc != null) {
+			event.fail(serialexc);
+			return;
+		}
+
 		SelectionResult selectionresult = event.getSelectionResult();
 		boolean hasdiffs = SakerEnvironmentImpl.hasAnyEnvironmentPropertyDifference(suitableTesterSakerEnvironment,
 				selectionresult.getQualifierEnvironmentProperties());
@@ -177,6 +225,13 @@ public class ClusterTaskInvoker implements TaskInvoker {
 				| StackOverflowError e) {
 			event.fail(e);
 			return;
+		} catch (Throwable e) {
+			try {
+				event.fail(e);
+			} catch (Throwable e2) {
+				e.addSuppressed(e2);
+			}
+			throw e;
 		}
 		if (task == null) {
 			event.fail(new NullPointerException("TaskFactory " + factory.getClass().getName() + " created null Task."));
@@ -190,7 +245,15 @@ public class ClusterTaskInvoker implements TaskInvoker {
 
 		//use the real task context as the computation token allocator, 
 		//    so if other allocations are being made for the task, it will always succeed
-		try (ComputationToken ctoken = ComputationToken.request(realtaskcontext, tokencount)) {
+		ComputationToken ctoken;
+		try {
+			ctoken = ComputationToken.request(realtaskcontext, tokencount);
+		} catch (InterruptedException e) {
+			//failed to request computation tokens
+			event.fail(e);
+			return;
+		}
+		try {
 			if (!event.startExecution()) {
 				return;
 			}
@@ -219,10 +282,8 @@ public class ClusterTaskInvoker implements TaskInvoker {
 				}
 				throw e;
 			}
-		} catch (InterruptedException e) {
-			//failed to request computation tokens
-			event.fail(e);
-			return;
+		} finally {
+			ctoken.close();
 		}
 	}
 

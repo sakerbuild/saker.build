@@ -30,6 +30,7 @@ import saker.build.task.TaskInvocationManager.InnerTaskInvocationHandle;
 import saker.build.task.TaskInvocationManager.InnerTaskInvocationListener;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
@@ -48,10 +49,6 @@ public class InnerTaskInvocationManager implements Closeable {
 	}
 
 	private class LocalInnerTaskInvocationHandle<R> implements InnerTaskInvocationHandle<R>, Runnable {
-
-		private ConcurrentPrependAccumulator<InnerTaskResultHolder<R>> results = new ConcurrentPrependAccumulator<>();
-
-		private Reference<Thread> invokerThread;
 		private final InnerTaskInvocationListener listener;
 		private final TaskFactory<R> taskFactory;
 		private final TaskContext taskContext;
@@ -59,6 +56,9 @@ public class InnerTaskInvocationManager implements Closeable {
 		private final int computationTokenCount;
 		private final int maximumEnvironmentFactor;
 		private final TaskDuplicationPredicate duplicationPredicate;
+
+		private final ConcurrentPrependAccumulator<InnerTaskResultHolder<R>> results = new ConcurrentPrependAccumulator<>();
+		private Reference<Thread> invokerThread;
 
 		private volatile boolean duplicationCancelled;
 		private volatile boolean shouldntInvokeOnceMore;
@@ -97,7 +97,7 @@ public class InnerTaskInvocationManager implements Closeable {
 
 		@Override
 		public void waitFinish() throws InterruptedException {
-			Thread t = invokerThread.get();
+			Thread t = ObjectUtils.getReference(invokerThread);
 			if (t == null) {
 				return;
 			}
@@ -107,7 +107,7 @@ public class InnerTaskInvocationManager implements Closeable {
 		@Override
 		public void interrupt() {
 			//the invoker thread is interrupted, and that will interrupt any executing thread when joining
-			ThreadUtils.interruptThread(invokerThread.get());
+			ThreadUtils.interruptThread(ObjectUtils.getReference(invokerThread));
 		}
 
 		//TODO handle any RMI exceptions coming from result notifications

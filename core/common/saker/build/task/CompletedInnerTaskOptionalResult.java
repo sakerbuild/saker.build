@@ -57,4 +57,13 @@ public class CompletedInnerTaskOptionalResult<R> implements InnerTaskResultHolde
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 		result = (R) in.readObject();
 	}
+
+	@Override
+	public String toString() {
+		StringBuilder builder = new StringBuilder(getClass().getSimpleName());
+		builder.append("[result=");
+		builder.append(result);
+		builder.append("]");
+		return builder.toString();
+	}
 }

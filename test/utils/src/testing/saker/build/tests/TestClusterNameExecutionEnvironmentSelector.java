@@ -30,7 +30,7 @@ import saker.build.util.property.UserParameterEnvironmentProperty;
 public class TestClusterNameExecutionEnvironmentSelector implements TaskExecutionEnvironmentSelector, Externalizable {
 	private static final long serialVersionUID = 1L;
 
-	private String clusterName;
+	protected String clusterName;
 
 	/**
 	 * For {@link Externalizable}.

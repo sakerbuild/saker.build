@@ -18,11 +18,14 @@ package saker.build.task;
 import java.io.Closeable;
 import java.io.Externalizable;
 import java.io.IOException;
+import java.io.NotSerializableException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.io.ObjectOutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
@@ -45,16 +48,20 @@ import saker.build.file.provider.LocalFileProvider;
 import saker.build.runtime.environment.EnvironmentProperty;
 import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
+import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.ExecutionContextImpl;
 import saker.build.task.TaskExecutionManager.ManagerInnerTaskResults;
 import saker.build.task.TaskExecutionManager.TaskExecutorContext;
 import saker.build.task.cluster.TaskInvokerFactory;
 import saker.build.task.cluster.TaskInvokerInformation;
+import saker.build.task.exception.ClusterEnvironmentSelectionFailedException;
 import saker.build.task.exception.ClusterTaskExecutionFailedException;
 import saker.build.task.exception.InnerTaskInitializationException;
 import saker.build.task.exception.TaskEnvironmentSelectionFailedException;
+import saker.build.task.exception.TaskResultSerializationException;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
+import saker.build.thirdparty.saker.rmi.annot.invoke.RMIForbidden;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
@@ -80,7 +87,6 @@ import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 import testing.saker.build.flag.TestFlag;
 
 public class TaskInvocationManager implements Closeable {
-	//TODO create cluster test in cases where the task factory fails to transfer
 	public interface InnerTaskInvocationHandle<R> {
 		public static final Method METHOD_CANCEL_DUPLICATION = ReflectUtils
 				.getMethodAssert(InnerTaskInvocationHandle.class, "cancelDuplication");
@@ -104,19 +110,40 @@ public class TaskInvocationManager implements Closeable {
 
 		public void cancelDuplication();
 
+		/**
+		 * Interrupts the inner task invocation thread.
+		 */
 		public void interrupt();
 	}
 
+	/**
+	 * Coordinator side listener for inner task invocations.
+	 */
 	public interface InnerTaskInvocationListener {
 		public static final Method METHOD_NOTIFYRESULTREADY = ReflectUtils
 				.getMethodAssert(InnerTaskInvocationListener.class, "notifyResultReady", boolean.class);
 		public static final Method METHOD_NOTIFYNOMORERESULTS = ReflectUtils
 				.getMethodAssert(InnerTaskInvocationListener.class, "notifyNoMoreResults");
 
+		/**
+		 * Notifies that an inner task execution has completed, and a result is ready.
+		 * 
+		 * @param lastresult
+		 *            <code>true</code> if this was the last result.
+		 */
 		public void notifyResultReady(boolean lastresult);
 
+		/**
+		 * Notifies that no more results will be ready.
+		 */
 		public void notifyNoMoreResults();
 
+		/**
+		 * Notifies about the start of a new inner task.
+		 * 
+		 * @return The handle for this inner task execution, or <code>null</code> if the starting should be aborted and
+		 *             the inner task shouldn't be executed.
+		 */
 		public InnerTaskInstanceInvocationHandle notifyTaskInvocationStart();
 	}
 
@@ -244,9 +271,19 @@ public class TaskInvocationManager implements Closeable {
 			}
 			//proceed with cluster invocation
 		}
+		TaskExecutionRequestImpl<R> request = null;
 		if (capabilities.isRemoteDispatchable() && !ObjectUtils.isNullOrEmpty(invokerFactories)) {
-			TaskInvocationResult<R> invocationresult = invokeTaskRunningOnClustersAndWaitForResult(factory,
-					capabilities, selectionresult, taskcontext);
+			ensureClustersStarted();
+
+			request = new TaskExecutionRequestImpl<>(invocationContexts, factory, capabilities, selectionresult,
+					taskcontext);
+			for (TaskInvocationContextImpl invocationcontext : invocationContexts) {
+				invocationcontext.addEvent(new TaskClusterExecutionEventImpl<>(invocationcontext, request));
+			}
+			//XXX we shouldn't wait for all clusters to respond, as if we can invoke the task locally, 
+			//    it will be bottlenecked by the slowest cluster
+			request.waitForResult();
+			TaskInvocationResult<R> invocationresult = request.getTaskInvocationResult();
 			if (invocationresult != null) {
 				return invocationresult;
 			}
@@ -258,13 +295,37 @@ public class TaskInvocationManager implements Closeable {
 			localhasdiffs = hasAnyEnvironmentPropertyDifferenceWithLocalEnvironment(selectionresult);
 		}
 		if (localhasdiffs) {
-			//either at least one of the cluster is suitable
-			//or the local is
-			//if we reach here, either the suitable cluster hasn't responded
-			//or the local environment is not suitable
-			throw new ClusterTaskExecutionFailedException("Suitable execution environment is no longer accessible.");
+			//the local environment is not suitable, but a cluster was
+			//cluster invokation didn't succeed, otherwise we wouldn't reach here
+			//we can't invoke on the local env, so throw a cluster exception
+
+			ClusterTaskExecutionFailedException thrownexc = new ClusterTaskExecutionFailedException(
+					"Failed to execute task on cluster(s).");
+			if (request != null) {
+				//the execution request shouldn't be null at this point, but better check than fail
+				addInvocationContextFailExceptions(thrownexc, request.contextFailExceptions.values());
+			}
+			throw thrownexc;
 		}
 		return invokeTaskRunningOnLocalEnvironment(factory, capabilities, taskcontext);
+	}
+
+	private static void addInvocationContextFailExceptions(Throwable thrownexc,
+			Collection<? extends Throwable> exceptions) {
+		Iterator<? extends Throwable> it = exceptions.iterator();
+		if (it.hasNext()) {
+			Throwable first = it.next();
+			if (it.hasNext()) {
+				//multiple exceptions, add them as suppressed exceptions to the thrown one
+				thrownexc.addSuppressed(first);
+				do {
+					thrownexc.addSuppressed(it.next());
+				} while (it.hasNext());
+			} else {
+				//only a single exception found, init the cause instead of suppressed exceptions
+				thrownexc.initCause(first);
+			}
+		}
 	}
 
 	private boolean hasAnyEnvironmentPropertyDifferenceWithLocalEnvironment(SelectionResult selectionresult) {
@@ -283,7 +344,7 @@ public class TaskInvocationManager implements Closeable {
 				task = factory.createTask(executionContext);
 			} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
 					| StackOverflowError e) {
-				return new TaskInvocationResult<>(null, e);
+				return TaskInvocationResult.ofFailed(e);
 			}
 			if (task == null) {
 				return new TaskInvocationResult<>(null, new NullPointerException(
@@ -306,23 +367,6 @@ public class TaskInvocationManager implements Closeable {
 			}
 			return new TaskInvocationResult<>(Optional.ofNullable(taskres), null);
 		}
-	}
-
-	private <R> TaskInvocationResult<R> invokeTaskRunningOnClustersAndWaitForResult(TaskFactory<R> factory,
-			TaskInvocationConfiguration capabilities, SelectionResult selectionresult,
-			TaskExecutorContext<R> taskcontext) throws InterruptedException {
-		ensureClustersStarted();
-
-		TaskExecutionRequestImpl<R> request = new TaskExecutionRequestImpl<>(invocationContexts, factory, capabilities,
-				selectionresult, taskcontext);
-		for (TaskInvocationContextImpl invocationcontext : invocationContexts) {
-			invocationcontext.addEvent(new TaskClusterExecutionEventImpl<>(invocationcontext, request));
-		}
-		//XXX we shouldn't wait for all clusters to respond, as if we can invoke the task locally, 
-		//    it will be bottlenecked by the slowest cluster
-		request.waitForResult();
-		TaskInvocationResult<R> invocationresult = request.toTaskInvocationResult();
-		return invocationresult;
 	}
 
 	public <R> ManagerInnerTaskResults<R> invokeInnerTaskRunning(TaskFactory<R> taskfactory,
@@ -365,8 +409,7 @@ public class TaskInvocationManager implements Closeable {
 
 		final Lock resultwaiterlock = ThreadUtils.newExclusiveLock();
 		final Condition resultwaitercondition = resultwaiterlock.newCondition();
-		InvokerTaskResultsHandler<R> fut = new InvokerTaskResultsHandler<>(taskcontext, invocationhandles,
-				duplicationcancellable, resultwaiterlock, resultwaitercondition);
+		boolean locallyrunnable = false;
 
 		if (posttoenvironmentpredicate.test(environment.getEnvironmentIdentifier())) {
 			boolean hasdiffs = hasAnyEnvironmentPropertyDifferenceWithLocalEnvironment(selectionresult);
@@ -380,12 +423,14 @@ public class TaskInvocationManager implements Closeable {
 					listener.handle = handle;
 					postedtolocalenv = true;
 					invocationhandles.add(listener);
-					fut.setLocallyRunnable(true);
+					locallyrunnable = true;
 				} catch (Exception e) {
 					invokerexceptions = IOUtils.addExc(invokerexceptions, e);
 				}
 			}
 		}
+		InvokerTaskResultsHandler<R> fut = new InvokerTaskResultsHandler<>(taskcontext, invocationhandles,
+				duplicationcancellable, locallyrunnable, resultwaiterlock, resultwaitercondition);
 
 		if (configuration.isRemoteDispatchable() && !(postedtolocalenv && configuration.isPrefersLocalEnvironment())) {
 			//don't post to build clusters if prefers the local environment and is being run on it
@@ -393,6 +438,7 @@ public class TaskInvocationManager implements Closeable {
 			InnerTaskExecutionRequestImpl<R> request = new InnerTaskExecutionRequestImpl<>(invocationContexts, fut,
 					computationtokencount, taskfactory, taskcontext, duplicationPredicate, selectionresult,
 					duplicationfactor, maximumenvironmentfactor);
+			fut.setRequest(request);
 			for (TaskInvocationContextImpl invocationcontext : invocationContexts) {
 				if (!posttoenvironmentpredicate.test(invocationcontext.getEnvironmentIdentifier())) {
 					continue;
@@ -475,9 +521,17 @@ public class TaskInvocationManager implements Closeable {
 		private final Optional<R> result;
 		private final Throwable thrownException;
 
-		public TaskInvocationResult(Optional<R> result, Throwable thrownException) {
+		private TaskInvocationResult(Optional<R> result, Throwable thrownException) {
 			this.result = result;
 			this.thrownException = thrownException;
+		}
+
+		public static <T> TaskInvocationResult<T> ofSuccessful(Optional<T> result) {
+			return new TaskInvocationResult<>(result, null);
+		}
+
+		public static <T> TaskInvocationResult<T> ofFailed(Throwable thrownException) {
+			return new TaskInvocationResult<>(null, thrownException);
 		}
 
 		public Optional<R> getResult() {
@@ -489,7 +543,7 @@ public class TaskInvocationManager implements Closeable {
 		}
 	}
 
-	public static class SelectionResult implements Externalizable {
+	public static class SelectionResult extends SerializationErrorRecovererExternalizable implements Externalizable {
 		private static final long serialVersionUID = 1L;
 
 		protected UUID environmentId;
@@ -519,14 +573,14 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public void writeExternal(ObjectOutput out) throws IOException {
+		protected void writeImpl(ObjectOutput out) throws IOException {
 			out.writeObject(environmentId);
 			SerialUtils.writeExternalMap(out, qualifierEnvironmentProperties);
 			SerialUtils.writeExternalCollection(out, modifiedEnvironmentProperties);
 		}
 
 		@Override
-		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+		protected void readImpl(ObjectInput in) throws IOException, ClassNotFoundException {
 			environmentId = (UUID) in.readObject();
 			qualifierEnvironmentProperties = SerialUtils.readExternalImmutableHashMap(in);
 			modifiedEnvironmentProperties = SerialUtils.readExternalImmutableHashSet(in);
@@ -539,7 +593,17 @@ public class TaskInvocationManager implements Closeable {
 		}
 	}
 
+	/**
+	 * A task invocation context provides access to the task invocation events of the build execution.
+	 */
 	public interface TaskInvocationContext {
+		/**
+		 * Polls one or more events from the build execution.
+		 * 
+		 * @return An iterable of events or <code>null</code> if the invocation context is closed.
+		 * @throws InterruptedException
+		 *             If the current thread is interrupted while polling.
+		 */
 		@RMIWrap(RMIArrayListWrapper.class)
 		public Iterable<TaskInvocationEvent> poll() throws InterruptedException;
 	}
@@ -547,9 +611,27 @@ public class TaskInvocationManager implements Closeable {
 	public interface InvocationRequest {
 		public boolean isActive();
 
+		/**
+		 * Signals that the cluster failed to handle the request.
+		 * <p>
+		 * This is a more serious error, my signal:
+		 * <ul>
+		 * <li>serialization error of the underlying objects</li>
+		 * <li>client code error, like {@link TaskFactory#createTask(ExecutionContext)} failing</li>
+		 * <li>cluster thread interrupted</li>
+		 * </ul>
+		 * 
+		 * @param invocationcontext
+		 *            The invocation context.
+		 * @param cause
+		 *            The cause of the exception.
+		 */
 		public void fail(TaskInvocationContext invocationcontext, @RMISerialize Throwable cause);
 	}
 
+	/**
+	 * Visitor for {@link TaskInvocationEvent} implementations.
+	 */
 	public interface TaskInvocationEventVisitor {
 		public void visit(ExecutionEnvironmentSelectionEvent event);
 
@@ -559,18 +641,36 @@ public class TaskInvocationManager implements Closeable {
 	}
 
 	public interface TaskInvocationEvent {
+		/**
+		 * Gets if this task invocation event is still active.
+		 * <p>
+		 * If the event is not active, it won't be returned in {@link TaskInvocationContext#poll()}.
+		 * 
+		 * @return <code>true</code> if active.
+		 */
 		public boolean isActive();
 
 		public void fail(@RMISerialize Throwable cause);
 
 		public void close(@RMISerialize Throwable cause);
 
+		/**
+		 * Accepts the argument visitor for this event.
+		 * 
+		 * @param visitor
+		 *            The visitor.
+		 */
 		public void accept(TaskInvocationEventVisitor visitor);
 	}
 
 	public interface ExecutionEnvironmentSelectionEvent extends TaskInvocationEvent {
 		public static final Method METHOD_FAILUNSUITABLE = ReflectUtils
 				.getMethodAssert(ExecutionEnvironmentSelectionEvent.class, "failUnsuitable");
+
+		@RMIForbidden
+		public default Throwable getSerializationException() {
+			return null;
+		}
 
 		@RMISerialize
 		@RMICacheResult
@@ -580,16 +680,36 @@ public class TaskInvocationManager implements Closeable {
 		@RMICacheResult
 		public Map<? extends EnvironmentProperty<?>, ?> getDependentProperties();
 
+		/**
+		 * The environment selection was successful, and it is suitable for execution.
+		 * 
+		 * @param result
+		 *            The selection result.
+		 */
 		public void succeed(@RMISerialize SelectionResult result);
 
+		/**
+		 * The environment is not suitable for execution.
+		 */
 		public void failUnsuitable();
 
-		public void failUnsuitable(@RMISerialize Exception e);
+		/**
+		 * The environment is not suitable for execution and the check has failed with the argument exception.
+		 * 
+		 * @param e
+		 *            The exception.
+		 */
+		public void failUnsuitable(@RMISerialize Throwable e);
 	}
 
 	public interface ClusterExecutionEvent<R> extends TaskInvocationEvent {
 		public static final Method METHOD_FAILUNSUITABLE = ReflectUtils.getMethodAssert(ClusterExecutionEvent.class,
 				"failUnsuitable");
+
+		@RMIForbidden
+		public default Throwable getSerializationException() {
+			return null;
+		}
 
 		@RMICacheResult
 		public int getComputationTokenCount();
@@ -608,12 +728,35 @@ public class TaskInvocationManager implements Closeable {
 		@RMICacheResult
 		public TaskExecutionUtilities getTaskUtilities();
 
+		/**
+		 * Checks if the execution can be started on the caller cluster.
+		 * <p>
+		 * If this method returns <code>true</code>, only {@link #executionSuccessful(Object)} and
+		 * {@link #executionException(Throwable)} can be used to report an execution failure.
+		 * 
+		 * @return <code>true</code>if the execution can be started.
+		 */
 		public boolean startExecution();
 
+		/**
+		 * The execution of the given task was successful.
+		 * 
+		 * @param taskresult
+		 *            The task result.
+		 */
 		public void executionSuccessful(@RMISerialize R taskresult);
 
+		/**
+		 * The execution of the task failed with an exception.
+		 * 
+		 * @param e
+		 *            The exception.
+		 */
 		public void executionException(@RMISerialize Throwable e);
 
+		/**
+		 * Called when the cluster is not a suitable environment to invoke the task.
+		 */
 		public void failUnsuitable();
 
 	}
@@ -623,6 +766,11 @@ public class TaskInvocationManager implements Closeable {
 				.getMethodAssert(InnerClusterExecutionEvent.class, "failUnsuitable");
 		public static final Method METHOD_SETINVOCATIONHANDLE = ReflectUtils.getMethodAssert(
 				InnerClusterExecutionEvent.class, "setInvocationHandle", InnerTaskInvocationHandle.class);
+
+		@RMIForbidden
+		public default Throwable getSerializationException() {
+			return null;
+		}
 
 		@RMICacheResult
 		public int getComputationTokenCount();
@@ -643,19 +791,42 @@ public class TaskInvocationManager implements Closeable {
 		@RMICacheResult
 		public TaskDuplicationPredicate getDuplicationPredicate();
 
+		/**
+		 * Sets the invocation handle for the inner task invocations.
+		 * <p>
+		 * This is called when the invocation of inner tasks have started properly on the cluster.
+		 * 
+		 * @param resulthandle
+		 *            The handle.
+		 */
 		public void setInvocationHandle(InnerTaskInvocationHandle<R> resulthandle);
 
+		/**
+		 * Notifies the event that the invocation failed to start due to an unexpected exception.
+		 * 
+		 * @param e
+		 *            The exception.
+		 */
 		public void failInvocationStart(@RMISerialize Throwable e);
 
+		/**
+		 * Gets the environment selection result previously determined.
+		 * 
+		 * @return The selection result.
+		 */
 		@RMISerialize
 		@RMICacheResult
 		public SelectionResult getSelectionResult();
 
+		/**
+		 * The event receiver environment is not suitable for execution.
+		 */
 		public void failUnsuitable();
 	}
 
 	private abstract static class BaseInvocationRequest implements InvocationRequest {
-		private Set<TaskInvocationContext> failedContexts = ConcurrentHashMap.newKeySet();
+		protected final Set<TaskInvocationContext> failedContexts = ConcurrentHashMap.newKeySet();
+		protected final Map<TaskInvocationContext, Throwable> contextFailExceptions = new ConcurrentHashMap<>();
 
 		public BaseInvocationRequest(Collection<? extends TaskInvocationContext> invocationcontexts) {
 			failedContexts.addAll(invocationcontexts);
@@ -668,17 +839,31 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		public void fail(TaskInvocationContext invocationcontext, Throwable cause) {
-			if (failedContexts.remove(invocationcontext) && failedContexts.isEmpty()) {
-				allClustersFailed();
+			if (cause != null) {
+				Throwable present = contextFailExceptions.compute(invocationcontext, (k, v) -> v != null ? v : cause);
+				if (present != cause) {
+					present.addSuppressed(cause);
+				}
 			}
+			removeFailedContext(invocationcontext);
+		}
+
+		protected final void closeImpl(TaskInvocationContext invocationcontext, Throwable cause) {
+			if (cause != null) {
+				//only add the exception if there wasn't any previous exceptions
+				contextFailExceptions.computeIfAbsent(invocationcontext, (k) -> cause);
+			}
+			removeFailedContext(invocationcontext);
 		}
 
 		public abstract void close(TaskInvocationContext invocationcontext, Throwable cause);
 
 		protected abstract void allClustersFailed();
 
-		public boolean isAllClustersFailed() {
-			return failedContexts.isEmpty();
+		private void removeFailedContext(TaskInvocationContext invocationcontext) {
+			if (failedContexts.remove(invocationcontext) && failedContexts.isEmpty()) {
+				allClustersFailed();
+			}
 		}
 	}
 
@@ -712,15 +897,26 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		protected void allClustersFailed() {
-			supplierResult.fail();
+			supplierResult.fail(this);
 		}
 
-		public void succeed(SelectionResult result) {
+		public void succeed(TaskInvocationContext invocationContext, SelectionResult result) {
+			Throwable serialexc = result.getSerializationException();
+			if (serialexc != null) {
+				//deserialization of the selection result failed, consider the invocation context failed
+				fail(invocationContext, new ClusterEnvironmentSelectionFailedException(
+						"Failed to deserialize environment selection result.", serialexc));
+				return;
+			}
 			supplierResult.setResult(Functionals.valSupplier(result));
 		}
 
 		@Override
 		public void close(TaskInvocationContext invocationcontext, Throwable cause) {
+			if (supplierResult.hasResult()) {
+				//already has result, closing is irrelevant
+				return;
+			}
 			super.fail(invocationcontext, cause);
 		}
 
@@ -758,13 +954,13 @@ public class TaskInvocationManager implements Closeable {
 			this.taskUtilities = taskContext.getTaskUtilities();
 		}
 
-		public void failInit(TaskInvocationContext invocationcontext, Throwable e) {
+		public void failInvocationStart(TaskInvocationContext invocationcontext, Throwable e) {
 			super.fail(invocationcontext, e);
 		}
 
 		@Override
 		public void close(TaskInvocationContext invocationcontext, Throwable cause) {
-			super.fail(invocationcontext, cause);
+			super.closeImpl(invocationcontext, cause);
 		}
 
 		@Override
@@ -824,17 +1020,16 @@ public class TaskInvocationManager implements Closeable {
 				.newUpdater(TaskInvocationManager.TaskExecutionRequestImpl.class, TaskInvocationContext.class,
 						"starterInvocationContext");
 
-		private volatile TaskInvocationContext starterInvocationContext;
+		protected volatile TaskInvocationContext starterInvocationContext;
 
-		private final TaskFactory<R> factory;
-		private final TaskInvocationConfiguration capabilities;
-		private final SelectionResult selectionResult;
-		private final TaskContext taskContext;
-		private final TaskExecutionUtilities taskUtilities;
+		protected final TaskFactory<R> factory;
+		protected final TaskInvocationConfiguration capabilities;
+		protected final SelectionResult selectionResult;
+		protected final TaskContext taskContext;
+		protected final TaskExecutionUtilities taskUtilities;
 
-		private R result;
-		private Throwable resultException;
-		private final BooleanLatch finishedLatch = BooleanLatch.newBooleanLatch();
+		protected TaskInvocationResult<R> invocationResult;
+		protected final BooleanLatch finishedLatch = BooleanLatch.newBooleanLatch();
 
 		public TaskExecutionRequestImpl(Collection<TaskInvocationContextImpl> invocationContexts,
 				TaskFactory<R> factory, TaskInvocationConfiguration capabilities, SelectionResult selectionresult,
@@ -858,19 +1053,26 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		public void executionSuccessful(R taskresult) {
-			result = taskresult;
+			invocationResult = TaskInvocationResult.ofSuccessful(Optional.ofNullable(taskresult));
 			finishedLatch.signal();
 		}
 
 		public void executionException(Throwable e) {
-			resultException = e;
+			invocationResult = TaskInvocationResult.ofFailed(e);
 			finishedLatch.signal();
 		}
 
 		@Override
 		public void fail(TaskInvocationContext invocationcontext, Throwable cause) {
 			if (isStartedExecution(invocationcontext)) {
-				failWithStartedExecution(invocationcontext, cause);
+				//wrap in a different exception so it is signalled, that this cluster started the execution, 
+				//but failed for some other reason
+				try {
+					super.fail(invocationcontext, new ClusterTaskExecutionFailedException(cause));
+				} finally {
+					//always signal
+					finishedLatch.signal();
+				}
 			} else {
 				super.fail(invocationcontext, cause);
 			}
@@ -879,17 +1081,11 @@ public class TaskInvocationManager implements Closeable {
 		@Override
 		public void close(TaskInvocationContext invocationcontext, Throwable cause) {
 			if (finishedLatch.isSignalled()) {
-				//already finished, closing is okay
+				//already finished, closing of the invocation context is okay
 				return;
 			}
-			resultException = new IllegalStateException("Task execution request closed.", cause);
 			finishedLatch.signal();
 			super.fail(invocationcontext, cause);
-		}
-
-		private void failWithStartedExecution(TaskInvocationContext invocationContext, Throwable cause) {
-			resultException = new ClusterTaskExecutionFailedException(cause);
-			finishedLatch.signal();
 		}
 
 		public TaskInvocationConfiguration getCapabilities() {
@@ -929,24 +1125,14 @@ public class TaskInvocationManager implements Closeable {
 			finishedLatch.await();
 		}
 
-		public Optional<R> getResultOptional() {
-			if (resultException == null) {
-				return Optional.ofNullable(result);
-			}
-			return null;
-		}
-
-		public TaskInvocationResult<R> toTaskInvocationResult() {
-			if (isAllClustersFailed()) {
-				return null;
-			}
-			return new TaskInvocationResult<>(getResultOptional(), resultException);
+		public TaskInvocationResult<R> getTaskInvocationResult() {
+			return invocationResult;
 		}
 
 	}
 
 	@RMIWrap(ExecutionEnvironmentSelectionEventRMIWrapper.class)
-	private static class ExecutionEnvironmentSelectionEventRMIWrapper
+	private static class ExecutionEnvironmentSelectionEventRMIWrapper extends SerializationErrorRecovererRMIWrapper
 			implements RMIWrapper, ExecutionEnvironmentSelectionEvent {
 		private ExecutionEnvironmentSelectionEvent event;
 
@@ -965,7 +1151,7 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public void writeWrapped(RMIObjectOutput out) throws IOException {
+		protected void writeImpl(RMIObjectOutput out) throws IOException {
 			out.writeRemoteObject(event);
 			out.writeSerializedObject(event.getEnvironmentSelector());
 			out.writeSerializedObject(event.getDependentProperties());
@@ -973,7 +1159,7 @@ public class TaskInvocationManager implements Closeable {
 
 		@SuppressWarnings("unchecked")
 		@Override
-		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
+		protected void readImpl(RMIObjectInput in) throws IOException, ClassNotFoundException {
 			event = (ExecutionEnvironmentSelectionEvent) in.readObject();
 			environmentSelector = (TaskExecutionEnvironmentSelector) in.readObject();
 			dependentProprties = (Map<? extends EnvironmentProperty<?>, ?>) in.readObject();
@@ -1000,7 +1186,7 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public void failUnsuitable(Exception e) {
+		public void failUnsuitable(Throwable e) {
 			try {
 				event.failUnsuitable(e);
 			} catch (RMIIOFailureException e2) {
@@ -1069,12 +1255,12 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		public void succeed(SelectionResult result) {
-			request.succeed(result);
+			request.succeed(invocationContext, result);
 		}
 
 		@Override
 		public void fail(Throwable cause) {
-			request.fail(invocationContext, cause);
+			request.fail(invocationContext, new ClusterEnvironmentSelectionFailedException(cause));
 		}
 
 		@Override
@@ -1088,7 +1274,7 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public void failUnsuitable(Exception e) {
+		public void failUnsuitable(Throwable e) {
 			request.fail(invocationContext, e);
 		}
 
@@ -1104,7 +1290,8 @@ public class TaskInvocationManager implements Closeable {
 	}
 
 	@RMIWrap(InnerClusterExecutionEventRMIWrapper.class)
-	private static class InnerClusterExecutionEventRMIWrapper<R> implements RMIWrapper, InnerClusterExecutionEvent<R> {
+	private static class InnerClusterExecutionEventRMIWrapper<R> extends SerializationErrorRecovererRMIWrapper
+			implements RMIWrapper, InnerClusterExecutionEvent<R> {
 		private InnerClusterExecutionEvent<R> event;
 		private int computationTokenCount;
 		private TaskFactory<R> taskFactory;
@@ -1126,28 +1313,28 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public void writeWrapped(RMIObjectOutput out) throws IOException {
+		protected void writeImpl(RMIObjectOutput out) throws IOException {
 			out.writeRemoteObject(event);
 			out.writeInt(event.getComputationTokenCount());
-			out.writeSerializedObject(event.getTaskFactory());
 			out.writeRemoteObject(event.getTaskContext());
 			out.writeRemoteObject(event.getTaskUtilities());
-			out.writeObject(event.getDuplicationPredicate());
-			out.writeSerializedObject(event.getSelectionResult());
 			out.writeInt(event.getMaximumEnvironmentFactor());
+			out.writeObject(event.getDuplicationPredicate());
+			out.writeSerializedObject(event.getTaskFactory());
+			out.writeSerializedObject(event.getSelectionResult());
 		}
 
 		@SuppressWarnings("unchecked")
 		@Override
-		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
+		protected void readImpl(RMIObjectInput in) throws IOException, ClassNotFoundException {
 			event = (InnerClusterExecutionEvent<R>) in.readObject();
 			computationTokenCount = in.readInt();
-			taskFactory = (TaskFactory<R>) in.readObject();
 			taskContext = (TaskContext) in.readObject();
 			taskUtilities = (TaskExecutionUtilities) in.readObject();
-			duplicationPredicate = (TaskDuplicationPredicate) in.readObject();
-			selectionResult = (SelectionResult) in.readObject();
 			maximumEnvironmentFactor = in.readInt();
+			duplicationPredicate = (TaskDuplicationPredicate) in.readObject();
+			taskFactory = (TaskFactory<R>) in.readObject();
+			selectionResult = (SelectionResult) in.readObject();
 		}
 
 		@Override
@@ -1342,33 +1529,40 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		public void failInvocationStart(Throwable e) {
+			request.failInvocationStart(invocationContext, e);
 			invocationListener.notifyNoMoreResults();
-			request.failInit(invocationContext, e);
+
 			AIFU_flags.updateAndGet(this, c -> c | FLAG_HAD_RESPONSE);
 			responseLatch.signal();
 		}
 
 		@Override
 		public void fail(Throwable cause) {
-			invocationListener.hardFailed(cause);
+			//the cluster failed for some reason, the inner task invocation didn't proceed
+			//exception is recorded in the base request
+			//notify the listener about no more results
 			request.fail(invocationContext, cause);
+			invocationListener.notifyNoMoreResults();
+
 			AIFU_flags.updateAndGet(this, c -> c | FLAG_HAD_RESPONSE);
 			responseLatch.signal();
 		}
 
 		@Override
 		public void close(Throwable cause) {
-			invocationListener.closed(cause);
 			request.close(invocationContext, cause);
+			invocationListener.closed(cause);
+
 			AIFU_flags.updateAndGet(this, c -> c | (FLAG_HAD_RESPONSE | FLAG_CLOSED | FLAG_CANCEL_DUPLICATION));
 			responseLatch.signal();
 		}
 
 		@Override
 		public void failUnsuitable() {
-			invocationListener.notifyNoMoreResults();
 			//TODO unsuitability exception?
 			request.fail(invocationContext, null);
+			invocationListener.notifyNoMoreResults();
+
 			AIFU_flags.updateAndGet(this, c -> c | FLAG_HAD_RESPONSE);
 			responseLatch.signal();
 		}
@@ -1551,8 +1745,192 @@ public class TaskInvocationManager implements Closeable {
 		}
 	}
 
+	private static class SerializationFailureException extends RuntimeException {
+		private static final long serialVersionUID = 1L;
+
+		public SerializationFailureException(Throwable cause) {
+			super(null, cause, false, false);
+		}
+	}
+
+	private static class SerializationIndexFailureException extends RuntimeException {
+		private static final long serialVersionUID = 1L;
+
+		public final int index;
+
+		public SerializationIndexFailureException(int index, Throwable cause) {
+			super(null, cause, false, false);
+			this.index = index;
+		}
+	}
+
+	private static class SerializationFailureMarker implements Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		protected Throwable cause;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public SerializationFailureMarker() {
+		}
+
+		public SerializationFailureMarker(Throwable cause) {
+			this.cause = cause;
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			out.writeObject(cause);
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			cause = (Throwable) in.readObject();
+			throw new SerializationFailureException(cause);
+		}
+	}
+
+	private static class SerializationIndexFailureMarker extends SerializationFailureMarker {
+		private static final long serialVersionUID = 1L;
+
+		protected int index;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public SerializationIndexFailureMarker() {
+		}
+
+		public SerializationIndexFailureMarker(int index, Throwable cause) {
+			super(cause);
+			this.index = index;
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			out.writeInt(index);
+			out.writeObject(cause);
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			index = in.readInt();
+			cause = (Throwable) in.readObject();
+			throw new SerializationIndexFailureException(index, cause);
+		}
+	}
+
+	/**
+	 * Base superclass for serializable objects that should gracefully handle serialization errrors.
+	 * <p>
+	 * The class transfers the failure exception of the serialization, and the reason is retrievable via
+	 * {@link #getSerializationException()}.
+	 * <p>
+	 * Implementation notes: <br>
+	 * The class internally uses {@link SerializationFailureException} and {@link SerializationFailureMarker} classes,
+	 * which hold the serialization cause exception during transfer. This is necessary, as otherwise we may lose
+	 * exceptions like {@link NotSerializableException} when the object that isn't serializable is being written in a
+	 * recursive manner. See {@link ObjectOutputStream#writeObject(Object)} code, the exception is only written in case
+	 * <code>depth == 0</code>.
+	 * 
+	 * @param <InStreamType>
+	 *            The input stream type.
+	 * @param <OutStreamType>
+	 *            The output stream type.
+	 */
+	private static abstract class SerializationExceptionHandler<InStreamType extends ObjectInput, OutStreamType extends ObjectOutput> {
+		protected transient Throwable serializationException;
+
+		protected final void callWrite(OutStreamType out) throws IOException {
+			try {
+				writeImpl(out);
+			} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+					| StackOverflowError e) {
+				// some writing failed, maybe the task factory is not serializable?
+				// don't throw the exception, not to fail the serialization
+				// as that would fail RMI calls, and shut down the cluster calls
+				// rather write the exception to the stream, that would be later
+				// reported by the cluster
+				try {
+					out.writeObject(new SerializationFailureMarker(e));
+				} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+						| StackOverflowError e2) {
+					//this shouldn't really fail, unless the exception itself is not serializable
+					//XXX can we do something with this exception?
+					e2.addSuppressed(e);
+					e2.printStackTrace();
+				}
+			}
+		}
+
+		protected final void callRead(InStreamType in) throws IOException, ClassNotFoundException {
+			try {
+				readImpl(in);
+			} catch (SerializationFailureException e) {
+				serializationException = e.getCause();
+			} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+					| StackOverflowError e) {
+				// if the deserialization of the stream data fails for some reason
+				// then don't throw an exception, as that would cause the RMI calls to fail
+				// in various way, and cause the cluster to shut down
+				// instead we report the serialization exception, and the cluster
+				// will call back with it as the failure reason
+				serializationException = e;
+				try {
+					Object writeexc = in.readObject();
+					if (writeexc instanceof Throwable) {
+						e.addSuppressed((Throwable) writeexc);
+					}
+				} catch (SerializationFailureException sfe) {
+					serializationException = sfe.getCause();
+				} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+						| StackOverflowError e2) {
+					e.addSuppressed(e2);
+				}
+			}
+		}
+
+		protected abstract void writeImpl(OutStreamType out) throws IOException;
+
+		protected abstract void readImpl(InStreamType in) throws IOException, ClassNotFoundException;
+
+		public final Throwable getSerializationException() {
+			return serializationException;
+		}
+	}
+
+	private static abstract class SerializationErrorRecovererRMIWrapper
+			extends SerializationExceptionHandler<RMIObjectInput, RMIObjectOutput> implements RMIWrapper {
+		@Override
+		public final void writeWrapped(RMIObjectOutput out) throws IOException {
+			callWrite(out);
+		}
+
+		@Override
+		public final void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
+			callRead(in);
+		}
+	}
+
+	private static abstract class SerializationErrorRecovererExternalizable
+			extends SerializationExceptionHandler<ObjectInput, ObjectOutput> implements Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		@Override
+		public final void writeExternal(ObjectOutput out) throws IOException {
+			callWrite(out);
+		}
+
+		@Override
+		public final void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			callRead(in);
+		}
+	}
+
 	@RMIWrap(TaskClusterExecutionEventRMIWrapper.class)
-	private static class TaskClusterExecutionEventRMIWrapper<R> implements RMIWrapper, ClusterExecutionEvent<R> {
+	private static class TaskClusterExecutionEventRMIWrapper<R> extends SerializationErrorRecovererRMIWrapper
+			implements RMIWrapper, ClusterExecutionEvent<R> {
 		private ClusterExecutionEvent<R> event;
 		private int computationTokenCount;
 		private SelectionResult selectionResult;
@@ -1572,23 +1950,25 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public void writeWrapped(RMIObjectOutput out) throws IOException {
+		protected void writeImpl(RMIObjectOutput out) throws IOException {
 			out.writeRemoteObject(event);
 			out.writeInt(event.getComputationTokenCount());
-			out.writeSerializedObject(event.getSelectionResult());
 			out.writeRemoteObject(event.getTaskContext());
 			out.writeRemoteObject(event.getTaskUtilities());
+
+			out.writeSerializedObject(event.getSelectionResult());
 			out.writeSerializedObject(event.getTaskFactory());
 		}
 
 		@SuppressWarnings("unchecked")
 		@Override
-		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
+		protected void readImpl(RMIObjectInput in) throws ClassNotFoundException, IOException {
 			event = (ClusterExecutionEvent<R>) in.readObject();
 			computationTokenCount = in.readInt();
-			selectionResult = (SelectionResult) in.readObject();
 			taskContext = (TaskContext) in.readObject();
 			taskUtilities = (TaskExecutionUtilities) in.readObject();
+
+			selectionResult = (SelectionResult) in.readObject();
 			taskFactory = (TaskFactory<R>) in.readObject();
 		}
 
@@ -1677,6 +2057,11 @@ public class TaskInvocationManager implements Closeable {
 		private List<TaskInvocationEvent> events = new ArrayList<>();
 		private int pollEndIndex = 0;
 		private volatile boolean closed = false;
+		/**
+		 * The exception that caused the closter to be closed.
+		 * <p>
+		 * If this is <code>null</code>, the the cluster closed in an orderly manner.
+		 */
 		private Throwable closeException;
 
 		public TaskInvocationContextImpl(UUID environmentIdentifier) {
@@ -1693,21 +2078,38 @@ public class TaskInvocationManager implements Closeable {
 			}
 		}
 
+		/**
+		 * The cluster execution is aborted due to some unexpected exception.
+		 * 
+		 * @param e
+		 *            The exception.
+		 */
 		public void clusterRunningAborted(Throwable e) {
 			close(e);
 		}
 
+		/**
+		 * The cluster is exiting after successfully finished running.
+		 */
 		public void clusterExit() {
-			close(new IllegalStateException("Cluster closed."));
+			//null exception, the cluster closed orderly
+			close(null);
 		}
 
 		public UUID getEnvironmentIdentifier() {
 			return environmentIdentifier;
 		}
 
+		/**
+		 * The invocation context is closed, and won't accept any more events.
+		 * 
+		 * @param e
+		 *            The cause of the closing, or <code>null</code> if the cluster shut down orderly.
+		 */
 		public void close(Throwable e) {
 			List<TaskInvocationEvent> evlist;
-			IllegalStateException failexc;
+			Throwable closeex;
+
 			final Lock lock = eventLock;
 			lock.lock();
 			try {
@@ -1720,32 +2122,36 @@ public class TaskInvocationManager implements Closeable {
 
 				eventCondition.signalAll();
 
-				failexc = createClosedException(closeException);
+				closeex = closeException;
 			} finally {
 				lock.unlock();
 			}
+
+			//close the remaining events of this invocation context
+			Throwable failexc = createClosedException(closeex);
 			for (TaskInvocationEvent ev : evlist) {
 				ev.close(failexc);
 			}
 		}
 
-		private static IllegalStateException createClosedException(Throwable cexc) {
-			return new IllegalStateException("Task invocation context closed.", cexc);
+		private IllegalStateException createClosedException(Throwable cexc) {
+			return new IllegalStateException(
+					"Task invocation context closed. (Env UUID: " + environmentIdentifier + ")", cexc);
 		}
 
 		public void addEvent(TaskInvocationEvent event) {
 			Throwable closeex;
+
 			final Lock lock = eventLock;
 			lock.lock();
-			event_add_block:
 			try {
 				closeex = closeException;
-				if (closed) {
-					break event_add_block;
+				if (!closed) {
+					events.add(event);
+					eventCondition.signal();
+					return;
 				}
-				events.add(event);
-				eventCondition.signal();
-				return;
+				//else close the event below
 			} finally {
 				lock.unlock();
 			}
@@ -1831,9 +2237,14 @@ public class TaskInvocationManager implements Closeable {
 			return result != null;
 		}
 
-		public void fail() {
+		public void fail(ExecutionEnvironmentInvocationRequestImpl request) {
 			setResult(() -> {
-				throw new TaskEnvironmentSelectionFailedException(localSelectionException);
+				TaskEnvironmentSelectionFailedException thrownexc = new TaskEnvironmentSelectionFailedException(
+						localSelectionException);
+				for (Throwable failexc : request.contextFailExceptions.values()) {
+					thrownexc.addSuppressed(failexc);
+				}
+				throw thrownexc;
 			});
 		}
 
@@ -1845,31 +2256,42 @@ public class TaskInvocationManager implements Closeable {
 	}
 
 	private static class InvokerTaskResultsHandler<R> implements InnerTaskResults<R>, ManagerInnerTaskResults<R> {
+		@SuppressWarnings("rawtypes")
+		private static final AtomicIntegerFieldUpdater<TaskInvocationManager.InvokerTaskResultsHandler> AIFU_failFlags = AtomicIntegerFieldUpdater
+				.newUpdater(TaskInvocationManager.InvokerTaskResultsHandler.class, "failFlags");
+
+		private static final int FAIL_FLAG_ALL_CLUSTERS_FAILED = 1 << 0;
+		private static final int FAIL_FLAG_INIT_EXCEPTION_REPORTED = 1 << 1;
+
 		private final TaskExecutorContext<?> taskContext;
 		private final ConcurrentLinkedQueue<ListenerInnerTaskInvocationHandler<R>> invocationHandles;
 		private final Lock resultWaiterLock;
 		private final Condition resultWaiterCondition;
 		private final boolean duplicationCancellable;
+		private final boolean locallyRunnable;
 
-		private volatile boolean allClustersFailed;
-		private boolean locallyRunnable;
+		private InnerTaskExecutionRequestImpl<R> request;
+
+		private volatile int failFlags;
 
 		public InvokerTaskResultsHandler(TaskExecutorContext<?> taskcontext,
 				ConcurrentLinkedQueue<ListenerInnerTaskInvocationHandler<R>> invocationHandles,
-				boolean duplicationCancellable, Lock resultwaiterlock, Condition resultWaiterCondition) {
+				boolean duplicationCancellable, boolean locallyRunnable, Lock resultwaiterlock,
+				Condition resultWaiterCondition) {
 			this.taskContext = taskcontext;
 			this.invocationHandles = invocationHandles;
 			this.duplicationCancellable = duplicationCancellable;
+			this.locallyRunnable = locallyRunnable;
 			this.resultWaiterLock = resultwaiterlock;
 			this.resultWaiterCondition = resultWaiterCondition;
 		}
 
-		public void setLocallyRunnable(boolean locallyRunnable) {
-			this.locallyRunnable = locallyRunnable;
+		public void setRequest(InnerTaskExecutionRequestImpl<R> request) {
+			this.request = request;
 		}
 
 		public void allClustersFailed() {
-			allClustersFailed = true;
+			AIFU_failFlags.updateAndGet(this, v -> v | FAIL_FLAG_ALL_CLUSTERS_FAILED);
 			resultWaiterLock.lock();
 			try {
 				resultWaiterCondition.signalAll();
@@ -1896,15 +2318,11 @@ public class TaskInvocationManager implements Closeable {
 
 		private InnerTaskResultHolder<R> internalGetNextImpl() throws InterruptedException {
 			while (true) {
-				if (!locallyRunnable && allClustersFailed) {
-					//XXX cause exceptions
-					throw new InnerTaskInitializationException(
-							"Failed to start inner task on the execution environments.");
-				}
 				{
 					Iterator<ListenerInnerTaskInvocationHandler<R>> it = invocationHandles.iterator();
 					if (!it.hasNext()) {
-						return null;
+						//break the loop, will check if all clusters failed, and return appropriately
+						break;
 					}
 					do {
 						ListenerInnerTaskInvocationHandler<R> ih = it.next();
@@ -1913,7 +2331,8 @@ public class TaskInvocationManager implements Closeable {
 							if (presentres != null) {
 								return presentres;
 							}
-						} catch (Exception e) {
+						} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError
+								| AssertionError | StackOverflowError e) {
 							//the handle should be removed, as we don't expect futher requests to succeed
 							it.remove();
 							return new FailedInnerTaskOptionalResult<>("Failed to retrieve inner task result.", e);
@@ -1923,7 +2342,8 @@ public class TaskInvocationManager implements Closeable {
 				ListenerInnerTaskInvocationHandler<R> availih = null;
 				Iterator<ListenerInnerTaskInvocationHandler<R>> availihit = invocationHandles.iterator();
 				if (!availihit.hasNext()) {
-					return null;
+					//break the loop, will check if all clusters failed, and return appropriately
+					break;
 				}
 				resultWaiterLock.lockInterruptibly();
 				try {
@@ -1951,7 +2371,8 @@ public class TaskInvocationManager implements Closeable {
 					if (availih == null) {
 						if (!hadhandler) {
 							//no more handlers found
-							return null;
+							//break the loop, will check if all clusters failed, and return appropriately
+							break;
 						}
 						//clear the iterator so it is garbage collectable while waiting
 						availihit = null;
@@ -1966,13 +2387,40 @@ public class TaskInvocationManager implements Closeable {
 					if (availpresent != null) {
 						return availpresent;
 					}
-				} catch (Exception e) {
+				} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+						| StackOverflowError e) {
 					//the handle should be removed, as we don't expect futher requests to succeed
 					availihit.remove();
 					return new FailedInnerTaskOptionalResult<>("Failed to retrieve inner task result.", e);
 				}
 				//continue loop
 			}
+			//no more results are available, check if all clusters failed to signal initialization error
+			//otherwise return with null
+			if (!locallyRunnable) {
+				while (true) {
+					int failflags = this.failFlags;
+					if (((failflags & FAIL_FLAG_ALL_CLUSTERS_FAILED) != FAIL_FLAG_ALL_CLUSTERS_FAILED)) {
+						//all clusters didn't fail, don't thriw
+						break;
+					}
+					if (((failflags & FAIL_FLAG_INIT_EXCEPTION_REPORTED) == FAIL_FLAG_INIT_EXCEPTION_REPORTED)) {
+						//the exception was already reported
+						break;
+					}
+					if (!AIFU_failFlags.compareAndSet(this, failflags, failflags | FAIL_FLAG_INIT_EXCEPTION_REPORTED)) {
+						//failed to set the exception reported flag, try again
+						continue;
+					}
+					InnerTaskInitializationException thrownexc = new InnerTaskInitializationException(
+							"Failed to start inner task on the execution environments.");
+					if (request != null) {
+						addInvocationContextFailExceptions(thrownexc, request.contextFailExceptions.values());
+					}
+					throw thrownexc;
+				}
+			}
+			return null;
 		}
 
 		@Override
@@ -2011,10 +2459,19 @@ public class TaskInvocationManager implements Closeable {
 	}
 
 	private static class TaskResultReadyCountState {
-		public static final TaskResultReadyCountState ZERO = new TaskResultReadyCountState(0, 0, 0);
+		public static final TaskResultReadyCountState ZERO = new TaskResultReadyCountState(0, 0, 0, null, false);
 
+		/**
+		 * The number of inner task results that are available.
+		 */
 		protected final int readyCount;
+		/**
+		 * The number of times the state was notified about newly available results.
+		 */
 		protected final int notifiedCount;
+		/**
+		 * The number of inner tasks currently being invoked (currently being executed).
+		 */
 		protected final int invokingCount;
 		/**
 		 * <code>null</code> if there was no hard failure yet. <br>
@@ -2023,26 +2480,58 @@ public class TaskInvocationManager implements Closeable {
 		 */
 		protected final Throwable[] hardFail;
 
-		public TaskResultReadyCountState(int readyCount, int invokingCount, int notifiedCount) {
-			this.readyCount = readyCount;
-			this.invokingCount = invokingCount;
-			this.notifiedCount = notifiedCount;
-			this.hardFail = null;
-		}
+		/**
+		 * Whether or not the invocation handler ended, that is, it expects no more inner task results to arrive, and
+		 * the invocation handler can be removed for further results.
+		 * <p>
+		 * This can be set in case the inner task invoker signals that it won't send any more results, or the invocation
+		 * manager has been closed.
+		 */
+		protected final boolean ended;
 
-		public TaskResultReadyCountState(int readyCount, int invokingCount, int notifiedCount, Throwable[] hardFail) {
+		public TaskResultReadyCountState(int readyCount, int invokingCount, int notifiedCount, Throwable[] hardFail,
+				boolean ended) {
 			this.readyCount = readyCount;
 			this.invokingCount = invokingCount;
 			this.notifiedCount = notifiedCount;
 			this.hardFail = hardFail;
+			this.ended = ended;
 		}
 
 		public TaskResultReadyCountState addReady() {
-			return new TaskResultReadyCountState(readyCount + 1, invokingCount, notifiedCount + 1);
+			return new TaskResultReadyCountState(readyCount + 1, invokingCount, notifiedCount + 1, hardFail, ended);
+		}
+
+		public TaskResultReadyCountState addReadyEnded() {
+			return new TaskResultReadyCountState(readyCount + 1, invokingCount, notifiedCount + 1, hardFail, true);
+		}
+
+		public TaskResultReadyCountState takeReady() {
+			return new TaskResultReadyCountState(readyCount - 1, invokingCount, notifiedCount, hardFail, ended);
 		}
 
 		public TaskResultReadyCountState addInvoking() {
-			return new TaskResultReadyCountState(readyCount, invokingCount + 1, notifiedCount);
+			return new TaskResultReadyCountState(readyCount, invokingCount + 1, notifiedCount, hardFail, ended);
+		}
+
+		public TaskResultReadyCountState takeFirstException() {
+			Throwable[] hardFail = this.hardFail;
+			return new TaskResultReadyCountState(readyCount, invokingCount, notifiedCount,
+					hardFail.length == 1 ? null : Arrays.copyOfRange(hardFail, 1, hardFail.length), ended);
+		}
+
+		public TaskResultReadyCountState end() {
+			return new TaskResultReadyCountState(readyCount, invokingCount, notifiedCount, hardFail, true);
+		}
+
+		public TaskResultReadyCountState addFailEnded(Throwable failexc) {
+			Throwable[] hardFail = this.hardFail;
+			if (hardFail == null) {
+				return new TaskResultReadyCountState(readyCount, invokingCount, notifiedCount,
+						new Throwable[] { failexc }, true);
+			}
+			return new TaskResultReadyCountState(readyCount, invokingCount, notifiedCount,
+					ArrayUtils.appended(hardFail, failexc), true);
 		}
 	}
 
@@ -2090,7 +2579,6 @@ public class TaskInvocationManager implements Closeable {
 		private volatile TaskResultReadyCountState readyState = TaskResultReadyCountState.ZERO;
 
 		protected InnerTaskInvocationHandle<R> handle;
-		private volatile boolean ended;
 
 		private final Set<InnerTaskInstanceInvocationHandleImpl> startedTaskInvocations = ConcurrentHashMap.newKeySet();
 
@@ -2114,25 +2602,26 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		public boolean isEnded() {
-			return ended;
+			TaskResultReadyCountState s = readyState;
+			return s.ended;
 		}
 
 		public void cancelDuplicationOptionally() {
-			if (ended) {
+			if (readyState.ended) {
 				return;
 			}
 			handle.cancelDuplication();
 		}
 
 		public void waitFinish() throws InterruptedException {
-			if (ended) {
+			if (readyState.ended) {
 				return;
 			}
 			handle.waitFinish();
 		}
 
 		public void interrupt() {
-			if (ended) {
+			if (readyState.ended) {
 				return;
 			}
 			handle.interrupt();
@@ -2148,12 +2637,12 @@ public class TaskInvocationManager implements Closeable {
 			return s.notifiedCount < s.invokingCount || !startedTaskInvocations.isEmpty();
 		}
 
-		public InnerTaskResultHolder<R> getResultIfPresent() throws Exception {
+		public InnerTaskResultHolder<R> getResultIfPresent() throws InterruptedException {
 			while (true) {
 				TaskResultReadyCountState s = this.readyState;
 				if (s.readyCount > 0) {
-					if (!ARFU_readyState.compareAndSet(this, s,
-							new TaskResultReadyCountState(s.readyCount - 1, s.invokingCount, s.notifiedCount))) {
+					TaskResultReadyCountState nstate = s.takeReady();
+					if (!ARFU_readyState.compareAndSet(this, s, nstate)) {
 						continue;
 					}
 					InnerTaskResultHolder<R> res = handle.getResultIfPresent();
@@ -2163,14 +2652,11 @@ public class TaskInvocationManager implements Closeable {
 					return res;
 				}
 				if (!ObjectUtils.isNullOrEmpty(s.hardFail)) {
-					if (!ARFU_readyState.compareAndSet(this, s,
-							new TaskResultReadyCountState(s.readyCount, s.invokingCount, s.notifiedCount, null))) {
+					TaskResultReadyCountState nstate = s.takeFirstException();
+					if (!ARFU_readyState.compareAndSet(this, s, nstate)) {
 						continue;
 					}
 					Throwable firsthardfailexc = s.hardFail[0];
-					for (int i = 1; i < s.hardFail.length; i++) {
-						firsthardfailexc.addSuppressed(s.hardFail[1]);
-					}
 					return new FailedInnerTaskOptionalResult<>(firsthardfailexc);
 				}
 				//no results ready
@@ -2184,32 +2670,50 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		private void notifyResultReadyImpl(boolean lastresult) {
-			ARFU_readyState.updateAndGet(this, TaskResultReadyCountState::addReady);
+			TaskResultReadyCountState nstate;
+			if (lastresult) {
+				nstate = ARFU_readyState.updateAndGet(this, TaskResultReadyCountState::addReadyEnded);
+			} else {
+				nstate = ARFU_readyState.updateAndGet(this, TaskResultReadyCountState::addReady);
+			}
 			resultWaiterLock.lock();
 			try {
-				if (lastresult) {
-					//set the ended flag in the lock
-					ended = true;
+				if (lastresult || nstate.ended) {
+					//signal all if this is the last results
+					//  or
+					//there might be scenarios when the "no more result" notification arrives before the 
+					// "result ready" notification. in this case we need to signal all
 					resultWaiterCondition.signalAll();
 				} else {
-					if (ended) {
-						//there might be scenarios when the "no more result" notification arrives before the 
-						// "result ready" notification. in this case we need to notify all
-						resultWaiterCondition.signalAll();
-					} else {
-						resultWaiterCondition.signal();
-					}
+					resultWaiterCondition.signal();
 				}
 			} finally {
 				resultWaiterLock.unlock();
 			}
 		}
 
+		private boolean setEndState() {
+			while (true) {
+				TaskResultReadyCountState state = this.readyState;
+				if (state.ended) {
+					return false;
+				}
+				if (ARFU_readyState.compareAndSet(this, state, state.end())) {
+					return true;
+				}
+				//try again
+			}
+		}
+
 		@Override
 		public void notifyNoMoreResults() {
+			if (!setEndState()) {
+				//was already ended, no need to signal the result waiters again
+				return;
+			}
+			//signal all for the ended state
 			resultWaiterLock.lock();
 			try {
-				ended = true;
 				resultWaiterCondition.signalAll();
 			} finally {
 				resultWaiterLock.unlock();
@@ -2227,7 +2731,7 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		public InnerTaskInstanceInvocationHandle notifyTaskInvocationStart() {
-			if (ended) {
+			if (readyState.ended) {
 				return null;
 			}
 			while (true) {
@@ -2246,53 +2750,28 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		public void closed(Throwable cause) {
-			TaskResultReadyCountState s = readyState;
-			if (s.invokingCount == 0) {
-				//its okay to close
-				ended = true;
-				return;
-			}
 			hardFailed(cause);
 		}
 
 		public void hardFailed(Throwable cause) {
 			while (true) {
 				TaskResultReadyCountState s = readyState;
-				if (s.invokingCount == 0) {
-					//no need to return a result with an exception, as there are no currently invoking tasks
-					taskContext.getTaskUtilities().reportIgnoredException(cause);
-					break;
-				}
-				if (s.hardFail == null) {
-					if (ARFU_readyState.compareAndSet(this, s, new TaskResultReadyCountState(s.readyCount,
-							s.invokingCount, s.notifiedCount, new Throwable[] { cause }))) {
-						break;
-					}
-					continue;
-				}
-				if (ARFU_readyState.compareAndSet(this, s, new TaskResultReadyCountState(s.readyCount, s.invokingCount,
-						s.notifiedCount, ArrayUtils.appended(s.hardFail, cause)))) {
+				TaskResultReadyCountState nstate = s.addFailEnded(cause);
+				if (ARFU_readyState.compareAndSet(this, s, nstate)) {
 					break;
 				}
 				continue;
 			}
 			resultWaiterLock.lock();
 			try {
-				this.ended = true;
 				resultWaiterCondition.signalAll();
 			} finally {
 				resultWaiterLock.unlock();
 			}
 		}
-
-		public TaskResultReadyCountState getReadyState() {
-			return readyState;
-		}
 	}
 
-	//TODO this RMIWrapper should be tested for robustness if a result cannot be serialized
 	public static class MultiInnerTaskResultHolderRMIWrapper implements RMIWrapper {
-
 		private Iterable<?> results;
 
 		public MultiInnerTaskResultHolderRMIWrapper() {
@@ -2305,27 +2784,58 @@ public class TaskInvocationManager implements Closeable {
 		@Override
 		public void writeWrapped(RMIObjectOutput out) throws IOException {
 			Iterator<?> it = results.iterator();
-			while (it.hasNext()) {
+
+			for (int index = 0; it.hasNext(); ++index) {
 				Object val = it.next();
-				out.writeSerializedObject(val);
+				try {
+					out.writeSerializedObject(val);
+				} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+						| StackOverflowError e) {
+					//the serialization of this task result failed
+					//write a marker of the failure
+					try {
+						out.writeObject(new SerializationIndexFailureMarker(index, e));
+					} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+							| StackOverflowError e2) {
+						//this shouldn't really fail, unless the exception itself is not serializable
+						//XXX can we do something with this exception?
+						e2.addSuppressed(e);
+						e2.printStackTrace();
+					}
+				}
 			}
 			out.writeObject(null);
 		}
 
 		@Override
 		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
-			List<Object> results = new ArrayList<>();
+			List<InnerTaskResultHolder<?>> results = new ArrayList<>();
 			while (true) {
-				Object obj;
+				InnerTaskResultHolder<?> obj;
 				try {
-					obj = in.readObject();
-				} catch (Exception e) {
-					// failed to read or something
-					results.add(new FailedInnerTaskOptionalResult<>("Failed to read inner task result.", e));
+					obj = (InnerTaskResultHolder<?>) in.readObject();
+					if (obj == null) {
+						break;
+					}
+				} catch (SerializationIndexFailureException e) {
+					if (e.index >= results.size()) {
+						//sanity check
+						//shouldn't happen, but better throw an exception than fail otherwise
+						IOException ioe = new IOException("Invalid serialization protocol, failure index: " + e.index
+								+ " is out of bounds for results size: " + results.size());
+						ioe.addSuppressed(e);
+						throw ioe;
+					}
+					results.set(e.index, new FailedInnerTaskOptionalResult<>("Failed to read inner task result.",
+							new TaskResultSerializationException(e.getCause())));
 					continue;
-				}
-				if (obj == null) {
-					break;
+				} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+						| StackOverflowError e) {
+					// failed to read probably during the initial write.
+					// we expect to read a SerializationIndexFailureMarker later, but place the
+					// following object to the result list at least as a placeholder
+					obj = new FailedInnerTaskOptionalResult<>("Failed to read inner task result.",
+							new TaskResultSerializationException(e));
 				}
 				results.add(obj);
 			}
