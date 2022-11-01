@@ -3618,8 +3618,6 @@ final class RMIStream implements Closeable {
 		StrongSoftReference<DataOutputUnsyncByteArrayOutputStream> buffer = connection.getCachedByteBuffer();
 		DataOutputUnsyncByteArrayOutputStream out = buffer.get();
 
-		int sizebefore = out.size();
-
 		out.writeShort(COMMAND_METHODRESULT);
 		out.writeInt(reqid);
 		writeVariables(variables, out);
@@ -3636,11 +3634,11 @@ final class RMIStream implements Closeable {
 				//failed to write the return value for some reason
 
 				//remove all previously written data from the buffer
-				out.reduceSize(sizebefore);
+				out.reset();
 
-				//write a fail result
+				//write a fail result to the output, and we will flush it below
 				writeCommandExceptionResult(COMMAND_METHODRESULT_FAIL, reqid, e, currentthreadinterrupted,
-						interruptreqcount);
+						interruptreqcount, out);
 			}
 			flushCommand(buffer);
 		} finally {
@@ -3678,14 +3676,20 @@ final class RMIStream implements Closeable {
 		checkClosed();
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
-			out.writeShort(commandname);
-			out.writeInt(reqid);
-			out.writeInt(compressInterruptStatus(currentthreadinterrupted, interruptreqcount));
-			writeException(exc, out);
+			writeCommandExceptionResult(commandname, reqid, exc, currentthreadinterrupted, interruptreqcount, out);
 		} catch (IOException ioe) {
 			ioe.addSuppressed(exc);
 			throw ioe;
 		}
+	}
+
+	private void writeCommandExceptionResult(short commandname, int reqid, Throwable exc,
+			boolean currentthreadinterrupted, int interruptreqcount, DataOutputUnsyncByteArrayOutputStream out)
+			throws IOException {
+		out.writeShort(commandname);
+		out.writeInt(reqid);
+		out.writeInt(compressInterruptStatus(currentthreadinterrupted, interruptreqcount));
+		writeException(exc, out);
 	}
 
 	private void writeException(Throwable exc, DataOutputUnsyncByteArrayOutputStream out) throws IOException {
