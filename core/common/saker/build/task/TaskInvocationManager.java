@@ -484,9 +484,17 @@ public class TaskInvocationManager implements Closeable {
 					invokerfactory.getEnvironmentIdentifier());
 			invocationcontexts.add(taskinvocationcontext);
 			this.invokerPool.offer(() -> {
-				TaskInvoker pullingtaskinvoker = invokerfactory.createTaskInvoker(executionContext,
-						taskinvokerinformation);
-				taskinvocationcontext.run(pullingtaskinvoker);
+				try {
+					TaskInvoker pullingtaskinvoker = invokerfactory.createTaskInvoker(executionContext,
+							taskinvokerinformation);
+					taskinvocationcontext.run(pullingtaskinvoker);
+				} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+						| StackOverflowError e) {
+					taskinvocationcontext.close(e, false);
+				} catch (Throwable e) {
+					taskinvocationcontext.close(e, false);
+					throw e;
+				}
 			});
 		}
 	}
@@ -498,7 +506,8 @@ public class TaskInvocationManager implements Closeable {
 		if (invocationContexts != null) {
 			IllegalStateException cause = new IllegalStateException("Invocation manager closed.");
 			for (TaskInvocationContextImpl ic : invocationContexts) {
-				ic.close(cause);
+				//optional exception, don't pollute the exception stack if there's already another exception
+				ic.close(cause, true);
 			}
 		}
 		ThreadWorkPool invokerpool = invokerPool;
@@ -2093,7 +2102,7 @@ public class TaskInvocationManager implements Closeable {
 		 *            The exception.
 		 */
 		public void clusterRunningAborted(Throwable e) {
-			close(e);
+			close(e, false);
 		}
 
 		/**
@@ -2101,7 +2110,7 @@ public class TaskInvocationManager implements Closeable {
 		 */
 		public void clusterExit() {
 			//null exception, the cluster closed orderly
-			close(null);
+			close(null, false);
 		}
 
 		public UUID getEnvironmentIdentifier() {
@@ -2113,8 +2122,11 @@ public class TaskInvocationManager implements Closeable {
 		 * 
 		 * @param e
 		 *            The cause of the closing, or <code>null</code> if the cluster shut down orderly.
+		 * @param optionalexc
+		 *            If the provided exception is optional, and should only be set as the close exception if there's
+		 *            none set yet.
 		 */
-		public void close(Throwable e) {
+		public void close(Throwable e, boolean optionalexc) {
 			List<TaskInvocationEvent> evlist;
 			Throwable closeex;
 
@@ -2124,7 +2136,13 @@ public class TaskInvocationManager implements Closeable {
 				evlist = this.events;
 
 				closed = true;
-				closeException = IOUtils.addExc(closeException, e);
+				if (e != null) {
+					if (closeException == null || !optionalexc) {
+						//only set if there's no close exception yet,
+						//or the exception is not optional
+						closeException = IOUtils.addExc(closeException, e);
+					}
+				}
 				events = Collections.emptyList();
 				pollEndIndex = 0;
 
@@ -2153,13 +2171,13 @@ public class TaskInvocationManager implements Closeable {
 			final Lock lock = eventLock;
 			lock.lock();
 			try {
-				closeex = closeException;
 				if (!closed) {
 					events.add(event);
 					eventCondition.signal();
 					return;
 				}
 				//else close the event below
+				closeex = closeException;
 			} finally {
 				lock.unlock();
 			}
