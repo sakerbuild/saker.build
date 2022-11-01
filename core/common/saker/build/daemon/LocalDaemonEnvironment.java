@@ -21,6 +21,8 @@ import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.RandomAccessFile;
 import java.lang.ref.WeakReference;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.Socket;
@@ -80,9 +82,15 @@ import saker.build.thirdparty.saker.rmi.connection.RMIOptions;
 import saker.build.thirdparty.saker.rmi.connection.RMIServer;
 import saker.build.thirdparty.saker.rmi.connection.RMISocketConfiguration;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
+import saker.build.thirdparty.saker.rmi.exception.RMIContextVariableNotFoundException;
+import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
+import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
+import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
+import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.thirdparty.saker.util.DateUtils;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.StringUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
 import saker.build.thirdparty.saker.util.function.ThrowingRunnable;
@@ -752,13 +760,107 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		return getProjectImpl(workingdir);
 	}
 
+	static DaemonAccess getDaemonAccessContextVariable(RMIVariables vars) {
+		try {
+			return (DaemonAccess) vars.invokeContextVariableMethod(RMI_CONTEXT_VARIABLE_DAEMON_ACCESS,
+					InternalDaemonAccess.METHOD_GETDAEMONACCESS);
+		} catch (InvocationTargetException e) {
+			throw new RMIContextVariableNotFoundException(
+					"Failed to get Daemon access context variable: " + RMI_CONTEXT_VARIABLE_DAEMON_ACCESS, e);
+		}
+	}
+
+	private interface InternalDaemonAccess {
+		public static final Method METHOD_GETDAEMONACCESS = ReflectUtils.getMethodAssert(InternalDaemonAccess.class,
+				"getDaemonAccess");
+
+		@RMIWrap(DaemonAccessCacheRMIWrapper.class)
+		public DaemonAccess getDaemonAccess();
+	}
+
+	/**
+	 * {@link RMIWrapper} for {@link DaemonAccess} that transfers the relevant fields.
+	 * 
+	 * @see DaemonAccessImpl
+	 */
+	private static final class DaemonAccessCacheRMIWrapper implements RMIWrapper {
+		private DaemonAccess daemonAccess;
+
+		public DaemonAccessCacheRMIWrapper() {
+		}
+
+		public DaemonAccessCacheRMIWrapper(DaemonAccess daemonAccess) {
+			this.daemonAccess = daemonAccess;
+		}
+
+		@Override
+		public void writeWrapped(RMIObjectOutput out) throws IOException {
+			out.writeRemoteObject(daemonAccess.getDaemonEnvironment());
+			out.writeRemoteObject(daemonAccess.getClusterTaskInvokerFactory());
+			out.writeRemoteObject(daemonAccess.getDaemonClientServer());
+		}
+
+		@Override
+		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
+			DaemonEnvironment daemonEnvironment = (DaemonEnvironment) in.readObject();
+			TaskInvokerFactory clusterinvokerfactory = (TaskInvokerFactory) in.readObject();
+			DaemonClientServer clientserver = (DaemonClientServer) in.readObject();
+			daemonAccess = new DaemonAccessImpl(daemonEnvironment, clientserver, clusterinvokerfactory);
+		}
+
+		@Override
+		public Object resolveWrapped() {
+			return daemonAccess;
+		}
+
+		@Override
+		public Object getWrappedObject() {
+			throw new UnsupportedOperationException();
+		}
+
+	}
+
+	@RMIWrap(DaemonAccessCacheRMIWrapper.class)
+	private static final class DaemonAccessImpl implements DaemonAccess, InternalDaemonAccess {
+		private final DaemonEnvironment daemonEnvironment;
+		private final DaemonClientServer clientServer;
+		private final TaskInvokerFactory clusterInvokerFactory;
+
+		private DaemonAccessImpl(DaemonEnvironment daemonEnvironment, DaemonClientServer clientserver,
+				TaskInvokerFactory clusterinvokerfactory) {
+			this.daemonEnvironment = daemonEnvironment;
+			this.clientServer = clientserver;
+			this.clusterInvokerFactory = clusterinvokerfactory;
+		}
+
+		@Override
+		public DaemonEnvironment getDaemonEnvironment() {
+			return daemonEnvironment;
+		}
+
+		@Override
+		public DaemonClientServer getDaemonClientServer() {
+			return clientServer;
+		}
+
+		@Override
+		public TaskInvokerFactory getClusterTaskInvokerFactory() {
+			return clusterInvokerFactory;
+		}
+
+		@Override
+		public DaemonAccess getDaemonAccess() {
+			return this;
+		}
+	}
+
 	private final class DaemonRMIServer extends RMIServer {
-		private final boolean actsascluster;
+		private final boolean actsAsCluster;
 
 		private DaemonRMIServer(ServerSocketFactory socketfactory, int port, InetAddress bindaddress,
 				boolean actsascluster) throws IOException {
 			super(socketfactory, port, bindaddress);
-			this.actsascluster = actsascluster;
+			this.actsAsCluster = actsascluster;
 		}
 
 		@Override
@@ -775,7 +877,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 				}
 			});
 			LocalDaemonClusterInvokerFactory clusterinvokerfactory;
-			if (actsascluster) {
+			if (actsAsCluster) {
 				ClassLoaderResolverRegistry connectionclresolver = (ClassLoaderResolverRegistry) connection
 						.getClassLoaderResolver();
 				clusterinvokerfactory = new LocalDaemonClusterInvokerFactory(connectionclresolver,
@@ -784,22 +886,8 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 				clusterinvokerfactory = null;
 			}
 			DaemonClientServerImpl clientserver = new DaemonClientServerImpl(connection);
-			connection.putContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_ACCESS, new DaemonAccess() {
-				@Override
-				public DaemonEnvironment getDaemonEnvironment() {
-					return LocalDaemonEnvironment.this;
-				}
-
-				@Override
-				public DaemonClientServer getDaemonClientServer() {
-					return clientserver;
-				}
-
-				@Override
-				public TaskInvokerFactory getClusterTaskInvokerFactory() {
-					return clusterinvokerfactory;
-				}
-			});
+			connection.putContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_ACCESS,
+					new DaemonAccessImpl(LocalDaemonEnvironment.this, clientserver, clusterinvokerfactory));
 			super.setupConnection(acceptedsocket, connection);
 		}
 
@@ -943,8 +1031,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 							RMIVariables vars = null;
 							try {
 								vars = rmiconn.newVariables();
-								DaemonAccess access = (DaemonAccess) vars
-										.getRemoteContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_ACCESS);
+								DaemonAccess access = getDaemonAccessContextVariable(vars);
 								DaemonClientServer clientserver = access.getDaemonClientServer();
 
 								ClassLoaderResolverRegistry connectionclresolver = (ClassLoaderResolverRegistry) rmiconn
@@ -1018,6 +1105,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 			}
 			System.out.println("Exiting client connection thread of: " + addrResolver);
 		}
+
 	}
 
 	private final class DaemonClientServerImpl implements DaemonClientServer {

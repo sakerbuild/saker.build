@@ -72,18 +72,15 @@ public interface RemoteDaemonConnection extends Closeable {
 		RMIVariables vars = null;
 		try {
 			vars = connection.newVariables();
-			DaemonAccess access = (DaemonAccess) vars
-					.getRemoteContextVariable(LocalDaemonEnvironment.RMI_CONTEXT_VARIABLE_DAEMON_ACCESS);
+			DaemonAccess access = LocalDaemonEnvironment.getDaemonAccessContextVariable(vars);
 			if (access == null) {
-				throw new IOException("Failed to connect to remote daemon. No daemon access available.",
-						IOUtils.closeExc(vars, connection));
+				throw new IOException("Failed to connect to remote daemon. No daemon access available.");
 			}
 			DaemonEnvironment remoteenv = access.getDaemonEnvironment();
 			if (remoteenv == null) {
-				throw new IOException("Failed to connect to remote daemon. No environment found.",
-						IOUtils.closeExc(vars, connection));
+				throw new IOException("Failed to connect to remote daemon. No environment found.");
 			}
-			return new RemoteDaemonConnectionImpl(address, connection, remoteenv, vars);
+			return new RemoteDaemonConnectionImpl(address, connection, access, remoteenv);
 		} catch (IOException e) {
 			throw IOUtils.closeExc(e, vars, connection);
 		} catch (Throwable e) {

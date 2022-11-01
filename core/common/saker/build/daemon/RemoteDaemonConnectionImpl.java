@@ -17,7 +17,6 @@ package saker.build.daemon;
 
 import java.io.IOException;
 import java.net.SocketAddress;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Objects;
@@ -37,7 +36,6 @@ import saker.build.task.cluster.TaskInvokerFactoryRMIWrapper;
 import saker.build.task.cluster.TaskInvokerInformation;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
-import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.rmi.exception.RMICallForbiddenException;
 import saker.build.thirdparty.saker.util.ArrayUtils;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
@@ -56,14 +54,10 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 		protected final Supplier<TaskInvokerFactory> clusterInvokerFactory;
 		protected final ClassLoaderResolverRegistry connectionClassLoaderRegistry;
 
-		public ConnectionImpl(RMIConnection rmiConnection, DaemonEnvironment environment, RMIVariables vars) {
+		public ConnectionImpl(RMIConnection rmiConnection, DaemonAccess access, DaemonEnvironment environment) {
 			this.rmiConnection = rmiConnection;
 			this.environment = environment;
-			Supplier<DaemonAccess> accesssupplier = LazySupplier.of(() -> {
-				return (DaemonAccess) vars
-						.getRemoteContextVariable(LocalDaemonEnvironment.RMI_CONTEXT_VARIABLE_DAEMON_ACCESS);
-			});
-			this.clusterInvokerFactory = LazySupplier.of(() -> accesssupplier.get().getClusterTaskInvokerFactory());
+			this.clusterInvokerFactory = LazySupplier.of(() -> access.getClusterTaskInvokerFactory());
 			this.connectionClassLoaderRegistry = (ClassLoaderResolverRegistry) rmiConnection.getClassLoaderResolver();
 		}
 	}
@@ -78,10 +72,10 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 	private Optional<Throwable> connectionErrorException = null;
 	private final Collection<ConnectionIOErrorListener> errorListeners = new HashSet<>();
 
-	RemoteDaemonConnectionImpl(SocketAddress address, RMIConnection rmiConnection, DaemonEnvironment remoteEnvironment,
-			RMIVariables vars) {
+	RemoteDaemonConnectionImpl(SocketAddress address, RMIConnection rmiConnection, DaemonAccess access,
+			DaemonEnvironment remoteEnvironment) {
 		this.address = address;
-		this.connection = new ConnectionImpl(rmiConnection, remoteEnvironment, vars);
+		this.connection = new ConnectionImpl(rmiConnection, access, remoteEnvironment);
 		rmiConnection.addErrorListener(this::onConnectionIOError);
 		rmiConnection.addCloseListener(this::onConnectionClose);
 	}
