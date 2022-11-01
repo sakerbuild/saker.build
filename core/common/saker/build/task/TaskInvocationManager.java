@@ -2376,21 +2376,17 @@ public class TaskInvocationManager implements Closeable {
 					boolean hadhandler = false;
 					do {
 						ListenerInnerTaskInvocationHandler<R> ih = availihit.next();
-						if (ih.isEnded()) {
-							if (!ih.isResultAvailable()) {
-								if (!ih.isAnyMoreResultsExpected()) {
-									availihit.remove();
-								} else {
-									hadhandler = true;
-								}
-								continue;
-							}
-							availih = ih;
-							break;
-						}
 						if (ih.isResultAvailable()) {
 							availih = ih;
 							break;
+						}
+						if (ih.isEnded()) {
+							if (!ih.isAnyMoreResultsExpected()) {
+								availihit.remove();
+							} else {
+								hadhandler = true;
+							}
+							continue;
 						}
 						hadhandler = true;
 					} while (availihit.hasNext());
@@ -2606,8 +2602,6 @@ public class TaskInvocationManager implements Closeable {
 
 		protected InnerTaskInvocationHandle<R> handle;
 
-		private final Set<InnerTaskInstanceInvocationHandleImpl> startedTaskInvocations = ConcurrentHashMap.newKeySet();
-
 		public ListenerInnerTaskInvocationHandler(TaskExecutorContext<?> taskcontext, Lock resultWaiterLock,
 				Condition resultWaiterCondition) {
 			this.taskContext = taskcontext;
@@ -2616,14 +2610,10 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		public void oneDone(InnerTaskInstanceInvocationHandleImpl handle) {
-//			taskContext.executionManager.removeRunningThreadCount(1);
-			startedTaskInvocations.remove(handle);
 			notifyResultReadyImpl(false);
 		}
 
 		public void oneDoneNoMoreResults(InnerTaskInstanceInvocationHandleImpl handle) {
-//			taskContext.executionManager.removeRunningThreadCount(1);
-			startedTaskInvocations.remove(handle);
 			notifyResultReadyImpl(true);
 		}
 
@@ -2660,7 +2650,7 @@ public class TaskInvocationManager implements Closeable {
 
 		public boolean isAnyMoreResultsExpected() {
 			TaskResultReadyCountState s = readyState;
-			return s.notifiedCount < s.invokingCount || !startedTaskInvocations.isEmpty();
+			return s.notifiedCount < s.invokingCount;
 		}
 
 		public InnerTaskResultHolder<R> getResultIfPresent() throws InterruptedException {
@@ -2768,8 +2758,6 @@ public class TaskInvocationManager implements Closeable {
 				}
 				if (ARFU_readyState.compareAndSet(this, s, s.addInvoking())) {
 					InnerTaskInstanceInvocationHandleImpl result = new InnerTaskInstanceInvocationHandleImpl(this);
-					startedTaskInvocations.add(result);
-//					taskContext.executionManager.addRunningThreadCount(1);
 					return result;
 				}
 			}
