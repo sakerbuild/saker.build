@@ -201,11 +201,6 @@ class ClusterExecutionContext implements ExecutionContext, InternalExecutionCont
 	}
 
 	@Override
-	public NavigableSet<String> getRootDirectoryNames() {
-		return realExecutionContext.getRootDirectoryNames();
-	}
-
-	@Override
 	public boolean isRecordsBuildTrace() {
 		return realExecutionContext.isRecordsBuildTrace();
 	}

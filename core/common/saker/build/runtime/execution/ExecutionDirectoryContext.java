@@ -16,12 +16,17 @@
 package saker.build.runtime.execution;
 
 import java.util.NavigableMap;
+import java.util.NavigableSet;
 
 import saker.build.file.SakerDirectory;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
 import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
+import saker.build.thirdparty.saker.rmi.annot.invoke.RMIDefaultOnFailure;
+import saker.build.thirdparty.saker.rmi.annot.invoke.RMIForbidden;
+import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
+import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapSerializeKeyRemoteValueWrapper;
 
 /**
  * Container for the base directories used during build execution.
@@ -69,5 +74,15 @@ public interface ExecutionDirectoryContext extends ExecutionDirectoryPathContext
 	 * @see SakerPath#normalizeRoot(String)
 	 */
 	@RMICacheResult
+	@RMIWrap(RMITreeMapSerializeKeyRemoteValueWrapper.class)
 	public NavigableMap<String, ? extends SakerDirectory> getRootDirectories();
+
+	//override so won't be unnecessarily called through rmi
+	//also because this is how it should work
+	@RMIForbidden
+	@RMIDefaultOnFailure
+	@Override
+	public default NavigableSet<String> getRootDirectoryNames() {
+		return getRootDirectories().navigableKeySet();
+	}
 }

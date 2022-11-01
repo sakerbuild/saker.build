@@ -586,11 +586,6 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	}
 
 	@Override
-	public NavigableSet<String> getRootDirectoryNames() {
-		return rootDirectories.navigableKeySet();
-	}
-
-	@Override
 	public SakerEnvironment getEnvironment() {
 		return executionEnvironment;
 	}
