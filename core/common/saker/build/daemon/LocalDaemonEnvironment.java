@@ -694,20 +694,23 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 			} finally {
 				projectCacheKeysLock.unlock();
 			}
-			while (true) {
-				try {
-					environment.invalidateCachedDatasWaitExecutions(keys::contains);
-					break;
-				} catch (InterruptedException e) {
-					//reinterrupt at end
-					interrupted = true;
-					//try again
-					continue;
+			SakerEnvironmentImpl environment = this.environment;
+			if (environment != null) {
+				while (true) {
+					try {
+						environment.invalidateCachedDatasWaitExecutions(keys::contains);
+						break;
+					} catch (InterruptedException e) {
+						//reinterrupt at end
+						interrupted = true;
+						//try again
+						continue;
+					}
 				}
-			}
 
-			//close the environment first so builds finish
-			IOUtils.closePrint(environment);
+				//close the environment first so builds finish
+				IOUtils.closePrint(environment);
+			}
 
 			RMIServer server = this.server;
 			//the following resources should be closed on a background daemon thread
