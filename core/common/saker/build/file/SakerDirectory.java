@@ -24,6 +24,9 @@ import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
 import saker.build.task.TaskExecutionUtilities;
+import saker.build.thirdparty.saker.rmi.annot.invoke.RMIDefaultOnFailure;
+import saker.build.thirdparty.saker.rmi.annot.invoke.RMIForbidden;
+import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapSerializeKeyRemoteValueWrapper;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapWrapper;
@@ -366,6 +369,14 @@ public interface SakerDirectory extends SakerFile {
 	 * <p>
 	 * Always returns {@link DirectoryContentDescriptor#INSTANCE} for directories.
 	 */
+	//this method is defaulted in SakerDirectory interface to return the content descriptor
+	//described in the method documentation
+	//configured with appropriate RMI properties to avoid RMI calls when unnecessary
 	@Override
-	public ContentDescriptor getContentDescriptor();
+	@RMISerialize
+	@RMIForbidden
+	@RMIDefaultOnFailure
+	public default ContentDescriptor getContentDescriptor() {
+		return DirectoryContentDescriptor.INSTANCE;
+	}
 }

@@ -374,11 +374,6 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 		}
 	}
 
-	@Override
-	public final ContentDescriptor getContentDescriptor() {
-		return DirectoryContentDescriptor.INSTANCE;
-	}
-
 	protected final ConcurrentNavigableMap<String, SakerFileBase> getTrackedFiles() {
 		return this.trackedFiles;
 	}

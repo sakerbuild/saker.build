@@ -1,7 +1,10 @@
 package testing.saker.build.tests.tasks.cluster;
 
+import java.util.Map.Entry;
+import java.util.NavigableMap;
 import java.util.NavigableSet;
 
+import saker.build.file.SakerDirectory;
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskExecutionEnvironmentSelector;
@@ -55,15 +58,25 @@ public class ClusterRemoteContextObjectsTest extends ClusterBuildTestCase {
 			assertIdentityEquals(taskcontext, taskutils.getTaskContext());
 
 			assertFalse(RMIConnection.isRemoteObject(executioncontext));
-			assertFalse(RMIConnection.isRemoteObject(executioncontext.getRootDirectories()));
+			NavigableMap<String, ? extends SakerDirectory> rootdirs = executioncontext.getRootDirectories();
+			assertFalse(RMIConnection.isRemoteObject(rootdirs));
 			assertFalse(RMIConnection.isRemoteObject(executioncontext.getRootDirectoryNames()));
 			assertFalse(RMIConnection.isRemoteObject(executioncontext.getScriptConfiguration()));
 			assertFalse(RMIConnection.isRemoteObject(executioncontext.getRepositoryConfiguration()));
 			assertFalse(RMIConnection.isRemoteObject(executioncontext.getPathConfiguration()));
 			assertFalse(RMIConnection.isRemoteObject(executioncontext.getUserParameters()));
 
-			assertEquals(executioncontext.getRootDirectoryNames(),
-					executioncontext.getRootDirectories().navigableKeySet());
+			assertEquals(executioncontext.getRootDirectoryNames(), rootdirs.navigableKeySet());
+
+			assertFalse(RMIConnection.isRemoteObject(rootdirs.entrySet()));
+			assertFalse(RMIConnection.isRemoteObject(rootdirs.keySet()));
+			assertFalse(RMIConnection.isRemoteObject(rootdirs.values()));
+			for (Entry<String, ? extends SakerDirectory> entry : rootdirs.entrySet()) {
+				SakerDirectory dir = entry.getValue();
+				System.out.println(entry.getKey() + " - " + dir.getName());
+				System.out.println("    " + dir.getContentDescriptor());
+				assertFalse(RMIConnection.isRemoteObject(dir.getContentDescriptor()));
+			}
 
 			return "abc";
 		}
