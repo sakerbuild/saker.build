@@ -44,6 +44,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
+import saker.build.exception.UnexpectedBuildSystemError;
 import saker.build.file.provider.LocalFileProvider;
 import saker.build.runtime.environment.EnvironmentProperty;
 import saker.build.runtime.environment.SakerEnvironment;
@@ -121,41 +122,27 @@ public class TaskInvocationManager implements Closeable {
 	 */
 	public interface InnerTaskInvocationListener {
 		public static final Method METHOD_NOTIFYRESULTREADY = ReflectUtils
-				.getMethodAssert(InnerTaskInvocationListener.class, "notifyResultReady", boolean.class);
-		public static final Method METHOD_NOTIFYNOMORERESULTS = ReflectUtils
-				.getMethodAssert(InnerTaskInvocationListener.class, "notifyNoMoreResults");
+				.getMethodAssert(InnerTaskInvocationListener.class, "notifyResultReady", int.class, boolean.class);
 
 		/**
-		 * Notifies that an inner task execution has completed, and a result is ready.
+		 * Notifies the listener about the total number of inner task results that are available.
+		 * <p>
+		 * The <code>resultcount</code> is the total number of results that were generated, not the currently available
+		 * result count. Strictly monotonically increasing.
 		 * 
+		 * @param resultcount
+		 *            The number of results.
 		 * @param lastresult
-		 *            <code>true</code> if this was the last result.
+		 *            <code>true</code> if no more results will be available.
 		 */
-		public void notifyResultReady(boolean lastresult);
-
-		/**
-		 * Notifies that no more results will be ready.
-		 */
-		public void notifyNoMoreResults();
+		public void notifyResultReady(int resultcount, boolean lastresult);
 
 		/**
 		 * Notifies about the start of a new inner task.
 		 * 
-		 * @return The handle for this inner task execution, or <code>null</code> if the starting should be aborted and
-		 *             the inner task shouldn't be executed.
+		 * @return <code>true</code> if the inner task can be executed.
 		 */
-		public InnerTaskInstanceInvocationHandle notifyTaskInvocationStart();
-	}
-
-	public interface InnerTaskInstanceInvocationHandle {
-		public static final Method METHOD_DONE = ReflectUtils.getMethodAssert(InnerTaskInstanceInvocationHandle.class,
-				"done");
-		public static final Method METHOD_DONENOMORERESULTS = ReflectUtils
-				.getMethodAssert(InnerTaskInstanceInvocationHandle.class, "doneNoMoreResults");
-
-		public void done();
-
-		public void doneNoMoreResults();
+		public boolean notifyTaskInvocationStart();
 	}
 
 	private final SakerEnvironmentImpl environment;
@@ -414,7 +401,7 @@ public class TaskInvocationManager implements Closeable {
 		if (posttoenvironmentpredicate.test(environment.getEnvironmentIdentifier())) {
 			boolean hasdiffs = hasAnyEnvironmentPropertyDifferenceWithLocalEnvironment(selectionresult);
 			if (!hasdiffs) {
-				ListenerInnerTaskInvocationHandler<R> listener = new ListenerInnerTaskInvocationHandler<>(taskcontext,
+				ListenerInnerTaskInvocationHandler<R> listener = new ListenerInnerTaskInvocationHandler<>(
 						resultwaiterlock, resultwaitercondition);
 				try {
 					InnerTaskInvocationHandle<R> handle = innerTaskInvoker.invokeInnerTask(taskfactory, taskcontext,
@@ -445,7 +432,7 @@ public class TaskInvocationManager implements Closeable {
 					request.removeInvocationContext(invocationcontext);
 					continue;
 				}
-				ListenerInnerTaskInvocationHandler<R> listener = new ListenerInnerTaskInvocationHandler<>(taskcontext,
+				ListenerInnerTaskInvocationHandler<R> listener = new ListenerInnerTaskInvocationHandler<>(
 						resultwaiterlock, resultwaitercondition);
 				InnerClusterExecutionEventImpl<R> eventimpl = new InnerClusterExecutionEventImpl<>(invocationcontext,
 						request, listener);
@@ -1387,13 +1374,8 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public void notifyResultReady(boolean lastresult) {
-			callRMIAsyncAssert(event, METHOD_NOTIFYRESULTREADY, lastresult);
-		}
-
-		@Override
-		public void notifyNoMoreResults() {
-			callRMIAsyncAssert(event, METHOD_NOTIFYNOMORERESULTS);
+		public void notifyResultReady(int resultcount, boolean lastresult) {
+			callRMIAsyncAssert(event, METHOD_NOTIFYRESULTREADY, resultcount, lastresult);
 		}
 
 		@Override
@@ -1449,7 +1431,7 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public InnerTaskInstanceInvocationHandle notifyTaskInvocationStart() {
+		public boolean notifyTaskInvocationStart() {
 			return event.notifyTaskInvocationStart();
 		}
 	}
@@ -1547,7 +1529,7 @@ public class TaskInvocationManager implements Closeable {
 		@Override
 		public void failInvocationStart(Throwable e) {
 			request.failInvocationStart(invocationContext, e);
-			invocationListener.notifyNoMoreResults();
+			invocationListener.notifyResultReady(0, true);
 
 			AIFU_flags.updateAndGet(this, c -> c | FLAG_HAD_RESPONSE);
 			responseLatch.signal();
@@ -1559,7 +1541,7 @@ public class TaskInvocationManager implements Closeable {
 			//exception is recorded in the base request
 			//notify the listener about no more results
 			request.fail(invocationContext, cause);
-			invocationListener.notifyNoMoreResults();
+			invocationListener.notifyResultReady(0, true);
 
 			AIFU_flags.updateAndGet(this, c -> c | FLAG_HAD_RESPONSE);
 			responseLatch.signal();
@@ -1578,7 +1560,7 @@ public class TaskInvocationManager implements Closeable {
 		public void failUnsuitable() {
 			//TODO unsuitability exception?
 			request.fail(invocationContext, null);
-			invocationListener.notifyNoMoreResults();
+			invocationListener.notifyResultReady(0, true);
 
 			AIFU_flags.updateAndGet(this, c -> c | FLAG_HAD_RESPONSE);
 			responseLatch.signal();
@@ -1666,19 +1648,14 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public void notifyResultReady(boolean lastresult) {
-			invocationListener.notifyResultReady(lastresult);
+		public void notifyResultReady(int resultcount, boolean lastresult) {
+			invocationListener.notifyResultReady(resultcount, lastresult);
 		}
 
 		@Override
-		public void notifyNoMoreResults() {
-			invocationListener.notifyNoMoreResults();
-		}
-
-		@Override
-		public InnerTaskInstanceInvocationHandle notifyTaskInvocationStart() {
+		public boolean notifyTaskInvocationStart() {
 			if (((this.flags & FLAG_CLOSED) == FLAG_CLOSED)) {
-				return null;
+				return false;
 			}
 			return invocationListener.notifyTaskInvocationStart();
 		}
@@ -2357,6 +2334,8 @@ public class TaskInvocationManager implements Closeable {
 							if (presentres != null) {
 								return presentres;
 							}
+						} catch (InterruptedException e) {
+							throw e;
 						} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError
 								| AssertionError | StackOverflowError e) {
 							//the handle should be removed, as we don't expect futher requests to succeed
@@ -2376,12 +2355,13 @@ public class TaskInvocationManager implements Closeable {
 					boolean hadhandler = false;
 					do {
 						ListenerInnerTaskInvocationHandler<R> ih = availihit.next();
-						if (ih.isResultAvailable()) {
+						TaskResultReadyCountState readystate = ih.getReadyState();
+						if (readystate.isResultAvailable()) {
 							availih = ih;
 							break;
 						}
-						if (ih.isEnded()) {
-							if (!ih.isAnyMoreResultsExpected()) {
+						if (readystate.isEnded()) {
+							if (!readystate.isAnyMoreResultsExpected()) {
 								availihit.remove();
 							} else {
 								hadhandler = true;
@@ -2409,6 +2389,8 @@ public class TaskInvocationManager implements Closeable {
 					if (availpresent != null) {
 						return availpresent;
 					}
+				} catch (InterruptedException e) {
+					throw e;
 				} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
 						| StackOverflowError e) {
 					//the handle should be removed, as we don't expect futher requests to succeed
@@ -2481,7 +2463,7 @@ public class TaskInvocationManager implements Closeable {
 	}
 
 	private static class TaskResultReadyCountState {
-		public static final TaskResultReadyCountState ZERO = new TaskResultReadyCountState(0, 0, 0, null, false);
+		public static final TaskResultReadyCountState ZERO = new TaskResultReadyCountState(0, 0, 0, null, 0);
 
 		/**
 		 * The number of inner task results that are available.
@@ -2489,10 +2471,12 @@ public class TaskInvocationManager implements Closeable {
 		protected final int readyCount;
 		/**
 		 * The number of times the state was notified about newly available results.
+		 * <p>
+		 * Always less than or equals to {@link #invokingCount}.
 		 */
 		protected final int notifiedCount;
 		/**
-		 * The number of inner tasks currently being invoked (currently being executed).
+		 * The number of inner tasks invocations that were started.
 		 */
 		protected final int invokingCount;
 		/**
@@ -2506,85 +2490,138 @@ public class TaskInvocationManager implements Closeable {
 		 * Whether or not the invocation handler ended, that is, it expects no more inner task results to arrive, and
 		 * the invocation handler can be removed for further results.
 		 * <p>
-		 * This can be set in case the inner task invoker signals that it won't send any more results, or the invocation
-		 * manager has been closed.
+		 * This can be set in case the inner task invoker signals that it won't send any more results.
 		 */
-		protected final boolean ended;
+		public static final int FLAG_ENDED = 1 << 0;
+		/**
+		 * Flag set if the task invoker hard failed.
+		 */
+		public static final int FLAG_HARDFAILED = 1 << 1;
+
+		protected final int flags;
 
 		public TaskResultReadyCountState(int readyCount, int invokingCount, int notifiedCount, Throwable[] hardFail,
-				boolean ended) {
+				int flags) {
 			this.readyCount = readyCount;
 			this.invokingCount = invokingCount;
 			this.notifiedCount = notifiedCount;
 			this.hardFail = hardFail;
-			this.ended = ended;
+			this.flags = flags;
 		}
 
-		public TaskResultReadyCountState addReady() {
-			return new TaskResultReadyCountState(readyCount + 1, invokingCount, notifiedCount + 1, hardFail, ended);
-		}
-
-		public TaskResultReadyCountState addReadyEnded() {
-			return new TaskResultReadyCountState(readyCount + 1, invokingCount, notifiedCount + 1, hardFail, true);
+		public TaskResultReadyCountState updateReadyNotificationCount(int notifcount, boolean lastresult) {
+			int invokecount = invokingCount;
+			int added = notifcount - this.notifiedCount;
+			if (added < 0) {
+				//the new notified count must be at least the old one
+				throw new IllegalArgumentException(
+						this + " update notification count: " + notifcount + " last: " + lastresult);
+			}
+			if (notifcount > invokecount) {
+				//sanity check, can't notify more tasks than we invoked
+				throw new IllegalStateException(
+						this + " update notification count: " + notifcount + " last: " + lastresult);
+			}
+			int nflags = flags;
+			if (lastresult) {
+				nflags |= FLAG_ENDED;
+			}
+			Throwable[] hardfailarray = hardFail;
+			if (lastresult && notifcount != invokecount) {
+				//more task was invoked than we were notified for, treat the remaining number of results as hard failures
+				int failcnt = invokecount - notifcount;
+				int startidx;
+				if (hardfailarray == null) {
+					hardfailarray = new Throwable[failcnt];
+					startidx = 0;
+				} else {
+					startidx = hardfailarray.length;
+					hardfailarray = Arrays.copyOf(hardfailarray, startidx + failcnt);
+				}
+				Arrays.fill(hardfailarray, startidx, hardfailarray.length, new UnexpectedBuildSystemError(
+						"Internal error, no result received for inner task invocation."));
+			}
+			return new TaskResultReadyCountState(readyCount + added, invokecount, notifcount, hardfailarray, nflags);
 		}
 
 		public TaskResultReadyCountState takeReady() {
-			return new TaskResultReadyCountState(readyCount - 1, invokingCount, notifiedCount, hardFail, ended);
+			int nreadycount = readyCount - 1;
+			if (nreadycount < 0) {
+				//sanity check
+				throw new IllegalStateException(this.toString());
+			}
+			return new TaskResultReadyCountState(nreadycount, invokingCount, notifiedCount, hardFail, flags);
 		}
 
 		public TaskResultReadyCountState addInvoking() {
-			return new TaskResultReadyCountState(readyCount, invokingCount + 1, notifiedCount, hardFail, ended);
+			return new TaskResultReadyCountState(readyCount, invokingCount + 1, notifiedCount, hardFail, flags);
 		}
 
 		public TaskResultReadyCountState takeFirstException() {
 			Throwable[] hardFail = this.hardFail;
 			return new TaskResultReadyCountState(readyCount, invokingCount, notifiedCount,
-					hardFail.length == 1 ? null : Arrays.copyOfRange(hardFail, 1, hardFail.length), ended);
+					hardFail.length == 1 ? null : Arrays.copyOfRange(hardFail, 1, hardFail.length), flags);
 		}
 
 		public TaskResultReadyCountState end() {
-			return new TaskResultReadyCountState(readyCount, invokingCount, notifiedCount, hardFail, true);
+			return new TaskResultReadyCountState(readyCount, invokingCount, notifiedCount, hardFail,
+					flags | FLAG_ENDED);
 		}
 
-		public TaskResultReadyCountState addFailEnded(Throwable failexc) {
+		public TaskResultReadyCountState addHardFail(Throwable failexc) {
 			Throwable[] hardFail = this.hardFail;
+			Throwable[] narray;
 			if (hardFail == null) {
-				return new TaskResultReadyCountState(readyCount, invokingCount, notifiedCount,
-						new Throwable[] { failexc }, true);
+				narray = new Throwable[] { failexc };
+			} else {
+				narray = ArrayUtils.appended(hardFail, failexc);
 			}
-			return new TaskResultReadyCountState(readyCount, invokingCount, notifiedCount,
-					ArrayUtils.appended(hardFail, failexc), true);
+			//set the ended flag as well, because we don't expect any more result notifications due to the error
+			return new TaskResultReadyCountState(readyCount, invokingCount, notifiedCount, narray,
+					flags | FLAG_HARDFAILED | FLAG_ENDED);
 		}
-	}
 
-	@RMIWrap(InnerTaskInstanceInvocationHandleRMIWrapper.class)
-	private static final class InnerTaskInstanceInvocationHandleImpl implements InnerTaskInstanceInvocationHandle {
-		@SuppressWarnings("rawtypes")
-		private static final AtomicReferenceFieldUpdater<TaskInvocationManager.InnerTaskInstanceInvocationHandleImpl, ListenerInnerTaskInvocationHandler> ARFU_handler = AtomicReferenceFieldUpdater
-				.newUpdater(TaskInvocationManager.InnerTaskInstanceInvocationHandleImpl.class,
-						ListenerInnerTaskInvocationHandler.class, "handler");
+		public boolean isResultAvailable() {
+			return readyCount > 0 || hardFail != null;
+		}
 
-		@SuppressWarnings("unused")
-		private volatile ListenerInnerTaskInvocationHandler<?> handler;
+		public boolean isAnyMoreResultsExpected() {
+			return notifiedCount < invokingCount && !(((flags & FLAG_HARDFAILED) == FLAG_HARDFAILED));
+		}
 
-		public InnerTaskInstanceInvocationHandleImpl(ListenerInnerTaskInvocationHandler<?> handler) {
-			this.handler = handler;
+		/**
+		 * Whether or not the task invoker has sent the last result notification.
+		 */
+		public boolean isEnded() {
+			return ((flags & FLAG_ENDED) == FLAG_ENDED);
+		}
+
+		/**
+		 * Whether or not a hard exception was received, meaning a fatal failure in the task invoker.
+		 */
+		public boolean isHardFailed() {
+			return ((flags & FLAG_HARDFAILED) == FLAG_HARDFAILED);
+		}
+
+		public boolean isEndedOrHardFailed() {
+			return (flags & (FLAG_ENDED | FLAG_HARDFAILED)) != 0;
 		}
 
 		@Override
-		public void done() {
-			ListenerInnerTaskInvocationHandler<?> handler = ARFU_handler.getAndSet(this, null);
-			if (handler != null) {
-				handler.oneDone(this);
-			}
-		}
-
-		@Override
-		public void doneNoMoreResults() {
-			ListenerInnerTaskInvocationHandler<?> handler = ARFU_handler.getAndSet(this, null);
-			if (handler != null) {
-				handler.oneDoneNoMoreResults(this);
-			}
+		public String toString() {
+			StringBuilder builder = new StringBuilder(getClass().getSimpleName());
+			builder.append("[readyCount=");
+			builder.append(readyCount);
+			builder.append(", notifiedCount=");
+			builder.append(notifiedCount);
+			builder.append(", invokingCount=");
+			builder.append(invokingCount);
+			builder.append(", hardFail=");
+			builder.append(Arrays.toString(hardFail));
+			builder.append(", flags=");
+			builder.append(Integer.toHexString(flags));
+			builder.append("]");
+			return builder.toString();
 		}
 	}
 
@@ -2594,7 +2631,6 @@ public class TaskInvocationManager implements Closeable {
 				.newUpdater(TaskInvocationManager.ListenerInnerTaskInvocationHandler.class,
 						TaskResultReadyCountState.class, "readyState");
 
-		private final TaskExecutorContext<?> taskContext;
 		private final Lock resultWaiterLock;
 		private final Condition resultWaiterCondition;
 
@@ -2602,55 +2638,34 @@ public class TaskInvocationManager implements Closeable {
 
 		protected InnerTaskInvocationHandle<R> handle;
 
-		public ListenerInnerTaskInvocationHandler(TaskExecutorContext<?> taskcontext, Lock resultWaiterLock,
-				Condition resultWaiterCondition) {
-			this.taskContext = taskcontext;
+		public ListenerInnerTaskInvocationHandler(Lock resultWaiterLock, Condition resultWaiterCondition) {
 			this.resultWaiterLock = resultWaiterLock;
 			this.resultWaiterCondition = resultWaiterCondition;
 		}
 
-		public void oneDone(InnerTaskInstanceInvocationHandleImpl handle) {
-			notifyResultReadyImpl(false);
-		}
-
-		public void oneDoneNoMoreResults(InnerTaskInstanceInvocationHandleImpl handle) {
-			notifyResultReadyImpl(true);
-		}
-
-		public boolean isEnded() {
-			TaskResultReadyCountState s = readyState;
-			return s.ended;
-		}
-
 		public void cancelDuplicationOptionally() {
-			if (readyState.ended) {
+			if (readyState.isEnded()) {
 				return;
 			}
 			handle.cancelDuplication();
 		}
 
 		public void waitFinish() throws InterruptedException {
-			if (readyState.ended) {
+			if (readyState.isEnded()) {
 				return;
 			}
 			handle.waitFinish();
 		}
 
 		public void interrupt() {
-			if (readyState.ended) {
+			if (readyState.isEnded()) {
 				return;
 			}
 			handle.interrupt();
 		}
 
-		public boolean isResultAvailable() {
-			TaskResultReadyCountState s = readyState;
-			return s.readyCount > 0 || s.hardFail != null;
-		}
-
-		public boolean isAnyMoreResultsExpected() {
-			TaskResultReadyCountState s = readyState;
-			return s.notifiedCount < s.invokingCount;
+		public TaskResultReadyCountState getReadyState() {
+			return readyState;
 		}
 
 		public InnerTaskResultHolder<R> getResultIfPresent() throws InterruptedException {
@@ -2681,56 +2696,46 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public void notifyResultReady(boolean lastresult) {
-			notifyResultReadyImpl(lastresult);
-		}
-
-		private void notifyResultReadyImpl(boolean lastresult) {
+		public void notifyResultReady(int resultcount, boolean lastresult) {
 			TaskResultReadyCountState nstate;
-			if (lastresult) {
-				nstate = ARFU_readyState.updateAndGet(this, TaskResultReadyCountState::addReadyEnded);
-			} else {
-				nstate = ARFU_readyState.updateAndGet(this, TaskResultReadyCountState::addReady);
+			while (true) {
+				TaskResultReadyCountState state = this.readyState;
+				boolean stateended = state.isEnded();
+				int statenotified = state.notifiedCount;
+				if (stateended) {
+					if (resultcount > statenotified) {
+						//the state already ended, so we cannot receive a larger result count than what we had when we ended it
+						throw new IllegalArgumentException("Cannot update result count for already ended state: "
+								+ state + " with update result: " + resultcount);
+					}
+					if (lastresult && resultcount != statenotified) {
+						//if the state was already notified, and we also receive one more last result notification
+						//then the new count and the state count must equal, otherwise we've seen different counts for the ended state
+						//which signals some inconsistency
+						throw new IllegalArgumentException(
+								"Inconsistent task result notification count for ended state: " + resultcount + " and "
+										+ statenotified);
+					}
+				}
+				if (statenotified < resultcount || stateended != lastresult) {
+					nstate = state.updateReadyNotificationCount(resultcount, lastresult);
+					if (ARFU_readyState.compareAndSet(this, state, nstate)) {
+						break;
+					}
+				} else {
+					//nothing was updated
+					return;
+				}
 			}
+
 			resultWaiterLock.lock();
 			try {
-				if (lastresult || nstate.ended) {
-					//signal all if this is the last results
-					//  or
-					//there might be scenarios when the "no more result" notification arrives before the 
-					// "result ready" notification. in this case we need to signal all
+				if (nstate.isEnded()) {
+					//signal all if the new state is ended
 					resultWaiterCondition.signalAll();
 				} else {
 					resultWaiterCondition.signal();
 				}
-			} finally {
-				resultWaiterLock.unlock();
-			}
-		}
-
-		private boolean setEndState() {
-			while (true) {
-				TaskResultReadyCountState state = this.readyState;
-				if (state.ended) {
-					return false;
-				}
-				if (ARFU_readyState.compareAndSet(this, state, state.end())) {
-					return true;
-				}
-				//try again
-			}
-		}
-
-		@Override
-		public void notifyNoMoreResults() {
-			if (!setEndState()) {
-				//was already ended, no need to signal the result waiters again
-				return;
-			}
-			//signal all for the ended state
-			resultWaiterLock.lock();
-			try {
-				resultWaiterCondition.signalAll();
 			} finally {
 				resultWaiterLock.unlock();
 			}
@@ -2746,19 +2751,17 @@ public class TaskInvocationManager implements Closeable {
 		}
 
 		@Override
-		public InnerTaskInstanceInvocationHandle notifyTaskInvocationStart() {
-			if (readyState.ended) {
-				return null;
-			}
+		public boolean notifyTaskInvocationStart() {
 			while (true) {
 				TaskResultReadyCountState s = this.readyState;
-				if (s.hardFail != null) {
+				if (s.isEndedOrHardFailed()) {
+					//the state has ended
+					//  or
 					//we had a hard failure, no more invocations
-					return null;
+					return false;
 				}
 				if (ARFU_readyState.compareAndSet(this, s, s.addInvoking())) {
-					InnerTaskInstanceInvocationHandleImpl result = new InnerTaskInstanceInvocationHandleImpl(this);
-					return result;
+					return true;
 				}
 			}
 		}
@@ -2770,7 +2773,7 @@ public class TaskInvocationManager implements Closeable {
 		public void hardFailed(Throwable cause) {
 			while (true) {
 				TaskResultReadyCountState s = readyState;
-				TaskResultReadyCountState nstate = s.addFailEnded(cause);
+				TaskResultReadyCountState nstate = s.addHardFail(cause);
 				if (ARFU_readyState.compareAndSet(this, s, nstate)) {
 					break;
 				}
@@ -2868,46 +2871,4 @@ public class TaskInvocationManager implements Closeable {
 
 	}
 
-	public static class InnerTaskInstanceInvocationHandleRMIWrapper
-			implements RMIWrapper, InnerTaskInstanceInvocationHandle {
-		private InnerTaskInstanceInvocationHandle handle;
-
-		public InnerTaskInstanceInvocationHandleRMIWrapper() {
-		}
-
-		public InnerTaskInstanceInvocationHandleRMIWrapper(InnerTaskInstanceInvocationHandle handle) {
-			this.handle = handle;
-		}
-
-		@Override
-		public void writeWrapped(RMIObjectOutput out) throws IOException {
-			out.writeRemoteObject(handle);
-		}
-
-		@Override
-		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
-			handle = (InnerTaskInstanceInvocationHandle) in.readObject();
-		}
-
-		@Override
-		public Object resolveWrapped() {
-			return this;
-		}
-
-		@Override
-		public Object getWrappedObject() {
-			return handle;
-		}
-
-		@Override
-		public void done() {
-			callRMIAsyncAssert(handle, METHOD_DONE);
-		}
-
-		@Override
-		public void doneNoMoreResults() {
-			callRMIAsyncAssert(handle, METHOD_DONENOMORERESULTS);
-		}
-
-	}
 }

@@ -23,9 +23,9 @@ import java.util.Iterator;
 import java.util.ServiceConfigurationError;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 
 import saker.build.runtime.execution.ExecutionContext;
-import saker.build.task.TaskInvocationManager.InnerTaskInstanceInvocationHandle;
 import saker.build.task.TaskInvocationManager.InnerTaskInvocationHandle;
 import saker.build.task.TaskInvocationManager.InnerTaskInvocationListener;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
@@ -41,14 +41,14 @@ public class InnerTaskInvocationManager implements Closeable {
 	//     if the connection for the cluster breaks after shouldInvokeOnceMore() call, inner tasks may be left uninvoked, as
 	//     it may not return true any more. See FixedTaskDuplicationPredicate, as that modifies the inner state of the predicate 
 
-	private ExecutionContext executionContext;
-	private Set<Reference<Thread>> weakInnerThreads = ConcurrentHashMap.newKeySet();
+	protected final ExecutionContext executionContext;
+	protected final Set<Reference<Thread>> weakInnerThreads = ConcurrentHashMap.newKeySet();
 
 	public InnerTaskInvocationManager(ExecutionContext executionContext) {
 		this.executionContext = executionContext;
 	}
 
-	private class LocalInnerTaskInvocationHandle<R> implements InnerTaskInvocationHandle<R>, Runnable {
+	private static class LocalInnerTaskInvocationHandle<R> implements InnerTaskInvocationHandle<R>, Runnable {
 		private final InnerTaskInvocationListener listener;
 		private final TaskFactory<R> taskFactory;
 		private final TaskContext taskContext;
@@ -56,6 +56,7 @@ public class InnerTaskInvocationManager implements Closeable {
 		private final int computationTokenCount;
 		private final int maximumEnvironmentFactor;
 		private final TaskDuplicationPredicate duplicationPredicate;
+		private final InnerTaskInvocationManager invocationManager;
 
 		private final ConcurrentPrependAccumulator<InnerTaskResultHolder<R>> results = new ConcurrentPrependAccumulator<>();
 		private Reference<Thread> invokerThread;
@@ -63,9 +64,23 @@ public class InnerTaskInvocationManager implements Closeable {
 		private volatile boolean duplicationCancelled;
 		private volatile boolean shouldntInvokeOnceMore;
 
-		public LocalInnerTaskInvocationHandle(InnerTaskInvocationListener listener, TaskFactory<R> taskfactory,
-				TaskContext taskcontext, Object computationtokenallocator, int computationtokencount,
+		@SuppressWarnings("rawtypes")
+		private static final AtomicLongFieldUpdater<InnerTaskInvocationManager.LocalInnerTaskInvocationHandle> ALFU_resultCounter = AtomicLongFieldUpdater
+				.newUpdater(InnerTaskInvocationManager.LocalInnerTaskInvocationHandle.class, "resultCounter");
+		private static final long FLAG_LAST_RESULT_SENT = 1 << 63;
+		/**
+		 * MSB <br>
+		 * 0 bit: set if the last result flag was sent. <br>
+		 * 1-31 bit: the number of inner task invocations started. <br>
+		 * 32-63 bit: the number of results made available.
+		 */
+		private volatile long resultCounter;
+
+		public LocalInnerTaskInvocationHandle(InnerTaskInvocationManager invocationManager,
+				InnerTaskInvocationListener listener, TaskFactory<R> taskfactory, TaskContext taskcontext,
+				Object computationtokenallocator, int computationtokencount,
 				TaskDuplicationPredicate duplicationPredicate, int maximumEnvironmentFactor) {
+			this.invocationManager = invocationManager;
 			this.listener = listener;
 			this.taskFactory = taskfactory;
 			this.taskContext = taskcontext;
@@ -115,22 +130,105 @@ public class InnerTaskInvocationManager implements Closeable {
 		//TODO the notifications should be sent in a locked way
 		//as if the "last result" notification should arrive last, and the rmi methods can be 
 		// called out of order if invoked on multiple threads
-		public void putResult(R result) {
+
+		private boolean startInvocationWithListener() {
+			if (startInvocation()) {
+				if (!listener.notifyTaskInvocationStart()) {
+					reduceInvocation();
+					return false;
+				}
+				return true;
+			}
+			return false;
+		}
+
+		private boolean startInvocation() {
+			while (true) {
+				long val = this.resultCounter;
+				if (((val & FLAG_LAST_RESULT_SENT) == FLAG_LAST_RESULT_SENT)) {
+					return false;
+				}
+				long invokedcount = val >>> 32;
+				long nval = ((invokedcount + 1) << 32) | (val & 0xFFFFFFFFL);
+				if (ALFU_resultCounter.compareAndSet(this, val, nval)) {
+					return true;
+				}
+			}
+		}
+
+		private void reduceInvocation() {
+			while (true) {
+				long val = this.resultCounter;
+				long invokedcount = (val >>> 32) & 0xFFFFFFFFL;
+				if (invokedcount <= 0) {
+					throw new IllegalStateException("Cant reduce invocation: " + Long.toHexString(val));
+				}
+				long nval = ((invokedcount - 1) << 32) | (val & 0xFFFFFFFFL);
+				if (ALFU_resultCounter.compareAndSet(this, val, nval)) {
+					return;
+				}
+			}
+		}
+
+		private int addResult(boolean last) {
+			while (true) {
+				long val = this.resultCounter;
+				if (((val & FLAG_LAST_RESULT_SENT) == FLAG_LAST_RESULT_SENT)) {
+					throw new IllegalStateException("Already sent last result: " + Long.toHexString(val));
+				}
+				long invokedcount = val >>> 32;
+				long resultcount = (val & 0xFFFFFFFFL) + 1;
+				if (resultcount > invokedcount) {
+					throw new IllegalStateException(
+							"Can't increase result count above invoked count: " + Long.toHexString(val));
+				}
+				long nval = ((invokedcount) << 32) | ((resultcount) & 0xFFFFFFFFL);
+				if (last) {
+					nval |= FLAG_LAST_RESULT_SENT;
+				}
+				if (ALFU_resultCounter.compareAndSet(this, val, nval)) {
+					return (int) resultcount;
+				}
+			}
+		}
+
+		public void putResult(R result, boolean last) {
 			results.add(new CompletedInnerTaskOptionalResult<>(result));
+			int resultcount = addResult(last);
+			listener.notifyResultReady(resultcount, last);
 		}
 
-		public void putExceptionResult(Throwable e) {
+		public void putExceptionResult(Throwable e, boolean last) {
 			results.add(new FailedInnerTaskOptionalResult<>(e));
+			int resultcount = addResult(last);
+			listener.notifyResultReady(resultcount, last);
 		}
 
-		public void putFailureLastResult(Throwable e) {
+		public void putFailureResult(Throwable e, boolean last) {
 			results.add(new FailedInnerTaskOptionalResult<>(e));
-			listener.notifyResultReady(true);
+			int resultcount = addResult(last);
+			listener.notifyResultReady(resultcount, last);
 		}
 
-		public void putFailureResult(Throwable e) {
-			results.add(new FailedInnerTaskOptionalResult<>(e));
-			listener.notifyResultReady(false);
+		public void noMoreResults() {
+			while (true) {
+				long val = this.resultCounter;
+				if (((val & FLAG_LAST_RESULT_SENT) == FLAG_LAST_RESULT_SENT)) {
+					//already set
+					return;
+				}
+				long invokedcount = val >>> 32;
+				long resultcount = (val & 0xFFFFFFFFL);
+				if (resultcount != invokedcount) {
+					throw new IllegalStateException("Can't set last result, invoked and result count doesn't equal: "
+							+ invokedcount + " - " + resultcount + " in " + Long.toHexString(val));
+				}
+				long nval = val | FLAG_LAST_RESULT_SENT;
+				if (ALFU_resultCounter.compareAndSet(this, val, nval)) {
+					listener.notifyResultReady((int) resultcount, true);
+					return;
+				}
+			}
 		}
 
 		@Override
@@ -141,7 +239,7 @@ public class InnerTaskInvocationManager implements Closeable {
 				//failed to communicate
 				//ignoreable.
 			} finally {
-				weakInnerThreads.remove(invokerThread);
+				invocationManager.weakInnerThreads.remove(invokerThread);
 			}
 		}
 
@@ -153,14 +251,8 @@ public class InnerTaskInvocationManager implements Closeable {
 					// reached configured the maximum on this environment
 					break;
 				}
-				try {
-					if (!duplicationPredicate.shouldInvokeOnceMore()) {
-						setShouldntInvokeOnceMore();
-						return;
-					}
-				} catch (RuntimeException e) {
-					//some RMI exceptions or others may happen
-					this.putFailureResult(e);
+				if (!duplicationPredicate.shouldInvokeOnceMore()) {
+					setShouldntInvokeOnceMore();
 					return;
 				}
 				ComputationToken ct;
@@ -168,7 +260,6 @@ public class InnerTaskInvocationManager implements Closeable {
 					ct = ComputationToken.requestAdditionalAbortable(computationTokenAllocator, computationTokenCount,
 							() -> duplicationCancelled || shouldntInvokeOnceMore);
 				} catch (InterruptedException e) {
-					this.putFailureResult(e);
 					return;
 				}
 				if (ct == null) {
@@ -190,7 +281,6 @@ public class InnerTaskInvocationManager implements Closeable {
 				try (TaskContextReference contextref = TaskContextReference.createForInnerTask(taskContext)) {
 					while (!duplicationCancelled) {
 						if (Thread.interrupted()) {
-							this.putFailureResult(new InterruptedException("Inner task interrupted."));
 							return;
 						}
 						if (releasable) {
@@ -201,7 +291,6 @@ public class InnerTaskInvocationManager implements Closeable {
 											computationTokenCount,
 											() -> duplicationCancelled || shouldntInvokeOnceMore);
 								} catch (InterruptedException e) {
-									this.putFailureResult(e);
 									return;
 								}
 								if (token == null) {
@@ -209,59 +298,17 @@ public class InnerTaskInvocationManager implements Closeable {
 								}
 							}
 						}
-						Task<? extends R> task;
-						try {
-							task = taskFactory.createTask(executionContext);
-						} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError
-								| AssertionError | StackOverflowError e) {
-							this.putFailureResult(e);
+						if (!startInvocationWithListener()) {
 							return;
 						}
+						Task<? extends R> task = createTaskForInvocation(false);
 						if (task == null) {
-							this.putFailureResult(new NullPointerException(
-									"Task factory created null task: " + taskFactory.getClass().getName()));
-							return;
+							break;
 						}
-						InnerTaskInstanceInvocationHandle instanceinvocationhandle = listener
-								.notifyTaskInvocationStart();
-						if (instanceinvocationhandle == null) {
-							return;
-						}
-						try {
-							InternalTaskBuildTrace btrace = ((InternalTaskContext) taskContext).internalGetBuildTrace()
-									.startInnerTask(taskFactory);
-							contextref.initTaskBuildTrace(btrace);
-							try {
-								R result = task.run(taskContext);
-								this.putResult(result);
-							} catch (Throwable e) {
-								btrace.setThrownException(e);
-								throw e;
-							} finally {
-								btrace.endInnerTask();
-							}
-						} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError
-								| AssertionError | StackOverflowError e) {
-							this.putExceptionResult(e);
-						} catch (Throwable e) {
-							try {
-								this.putExceptionResult(e);
-							} catch (Throwable e2) {
-								e.addSuppressed(e2);
-							}
-							throw e;
-						} finally {
-							instanceinvocationhandle.done();
-						}
-						try {
-							if (!duplicationPredicate.shouldInvokeOnceMore()) {
-								setShouldntInvokeOnceMore();
-								break;
-							}
-						} catch (RuntimeException e) {
-							//some RMI exceptions or others may happen
-							this.putFailureResult(e);
-							return;
+						runSingleInnerTask(contextref, task, false);
+						if (!duplicationPredicate.shouldInvokeOnceMore()) {
+							setShouldntInvokeOnceMore();
+							break;
 						}
 					}
 				} catch (RMIRuntimeException e) {
@@ -272,6 +319,24 @@ public class InnerTaskInvocationManager implements Closeable {
 					token.close();
 				}
 			}
+		}
+
+		private Task<? extends R> createTaskForInvocation(boolean last) {
+			Task<? extends R> task;
+			try {
+				task = taskFactory.createTask(invocationManager.executionContext);
+			} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+					| StackOverflowError e) {
+				this.putFailureResult(e, last);
+				return null;
+			}
+			if (task == null) {
+				NullPointerException e = new NullPointerException(
+						"Task factory created null task: " + taskFactory.getClass().getName());
+				this.putFailureResult(e, true);
+				return null;
+			}
+			return task;
 		}
 
 		private void setShouldntInvokeOnceMore() {
@@ -295,7 +360,7 @@ public class InnerTaskInvocationManager implements Closeable {
 			//        but not because the allocator is used again
 
 			if (duplicationCancelled) {
-				listener.notifyNoMoreResults();
+				listener.notifyResultReady(0, true);
 				return;
 			}
 
@@ -304,11 +369,11 @@ public class InnerTaskInvocationManager implements Closeable {
 				corecomptoken = ComputationToken.requestAbortable(computationTokenAllocator, computationTokenCount,
 						() -> duplicationCancelled);
 			} catch (InterruptedException e) {
-				this.putFailureLastResult(e);
+				listener.notifyResultReady(0, true);
 				return;
 			}
 			if (corecomptoken == null) {
-				listener.notifyNoMoreResults();
+				listener.notifyResultReady(0, true);
 				return;
 			}
 
@@ -326,53 +391,51 @@ public class InnerTaskInvocationManager implements Closeable {
 						this.runDuplication(workpool);
 					} finally {
 						//TODO do not directly notify about no more results, but incorporate it in the task result notifications properly
-						listener.notifyNoMoreResults();
+						this.noMoreResults();
 					}
 				} else {
-					Task<? extends R> task;
-					try {
-						task = taskFactory.createTask(executionContext);
-					} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
-							| StackOverflowError e) {
-						this.putFailureLastResult(e);
+					if (!startInvocationWithListener()) {
 						return;
 					}
+					Task<? extends R> task = createTaskForInvocation(true);
 					if (task == null) {
-						this.putFailureLastResult(new NullPointerException(
-								"Task factory created null task: " + taskFactory.getClass().getName()));
-						return;
-					}
-					InnerTaskInstanceInvocationHandle instanceinvocationhandle = listener.notifyTaskInvocationStart();
-					if (instanceinvocationhandle == null) {
 						return;
 					}
 					try (TaskContextReference contextref = TaskContextReference.createForInnerTask(taskContext)) {
-						InternalTaskBuildTrace btrace = ((InternalTaskContext) taskContext).internalGetBuildTrace()
-								.startInnerTask(taskFactory);
-						contextref.initTaskBuildTrace(btrace);
-						try {
-							R result = task.run(taskContext);
-							this.putResult(result);
-						} catch (Throwable e) {
-							btrace.setThrownException(e);
-							throw e;
-						} finally {
-							btrace.endInnerTask();
-						}
-					} catch (Exception e) {
-						this.putExceptionResult(e);
-					} catch (Throwable e) {
-						try {
-							this.putExceptionResult(e);
-						} catch (Throwable e2) {
-							e.addSuppressed(e2);
-						}
-						throw e;
-					} finally {
-						instanceinvocationhandle.doneNoMoreResults();
+						runSingleInnerTask(contextref, task, true);
 					}
 				}
 			}
+		}
+
+		private void runSingleInnerTask(TaskContextReference contextref, Task<? extends R> task, boolean last) {
+			R result;
+			try {
+				InternalTaskBuildTrace btrace = ((InternalTaskContext) taskContext).internalGetBuildTrace()
+						.startInnerTask(taskFactory);
+				contextref.initTaskBuildTrace(btrace);
+				try {
+					result = task.run(taskContext);
+				} catch (Throwable e) {
+					btrace.setThrownException(e);
+					throw e;
+				} finally {
+					btrace.endInnerTask();
+				}
+			} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+					| StackOverflowError e) {
+				this.putExceptionResult(e, last);
+				return;
+			} catch (Throwable e) {
+				try {
+					this.putExceptionResult(e, last);
+				} catch (Throwable e2) {
+					e.addSuppressed(e2);
+				}
+				throw e;
+			}
+			this.putResult(result, last);
+			return;
 		}
 	}
 
@@ -406,11 +469,11 @@ public class InnerTaskInvocationManager implements Closeable {
 			TaskDuplicationPredicate duplicationPredicate, int maximumEnvironmentFactor) throws Exception {
 		//shouldInvokeOnceMore exception is propagated
 		if (duplicationPredicate != null && !duplicationPredicate.shouldInvokeOnceMore()) {
-			listener.notifyNoMoreResults();
+			listener.notifyResultReady(0, true);
 			return new NotInvokedInnerTaskInvocationHandle<>();
 		}
-		LocalInnerTaskInvocationHandle<R> resulthandle = new LocalInnerTaskInvocationHandle<>(listener, taskfactory,
-				taskcontext, computationtokenallocator, computationtokencount, duplicationPredicate,
+		LocalInnerTaskInvocationHandle<R> resulthandle = new LocalInnerTaskInvocationHandle<>(this, listener,
+				taskfactory, taskcontext, computationtokenallocator, computationtokencount, duplicationPredicate,
 				maximumEnvironmentFactor);
 		Thread thread = new Thread(resulthandle, "Inner-task: " + taskfactory.getClass().getName());
 		resulthandle.invokerThread = new WeakReference<>(thread);
