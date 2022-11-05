@@ -77,8 +77,16 @@ public class ForwardingTaskContext implements TaskContext, TaskExecutionUtilitie
 	protected final TaskContext taskContext;
 	/**
 	 * The concrete {@link TaskExecutionUtilities}.
+	 * <p>
+	 * The field just caches the value of {@link TaskContext#getTaskUtilities()} retrieved in the constructor.
 	 */
 	protected final TaskExecutionUtilities utilities;
+
+	//package private constructor for better instantiation internally
+	ForwardingTaskContext(TaskContext taskContext, TaskExecutionUtilities utilities) {
+		this.taskContext = taskContext;
+		this.utilities = utilities;
+	}
 
 	/**
 	 * Creates a new instance initialized with the task context which to forward the calls.
@@ -89,9 +97,7 @@ public class ForwardingTaskContext implements TaskContext, TaskExecutionUtilitie
 	 *             If the argument is <code>null</code>.
 	 */
 	public ForwardingTaskContext(TaskContext taskContext) throws NullPointerException {
-		Objects.requireNonNull(taskContext, "task context");
-		this.taskContext = taskContext;
-		this.utilities = taskContext.getTaskUtilities();
+		this(Objects.requireNonNull(taskContext, "task context"), taskContext.getTaskUtilities());
 	}
 
 	@Override
@@ -252,7 +258,7 @@ public class ForwardingTaskContext implements TaskContext, TaskExecutionUtilitie
 
 	@Override
 	public ByteSink getStandardErr() {
-		return getStandardErr();
+		return taskContext.getStandardErr();
 	}
 
 	@Override
