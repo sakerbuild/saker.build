@@ -1333,66 +1333,67 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		@Override
 		public TaskInvoker createTaskInvoker(ExecutionContext executioncontext,
 				TaskInvokerInformation invokerinformation) throws IOException, NullPointerException {
-			try {
-				ExecutionPathConfiguration realpathconfig = executioncontext.getPathConfiguration();
-				ProviderHolderPathKey workingpathkey = realpathconfig.getWorkingDirectoryPathKey();
-				SakerProjectCache project = getProjectImpl(workingpathkey).project;
-				Path modifiedmirrordir;
-				if (clusterMirrorDirectory == null) {
-					modifiedmirrordir = null;
-				} else {
-					//XXX maybe put a notice text file about the origin of the directory
-					modifiedmirrordir = getMirrorDirectoryPathForWorkingDirectory(clusterMirrorDirectory,
-							workingpathkey);
-				}
-
-				return new TaskInvoker() {
-					@Override
-					public void run(TaskInvocationContext context) throws Exception {
-						InternalBuildTrace internalbuildtrace = ((InternalExecutionContext) executioncontext)
-								.internalGetBuildTrace();
-						internalbuildtrace.startBuildCluster(environment, modifiedmirrordir);
-						ClassLoaderResolverRegistry executionclregistry = new ClassLoaderResolverRegistry(
-								environment.getClassLoaderResolverRegistry());
-						String resolverid = createClusterTaskInvokerRMIRegistryClassResolverId(realpathconfig);
-						connectionClassLoaderRegistry.register(resolverid, executionclregistry);
-						try {
-							try {
-								project.clusterStarting(realpathconfig, executioncontext.getRepositoryConfiguration(),
-										executioncontext.getScriptConfiguration(), executioncontext.getUserParameters(),
-										modifiedmirrordir, invokerinformation.getDatabaseConfiguration(),
-										executioncontext, executionclregistry);
-							} catch (Exception e) {
-								//XXX reify exception
-								throw new IOException(e);
-							}
-
-							SakerExecutionCache execcache = project.getExecutionCache();
-
-							FileMirrorHandler mirrorhandler = project.getClusterMirrorHandler();
-							SakerEnvironment executionenvironment = project.getExecutionCache()
-									.getRecordingEnvironment();
-
-							Object execkey = environment.getStartExecutionKey();
-							try {
-								ClusterTaskInvoker clusterinvoker = new ClusterTaskInvoker(environment,
-										executionenvironment, executioncontext, mirrorhandler,
-										execcache.getLoadedBuildRepositories(), project.getClusterContentDatabase(),
-										execcache.getLoadedScriptProviderLocators());
-								clusterinvoker.run(context);
-							} finally {
-								project.clusterFinished(execkey);
-							}
-						} finally {
-							internalbuildtrace.endBuildCluster();
-							connectionClassLoaderRegistry.unregister(resolverid, executionclregistry);
-						}
-					}
-				};
-			} catch (Throwable e) {
-				e.printStackTrace();
-				throw e;
+			if (!(executioncontext instanceof InternalExecutionContext)) {
+				//safety check this here, later than later
+				//as we're downcasting the execution context
+				throw new IllegalArgumentException(
+						"Invalid execution context instance: " + ObjectUtils.classNameOf(executioncontext));
 			}
+
+			return new TaskInvoker() {
+				@Override
+				public void run(TaskInvocationContext context) throws Exception {
+					ExecutionPathConfiguration realpathconfig = executioncontext.getPathConfiguration();
+					ProviderHolderPathKey workingpathkey = realpathconfig.getWorkingDirectoryPathKey();
+					SakerProjectCache project = getProjectImpl(workingpathkey).project;
+					Path modifiedmirrordir;
+					if (clusterMirrorDirectory == null) {
+						modifiedmirrordir = null;
+					} else {
+						//XXX maybe put a notice text file about the origin of the directory
+						modifiedmirrordir = getMirrorDirectoryPathForWorkingDirectory(clusterMirrorDirectory,
+								workingpathkey);
+					}
+
+					InternalBuildTrace internalbuildtrace = ((InternalExecutionContext) executioncontext)
+							.internalGetBuildTrace();
+					internalbuildtrace.startBuildCluster(environment, modifiedmirrordir);
+					ClassLoaderResolverRegistry executionclregistry = new ClassLoaderResolverRegistry(
+							environment.getClassLoaderResolverRegistry());
+					String resolverid = createClusterTaskInvokerRMIRegistryClassResolverId(realpathconfig);
+					connectionClassLoaderRegistry.register(resolverid, executionclregistry);
+					try {
+						try {
+							project.clusterStarting(realpathconfig, executioncontext.getRepositoryConfiguration(),
+									executioncontext.getScriptConfiguration(), executioncontext.getUserParameters(),
+									modifiedmirrordir, invokerinformation.getDatabaseConfiguration(), executioncontext,
+									executionclregistry);
+						} catch (Exception e) {
+							//XXX reify exception
+							throw new IOException(e);
+						}
+
+						SakerExecutionCache execcache = project.getExecutionCache();
+
+						FileMirrorHandler mirrorhandler = project.getClusterMirrorHandler();
+						SakerEnvironment executionenvironment = project.getExecutionCache().getRecordingEnvironment();
+
+						Object execkey = environment.getStartExecutionKey();
+						try {
+							ClusterTaskInvoker clusterinvoker = new ClusterTaskInvoker(environment,
+									executionenvironment, executioncontext, mirrorhandler,
+									execcache.getLoadedBuildRepositories(), project.getClusterContentDatabase(),
+									execcache.getLoadedScriptProviderLocators());
+							clusterinvoker.run(context);
+						} finally {
+							project.clusterFinished(execkey);
+						}
+					} finally {
+						internalbuildtrace.endBuildCluster();
+						connectionClassLoaderRegistry.unregister(resolverid, executionclregistry);
+					}
+				}
+			};
 		}
 
 		@Override

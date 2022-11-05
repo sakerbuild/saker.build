@@ -34,6 +34,15 @@ import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 
 public interface InternalTaskContext {
+
+	/**
+	 * Gets the real task context, be it a local or remote object.
+	 * <p>
+	 * This doesn't return a potentially caching RMI wrappers, but the real task context.
+	 * @return The task context instance.
+	 */
+	public TaskContext internalGetTaskContextIdentity();
+
 	@RMICacheResult
 	@RMISerialize
 	public Entry<SakerPath, ScriptPosition> internalGetOriginatingBuildFile();
@@ -47,7 +56,7 @@ public interface InternalTaskContext {
 	@RMICacheResult
 	public InternalTaskBuildTrace internalGetBuildTrace();
 
-	public SakerFile internalcreateProviderPathFile(String name, ProviderHolderPathKey pathkey, boolean directory)
+	public SakerFile internalCreateProviderPathFile(String name, ProviderHolderPathKey pathkey, boolean directory)
 			throws NullPointerException, IOException;
 
 	public void internalAddSynchronizeInvalidatedProviderPathFileToDirectory(SakerDirectory directory,

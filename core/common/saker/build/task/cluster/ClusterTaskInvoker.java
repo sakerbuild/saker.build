@@ -30,6 +30,7 @@ import saker.build.task.ComputationToken;
 import saker.build.task.EnvironmentSelectionResult;
 import saker.build.task.IdentifierAccessDisablerSakerEnvironment;
 import saker.build.task.InnerTaskInvocationManager;
+import saker.build.task.InternalTaskContext;
 import saker.build.task.Task;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskContextReference;
@@ -46,6 +47,7 @@ import saker.build.task.TaskInvocationManager.TaskInvocationEventVisitor;
 import saker.build.task.TaskInvoker;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
@@ -132,11 +134,11 @@ public class ClusterTaskInvoker implements TaskInvoker {
 		}
 		TaskContext realtaskcontext = event.getTaskContext();
 		ClusterTaskContext clustertaskcontext = new ClusterTaskContext(clusterExecutionContext, realtaskcontext,
-				this.clusterContentDatabase, event.getTaskUtilities());
+				this.clusterContentDatabase, realtaskcontext.getTaskUtilities());
 		try {
 			InnerTaskInvocationHandle<R> resulthandle = innerTaskInvoker.invokeInnerTask(event.getTaskFactory(),
-					clustertaskcontext, event, realtaskcontext, event.getComputationTokenCount(),
-					event.getDuplicationPredicate(), event.getMaximumEnvironmentFactor());
+					clustertaskcontext, event, event.getComputationTokenCount(), event.getDuplicationPredicate(),
+					event.getMaximumEnvironmentFactor());
 			event.setInvocationHandle(resulthandle);
 		} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
 				| StackOverflowError e) {
@@ -238,6 +240,13 @@ public class ClusterTaskInvoker implements TaskInvoker {
 			return;
 		}
 		TaskContext realtaskcontext = event.getTaskContext();
+		if (!(realtaskcontext instanceof InternalTaskContext)) {
+			//safety check this here, later than later
+			//as we're downcasting the task context
+			event.fail(new IllegalArgumentException(
+					"Invalid task context instance: " + ObjectUtils.classNameOf(realtaskcontext)));
+			return;
+		}
 		ClusterTaskContext clustertaskcontext = new ClusterTaskContext(clusterExecutionContext, realtaskcontext,
 				clusterContentDatabase, event.getTaskUtilities());
 		InternalTaskBuildTrace btrace = clustertaskcontext.internalGetBuildTrace();

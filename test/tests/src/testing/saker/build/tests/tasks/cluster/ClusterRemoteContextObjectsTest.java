@@ -78,6 +78,26 @@ public class ClusterRemoteContextObjectsTest extends ClusterBuildTestCase {
 				assertFalse(RMIConnection.isRemoteObject(dir.getContentDescriptor()));
 			}
 
+			//some primitive/simple getter calls, to check if they're remotely called, 
+			//by examining the remi statistics printed at the end of the execution 
+			executioncontext.isIDEConfigurationRequired();
+			executioncontext.isRecordsBuildTrace();
+			executioncontext.getBuildTimeMillis();
+			executioncontext.getExecutionWorkingDirectory();
+			executioncontext.getExecutionWorkingDirectoryPath();
+			executioncontext.getExecutionBuildDirectory();
+			executioncontext.getExecutionBuildDirectoryPath();
+
+			taskcontext.getTaskWorkingDirectory();
+			taskcontext.getTaskWorkingDirectoryPath();
+			taskcontext.getTaskBuildDirectory();
+			taskcontext.getTaskBuildDirectoryPath();
+			taskcontext.getStandardErr();
+			taskcontext.getStandardIn();
+			taskcontext.getStandardOut();
+			taskcontext.getSecretReader();
+			taskcontext.getProgressMonitor();
+
 			return "abc";
 		}
 	}

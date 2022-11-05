@@ -465,13 +465,16 @@ public class InnerTaskInvocationManager implements Closeable {
 	}
 
 	public <R> InnerTaskInvocationHandle<R> invokeInnerTask(TaskFactory<R> taskfactory, TaskContext taskcontext,
-			InnerTaskInvocationListener listener, Object computationtokenallocator, int computationtokencount,
+			InnerTaskInvocationListener listener, int computationtokencount,
 			TaskDuplicationPredicate duplicationPredicate, int maximumEnvironmentFactor) throws Exception {
 		//shouldInvokeOnceMore exception is propagated
 		if (duplicationPredicate != null && !duplicationPredicate.shouldInvokeOnceMore()) {
 			listener.notifyResultReady(0, true);
 			return new NotInvokedInnerTaskInvocationHandle<>();
 		}
+		//the computation token allocator objects should be the task context identity
+		//and should not be a caching RMI wrapper or other proxy objects.
+		Object computationtokenallocator = ((InternalTaskContext) taskcontext).internalGetTaskContextIdentity();
 		LocalInnerTaskInvocationHandle<R> resulthandle = new LocalInnerTaskInvocationHandle<>(this, listener,
 				taskfactory, taskcontext, computationtokenallocator, computationtokencount, duplicationPredicate,
 				maximumEnvironmentFactor);

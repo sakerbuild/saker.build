@@ -223,14 +223,16 @@ class ClusterTaskContext implements TaskContext, InternalTaskContext {
 	}
 
 	@Override
-	public ByteSink getStandardOut() {
-		return realTaskContext.getStandardOut();
-	}
-
-	@Override
 	public void setStandardOutDisplayIdentifier(String displayid) {
 		// XXX flush the standard out if it is buffered
 		realTaskContext.setStandardOutDisplayIdentifier(displayid);
+	}
+
+	//TODO implement some caching or other mechanism to use fewer RMI calls when using standard out/err/in
+
+	@Override
+	public ByteSink getStandardOut() {
+		return realTaskContext.getStandardOut();
 	}
 
 	@Override
@@ -321,6 +323,11 @@ class ClusterTaskContext implements TaskContext, InternalTaskContext {
 	}
 
 	@Override
+	public TaskContext internalGetTaskContextIdentity() {
+		return ((InternalTaskContext) realTaskContext).internalGetTaskContextIdentity();
+	}
+
+	@Override
 	public Entry<SakerPath, ScriptPosition> internalGetOriginatingBuildFile() {
 		return ((InternalTaskContext) realTaskContext).internalGetOriginatingBuildFile();
 	}
@@ -347,9 +354,9 @@ class ClusterTaskContext implements TaskContext, InternalTaskContext {
 	}
 
 	@Override
-	public SakerFile internalcreateProviderPathFile(String name, ProviderHolderPathKey pathkey, boolean directory)
+	public SakerFile internalCreateProviderPathFile(String name, ProviderHolderPathKey pathkey, boolean directory)
 			throws NullPointerException, IOException {
-		return ((InternalTaskContext) realTaskContext).internalcreateProviderPathFile(name, pathkey, directory);
+		return ((InternalTaskContext) realTaskContext).internalCreateProviderPathFile(name, pathkey, directory);
 	}
 
 	@Override

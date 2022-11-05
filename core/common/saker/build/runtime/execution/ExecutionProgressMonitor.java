@@ -37,17 +37,21 @@ public interface ExecutionProgressMonitor {
 	public TaskProgressMonitor startTaskProgress();
 
 	/**
-	 * Creates a new progress monitor that ignores operations done on it.
+	 * Gets a progress monitor that ignores operations done on it.
 	 * <p>
 	 * Every method call on the result instance is a no-op.
+	 * <p>
+	 * The returned monitor may be a shared instance.
 	 * 
 	 * @return A null progress monitor.
 	 */
 	public static ExecutionProgressMonitor nullMonitor() {
-		return new NullProgressMonitor();
+		return NullProgressMonitor.INSTANCE;
 	}
 
 	public static class NullProgressMonitor implements ExecutionProgressMonitor, TaskProgressMonitor {
+		public static final NullProgressMonitor INSTANCE = new NullProgressMonitor();
+
 		@Override
 		public boolean isCancelled() {
 			return false;

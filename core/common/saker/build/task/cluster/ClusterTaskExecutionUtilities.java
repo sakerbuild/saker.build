@@ -379,7 +379,7 @@ class ClusterTaskExecutionUtilities implements TaskExecutionUtilities {
 		Objects.requireNonNull(pathkey, "path key");
 		if (LocalFileProvider.getProviderKeyStatic().equals(pathkey.getFileProviderKey())) {
 			FileEntry attrs = pathkey.getFileProvider().getFileAttributes(pathkey.getPath());
-			return clusterTaskContext.internalcreateProviderPathFile(name, pathkey, attrs.isDirectory());
+			return clusterTaskContext.internalCreateProviderPathFile(name, pathkey, attrs.isDirectory());
 		}
 		return utils.createProviderPathFile(name, pathkey);
 	}

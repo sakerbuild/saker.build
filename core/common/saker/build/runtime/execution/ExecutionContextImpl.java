@@ -90,6 +90,10 @@ import saker.build.task.TaskExecutionResult;
 import saker.build.task.TaskFactory;
 import saker.build.task.cluster.TaskInvokerFactory;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
+import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
+import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
+import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.thirdparty.saker.util.ConcurrentAppendAccumulator;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -100,6 +104,8 @@ import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.ref.StrongWeakReference;
+import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapSerializeKeyRemoteValueWrapper;
+import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapWrapper;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.trace.InternalBuildTrace;
 import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
@@ -108,6 +114,7 @@ import saker.build.util.exc.ExceptionView;
 import saker.build.util.property.ScriptParsingConfigurationExecutionProperty;
 import testing.saker.build.flag.TestFlag;
 
+@RMIWrap(ExecutionContextImpl.ExecutionContextRMIWrapper.class)
 public final class ExecutionContextImpl implements ExecutionContext, InternalExecutionContext, AutoCloseable {
 	private final SakerEnvironmentImpl environment;
 
@@ -905,5 +912,202 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 			basedir = basedir.getDirectoryCreate(p);
 		}
 		return basedir;
+	}
+
+	protected static final class ExecutionContextRMIWrapper implements RMIWrapper {
+		private ExecutionContext context;
+
+		public ExecutionContextRMIWrapper() {
+		}
+
+		public ExecutionContextRMIWrapper(ExecutionContext context) {
+			this.context = context;
+		}
+
+		@Override
+		public void writeWrapped(RMIObjectOutput out) throws IOException {
+			ExecutionContext context = this.context;
+			out.writeRemoteObject(context);
+			out.writeRemoteObject(context.getLocalFileProvider());
+			out.writeObject(context.getPathConfiguration());
+			out.writeObject(context.getRepositoryConfiguration());
+			out.writeObject(context.getScriptConfiguration());
+			out.writeWrappedObject(context.getUserParameters(), RMITreeMapWrapper.class);
+			out.writeWrappedObject(context.getRootDirectories(), RMITreeMapSerializeKeyRemoteValueWrapper.class);
+			out.writeObject(((InternalExecutionContext) context).internalGetBuildTrace());
+
+			out.writeObject(context.getExecutionWorkingDirectory());
+			out.writeObject(context.getExecutionWorkingDirectoryPath());
+			out.writeObject(context.getExecutionBuildDirectory());
+			out.writeObject(context.getExecutionBuildDirectoryPath());
+
+			//XXX maybe compress these two booleans into a single smaller integer with flags?
+			out.writeBoolean(context.isIDEConfigurationRequired());
+			out.writeBoolean(context.isRecordsBuildTrace());
+			out.writeLong(context.getBuildTimeMillis());
+		}
+
+		@Override
+		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
+			ExecutionContext context = (ExecutionContext) in.readObject();
+			SakerFileProvider localfp = (SakerFileProvider) in.readObject();
+			ExecutionPathConfiguration pathconfig = (ExecutionPathConfiguration) in.readObject();
+			ExecutionRepositoryConfiguration repoconfig = (ExecutionRepositoryConfiguration) in.readObject();
+			ExecutionScriptConfiguration scriptconfig = (ExecutionScriptConfiguration) in.readObject();
+
+			@SuppressWarnings("unchecked")
+			Map<String, String> userparams = (Map<String, String>) in.readObject();
+
+			@SuppressWarnings("unchecked")
+			NavigableMap<String, ? extends SakerDirectory> rootdirs = (NavigableMap<String, ? extends SakerDirectory>) in
+					.readObject();
+
+			InternalBuildTrace buildtrace = (InternalBuildTrace) in.readObject();
+
+			SakerDirectory workingdir = (SakerDirectory) in.readObject();
+			SakerPath workingdirpath = (SakerPath) in.readObject();
+			SakerDirectory builddir = (SakerDirectory) in.readObject();
+			SakerPath builddirpath = (SakerPath) in.readObject();
+
+			boolean ideconfigrequired = in.readBoolean();
+			boolean recordsbuildtrace = in.readBoolean();
+			long buildmillis = in.readLong();
+
+			this.context = new InternalCachingForwardingExecutionContext(context, localfp, pathconfig, repoconfig,
+					scriptconfig, userparams, buildtrace, ideconfigrequired, recordsbuildtrace, buildmillis, rootdirs,
+					workingdir, workingdirpath, builddir, builddirpath);
+		}
+
+		@Override
+		public Object resolveWrapped() {
+			return context;
+		}
+
+		@Override
+		public Object getWrappedObject() {
+			throw new UnsupportedOperationException();
+		}
+	}
+
+	private static final class InternalCachingForwardingExecutionContext extends ForwardingExecutionContext
+			implements InternalExecutionContext {
+		private final SakerFileProvider localFileProvider;
+		private final ExecutionPathConfiguration pathConfig;
+		private final ExecutionRepositoryConfiguration repoConfig;
+		private final ExecutionScriptConfiguration scriptConfig;
+		private final Map<String, String> userParams;
+		private final InternalBuildTrace buildTrace;
+		private final boolean ideConfigRequired;
+		private final boolean recordsBuildTrace;
+		private final long buildTimeMillis;
+		private final NavigableMap<String, ? extends SakerDirectory> rootDirectories;
+		private final SakerDirectory workingDir;
+		private final SakerPath workingDirPath;
+		private final SakerDirectory buildDir;
+		private final SakerPath buildDirPath;
+
+		public InternalCachingForwardingExecutionContext(ExecutionContext executonContext, SakerFileProvider localfp,
+				ExecutionPathConfiguration pathconfig, ExecutionRepositoryConfiguration repoconfig,
+				ExecutionScriptConfiguration scriptconfig, Map<String, String> userparams,
+				InternalBuildTrace buildtrace, boolean ideconfigrequired, boolean recordsbuildtrace, long buildmillis,
+				NavigableMap<String, ? extends SakerDirectory> rootDirectories, SakerDirectory workingdir,
+				SakerPath workingdirpath, SakerDirectory builddir, SakerPath builddirpath) {
+			super(executonContext);
+			this.localFileProvider = localfp;
+			this.pathConfig = pathconfig;
+			this.repoConfig = repoconfig;
+			this.scriptConfig = scriptconfig;
+			this.userParams = userparams;
+			this.buildTrace = buildtrace;
+			this.ideConfigRequired = ideconfigrequired;
+			this.recordsBuildTrace = recordsbuildtrace;
+			this.buildTimeMillis = buildmillis;
+			this.rootDirectories = rootDirectories;
+			this.workingDir = workingdir;
+			this.workingDirPath = workingdirpath;
+			this.buildDir = builddir;
+			this.buildDirPath = builddirpath;
+		}
+
+		@Override
+		public SakerFileProvider getLocalFileProvider() {
+			return localFileProvider;
+		}
+
+		@Override
+		public ExecutionPathConfiguration getPathConfiguration() {
+			return pathConfig;
+		}
+
+		@Override
+		public ExecutionRepositoryConfiguration getRepositoryConfiguration() {
+			return repoConfig;
+		}
+
+		@Override
+		public ExecutionScriptConfiguration getScriptConfiguration() {
+			return scriptConfig;
+		}
+
+		@Override
+		public Map<String, String> getUserParameters() {
+			return userParams;
+		}
+
+		@Override
+		public FilePathContents internalGetFilePathContents(SakerFile file) {
+			return ((InternalExecutionContext) executonContext).internalGetFilePathContents(file);
+		}
+
+		@Override
+		public InternalBuildTrace internalGetBuildTrace() {
+			return buildTrace;
+		}
+
+		@Override
+		public RepositoryBuildSharedObjectLookup internalGetSharedObjectProvider(String repoid) {
+			return ((InternalExecutionContext) executonContext).internalGetSharedObjectProvider(repoid);
+		}
+
+		@Override
+		public boolean isIDEConfigurationRequired() {
+			return ideConfigRequired;
+		}
+
+		@Override
+		public boolean isRecordsBuildTrace() {
+			return recordsBuildTrace;
+		}
+
+		@Override
+		public long getBuildTimeMillis() {
+			return buildTimeMillis;
+		}
+
+		@Override
+		public NavigableMap<String, ? extends SakerDirectory> getRootDirectories() {
+			return rootDirectories;
+		}
+
+		@Override
+		public SakerDirectory getExecutionWorkingDirectory() {
+			return workingDir;
+		}
+
+		@Override
+		public SakerPath getExecutionWorkingDirectoryPath() {
+			return workingDirPath;
+		}
+
+		@Override
+		public SakerDirectory getExecutionBuildDirectory() {
+			return buildDir;
+		}
+
+		@Override
+		public SakerPath getExecutionBuildDirectoryPath() {
+			return buildDirPath;
+		}
+
 	}
 }

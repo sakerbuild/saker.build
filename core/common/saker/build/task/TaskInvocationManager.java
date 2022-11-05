@@ -405,8 +405,7 @@ public class TaskInvocationManager implements Closeable {
 						resultwaiterlock, resultwaitercondition);
 				try {
 					InnerTaskInvocationHandle<R> handle = innerTaskInvoker.invokeInnerTask(taskfactory, taskcontext,
-							listener, taskcontext, computationtokencount, duplicationPredicate,
-							maximumenvironmentfactor);
+							listener, computationtokencount, duplicationPredicate, maximumenvironmentfactor);
 					listener.handle = handle;
 					postedtolocalenv = true;
 					invocationhandles.add(listener);
@@ -782,9 +781,6 @@ public class TaskInvocationManager implements Closeable {
 
 		@RMICacheResult
 		public TaskContext getTaskContext();
-
-		@RMICacheResult
-		public TaskExecutionUtilities getTaskUtilities();
 
 		@RMICacheResult
 		public TaskDuplicationPredicate getDuplicationPredicate();
@@ -1302,7 +1298,6 @@ public class TaskInvocationManager implements Closeable {
 		private TaskContext taskContext;
 		private TaskDuplicationPredicate duplicationPredicate;
 		private SelectionResult selectionResult;
-		private TaskExecutionUtilities taskUtilities;
 		private int maximumEnvironmentFactor;
 
 		@SuppressWarnings("unused")
@@ -1321,7 +1316,6 @@ public class TaskInvocationManager implements Closeable {
 			out.writeRemoteObject(event);
 			out.writeInt(event.getComputationTokenCount());
 			out.writeRemoteObject(event.getTaskContext());
-			out.writeRemoteObject(event.getTaskUtilities());
 			out.writeInt(event.getMaximumEnvironmentFactor());
 			out.writeObject(event.getDuplicationPredicate());
 			out.writeSerializedObject(event.getTaskFactory());
@@ -1334,7 +1328,6 @@ public class TaskInvocationManager implements Closeable {
 			event = (InnerClusterExecutionEvent<R>) in.readObject();
 			computationTokenCount = in.readInt();
 			taskContext = (TaskContext) in.readObject();
-			taskUtilities = (TaskExecutionUtilities) in.readObject();
 			maximumEnvironmentFactor = in.readInt();
 			duplicationPredicate = (TaskDuplicationPredicate) in.readObject();
 			taskFactory = (TaskFactory<R>) in.readObject();
@@ -1396,11 +1389,6 @@ public class TaskInvocationManager implements Closeable {
 		@Override
 		public TaskContext getTaskContext() {
 			return taskContext;
-		}
-
-		@Override
-		public TaskExecutionUtilities getTaskUtilities() {
-			return taskUtilities;
 		}
 
 		@Override
@@ -1493,11 +1481,6 @@ public class TaskInvocationManager implements Closeable {
 		@Override
 		public TaskContext getTaskContext() {
 			return request.getTaskContext();
-		}
-
-		@Override
-		public TaskExecutionUtilities getTaskUtilities() {
-			return request.getTaskUtilities();
 		}
 
 		@Override

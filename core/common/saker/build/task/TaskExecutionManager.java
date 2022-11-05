@@ -557,7 +557,173 @@ public final class TaskExecutionManager {
 		}
 	}
 
+	protected static final class TaskContextRMIWrapper implements RMIWrapper {
+		private TaskContext context;
+
+		public TaskContextRMIWrapper() {
+		}
+
+		public TaskContextRMIWrapper(TaskContext context) {
+			this.context = context;
+		}
+
+		@Override
+		public void writeWrapped(RMIObjectOutput out) throws IOException {
+			TaskContext context = this.context;
+			InternalTaskContext internalcontext = (InternalTaskContext) context;
+
+			out.writeRemoteObject(context);
+			out.writeRemoteObject(context.getTaskUtilities());
+			out.writeObject(internalcontext.internalGetBuildTrace());
+			out.writeSerializedObject(context.getTaskId());
+
+			out.writeObject(context.getTaskWorkingDirectory());
+			out.writeObject(context.getTaskWorkingDirectoryPath());
+			out.writeObject(context.getTaskBuildDirectory());
+			out.writeObject(context.getTaskBuildDirectoryPath());
+		}
+
+		@Override
+		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
+			TaskContext context = (TaskContext) in.readObject();
+			TaskExecutionUtilities utilities = (TaskExecutionUtilities) in.readObject();
+			InternalTaskBuildTrace buildtrace = (InternalTaskBuildTrace) in.readObject();
+			TaskIdentifier taskid = (TaskIdentifier) in.readObject();
+
+			SakerDirectory workingdir = (SakerDirectory) in.readObject();
+			SakerPath workingdirpath = (SakerPath) in.readObject();
+			SakerDirectory builddir = (SakerDirectory) in.readObject();
+			SakerPath builddirpath = (SakerPath) in.readObject();
+
+			this.context = new InternalCachingForwardingTaskContext(context, utilities, buildtrace, taskid, workingdir,
+					workingdirpath, builddir, builddirpath);
+		}
+
+		@Override
+		public Object resolveWrapped() {
+			return context;
+		}
+
+		@Override
+		public Object getWrappedObject() {
+			throw new UnsupportedOperationException();
+		}
+	}
+
+	private static final class InternalCachingForwardingTaskContext extends ForwardingTaskContext
+			implements InternalTaskContext {
+
+		private final InternalTaskBuildTrace buildTrace;
+		private final TaskIdentifier taskId;
+		private final SakerDirectory workingDir;
+		private final SakerPath workingDirPath;
+		private final SakerDirectory buildDir;
+		private final SakerPath buildDirPath;
+
+		public InternalCachingForwardingTaskContext(TaskContext taskContext, TaskExecutionUtilities utilities,
+				InternalTaskBuildTrace buildTrace, TaskIdentifier taskId, SakerDirectory workingdir,
+				SakerPath workingdirpath, SakerDirectory builddir, SakerPath builddirpath) {
+			super(taskContext, utilities);
+			this.buildTrace = buildTrace;
+			this.taskId = taskId;
+			this.workingDir = workingdir;
+			this.workingDirPath = workingdirpath;
+			this.buildDir = builddir;
+			this.buildDirPath = builddirpath;
+		}
+
+		@Override
+		public TaskIdentifier getTaskId() {
+			return taskId;
+		}
+
+		@Override
+		public SakerDirectory getTaskWorkingDirectory() {
+			return workingDir;
+		}
+
+		@Override
+		public SakerPath getTaskWorkingDirectoryPath() {
+			return workingDirPath;
+		}
+
+		@Override
+		public SakerDirectory getTaskBuildDirectory() {
+			return buildDir;
+		}
+
+		@Override
+		public SakerPath getTaskBuildDirectoryPath() {
+			return buildDirPath;
+		}
+
+		@Override
+		public TaskContext internalGetTaskContextIdentity() {
+			return taskContext;
+		}
+
+		@Override
+		public Entry<SakerPath, ScriptPosition> internalGetOriginatingBuildFile() {
+			return ((InternalTaskContext) taskContext).internalGetOriginatingBuildFile();
+		}
+
+		@Override
+		public void internalPrintlnVariables(String line) {
+			((InternalTaskContext) taskContext).internalPrintlnVariables(line);
+		}
+
+		@Override
+		public void internalPrintlnVerboseVariables(String line) {
+			((InternalTaskContext) taskContext).internalPrintlnVerboseVariables(line);
+		}
+
+		@Override
+		public PathSakerFileContents internalGetPathSakerFileContents(SakerPath path) {
+			return ((InternalTaskContext) taskContext).internalGetPathSakerFileContents(path);
+		}
+
+		@Override
+		public InternalTaskBuildTrace internalGetBuildTrace() {
+			return buildTrace;
+		}
+
+		@Override
+		public SakerFile internalCreateProviderPathFile(String name, ProviderHolderPathKey pathkey, boolean directory)
+				throws NullPointerException, IOException {
+			return ((InternalTaskContext) taskContext).internalCreateProviderPathFile(name, pathkey, directory);
+		}
+
+		@Override
+		public void internalAddSynchronizeInvalidatedProviderPathFileToDirectory(SakerDirectory directory,
+				ProviderHolderPathKey pathkey, String filename, boolean isdirectory) throws IOException {
+			((InternalTaskContext) taskContext).internalAddSynchronizeInvalidatedProviderPathFileToDirectory(directory,
+					pathkey, filename, isdirectory);
+		}
+
+		@Override
+		public <T> TaskFuture<T> internalStartTaskOnTaskThread(TaskIdentifier taskid, TaskFactory<T> taskfactory,
+				TaskExecutionParameters parameters) {
+			return ((InternalTaskContext) taskContext).internalStartTaskOnTaskThread(taskid, taskfactory, parameters);
+		}
+
+		@Override
+		public <T> T internalRunTaskResultOnTaskThread(TaskIdentifier taskid, TaskFactory<T> taskfactory,
+				TaskExecutionParameters parameters) {
+			return ((InternalTaskContext) taskContext).internalRunTaskResultOnTaskThread(taskid, taskfactory,
+					parameters);
+		}
+
+		@Override
+		public <T> TaskFuture<T> internalRunTaskFutureOnTaskThread(TaskIdentifier taskid, TaskFactory<T> taskfactory,
+				TaskExecutionParameters parameters) {
+			return ((InternalTaskContext) taskContext).internalRunTaskFutureOnTaskThread(taskid, taskfactory,
+					parameters);
+		}
+
+	}
+
 	//XXX issue a warning if a file is reported multiple times as output
+	@RMIWrap(TaskContextRMIWrapper.class)
 	protected static final class TaskExecutorContext<R>
 			implements TaskContext, TaskExecutionUtilities, InternalTaskContext {
 
@@ -921,6 +1087,11 @@ public final class TaskExecutionManager {
 					reportIgnoredException(e);
 				}
 			});
+		}
+
+		@Override
+		public TaskContext internalGetTaskContextIdentity() {
+			return this;
 		}
 
 		@Override
@@ -2202,7 +2373,7 @@ public final class TaskExecutionManager {
 		}
 
 		@Override
-		public SakerFile internalcreateProviderPathFile(String name, ProviderHolderPathKey pathkey, boolean directory)
+		public SakerFile internalCreateProviderPathFile(String name, ProviderHolderPathKey pathkey, boolean directory)
 				throws NullPointerException, IOException {
 			if (directory) {
 				SakerPath path = pathkey.getPath();
@@ -2353,7 +2524,7 @@ public final class TaskExecutionManager {
 		public void internalAddSynchronizeInvalidatedProviderPathFileToDirectory(SakerDirectory directory,
 				ProviderHolderPathKey pathkey, String filename, boolean isdirectory) throws IOException {
 			invalidate(pathkey);
-			SakerFile file = internalcreateProviderPathFile(filename, pathkey, isdirectory);
+			SakerFile file = internalCreateProviderPathFile(filename, pathkey, isdirectory);
 			directory.add(file);
 			file.synchronize();
 		}
