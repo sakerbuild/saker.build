@@ -63,11 +63,17 @@ import java.util.function.Supplier;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.FileEntry;
 import saker.build.file.provider.FileEventListener;
+import saker.build.file.provider.FileProviderKey;
+import saker.build.file.provider.ForwardingSakerFileProvider;
 import saker.build.file.provider.RootFileProviderKey;
 import saker.build.file.provider.SakerFileLock;
 import saker.build.file.provider.SakerFileProvider;
 import saker.build.file.provider.SakerPathFiles;
+import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWriter;
+import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
+import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
+import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.thirdparty.saker.rmi.io.writer.SerializeRMIObjectWriteHandler;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -79,6 +85,7 @@ import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayInputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 
+@RMIWrap(MemoryFileProvider.MemoryFilesRMIWrapper.class)
 public class MemoryFileProvider implements SakerFileProvider {
 	//XXX should refactor this class to a tree like concurrent representation
 
@@ -1005,6 +1012,61 @@ public class MemoryFileProvider implements SakerFileProvider {
 	@Override
 	public RootFileProviderKey getProviderKey() {
 		return providerKey;
+	}
+
+	public static class MemoryFilesRMIWrapper extends ForwardingSakerFileProvider implements RMIWrapper {
+		private FileProviderKey fileProviderKey;
+
+		public MemoryFilesRMIWrapper() {
+			super(null);
+		}
+
+		public MemoryFilesRMIWrapper(MemoryFileProvider fileProvider) {
+			super(fileProvider);
+		}
+
+		@Override
+		public FileProviderKey getProviderKey() {
+			return fileProviderKey;
+		}
+
+		@Override
+		public SakerFileProvider getWrappedProvider() {
+			// Memory file providers don't have wrapped providers
+			return null;
+		}
+
+		@Override
+		public SakerPath resolveWrappedPath(SakerPath path)
+				throws UnsupportedOperationException, IllegalArgumentException {
+			// Memory file providers don't have wrapped providers
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public void writeWrapped(RMIObjectOutput out) throws IOException {
+			out.writeRemoteObject(subject);
+			out.writeSerializedObject(subject.getProviderKey());
+		}
+
+		@Override
+		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
+			SakerFileProvider fp = (SakerFileProvider) in.readObject();
+			FileProviderKey fpk = (FileProviderKey) in.readObject();
+			this.subject = fp;
+			this.fileProviderKey = fpk;
+		}
+
+		@Override
+		public Object getWrappedObject() {
+			return subject;
+		}
+
+		@Override
+		public Object resolveWrapped() {
+			//else perform wrapping
+			return this;
+		}
 	}
 
 }
