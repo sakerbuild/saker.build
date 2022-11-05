@@ -308,225 +308,6 @@ public final class TaskExecutionManager {
 		}
 	}
 
-	private static class IdentifierByteSink implements ByteSink {
-		/**
-		 * The real byte sing to write data to, guarded by {@link #realSinkFlushingLock}.
-		 */
-		private final ByteSink realSink;
-		private boolean needsIdentifier = true;
-
-		private volatile String stringIdentifier = "";
-		private volatile ByteArrayRegion identifier;
-
-		private byte lastLineEnd = 0;
-		/**
-		 * Lock for accessing {@link #realSink}.
-		 */
-		private final Lock realSinkFlushingLock;
-
-		/**
-		 * Lock for generally manipulating <code>this</code>.
-		 */
-		private final Lock accessLock = ThreadUtils.newExclusiveLock();
-
-		public IdentifierByteSink(ByteSink realSink, Lock streamFlushingLock) {
-			this.realSink = realSink;
-			this.realSinkFlushingLock = streamFlushingLock;
-		}
-
-		public void setIdentifier(String identifier) {
-			final Lock accesslock = this.accessLock;
-			accesslock.lock();
-			try {
-				if (identifier == null) {
-					this.identifier = null;
-					this.stringIdentifier = "";
-				} else {
-					String enclosedid = "[" + identifier + "]";
-					this.stringIdentifier = enclosedid;
-					this.identifier = ByteArrayRegion.wrap(enclosedid.getBytes(StandardCharsets.UTF_8));
-				}
-				finishLastLineLocked();
-			} finally {
-				accesslock.unlock();
-			}
-		}
-
-		/**
-		 * Gets the string representation of the current output identifier.
-		 * <p>
-		 * Returns empty string if none, or an identifier enclosed in brackets if present.
-		 * 
-		 * @return The current identifier.
-		 */
-		public String getStringIdentifier() {
-			return stringIdentifier;
-		}
-
-		public void finishLastLine() {
-			final Lock accesslock = this.accessLock;
-			accesslock.lock();
-			try {
-				finishLastLineLocked();
-			} finally {
-				accesslock.unlock();
-			}
-		}
-
-		/**
-		 * Locked on {@link #accessLock}.
-		 */
-		protected void finishLastLineLocked() {
-			if (lastLineEnd == 0 && !needsIdentifier) {
-				try {
-					final Lock flushlock = this.realSinkFlushingLock;
-					flushlock.lock();
-					try {
-						realSink.write('\n');
-					} finally {
-						flushlock.unlock();
-					}
-					lastLineEnd = '\n';
-					needsIdentifier = true;
-				} catch (IOException e) {
-					//ignore exception
-				}
-			}
-		}
-
-		/**
-		 * Locked on {@link #accessLock} and on {@link #realSinkFlushingLock} as well.
-		 */
-		protected void finishLastLineLockedSinkLocked() {
-			if (lastLineEnd == 0 && !needsIdentifier) {
-				try {
-					realSink.write('\n');
-					lastLineEnd = '\n';
-					needsIdentifier = true;
-				} catch (IOException e) {
-					//ignore exception
-				}
-			}
-		}
-
-		@Override
-		public void write(ByteArrayRegion buf) throws IOException {
-			if (buf.isEmpty()) {
-				return;
-			}
-			int off = buf.getOffset();
-			int len = buf.getLength();
-			final Lock accesslock = this.accessLock;
-			accesslock.lock();
-			try {
-				ByteArrayRegion id = identifier;
-				if (id == null) {
-					final Lock flushlock = this.realSinkFlushingLock;
-					flushlock.lock();
-					try {
-						realSink.write(buf);
-					} finally {
-						flushlock.unlock();
-					}
-					byte last = buf.get(off + len - 1);
-					needsIdentifier = last == '\n' || last == '\r';
-					lastLineEnd = needsIdentifier ? last : 0;
-					writtenBytes();
-					return;
-				}
-				//there is an identifier
-
-				byte[] array = buf.getArray();
-				final int end = off + len;
-				int lastwriteend = off;
-				byte b = 0;
-				for (int i = off; i < end; i++) {
-					b = array[i];
-					if (b == '\r' || b == '\n') {
-						if (lastLineEnd == 0) {
-							//no line ending before, we might expect the other character
-							lastLineEnd = b;
-						} else {
-							//there was a previous line ending character, so a line is finished now
-							//the needsidentifier flag stays true, as we need an identifier after a line ending
-							int writecount;
-							if (b == lastLineEnd) {
-								//new line sequences like CR CR ... or LF LF ...
-								//do not include this line ending char in the writing
-								writecount = i - lastwriteend;
-							} else {
-								//the other kind of character received among CR LF
-								//the line is finished
-								lastLineEnd = 0;
-								//write all including this line ending char
-								writecount = i - lastwriteend + 1;
-							}
-
-							if (writecount > 0) {
-								final Lock flushlock = this.realSinkFlushingLock;
-								flushlock.lock();
-								try {
-									if (needsIdentifier) {
-										realSink.write(id);
-									} else {
-										needsIdentifier = true;
-									}
-									realSink.write(ByteArrayRegion.wrap(array, lastwriteend, writecount));
-								} finally {
-									flushlock.unlock();
-								}
-								lastwriteend += writecount;
-							}
-						}
-					} else if (lastLineEnd != 0) {
-						//new char received after single char line ending
-						//write out the new line characters, and set that we need the identifier
-						final Lock flushlock = this.realSinkFlushingLock;
-						flushlock.lock();
-						try {
-							if (needsIdentifier) {
-								realSink.write(id);
-							}
-							int outc = i - lastwriteend;
-							needsIdentifier = outc > 0;
-							realSink.write(ByteArrayRegion.wrap(array, lastwriteend, outc));
-						} finally {
-							flushlock.unlock();
-						}
-						lastwriteend = i;
-
-						lastLineEnd = 0;
-					}
-				}
-				if (lastwriteend < end) {
-					final Lock flushlock = this.realSinkFlushingLock;
-					flushlock.lock();
-					try {
-						if (needsIdentifier) {
-							realSink.write(id);
-						}
-						realSink.write(ByteArrayRegion.wrap(array, lastwriteend, end - lastwriteend));
-					} finally {
-						flushlock.unlock();
-					}
-					needsIdentifier = b == '\n' || b == '\r';
-					lastLineEnd = needsIdentifier ? b : 0;
-				}
-				writtenBytes();
-			} finally {
-				accesslock.unlock();
-			}
-		}
-
-		/**
-		 * Callback for subclasses when bytes were written to the sink.
-		 * <p>
-		 * Called when locked on {@link #accessLock}.
-		 */
-		protected void writtenBytes() {
-		}
-	}
-
 	private static final class UserTaskResultDependencyHandle implements TaskResultDependencyHandle, Cloneable {
 		private TaskDependencyFutureImpl<?> depFuture;
 
@@ -743,6 +524,7 @@ public final class TaskExecutionManager {
 		private static final Function<? super TaskExecutorContext<?>, SakerDirectory> METHOD_REFERENCE_COMPUTE_TASK_WORKING_DIRECTORY = TaskExecutorContext::computeTaskWorkingDirectory;
 		private static final Function<? super TaskExecutorContext<?>, SakerDirectory> METHOD_REFERENCE_COMPUTE_TASK_BUILD_DIRECTORY = TaskExecutorContext::computeTaskBuildDirectory;
 		private static final Function<? super ExecutionProgressMonitor, TaskProgressMonitor> METHOD_REFERENCE_EXECUTION_PROGRESS_MONITOR_START_TASK_PROGRESS = ExecutionProgressMonitor::startTaskProgress;
+		private static final Function<? super TaskExecutorContext<?>, Boolean> METHOD_REFERENCE_CREATE_STANDARD_STREAMS = TaskExecutorContext::createStandardStreams;
 
 		protected final TaskExecutionManager executionManager;
 		protected final ExecutionContextImpl executionContext;
@@ -781,42 +563,13 @@ public final class TaskExecutionManager {
 
 		private final ConcurrentMap<Object, FileDependencyCollector> taggedFileDependencyCollectors = new ConcurrentHashMap<>();
 
-		private final UnsyncByteArrayOutputStream stdOut = new UnsyncByteArrayOutputStream();
-		private final UnsyncByteArrayOutputStream stdErr = new UnsyncByteArrayOutputStream();
-		private final IdentifierByteSink identifiedStdOut;
-		private final ByteSource stdIn = new ByteSource() {
-			@Override
-			public int read(ByteRegion buffer) throws IOException {
-				final Lock stdioacquirelock = executionStdIOLockAcquireLock;
-				stdioacquirelock.lock();
-				try {
-					if (acquiredExecutionStdIOLock == null) {
-						throw new TaskStandardIOLockIllegalStateException("Standard IO lock was not acquired.");
-					}
-					final Lock flushlock = streamFlushingLock;
-					flushlock.lock();
-					try {
-						int outsize = stdOut.size();
-						int offset = flushedStdOutOffset;
-						if (offset < outsize) {
-							stdOut.writeTo(executionContext.getStdOutSink(), offset, outsize - offset);
-							flushedStdOutOffset = outsize;
-						}
-					} finally {
-						flushlock.unlock();
-					}
-					ByteSource realin = contextStdIn;
-					if (realin == null) {
-						realin = executionContext.getStandardIn();
-						contextStdIn = realin;
-					}
-					return realin.read(buffer);
-				} finally {
-					stdioacquirelock.unlock();
-				}
-			}
-		};
-		private final Lock streamFlushingLock = ThreadUtils.newExclusiveLock();
+		private UnsyncByteArrayOutputStream stdOut;
+		private UnsyncByteArrayOutputStream stdErr;
+		private IdentifierByteSink<?> identifiedStdOut;
+		private ByteSource stdIn;
+		private Lock streamFlushingLock;
+		private final LazySupplier<Boolean> streamCreationLazysupplier = LazySupplier.of(this,
+				METHOD_REFERENCE_CREATE_STANDARD_STREAMS);
 		private volatile int flushedStdOutOffset = 0;
 
 		/**
@@ -827,7 +580,6 @@ public final class TaskExecutionManager {
 		//we disallow it for now by using an exclusive lock
 		private final Lock executionStdIOLockAcquireLock = ThreadUtils.newExclusiveLock();
 		private volatile StandardIOLock acquiredExecutionStdIOLock;
-		private volatile ByteSource contextStdIn;
 
 		private transient final Set<TaskIdentifier> afterFileDeltaAccessedDirectlyCreatedTaskIds = ConcurrentHashMap
 				.newKeySet();
@@ -842,7 +594,8 @@ public final class TaskExecutionManager {
 		private final LazySupplier<TaskProgressMonitor> taskProgressMonitor;
 		protected final ConcurrentAppendAccumulator<TaskExecutionEvent> events;
 
-		private final Supplier<SakerDirectory> workingDirectorySupplier;
+		private final LazySupplier<SakerDirectory> workingDirectorySupplier = LazySupplier.of(this,
+				METHOD_REFERENCE_COMPUTE_TASK_WORKING_DIRECTORY);
 		private final Supplier<SakerDirectory> buildDirectorySupplier;
 
 		private final SecretInputReader secretInputReader;
@@ -876,7 +629,6 @@ public final class TaskExecutionManager {
 				this.taskBuildTrace.deltas(deltas.allFileDeltas.getFileDeltas());
 			}
 
-			workingDirectorySupplier = LazySupplier.of(this, METHOD_REFERENCE_COMPUTE_TASK_WORKING_DIRECTORY);
 			if (executionManager.buildSakerDirectory == null) {
 				buildDirectorySupplier = Functionals.nullSupplier();
 			} else {
@@ -888,31 +640,57 @@ public final class TaskExecutionManager {
 			this.taskProgressMonitor = LazySupplier.of(executionManager.progressMonitor,
 					METHOD_REFERENCE_EXECUTION_PROGRESS_MONITOR_START_TASK_PROGRESS);
 
-			this.identifiedStdOut = new IdentifierByteSink(stdOut, streamFlushingLock) {
+			SecretInputReader secretreader = executioncontext.getSecretInputReader();
+			if (secretreader != null) {
+				secretInputReader = new SecretInputReader() {
+					@Override
+					public String readSecret(String titleinfo, String message, String prompt, String secretidentifier) {
+						return TaskExecutorContext.this.readTaskSecret(secretreader, titleinfo, message, prompt,
+								secretidentifier);
+					}
+				};
+			} else {
+				secretInputReader = null;
+			}
+		}
+
+		private void ensureStandardStreams() {
+			streamCreationLazysupplier.get();
+		}
+
+		//returns Boolean so it can be used as a Function method reference
+		private Boolean createStandardStreams() {
+			this.streamFlushingLock = ThreadUtils.newExclusiveLock();
+			this.stdOut = new UnsyncByteArrayOutputStream();
+			this.stdErr = new UnsyncByteArrayOutputStream();
+
+			this.identifiedStdOut = new IdentifierByteSink<UnsyncByteArrayOutputStream>(stdOut, streamFlushingLock) {
 				@Override
 				protected void writtenBytes() {
 					final Lock stdioacquirelock = executionStdIOLockAcquireLock;
 					stdioacquirelock.lock();
 					try {
-						final Lock flushlock = streamFlushingLock;
+						final Lock flushlock = realSinkFlushingLock;
 						flushlock.lock();
 						try {
 							int offset = flushedStdOutOffset;
-							int size = stdOut.size();
+							UnsyncByteArrayOutputStream stdout = realSink;
+							int size = stdout.size();
 							if (offset >= size) {
 								return;
 							}
 							StandardIOLock lock = acquiredExecutionStdIOLock;
+							ExecutionContextImpl executioncontext = executionContext;
 							if (lock != null) {
 								//write all bytes
 								try {
-									stdOut.writeTo(executionContext.getStdOutSink(), offset, size - offset);
+									stdout.writeTo(executioncontext.getStdOutSink(), offset, size - offset);
 								} catch (IOException e) {
 								}
 								flushedStdOutOffset = size;
 							} else {
 								//write until last end of line
-								int eolidx = Math.max(stdOut.lastIndexOf((byte) '\n'), stdOut.lastIndexOf((byte) '\r'));
+								int eolidx = Math.max(stdout.lastIndexOf((byte) '\n'), stdout.lastIndexOf((byte) '\r'));
 								if (eolidx > offset) {
 									//try lock, as we dont want to block the task by waiting on output
 									//if we dont acquire the lock, then the message will be written out 
@@ -920,10 +698,10 @@ public final class TaskExecutionManager {
 									//    or when the task wants to read input
 									//    or when the task finishes
 									//either way is fine.
-									try (StandardIOLock l = executionContext.tryAcquireStdIOLock()) {
+									try (StandardIOLock l = executioncontext.tryAcquireStdIOLock()) {
 										if (l != null) {
 											flushedStdOutOffset = eolidx + 1;
-											stdOut.writeTo(executionContext.getStdOutSink(), offset,
+											stdout.writeTo(executioncontext.getStdOutSink(), offset,
 													eolidx - offset + 1);
 										}
 									} catch (IOException e) {
@@ -938,19 +716,36 @@ public final class TaskExecutionManager {
 					}
 				}
 			};
-
-			SecretInputReader secretreader = executioncontext.getSecretInputReader();
-			if (secretreader != null) {
-				secretInputReader = new SecretInputReader() {
-					@Override
-					public String readSecret(String titleinfo, String message, String prompt, String secretidentifier) {
-						return TaskExecutorContext.this.readTaskSecret(secretreader, titleinfo, message, prompt,
-								secretidentifier);
+			this.stdIn = new ByteSource() {
+				@Override
+				public int read(ByteRegion buffer) throws IOException {
+					final Lock stdioacquirelock = executionStdIOLockAcquireLock;
+					stdioacquirelock.lock();
+					try {
+						if (acquiredExecutionStdIOLock == null) {
+							throw new TaskStandardIOLockIllegalStateException("Standard IO lock was not acquired.");
+						}
+						UnsyncByteArrayOutputStream stdout = stdOut;
+						final Lock flushlock = streamFlushingLock;
+						flushlock.lock();
+						try {
+							int outsize = stdout.size();
+							int offset = flushedStdOutOffset;
+							if (offset < outsize) {
+								stdout.writeTo(executionContext.getStdOutSink(), offset, outsize - offset);
+								flushedStdOutOffset = outsize;
+							}
+						} finally {
+							flushlock.unlock();
+						}
+						ByteSource realin = executionContext.getStandardIn();
+						return realin.read(buffer);
+					} finally {
+						stdioacquirelock.unlock();
 					}
-				};
-			} else {
-				secretInputReader = null;
-			}
+				}
+			};
+			return Boolean.TRUE;
 		}
 
 		protected SakerDirectory computeTaskBuildDirectory() {
@@ -1017,8 +812,9 @@ public final class TaskExecutionManager {
 			return this;
 		}
 
-		private void withPrintedLines(String line, Consumer<? super String> consumer) {
-			String strid = identifiedStdOut.getStringIdentifier();
+		private static void withPrintedLines(IdentifierByteSink<?> identifiedstdout, String line,
+				Consumer<? super String> consumer) {
+			String strid = identifiedstdout.getStringIdentifier();
 			StringBuilder sb = new StringBuilder();
 			int sbresetlen = strid.length();
 			int llen = line.length();
@@ -1070,19 +866,23 @@ public final class TaskExecutionManager {
 		@Override
 		public void replayPrintln(String line) throws NullPointerException {
 			Objects.requireNonNull(line, "line");
+			ensureStandardStreams();
 			runOnUnfinished(() -> {
-				withPrintedLines(line, printedLines::add);
+				IdentifierByteSink<?> identifiedout = getStandardIdentifiedOutStreamsEnsured();
+				withPrintedLines(identifiedout, line, printedLines::add);
 			});
 		}
 
 		@Override
 		public void println(String line) {
 			Objects.requireNonNull(line, "line");
+			ensureStandardStreams();
 			runOnUnfinished(() -> {
-				withPrintedLines(line, printedLines::add);
+				IdentifierByteSink<?> identifiedout = getStandardIdentifiedOutStreamsEnsured();
+				withPrintedLines(identifiedout, line, printedLines::add);
 				try {
-					identifiedStdOut.write(ByteArrayRegion.wrap(line.getBytes(StandardCharsets.UTF_8)));
-					identifiedStdOut.write('\n');
+					identifiedout.write(ByteArrayRegion.wrap(line.getBytes(StandardCharsets.UTF_8)));
+					identifiedout.write('\n');
 				} catch (IOException e) {
 					reportIgnoredException(e);
 				}
@@ -1096,11 +896,13 @@ public final class TaskExecutionManager {
 
 		@Override
 		public void internalPrintlnVerboseVariables(String line) {
+			ensureStandardStreams();
 			runOnUnfinished(() -> {
+				IdentifierByteSink<?> identifiedout = getStandardIdentifiedOutStreamsEnsured();
 				try {
-					identifiedStdOut.write(ByteArrayRegion.wrap(future
-							.processPrintedLineVariables(executionManager, line).getBytes(StandardCharsets.UTF_8)));
-					identifiedStdOut.write('\n');
+					identifiedout.write(ByteArrayRegion.wrap(future.processPrintedLineVariables(executionManager, line)
+							.getBytes(StandardCharsets.UTF_8)));
+					identifiedout.write('\n');
 				} catch (IOException e) {
 					reportIgnoredException(e);
 				}
@@ -1109,8 +911,10 @@ public final class TaskExecutionManager {
 
 		@Override
 		public void internalPrintlnVariables(String line) {
+			ensureStandardStreams();
 			runOnUnfinished(() -> {
-				String strid = identifiedStdOut.getStringIdentifier();
+				IdentifierByteSink<?> identifiedout = getStandardIdentifiedOutStreamsEnsured();
+				String strid = identifiedout.getStringIdentifier();
 				StringBuilder sb = new StringBuilder();
 				sb.append(PRINTED_LINE_VARIABLES_MARKER_CHAR);
 				sb.append(strid);
@@ -1151,9 +955,9 @@ public final class TaskExecutionManager {
 					printedLines.add(sb.toString());
 				}
 				try {
-					identifiedStdOut.write(ByteArrayRegion.wrap(future
-							.processPrintedLineVariables(executionManager, line).getBytes(StandardCharsets.UTF_8)));
-					identifiedStdOut.write('\n');
+					identifiedout.write(ByteArrayRegion.wrap(future.processPrintedLineVariables(executionManager, line)
+							.getBytes(StandardCharsets.UTF_8)));
+					identifiedout.write('\n');
 				} catch (IOException e) {
 					reportIgnoredException(e);
 				}
@@ -1211,27 +1015,53 @@ public final class TaskExecutionManager {
 
 		@Override
 		public void setStandardOutDisplayIdentifier(String displayid) {
+			ensureStandardStreams();
 			this.taskBuildTrace.setStandardOutDisplayIdentifier(displayid);
-			this.identifiedStdOut.setIdentifier(displayid);
+			IdentifierByteSink<?> identifiedout = getStandardIdentifiedOutStreamsEnsured();
+			identifiedout.setIdentifier(displayid);
 		}
 
 		@Override
 		public ByteSink getStandardOut() {
-			return identifiedStdOut;
+			ensureStandardStreams();
+			IdentifierByteSink<?> result = getStandardIdentifiedOutStreamsEnsured();
+			return result;
+		}
+
+		private IdentifierByteSink<?> getStandardIdentifiedOutStreamsEnsured() {
+			IdentifierByteSink<?> result = identifiedStdOut;
+			if (result == null) {
+				//the task already finished, therefore the streams couldn't be created
+				throw new IllegalTaskOperationException("Task is already finished.", taskId);
+			}
+			return result;
 		}
 
 		@Override
 		public ByteSink getStandardErr() {
-			return stdErr;
+			ensureStandardStreams();
+			ByteSink result = stdErr;
+			if (result == null) {
+				//the task already finished, therefore the streams couldn't be created
+				throw new IllegalTaskOperationException("Task is already finished.", taskId);
+			}
+			return result;
 		}
 
 		@Override
 		public ByteSource getStandardIn() {
-			return stdIn;
+			ensureStandardStreams();
+			ByteSource result = stdIn;
+			if (result == null) {
+				//the task already finished, therefore the streams couldn't be created
+				throw new IllegalTaskOperationException("Task is already finished.", taskId);
+			}
+			return result;
 		}
 
 		@Override
 		public void acquireStandardIOLock() throws InterruptedException, TaskStandardIOLockIllegalStateException {
+			ensureStandardStreams();
 			runOnUnfinished(() -> {
 				try {
 					final Lock stdioacquirelock = executionStdIOLockAcquireLock;
@@ -1273,9 +1103,16 @@ public final class TaskExecutionManager {
 			if (lock == null) {
 				throw new TaskStandardIOLockIllegalStateException("Lock not acquired.");
 			}
-			identifiedStdOut.finishLastLine();
-			lock.close();
-			acquiredExecutionStdIOLock = null;
+			try {
+				IdentifierByteSink<?> identifiedout = identifiedStdOut;
+				if (identifiedout != null) {
+					//safety check
+					identifiedout.finishLastLine();
+				}
+			} finally {
+				lock.close();
+				acquiredExecutionStdIOLock = null;
+			}
 		}
 
 		private String readTaskSecret(SecretInputReader secretreader, String titleinfo, String message, String prompt,
@@ -1824,45 +1661,49 @@ public final class TaskExecutionManager {
 
 		@SuppressWarnings("try")
 		protected void flushStdStreamsFinalizeExecution() {
-			final Lock identifiedlock = identifiedStdOut.accessLock;
-			identifiedlock.lock();
-			try {
-				final Lock flushlock = streamFlushingLock;
-				flushlock.lock();
+			Boolean streamscreated = streamCreationLazysupplier.getIfComputedPrevent();
+			if (streamscreated != null) {
+				//the streams have been created, flush them
+				final Lock identifiedlock = identifiedStdOut.accessLock;
+				identifiedlock.lock();
 				try {
-					identifiedStdOut.finishLastLineLockedSinkLocked();
-					int outoffset = flushedStdOutOffset;
-					int outsize = stdOut.size();
-					boolean hasout = outoffset < outsize;
-					boolean haserr = !stdErr.isEmpty();
-					if (hasout || haserr) {
-						//had output
-						//flushing is done on a separate thread, so it doesnt block other things
-						executionManager.generalExecutionThreadWorkPool.offer(() -> {
-							try (StandardIOLock l = executionContext.acquireStdIOLock()) {
-								if (hasout) {
-									try {
-										stdOut.writeTo(executionContext.getStdOutSink(), outoffset,
-												outsize - outoffset);
-									} catch (IOException e) {
-										//ignore exception
+					final Lock flushlock = streamFlushingLock;
+					flushlock.lock();
+					try {
+						identifiedStdOut.finishLastLineLockedSinkLocked();
+						int outoffset = flushedStdOutOffset;
+						int outsize = stdOut.size();
+						boolean hasout = outoffset < outsize;
+						boolean haserr = !stdErr.isEmpty();
+						if (hasout || haserr) {
+							//had output
+							//flushing is done on a separate thread, so it doesnt block other things
+							executionManager.generalExecutionThreadWorkPool.offer(() -> {
+								try (StandardIOLock l = executionContext.acquireStdIOLock()) {
+									if (hasout) {
+										try {
+											stdOut.writeTo(executionContext.getStdOutSink(), outoffset,
+													outsize - outoffset);
+										} catch (IOException e) {
+											//ignore exception
+										}
+									}
+									if (haserr) {
+										try {
+											stdErr.writeTo(executionContext.getStdErrSink());
+										} catch (IOException e) {
+											//ignore exception
+										}
 									}
 								}
-								if (haserr) {
-									try {
-										stdErr.writeTo(executionContext.getStdErrSink());
-									} catch (IOException e) {
-										//ignore exception
-									}
-								}
-							}
-						});
+							});
+						}
+					} finally {
+						flushlock.unlock();
 					}
 				} finally {
-					flushlock.unlock();
+					identifiedlock.unlock();
 				}
-			} finally {
-				identifiedlock.unlock();
 			}
 			this.taskBuildTrace.closeStandardIO(stdOut, stdErr);
 			this.taskBuildTrace.close(this, taskResult);

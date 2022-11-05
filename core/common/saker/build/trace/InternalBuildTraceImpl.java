@@ -2105,8 +2105,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		@Override
 		public void closeStandardIO(UnsyncByteArrayOutputStream stdout, UnsyncByteArrayOutputStream stderr) {
-			traceInfo.standardOutBytes = stdout.toByteArrayRegion();
-			traceInfo.standardErrBytes = stderr.toByteArrayRegion();
+			traceInfo.standardOutBytes = stdout == null ? ByteArrayRegion.EMPTY : stdout.toByteArrayRegion();
+			traceInfo.standardErrBytes = stderr == null ? ByteArrayRegion.EMPTY : stderr.toByteArrayRegion();
 		}
 
 		@Override

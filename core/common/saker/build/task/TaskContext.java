@@ -835,10 +835,12 @@ public interface TaskContext extends TaskResultResolver, TaskDirectoryContext, T
 	 * 
 	 * @param displayid
 	 *            The display id to set. Pass <code>null</code> to disable it.
+	 * @throws IllegalTaskOperationException
+	 *             If this method is called after the task has finished.
 	 * @see #getStandardOut()
 	 * @see #println(String)
 	 */
-	public void setStandardOutDisplayIdentifier(String displayid);
+	public void setStandardOutDisplayIdentifier(String displayid) throws IllegalTaskOperationException;
 
 	/**
 	 * Gets the standard output for this task.
@@ -857,11 +859,13 @@ public interface TaskContext extends TaskResultResolver, TaskDirectoryContext, T
 	 * executing tasks. They might be interlaced, but they will not be mangled.
 	 * 
 	 * @return The standard output for this task.
+	 * @throws IllegalTaskOperationException
+	 *             If this method is called after the task has finished.
 	 * @see #println(String)
 	 * @see #getStandardIn()
 	 */
 	@RMICacheResult
-	public ByteSink getStandardOut();
+	public ByteSink getStandardOut() throws IllegalTaskOperationException;
 
 	/**
 	 * Gets the standard error for this task.
@@ -877,9 +881,11 @@ public interface TaskContext extends TaskResultResolver, TaskDirectoryContext, T
 	 * the sink may be lost, or scrambled.
 	 *
 	 * @return The standard error for this task.
+	 * @throws IllegalTaskOperationException
+	 *             If this method is called after the task has finished.
 	 */
 	@RMICacheResult
-	public ByteSink getStandardErr();
+	public ByteSink getStandardErr() throws IllegalTaskOperationException;
 
 	/**
 	 * Gets the standard input for this task.
@@ -893,10 +899,12 @@ public interface TaskContext extends TaskResultResolver, TaskDirectoryContext, T
 	 * the user.
 	 * 
 	 * @return The standard input for the build execution.
+	 * @throws IllegalTaskOperationException
+	 *             If this method is called after the task has finished.
 	 * @see #acquireStandardIOLock()
 	 */
 	@RMICacheResult
-	public ByteSource getStandardIn();
+	public ByteSource getStandardIn() throws IllegalTaskOperationException;
 
 	/**
 	 * Acquires the execution-wide lock for accessing the standard I/O.
@@ -1063,8 +1071,10 @@ public interface TaskContext extends TaskResultResolver, TaskDirectoryContext, T
 	 * @see SakerLog
 	 * @throws NullPointerException
 	 *             If the line is <code>null</code>
+	 * @throws IllegalTaskOperationException
+	 *             If this method is called after the task has finished.
 	 */
-	public void println(String line) throws NullPointerException;
+	public void println(String line) throws NullPointerException, IllegalTaskOperationException;
 
 	/**
 	 * Stores a line of string to be replayed for the task if it is not re-run due to no incremental changes.
@@ -1076,8 +1086,10 @@ public interface TaskContext extends TaskResultResolver, TaskDirectoryContext, T
 	 *            The line to print.
 	 * @throws NullPointerException
 	 *             If the line is <code>null</code>
+	 * @throws IllegalTaskOperationException
+	 *             If this method is called after the task has finished.
 	 */
-	public void replayPrintln(String line) throws NullPointerException;
+	public void replayPrintln(String line) throws NullPointerException, IllegalTaskOperationException;
 
 	/**
 	 * Gets the utility class for this task context.
