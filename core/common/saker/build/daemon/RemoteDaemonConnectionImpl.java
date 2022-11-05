@@ -42,7 +42,6 @@ import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
-import saker.build.thirdparty.saker.util.function.LazySupplier;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.util.rmi.SakerRMIHelper;
 
@@ -57,7 +56,7 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 		public ConnectionImpl(RMIConnection rmiConnection, DaemonAccess access, DaemonEnvironment environment) {
 			this.rmiConnection = rmiConnection;
 			this.environment = environment;
-			this.clusterInvokerFactory = LazySupplier.of(() -> access.getClusterTaskInvokerFactory());
+			this.clusterInvokerFactory = access::getClusterTaskInvokerFactory;
 			this.connectionClassLoaderRegistry = (ClassLoaderResolverRegistry) rmiConnection.getClassLoaderResolver();
 		}
 	}
