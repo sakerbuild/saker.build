@@ -53,7 +53,7 @@ import saker.build.runtime.environment.SakerEnvironment;
  * If the cache key implementation throws an error during allocation or generation, the cache entry will be removed
  * completely from the cache, and any open resources will be closed.
  * <p>
- * The cache implementation uses {@linkplain SoftReference soft} and {linkplain WeakReference weak} references to keep
+ * The cache implementation uses {@linkplain SoftReference soft} and {@linkplain WeakReference weak} references to keep
  * track of the generated Datas. When it detects that they have been garbage collected, then the allocated Resource will
  * be closed sometime in the future via {@link #close(Object, Object)}, and the cache entry will be completely removed.
  * <p>
