@@ -187,6 +187,12 @@ public class ForwardingSakerFileProvider implements SakerFileProvider {
 	}
 
 	@Override
+	public ByteSink ensureWriteOpenOutput(SakerPath path, int operationflag, OpenOption... openoptions)
+			throws IOException, NullPointerException {
+		return subject.ensureWriteOpenOutput(path, operationflag, openoptions);
+	}
+
+	@Override
 	public FileHashResult hash(SakerPath path, String algorithm, OpenOption... openoptions)
 			throws NoSuchAlgorithmException, IOException {
 		return subject.hash(path, algorithm, openoptions);
