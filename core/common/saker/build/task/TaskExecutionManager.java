@@ -152,6 +152,7 @@ import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
+import saker.build.thirdparty.saker.util.ArrayUtils;
 import saker.build.thirdparty.saker.util.ConcurrentAppendAccumulator;
 import saker.build.thirdparty.saker.util.ConcurrentEntryMergeSorter;
 import saker.build.thirdparty.saker.util.ConcurrentEntryMergeSorter.MatchingKeyPolicy;
@@ -512,6 +513,9 @@ public final class TaskExecutionManager {
 		private static final AtomicReferenceFieldUpdater<TaskExecutionManager.TaskExecutorContext, TaskOutputChangeDetector> ARFU_reportedOutputChangeDetector = AtomicReferenceFieldUpdater
 				.newUpdater(TaskExecutionManager.TaskExecutorContext.class, TaskOutputChangeDetector.class,
 						"reportedOutputChangeDetector");
+		@SuppressWarnings("rawtypes")
+		private static final AtomicReferenceFieldUpdater<TaskExecutionManager.TaskExecutorContext, Throwable[]> ARFU_abortExceptions = AtomicReferenceFieldUpdater
+				.newUpdater(TaskExecutionManager.TaskExecutorContext.class, Throwable[].class, "abortExceptions");
 
 		@SuppressWarnings("rawtypes")
 		private static final AtomicIntegerFieldUpdater<TaskExecutionManager.TaskExecutorContext> AIFU_finishCounter = AtomicIntegerFieldUpdater
@@ -541,7 +545,16 @@ public final class TaskExecutionManager {
 
 		protected final DependencyDelta deltas;
 
-		protected final ConcurrentAppendAccumulator<Throwable> abortExceptions = new ConcurrentAppendAccumulator<>();
+		/**
+		 * An array containing all the exceptions that were reported via {@link #abortExecution(Throwable)}.
+		 * <p>
+		 * This is a {@link Throwable} array instead of some concurrent collection, or collector, because we expect zero
+		 * or at most one abort exceptions. <br>
+		 * Having this as simple an array is most likely a benefit performance-wise, as most tasks won't use this, and
+		 * those who do, will only probably report a single exception. If they report more, then the cost of allocating
+		 * a new array each time is negligible.
+		 */
+		protected volatile Throwable[] abortExceptions;
 		protected volatile TaskOutputChangeDetector reportedOutputChangeDetector;
 
 		protected final transient TaskDependencies resultDependencies;
@@ -1856,7 +1869,19 @@ public final class TaskExecutionManager {
 		@Override
 		public void abortExecution(Throwable cause) throws NullPointerException {
 			Objects.requireNonNull(cause, "cause");
-			abortExceptions.add(cause);
+			while (true) {
+				Throwable[] excs = this.abortExceptions;
+				Throwable[] narray;
+				if (excs == null) {
+					narray = new Throwable[] { cause };
+				} else {
+					narray = ArrayUtils.appended(excs, cause);
+				}
+				if (ARFU_abortExceptions.compareAndSet(this, excs, narray)) {
+					break;
+				}
+				//try again
+			}
 		}
 
 		@Override
