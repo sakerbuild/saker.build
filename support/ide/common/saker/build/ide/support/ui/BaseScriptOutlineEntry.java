@@ -20,10 +20,12 @@ public class BaseScriptOutlineEntry<T> {
 
 		this.label = entry.getLabel();
 		this.type = entry.getType();
-		this.childrenSupplier = LazySupplier.of(() -> {
-			List<? extends StructureOutlineEntry> children = entry.getChildren();
-			return root.createRootList(children);
-		});
+		this.childrenSupplier = LazySupplier.of(root, entry, BaseScriptOutlineEntry::computeChildren);
+	}
+
+	private static <T> List<? extends T> computeChildren(BaseScriptOutlineRoot<T> root, StructureOutlineEntry entry) {
+		List<? extends StructureOutlineEntry> children = entry.getChildren();
+		return root.createRootList(children);
 	}
 
 	public List<? extends T> getChildren() {

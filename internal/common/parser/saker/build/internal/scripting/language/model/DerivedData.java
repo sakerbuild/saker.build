@@ -52,9 +52,10 @@ public class DerivedData {
 	private final SakerParsedModel model;
 	private final ParsingResult parseResult;
 
-	private final LazySupplier<List<SyntaxScriptToken>> tokenComputer = LazySupplier.of(this::computeTokens);
-	private final LazySupplier<List<? extends StructureOutlineEntry>> outlineComputer = LazySupplier
-			.of(this::computeOutline);
+	private final LazySupplier<List<SyntaxScriptToken>> tokenComputer = LazySupplier.of(this,
+			DerivedData::computeTokens);
+	private final LazySupplier<List<? extends StructureOutlineEntry>> outlineComputer = LazySupplier.of(this,
+			DerivedData::computeOutline);
 
 	private Set<String> simpleLiteralContents;
 	private Map<Statement, TaskName> presentTaskNamecontents;

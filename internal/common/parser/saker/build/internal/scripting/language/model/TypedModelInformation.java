@@ -86,20 +86,22 @@ public class TypedModelInformation {
 	public TypedModelInformation(TargetInformation info) {
 		this.information = info;
 		this.type = MODEL_INFORMATION_TYPE_TARGET;
-		this.typeInfoSupplier = LazySupplier.of(() -> {
-			SimpleTypeInformation result = new SimpleTypeInformation(TypeInformationKind.OBJECT);
-			Map<String, FieldInformation> outfields = new LinkedHashMap<>();
-			List<TargetParameterInformation> params = info.getParameters();
-			if (!ObjectUtils.isNullOrEmpty(params)) {
-				for (TargetParameterInformation pinfo : params) {
-					SimpleFieldInformation fieldinfo = new SimpleFieldInformation(pinfo.getName());
-					fieldinfo.setInformation(pinfo.getInformation());
-					outfields.put(pinfo.getName(), fieldinfo);
-				}
+		this.typeInfoSupplier = LazySupplier.of(info, TypedModelInformation::computeTypeInformation);
+	}
+
+	private static TypeInformation computeTypeInformation(TargetInformation info) {
+		SimpleTypeInformation result = new SimpleTypeInformation(TypeInformationKind.OBJECT);
+		Map<String, FieldInformation> outfields = new LinkedHashMap<>();
+		List<TargetParameterInformation> params = info.getParameters();
+		if (!ObjectUtils.isNullOrEmpty(params)) {
+			for (TargetParameterInformation pinfo : params) {
+				SimpleFieldInformation fieldinfo = new SimpleFieldInformation(pinfo.getName());
+				fieldinfo.setInformation(pinfo.getInformation());
+				outfields.put(pinfo.getName(), fieldinfo);
 			}
-			result.setFields(outfields);
-			return result;
-		});
+		}
+		result.setFields(outfields);
+		return result;
 	}
 
 	public InformationHolder getInformation() {

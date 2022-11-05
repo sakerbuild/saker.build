@@ -28,7 +28,7 @@ import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.function.LazySupplier;
 
-class ClusterTaskFuture<R> implements TaskFuture<R> {
+final class ClusterTaskFuture<R> implements TaskFuture<R> {
 	private TaskIdentifier taskId;
 	private Supplier<TaskFuture<R>> future;
 	private ClusterTaskContext clusterTaskContext;
@@ -86,5 +86,9 @@ class ClusterTaskFuture<R> implements TaskFuture<R> {
 
 	public Supplier<TaskFuture<R>> getActualFutureSupplier() {
 		return future;
+	}
+
+	public TaskDependencyFuture<R> getActualFutureAsDependencyFuture() {
+		return getActualFutureSupplier().get().asDependencyFuture();
 	}
 }

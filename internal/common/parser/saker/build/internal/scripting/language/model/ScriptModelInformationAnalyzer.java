@@ -62,7 +62,7 @@ public class ScriptModelInformationAnalyzer {
 
 	private IdentityHashMap<Statement, StatementTypeInformation> statementTypeInformations = new IdentityHashMap<>();
 	private final LazySupplier<Collection<ExternalScriptInformationProvider>> externalScriptInformationProvidersComputer = LazySupplier
-			.of(this::computeExternalScriptInformationProviders);
+			.of(this, ScriptModelInformationAnalyzer::computeExternalScriptInformationProviders);
 
 	public ScriptModelInformationAnalyzer(ScriptModellingEnvironment modellingEnvironment) {
 		this.modellingEnvironment = modellingEnvironment;

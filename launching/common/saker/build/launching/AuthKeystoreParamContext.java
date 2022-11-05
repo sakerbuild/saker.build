@@ -100,7 +100,8 @@ public class AuthKeystoreParamContext {
 	@Parameter(PARAM_AUTH_KEYPASS)
 	public String authKeyPassword;
 
-	private transient LazySupplier<SSLContext> sslContextComputer = LazySupplier.of(this::computeSSLContext);
+	private transient LazySupplier<SSLContext> sslContextComputer = LazySupplier.of(this,
+			AuthKeystoreParamContext::computeSSLContext);
 
 	private transient ConcurrentMap<Path, LazySupplier<Collection<? extends RunningDaemonConnectionInfo>>> runningDamonInfos = new ConcurrentSkipListMap<>();
 
@@ -214,16 +215,18 @@ public class AuthKeystoreParamContext {
 
 	private Collection<? extends RunningDaemonConnectionInfo> getRunningDaemonConnectionInfo(Path storagedirectory) {
 		return runningDamonInfos.computeIfAbsent(storagedirectory, p -> {
-			return LazySupplier.of(() -> {
-				try {
-					return LocalDaemonEnvironment.getRunningDaemonInfos(storagedirectory);
-				} catch (IOException e) {
-					if (TestFlag.ENABLED) {
-						e.printStackTrace();
-					}
-				}
-				return Collections.emptyList();
-			});
+			return LazySupplier.of(p, AuthKeystoreParamContext::getRunningDaemonInfos);
 		}).get();
+	}
+
+	private static Collection<? extends RunningDaemonConnectionInfo> getRunningDaemonInfos(Path dirpath) {
+		try {
+			return LocalDaemonEnvironment.getRunningDaemonInfos(dirpath);
+		} catch (IOException e) {
+			if (TestFlag.ENABLED) {
+				e.printStackTrace();
+			}
+		}
+		return Collections.emptyList();
 	}
 }

@@ -528,7 +528,8 @@ public class SakerExecutionCache implements Closeable {
 				SakerFileProvider localFileProvider, RepositoryBuildSharedObjectProvider sharedObjectProvider) {
 			super(sakerEnvironment, classLoaderRegistry, userParameters, pathConfigurationReference, identifier,
 					localFileProvider);
-			this.sharedObjectProvider = LazySupplier.of(() -> sharedObjectProvider.getLookup(identifier));
+			this.sharedObjectProvider = LazySupplier.of(sharedObjectProvider, identifier,
+					RepositoryBuildSharedObjectProvider::getLookup);
 		}
 
 		@Override
@@ -550,7 +551,8 @@ public class SakerExecutionCache implements Closeable {
 
 		@Override
 		public void resetSharedObjectLookup(RepositoryBuildSharedObjectProvider sharedObjectProvider) {
-			this.sharedObjectProvider = LazySupplier.of(() -> sharedObjectProvider.getLookup(identifier));
+			this.sharedObjectProvider = LazySupplier.of(sharedObjectProvider, identifier,
+					RepositoryBuildSharedObjectProvider::getLookup);
 		}
 	}
 

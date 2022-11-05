@@ -1411,7 +1411,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 					}
 					if (gcReferences.isEmpty()) {
 						//there are no more tracked references, we can exit the thread
-						gcThread = LazySupplier.of(GarbageCollectingThread::startNew);
+						gcThread = LazySupplier.of(METHOD_REFERENCE_GARBAGECOLLECTINGTHREAD_STARTNEW);
 						if (!gcReferences.isEmpty()) {
 							//restart the new thread as the references were concurrently modified
 							gcThread.get();
@@ -1422,7 +1422,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 					continue;
 				}
 			} catch (InterruptedException e) {
-				gcThread = LazySupplier.of(GarbageCollectingThread::startNew);
+				gcThread = LazySupplier.of(METHOD_REFERENCE_GARBAGECOLLECTINGTHREAD_STARTNEW);
 				pollRemainingReferences();
 				//do not automatically restart, as we've been interrupted
 				//this shouldn't really ever happen, and is an undefined scenario, but try to handle gracefully if possible
@@ -1524,8 +1524,9 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 	private static volatile Reference<LocalFileProvider> INSTANCE = null;
 	private static final Set<CloseableReference<?>> gcReferences = ConcurrentHashMap.newKeySet();
 	private static final ReferenceQueue<Object> gcQueue = new ReferenceQueue<>();
+	protected static final Supplier<? extends GarbageCollectingThread> METHOD_REFERENCE_GARBAGECOLLECTINGTHREAD_STARTNEW = GarbageCollectingThread::startNew;
 	private static volatile Supplier<GarbageCollectingThread> gcThread = LazySupplier
-			.of(GarbageCollectingThread::startNew);
+			.of(METHOD_REFERENCE_GARBAGECOLLECTINGTHREAD_STARTNEW);
 
 	/**
 	 * Gets the singleton instance for the local file system.

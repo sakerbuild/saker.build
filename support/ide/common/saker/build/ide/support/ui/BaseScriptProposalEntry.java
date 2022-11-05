@@ -28,22 +28,24 @@ public abstract class BaseScriptProposalEntry<IT> {
 		this.displayString = proposal.getDisplayString();
 		this.displayRelation = proposal.getDisplayRelation();
 		this.displayType = proposal.getDisplayType();
-		this.informationEntries = LazySupplier.of(() -> {
-			ArrayList<IT> entries = new ArrayList<>();
-			PartitionedTextContent info = proposal.getInformation();
-			if (info != null) {
-				Iterable<? extends TextPartition> partitions = info.getPartitions();
-				if (partitions != null) {
-					for (TextPartition partition : partitions) {
-						if (partition == null) {
-							continue;
-						}
-						entries.add(createInformationEntry(partition));
+		this.informationEntries = LazySupplier.of(this, proposal, BaseScriptProposalEntry::computeInformationEntries);
+	}
+
+	private List<IT> computeInformationEntries(ScriptCompletionProposal proposal) {
+		ArrayList<IT> entries = new ArrayList<>();
+		PartitionedTextContent info = proposal.getInformation();
+		if (info != null) {
+			Iterable<? extends TextPartition> partitions = info.getPartitions();
+			if (partitions != null) {
+				for (TextPartition partition : partitions) {
+					if (partition == null) {
+						continue;
 					}
+					entries.add(createInformationEntry(partition));
 				}
 			}
-			return entries;
-		});
+		}
+		return entries;
 	}
 
 	protected abstract IT createInformationEntry(TextPartition partition);

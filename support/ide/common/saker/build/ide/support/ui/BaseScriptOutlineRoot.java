@@ -22,13 +22,16 @@ public abstract class BaseScriptOutlineRoot<T> {
 		this.schemaIdentifier = outline.getSchemaIdentifier();
 		this.schemaMetaData = ImmutableUtils.makeImmutableNavigableMap(outline.getSchemaMetaData());
 
-		this.rootEntrySupplier = LazySupplier.of(() -> {
-			List<? extends StructureOutlineEntry> roots = outline.getRootEntries();
-			return createRootList(roots);
-		});
+		this.rootEntrySupplier = LazySupplier.of(this, outline, BaseScriptOutlineRoot::computeRootEntryList);
 	}
 
-	/* default */ List<? extends T> createRootList(List<? extends StructureOutlineEntry> roots) {
+	private List<? extends T> computeRootEntryList(ScriptStructureOutline outline) {
+		List<? extends StructureOutlineEntry> roots = outline.getRootEntries();
+		return createRootList(roots);
+	}
+
+	//package visibility
+	List<? extends T> createRootList(List<? extends StructureOutlineEntry> roots) {
 		if (ObjectUtils.isNullOrEmpty(roots)) {
 			return Collections.emptyList();
 		}

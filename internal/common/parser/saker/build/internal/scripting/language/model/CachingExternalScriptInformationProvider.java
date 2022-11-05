@@ -30,17 +30,18 @@ import saker.build.thirdparty.saker.util.function.LazySupplier;
 
 public class CachingExternalScriptInformationProvider implements ExternalScriptInformationProvider {
 	private final ExternalScriptInformationProvider provider;
-	private LazySupplier<Map<TaskName, ? extends TaskInformation>> nullKeyWordTasks;
-	private LazySupplier<Map<TaskName, ? extends TaskInformation>> nullKeyWordTaskInformations;
-	private ConcurrentSkipListMap<String, Map<TaskName, ? extends TaskInformation>> tasks = new ConcurrentSkipListMap<>();
-	private ConcurrentSkipListMap<TaskName, Map<TaskName, ? extends TaskInformation>> taskInformations = new ConcurrentSkipListMap<>();
+	private final LazySupplier<Map<TaskName, ? extends TaskInformation>> nullKeyWordTasks;
+	private final LazySupplier<Map<TaskName, ? extends TaskInformation>> nullKeyWordTaskInformations;
+	private final ConcurrentSkipListMap<String, Map<TaskName, ? extends TaskInformation>> tasks = new ConcurrentSkipListMap<>();
+	private final ConcurrentSkipListMap<TaskName, Map<TaskName, ? extends TaskInformation>> taskInformations = new ConcurrentSkipListMap<>();
 
 	private ConcurrentSkipListMap<TaskNameParameterEntry, Map<TaskName, ? extends TaskParameterInformation>> taskParameterInformations = new ConcurrentSkipListMap<>();
 
 	public CachingExternalScriptInformationProvider(ExternalScriptInformationProvider provider) {
 		this.provider = provider;
-		this.nullKeyWordTasks = LazySupplier.of(() -> provider.getTasks(null));
-		this.nullKeyWordTaskInformations = LazySupplier.of(() -> provider.getTaskInformation(null));
+		this.nullKeyWordTasks = LazySupplier.of(provider, null, ExternalScriptInformationProvider::getTasks);
+		this.nullKeyWordTaskInformations = LazySupplier.of(provider, null,
+				ExternalScriptInformationProvider::getTaskInformation);
 	}
 
 	@Override

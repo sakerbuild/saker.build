@@ -16,6 +16,7 @@
 package saker.build.thirdparty.saker.util.function;
 
 import java.util.concurrent.locks.AbstractQueuedSynchronizer;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -82,6 +83,29 @@ public final class LazySupplier<T> implements Supplier<T> {
 	 */
 	public static <ArgType, Type> LazySupplier<Type> of(ArgType arg, Function<? super ArgType, Type> initer) {
 		return new LazySupplier<>(new FunctionArgLazyState<>(arg, initer));
+	}
+
+	/**
+	 * Creates a new lazy supplier that passes the given arguments to the calculator function.
+	 * 
+	 * @param <FirstArgType>
+	 *            The type of the first argument to pass to the initialization function.
+	 * @param <SecondArgType>
+	 *            The type of the second argument to pass to the initialization function.
+	 * @param <Type>
+	 *            The type of the lazily computed object.
+	 * @param arg1
+	 *            The first argument to pass to the initializer. May be <code>null</code>.
+	 * @param arg2
+	 *            The second argument to pass to the initializer. May be <code>null</code>.
+	 * @param initer
+	 *            The value computer.
+	 * @return The created lazy supplier.
+	 * @since saker.util 0.8.4
+	 */
+	public static <FirstArgType, SecondArgType, Type> LazySupplier<Type> of(FirstArgType arg1, SecondArgType arg2,
+			BiFunction<? super FirstArgType, ? super SecondArgType, Type> initer) {
+		return new LazySupplier<>(new BiFunctionArgLazyState<>(arg1, arg2, initer));
 	}
 
 	private volatile Object state;
@@ -244,7 +268,7 @@ public final class LazySupplier<T> implements Supplier<T> {
 
 	}
 
-	private static class SupplierLazyState<T> extends LazyState<T> {
+	private static final class SupplierLazyState<T> extends LazyState<T> {
 		private static final long serialVersionUID = 1L;
 
 		protected final Supplier<? extends T> initer;
@@ -259,7 +283,7 @@ public final class LazySupplier<T> implements Supplier<T> {
 		}
 	}
 
-	private static class FunctionLazyState<T> extends LazyState<T> {
+	private static final class FunctionLazyState<T> extends LazyState<T> {
 		private static final long serialVersionUID = 1L;
 
 		protected final Function<? super LazySupplier<T>, ? extends T> initer;
@@ -274,7 +298,7 @@ public final class LazySupplier<T> implements Supplier<T> {
 		}
 	}
 
-	private static class FunctionArgLazyState<A, T> extends LazyState<T> {
+	private static final class FunctionArgLazyState<A, T> extends LazyState<T> {
 		private static final long serialVersionUID = 1L;
 
 		protected final A arg;
@@ -288,6 +312,25 @@ public final class LazySupplier<T> implements Supplier<T> {
 		@Override
 		public T getInitialValue(LazySupplier<T> supplier) {
 			return initer.apply(arg);
+		}
+	}
+
+	private static final class BiFunctionArgLazyState<A, B, T> extends LazyState<T> {
+		private static final long serialVersionUID = 1L;
+
+		protected final A arg1;
+		protected final B arg2;
+		protected final BiFunction<? super A, ? super B, ? extends T> initer;
+
+		public BiFunctionArgLazyState(A arg1, B arg2, BiFunction<? super A, ? super B, ? extends T> initer) {
+			this.arg1 = arg1;
+			this.arg2 = arg2;
+			this.initer = initer;
+		}
+
+		@Override
+		public T getInitialValue(LazySupplier<T> supplier) {
+			return initer.apply(arg1, arg2);
 		}
 	}
 

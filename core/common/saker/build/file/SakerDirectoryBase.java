@@ -31,7 +31,6 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.Lock;
 import java.util.function.Predicate;
-import java.util.function.Supplier;
 
 import saker.build.file.content.ContentDescriptor;
 import saker.build.file.content.DirectoryContentDescriptor;
@@ -40,7 +39,6 @@ import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
-import saker.build.thirdparty.saker.util.function.LazySupplier;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.ByteSource;
@@ -452,13 +450,8 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 			return putIfAbsentImplForPopulatedState(trackedfiles, file, filename);
 		}
 		SakerFileBase v = trackedfiles.get(filename);
-		Supplier<SakerFileBase> populater = LazySupplier.of(() -> {
-			SakerFileBase popresult = populateSingleImpl(filename);
-			if (popresult != null) {
-				SakerFileBase.internal_setParent(popresult, this);
-			}
-			return popresult;
-		});
+		boolean populatedone = false;
+		SakerFileBase populated = null;
 		while (true) {
 			if (v != null) {
 				if (v == MarkerSakerDirectory.POPULATED_NOT_PRESENT) {
@@ -473,7 +466,10 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 				//already present, return the previous
 				return v;
 			}
-			SakerFileBase populated = populater.get();
+			if (!populatedone) {
+				populated = populateSingle(filename);
+				populatedone = true;
+			}
 			if (populated == null) {
 				SakerFileBase prev = trackedfiles.putIfAbsent(filename, file);
 				if (prev != null) {
@@ -511,6 +507,23 @@ public abstract class SakerDirectoryBase extends SakerFileBase implements SakerD
 			//perform the absent insertion for the populated state
 			return putIfAbsentImplForPopulatedState(trackedfiles, file, filename);
 		}
+	}
+
+	/**
+	 * Populates the file with the given name, and sets <code>this</code> as the parent if found.
+	 * <p>
+	 * Internal function.
+	 * 
+	 * @param filename
+	 *            The file name.
+	 * @return The populated file or <code>null</code> if none.
+	 */
+	private SakerFileBase populateSingle(String filename) {
+		SakerFileBase popresult = populateSingleImpl(filename);
+		if (popresult != null) {
+			SakerFileBase.internal_setParent(popresult, this);
+		}
+		return popresult;
 	}
 
 	private static SakerFileBase putIfAbsentImplForPopulatedState(

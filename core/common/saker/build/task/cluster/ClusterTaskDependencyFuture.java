@@ -33,13 +33,13 @@ final class ClusterTaskDependencyFuture<R> implements TaskDependencyFuture<R> {
 	public ClusterTaskDependencyFuture(TaskIdentifier taskId, ClusterTaskContext clustertaskcontext) {
 		this.taskId = taskId;
 		this.dependencyFuture = LazySupplier
-				.of(() -> (TaskDependencyFuture<R>) clusterTaskContext.realTaskContext.getTaskDependencyFuture(taskId));
+				.of(() -> (TaskDependencyFuture<R>) clustertaskcontext.realTaskContext.getTaskDependencyFuture(taskId));
 		this.clusterTaskContext = clustertaskcontext;
 	}
 
 	public ClusterTaskDependencyFuture(ClusterTaskFuture<R> future) {
 		this.taskId = future.getTaskIdentifier();
-		this.dependencyFuture = LazySupplier.of(() -> future.getActualFutureSupplier().get().asDependencyFuture());
+		this.dependencyFuture = LazySupplier.of(future, ClusterTaskFuture::asDependencyFuture);
 		this.clusterTaskContext = future.getTaskContext();
 	}
 
@@ -89,7 +89,8 @@ final class ClusterTaskDependencyFuture<R> implements TaskDependencyFuture<R> {
 	public TaskDependencyFuture<R> clone() {
 		TaskDependencyFuture<R> computed = dependencyFuture.getIfComputed();
 		if (computed != null) {
-			return new ClusterTaskDependencyFuture<>(taskId, clusterTaskContext, LazySupplier.of(computed::clone));
+			return new ClusterTaskDependencyFuture<>(taskId, clusterTaskContext,
+					LazySupplier.of(computed, TaskDependencyFuture::clone));
 		}
 		return new ClusterTaskDependencyFuture<>(taskId, clusterTaskContext);
 	}
