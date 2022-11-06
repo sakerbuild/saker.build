@@ -15,6 +15,7 @@
  */
 package saker.build.task;
 
+import saker.build.task.exception.IllegalTaskOperationException;
 import saker.build.task.exception.InnerTaskInitializationException;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 
@@ -54,9 +55,12 @@ public interface InnerTaskResults<R> {
 	 *             If the inner task failed to start on the execution environments. This exception may be thrown in a
 	 *             delayed manner, and not directly by
 	 *             {@link TaskContext#startInnerTask(TaskFactory, InnerTaskExecutionParameters)}.
+	 * @throws IllegalTaskOperationException
+	 *             If this function is not called on the task thread.
 	 */
 	@RMISerialize
-	public InnerTaskResultHolder<R> getNext() throws InterruptedException, InnerTaskInitializationException;
+	public InnerTaskResultHolder<R> getNext()
+			throws InterruptedException, InnerTaskInitializationException, IllegalTaskOperationException;
 
 	/**
 	 * Manually cancels the duplication of the associated inner task.

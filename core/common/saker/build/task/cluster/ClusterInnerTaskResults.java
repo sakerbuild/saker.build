@@ -18,6 +18,7 @@ package saker.build.task.cluster;
 import saker.build.task.InnerTaskResultHolder;
 import saker.build.task.InnerTaskResults;
 import saker.build.task.InternalInnerTaskResults;
+import saker.build.task.TaskExecutionManager;
 import saker.build.task.exception.InnerTaskInitializationException;
 
 public class ClusterInnerTaskResults<R> implements InnerTaskResults<R> {
@@ -32,7 +33,7 @@ public class ClusterInnerTaskResults<R> implements InnerTaskResults<R> {
 	@SuppressWarnings("unchecked")
 	@Override
 	public InnerTaskResultHolder<R> getNext() throws InterruptedException, InnerTaskInitializationException {
-		taskContext.requireCalledOnMainThread(false);
+		TaskExecutionManager.requireCalledOnTaskThread(taskContext, true);
 		return ((InternalInnerTaskResults<R>) actualResults).internalGetNextOnTaskThread();
 	}
 

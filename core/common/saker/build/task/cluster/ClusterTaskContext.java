@@ -50,7 +50,6 @@ import saker.build.task.TaskFileDeltas;
 import saker.build.task.TaskFuture;
 import saker.build.task.TaskProgressMonitor;
 import saker.build.task.TaskResultDependencyHandle;
-import saker.build.task.TaskExecutionManager.TaskThreadInfo;
 import saker.build.task.delta.BuildDelta;
 import saker.build.task.delta.DeltaType;
 import saker.build.task.dependencies.FileCollectionStrategy;
@@ -149,7 +148,7 @@ class ClusterTaskContext implements TaskContext, InternalTaskContext {
 	@Override
 	public <R> TaskFuture<R> startTask(TaskIdentifier taskid, TaskFactory<R> taskfactory,
 			TaskExecutionParameters parameters) {
-		requireCalledOnMainThread(false);
+		TaskExecutionManager.requireCalledOnTaskThread(this, false);
 		TaskFuture<R> future = ((InternalTaskContext) realTaskContext).internalStartTaskOnTaskThread(taskid,
 				taskfactory, parameters);
 		return new ClusterTaskFuture<>(taskid, future, this);
@@ -408,13 +407,6 @@ class ClusterTaskContext implements TaskContext, InternalTaskContext {
 		ContentDatabaseImpl clusterdb = clusterContentDatabase;
 		if (clusterdb != null) {
 			clusterdb.invalidateWithPosixFilePermissions(pathkey);
-		}
-	}
-
-	protected void requireCalledOnMainThread(boolean allowinnertask) {
-		TaskThreadInfo info = TaskExecutionManager.THREADLOCAL_TASK_THREAD.get();
-		if (info == null || (!allowinnertask && info.innerTask) || info.taskContext != this) {
-			throw new IllegalTaskOperationException("Method can be called only on the task threads.", getTaskId());
 		}
 	}
 }

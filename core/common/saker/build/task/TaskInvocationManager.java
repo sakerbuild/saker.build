@@ -2288,7 +2288,7 @@ public class TaskInvocationManager implements Closeable {
 
 		@Override
 		public InnerTaskResultHolder<R> getNext() throws InterruptedException {
-			taskContext.requireCalledOnMainThread(true);
+			TaskExecutionManager.requireCalledOnTaskThread(taskContext, true);
 			return internalGetNextOnTaskThread();
 		}
 

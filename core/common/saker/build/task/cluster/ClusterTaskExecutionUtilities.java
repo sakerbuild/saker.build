@@ -44,6 +44,7 @@ import saker.build.runtime.execution.ExecutionProperty;
 import saker.build.task.InternalTaskContext;
 import saker.build.task.InternalTaskContext.PathSakerFileContents;
 import saker.build.task.TaskContext;
+import saker.build.task.TaskExecutionManager;
 import saker.build.task.TaskExecutionParameters;
 import saker.build.task.TaskExecutionUtilities;
 import saker.build.task.TaskFactory;
@@ -142,7 +143,7 @@ class ClusterTaskExecutionUtilities implements TaskExecutionUtilities {
 	@Override
 	public <R> TaskFuture<R> runTaskFuture(TaskIdentifier taskid, TaskFactory<R> taskfactory,
 			TaskExecutionParameters parameters) throws TaskIdentifierConflictException {
-		clusterTaskContext.requireCalledOnMainThread(false);
+		TaskExecutionManager.requireCalledOnTaskThread(clusterTaskContext, false);
 		TaskFuture<R> future = ((InternalTaskContext) clusterTaskContext.realTaskContext)
 				.internalRunTaskFutureOnTaskThread(taskid, taskfactory, parameters);
 		return new ClusterTaskFuture<>(taskid, future, clusterTaskContext);
@@ -151,7 +152,7 @@ class ClusterTaskExecutionUtilities implements TaskExecutionUtilities {
 	@Override
 	public <R> R runTaskResult(TaskIdentifier taskid, TaskFactory<R> taskfactory, TaskExecutionParameters parameters)
 			throws TaskIdentifierConflictException {
-		clusterTaskContext.requireCalledOnMainThread(false);
+		TaskExecutionManager.requireCalledOnTaskThread(clusterTaskContext, false);
 		return ((InternalTaskContext) clusterTaskContext.realTaskContext).internalRunTaskResultOnTaskThread(taskid,
 				taskfactory, parameters);
 	}

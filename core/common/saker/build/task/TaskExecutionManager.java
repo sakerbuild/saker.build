@@ -715,15 +715,6 @@ public final class TaskExecutionManager {
 			return resolveDirectoryAtRelativePathCreate(executionManager.buildSakerDirectory, builddir);
 		}
 
-		protected void requireCalledOnMainThread(boolean allowinnertask) {
-			TaskThreadInfo info = THREADLOCAL_TASK_THREAD.get();
-			if (info == null || (!allowinnertask && info.innerTask)
-					|| ((InternalTaskContext) info.taskContext).internalGetTaskContextIdentity() != this) {
-				throw new IllegalTaskOperationException("Method can be called only on the main task thread.",
-						getTaskId());
-			}
-		}
-
 		@Override
 		public TaskContext getTaskContext() {
 			return this;
@@ -1219,7 +1210,7 @@ public final class TaskExecutionManager {
 		@Override
 		public <T> TaskFuture<T> startTask(TaskIdentifier taskid, TaskFactory<T> taskfactory,
 				TaskExecutionParameters parameters) throws TaskIdentifierConflictException {
-			requireCalledOnMainThread(false);
+			requireCalledOnTaskThread(this, false);
 			return internalStartTaskOnTaskThread(taskid, taskfactory, parameters);
 		}
 
@@ -1264,7 +1255,7 @@ public final class TaskExecutionManager {
 		@Override
 		public <T> T runTaskResult(TaskIdentifier taskid, TaskFactory<T> taskfactory,
 				TaskExecutionParameters parameters) throws TaskIdentifierConflictException {
-			requireCalledOnMainThread(false);
+			requireCalledOnTaskThread(this, false);
 			return internalRunTaskResultOnTaskThread(taskid, taskfactory, parameters);
 		}
 
@@ -1294,7 +1285,7 @@ public final class TaskExecutionManager {
 		public <T> TaskFuture<T> runTaskFuture(TaskIdentifier taskid, TaskFactory<T> taskfactory,
 				TaskExecutionParameters parameters) throws TaskIdentifierConflictException {
 			//XXX can we allow this on an inner task thread?
-			requireCalledOnMainThread(false);
+			requireCalledOnTaskThread(this, false);
 			return internalRunTaskFutureOnTaskThread(taskid, taskfactory, parameters);
 		}
 
@@ -2719,7 +2710,7 @@ public final class TaskExecutionManager {
 
 		@Override
 		public R get() {
-			context.requireCalledOnMainThread(false);
+			requireCalledOnTaskThread(context, false);
 			return internalGetOnTaskThread();
 		}
 
@@ -2796,7 +2787,7 @@ public final class TaskExecutionManager {
 		@Override
 		public R get()
 				throws TaskResultWaitingFailedException, TaskExecutionFailedException, IllegalTaskOperationException {
-			taskContext.requireCalledOnMainThread(false);
+			requireCalledOnTaskThread(taskContext, false);
 			return internalGetOnTaskThread();
 		}
 
@@ -4665,6 +4656,21 @@ public final class TaskExecutionManager {
 
 	protected ManagerTaskFutureImpl<?> getOrCreateTaskFuture(TaskIdentifier taskid) {
 		return TaskExecutionManager.this.taskIdFutures.computeIfAbsent(taskid, ManagerTaskFutureImpl::new);
+	}
+
+	public static void requireCalledOnTaskThread(TaskContext callertaskcontext, boolean allowinnertask) {
+		TaskThreadInfo info = THREADLOCAL_TASK_THREAD.get();
+		if (info == null || ((InternalTaskContext) info.taskContext)
+				.internalGetTaskContextIdentity() != ((InternalTaskContext) callertaskcontext)
+						.internalGetTaskContextIdentity()) {
+			throw new IllegalTaskOperationException("Method can be called only on the main task thread.",
+					callertaskcontext.getTaskId());
+		}
+		if (!allowinnertask && info.innerTask) {
+			throw new IllegalTaskOperationException(
+					"Method can be called only on the main task thread, not on inner task thread.",
+					callertaskcontext.getTaskId());
+		}
 	}
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
