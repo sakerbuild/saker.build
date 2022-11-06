@@ -1644,7 +1644,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			writeNull(os);
 			return;
 		}
-		os.writeByte(TYPE_ARRAY);
+		os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
 		for (Object elem : coll) {
 			writeTypedObject(os, elem);
 		}
