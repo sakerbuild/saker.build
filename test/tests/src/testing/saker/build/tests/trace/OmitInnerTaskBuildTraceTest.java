@@ -20,12 +20,12 @@ public class OmitInnerTaskBuildTraceTest extends CollectingMetricEnvironmentTest
 
 		@Override
 		public Object run(TaskContext taskcontext) throws Exception {
-			InnerTaskResults<Object> results = taskcontext.startInnerTask(new OmittingInnterTaskFactory(), null);
+			InnerTaskResults<Object> results = taskcontext.startInnerTask(new OmittingInnerTaskFactory(), null);
 			return results.getNext().getResult();
 		}
 	}
 
-	public static class OmittingInnterTaskFactory extends SelfStatelessTaskFactory<Object> {
+	public static class OmittingInnerTaskFactory extends SelfStatelessTaskFactory<Object> {
 		private static final long serialVersionUID = 1L;
 
 		@Override
