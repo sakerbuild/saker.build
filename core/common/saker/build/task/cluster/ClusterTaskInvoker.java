@@ -270,7 +270,7 @@ public class ClusterTaskInvoker implements TaskInvoker {
 				R taskres;
 				InternalTaskBuildTrace btrace = clustertaskcontext.internalGetBuildTrace();
 				try (TaskContextReference contextref = TaskContextReference.createForMainTask(clustertaskcontext)) {
-					btrace.startTaskExecution();
+					btrace.startTaskExecution(clustertaskcontext.getExecutionContext());
 					try {
 						taskres = task.run(clustertaskcontext);
 					} finally {

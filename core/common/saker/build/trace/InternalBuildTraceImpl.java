@@ -79,6 +79,7 @@ import saker.build.runtime.classpath.NamedClassPathServiceEnumerator;
 import saker.build.runtime.classpath.ServiceLoaderClassPathServiceEnumerator;
 import saker.build.runtime.environment.EnvironmentProperty;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
+import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.ExecutionContextImpl;
 import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation;
 import saker.build.runtime.execution.ExecutionParametersImpl.BuildInformation.ConnectionInformation;
@@ -96,7 +97,6 @@ import saker.build.runtime.params.NestRepositoryFactoryClassPathServiceEnumerato
 import saker.build.scripting.ScriptAccessProvider;
 import saker.build.scripting.ScriptParsingOptions;
 import saker.build.task.TaskContext;
-import saker.build.task.TaskContextReference;
 import saker.build.task.TaskDirectoryPathContext;
 import saker.build.task.TaskExecutionEnvironmentSelector;
 import saker.build.task.TaskExecutionResult;
@@ -160,8 +160,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			"endClusterInnerTask", Object.class, long.class);
 	protected static final Method METHOD_SETTHROWNEXCEPTION = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
 			"setThrownException", ExceptionView.class);
+	protected static final Method METHOD_SETABORTEXCEPTIONS = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
+			"setAbortExceptions", ExceptionView[].class);
 	protected static final Method METHOD_SETCLUSTERINNERTASKTHROWNEXCEPTION = ReflectUtils.getMethodAssert(
 			ClusterTaskBuildTrace.class, "setClusterInnerTaskThrownException", Object.class, ExceptionView.class);
+	protected static final Method METHOD_SETCLUSTERINNERTASKABORTEXCEPTIONS = ReflectUtils.getMethodAssert(
+			ClusterTaskBuildTrace.class, "setClusterInnerTaskAbortExceptions", Object.class, ExceptionView[].class);
 	protected static final Method METHOD_SETCLUSTERINNERTASKVALUES = ReflectUtils.getMethodAssert(
 			ClusterTaskBuildTrace.class, "setClusterInnerTaskValues", Object.class, Map.class, String.class);
 	protected static final Method METHOD_ADDCLUSTERINNERTASKVALUES = ReflectUtils.getMethodAssert(
@@ -1293,6 +1297,14 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 								writeFieldName(os, "exception");
 								writeByteArray(os, printExceptionToBytes(ibt.thrownException));
 							}
+							if (!ObjectUtils.isNullOrEmpty(ibt.abortExceptions)) {
+								writeFieldName(os, "abort_exceptions");
+								os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
+								for (ExceptionView ev : ibt.abortExceptions) {
+									writeByteArray(os, printExceptionToBytes(ev));
+								}
+								writeNull(os);
+							}
 
 							if (!ibt.values.isEmpty()) {
 								writeFieldName(os, "values");
@@ -1763,6 +1775,17 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 	}
 
+	protected static ExceptionView[] toExceptionViews(Throwable[] abortExceptions) {
+		if (abortExceptions == null) {
+			return null;
+		}
+		ExceptionView[] views = new ExceptionView[abortExceptions.length];
+		for (int i = 0; i < views.length; i++) {
+			views[i] = ExceptionView.create(abortExceptions[i]);
+		}
+		return views;
+	}
+
 	private static class TaskDisplayInformation implements Externalizable {
 		private static final long serialVersionUID = 1L;
 
@@ -1978,9 +2001,28 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
+		public void setAbortExceptions(Throwable[] abortExceptions) {
+			if (abortExceptions == null) {
+				return;
+			}
+			this.setAbortExceptions(toExceptionViews(abortExceptions));
+		}
+
+		@Override
+		public void setAbortExceptions(ExceptionView[] e) {
+			this.abortExceptions = ImmutableUtils.asUnmodifiableArrayList(e);
+		}
+
+		@Override
 		public void setClusterInnerTaskThrownException(Object innertaskidentity, ExceptionView e) {
 			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(innertaskidentity);
 			innertrace.setThrownException(e);
+		}
+
+		@Override
+		public void setClusterInnerTaskAbortExceptions(Object innertaskidentity, ExceptionView[] exceptions) {
+			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(innertaskidentity);
+			innertrace.setAbortExceptions(exceptions);
 		}
 
 		@Override
@@ -2002,7 +2044,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public InternalTaskBuildTrace startInnerTask(TaskFactory<?> innertaskfactory) {
+		public InternalTaskBuildTrace startInnerTask(ExecutionContext executioncontext,
+				TaskFactory<?> innertaskfactory) {
 			long nanos = System.nanoTime();
 			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(new Object());
 			innertrace.init(nanos, executionEnvironmentUUID);
@@ -2043,7 +2086,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public void startTaskExecution() {
+		public void startTaskExecution(ExecutionContext executioncontext) {
 			this.startNanos = System.nanoTime();
 		}
 
@@ -2142,6 +2185,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			protected UUID executionEnvironmentUUID;
 			protected String innerTaskClassName;
 			protected ExceptionView thrownException;
+			protected List<ExceptionView> abortExceptions;
 
 			protected TaskDisplayInformation displayInformation;
 
@@ -2168,6 +2212,13 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				this.thrownException = thrownException;
 			}
 
+			public void setAbortExceptions(ExceptionView[] abortExceptions) {
+				if (abortExceptions == null) {
+					return;
+				}
+				this.abortExceptions = ImmutableUtils.asUnmodifiableArrayList(abortExceptions);
+			}
+
 			@Override
 			public void endInnerTask() {
 				this.endNanos = System.nanoTime();
@@ -2181,6 +2232,14 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			@Override
 			public void setThrownException(Throwable e) {
 				this.setThrownException(ExceptionView.create(e));
+			}
+
+			@Override
+			public void setAbortExceptions(Throwable[] abortExceptions) {
+				if (abortExceptions == null) {
+					return;
+				}
+				this.setAbortExceptions(toExceptionViews(abortExceptions));
 			}
 
 			@Override
@@ -2269,11 +2328,10 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public void startTaskExecution() {
+		public void startTaskExecution(ExecutionContext executioncontext) {
 			long currentbuildnanos = System.nanoTime() - readNanos + writeNanos;
 			noException(() -> {
-				UUID envuuid = TaskContextReference.current().getExecutionContext().getEnvironment()
-						.getEnvironmentIdentifier();
+				UUID envuuid = executioncontext.getEnvironment().getEnvironmentIdentifier();
 				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_STARTCLUSTERTASKEXECUTION, currentbuildnanos,
 						envuuid);
 			});
@@ -2288,12 +2346,12 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public InternalTaskBuildTrace startInnerTask(TaskFactory<?> innertaskfactory) {
+		public InternalTaskBuildTrace startInnerTask(ExecutionContext executioncontext,
+				TaskFactory<?> innertaskfactory) {
 			long currentbuildnanos = System.nanoTime() - readNanos + writeNanos;
 			Object innertaskidentity = new Object();
 			noException(() -> {
-				UUID envuuid = TaskContextReference.current().getExecutionContext().getEnvironment()
-						.getEnvironmentIdentifier();
+				UUID envuuid = executioncontext.getEnvironment().getEnvironmentIdentifier();
 				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_STARTCLUSTERINNERTASK, innertaskidentity,
 						currentbuildnanos, envuuid, innertaskfactory.getClass().getName());
 			});
@@ -2309,6 +2367,18 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		public void setThrownException(Throwable e) {
 			noException(() -> {
 				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETTHROWNEXCEPTION, ExceptionView.create(e));
+			});
+		}
+
+		@Override
+		public void setAbortExceptions(Throwable[] abortExceptions) {
+			if (abortExceptions == null) {
+				return;
+			}
+			noException(() -> {
+				//new Object[] for varargs
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETABORTEXCEPTIONS,
+						new Object[] { toExceptionViews(abortExceptions) });
 			});
 		}
 
@@ -2345,6 +2415,17 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				noException(() -> {
 					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETCLUSTERINNERTASKTHROWNEXCEPTION,
 							innerTaskIdentity, ExceptionView.create(e));
+				});
+			}
+
+			@Override
+			public void setAbortExceptions(Throwable[] abortExceptions) {
+				if (abortExceptions == null) {
+					return;
+				}
+				noException(() -> {
+					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETCLUSTERINNERTASKABORTEXCEPTIONS,
+							innerTaskIdentity, toExceptionViews(abortExceptions));
 				});
 			}
 

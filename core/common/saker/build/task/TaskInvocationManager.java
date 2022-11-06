@@ -340,7 +340,7 @@ public class TaskInvocationManager implements Closeable {
 			R taskres;
 			InternalTaskBuildTrace btrace = taskcontext.internalGetBuildTrace();
 			try (TaskContextReference contextref = TaskContextReference.createForMainTask(taskcontext)) {
-				btrace.startTaskExecution();
+				btrace.startTaskExecution(taskcontext.getExecutionContext());
 				try {
 					taskres = task.run(taskcontext);
 				} finally {

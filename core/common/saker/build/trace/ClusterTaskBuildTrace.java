@@ -25,6 +25,13 @@ public interface ClusterTaskBuildTrace extends InternalTaskBuildTrace {
 	public default void setThrownException(@RMISerialize ExceptionView e) {
 	}
 
+	public default void setAbortExceptions(@RMISerialize ExceptionView[] exceptions) {
+	}
+
+	public default void setClusterInnerTaskAbortExceptions(Object innertaskidentity,
+			@RMISerialize ExceptionView[] exceptions) {
+	}
+
 	public default void setClusterInnerTaskThrownException(Object innertaskidentity, @RMISerialize ExceptionView e) {
 	}
 

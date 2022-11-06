@@ -423,6 +423,7 @@ public class InnerTaskInvocationManager implements Closeable {
 					btrace.setThrownException(e);
 					throw e;
 				} finally {
+					btrace.setAbortExceptions(innertaskcontext.getAbortExceptions());
 					btrace.endInnerTask();
 				}
 			} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError

@@ -20,8 +20,8 @@ class InnerTaskContext extends InternalForwardingTaskContext {
 	}
 
 	public static InnerTaskContext startInnerTask(TaskContext taskContext, TaskFactory<?> innertaskfactory) {
-		return new InnerTaskContext(taskContext,
-				((InternalTaskContext) taskContext).internalGetBuildTrace().startInnerTask(innertaskfactory));
+		return new InnerTaskContext(taskContext, ((InternalTaskContext) taskContext).internalGetBuildTrace()
+				.startInnerTask(taskContext.getExecutionContext(), innertaskfactory));
 	}
 
 	public Throwable[] getAbortExceptions() {

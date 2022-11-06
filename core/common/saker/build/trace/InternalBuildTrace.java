@@ -26,6 +26,7 @@ import saker.build.file.SakerFile;
 import saker.build.file.path.SakerPath;
 import saker.build.runtime.environment.EnvironmentProperty;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
+import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.ExecutionContextImpl;
 import saker.build.scripting.ScriptParsingOptions;
 import saker.build.task.TaskContext;
@@ -222,13 +223,22 @@ public interface InternalBuildTrace extends Closeable {
 		public default void close(TaskContext taskcontext, TaskExecutionResult<?> taskresult) {
 		}
 
-		public default void startTaskExecution() {
+		/**
+		 * @param executioncontext
+		 *            For the cluster case, to get the execution environment id.
+		 */
+		public default void startTaskExecution(ExecutionContext executioncontext) {
 		}
 
 		public default void endTaskExecution() {
 		}
 
-		public default InternalTaskBuildTrace startInnerTask(@RMISerialize TaskFactory<?> innertaskfactory) {
+		/**
+		 * @param executioncontext
+		 *            For the cluster case, to get the execution environment id.
+		 */
+		public default InternalTaskBuildTrace startInnerTask(ExecutionContext executioncontext,
+				@RMISerialize TaskFactory<?> innertaskfactory) {
 			return NullInternalBuildTrace.INSTANCE;
 		}
 
@@ -236,6 +246,9 @@ public interface InternalBuildTrace extends Closeable {
 		}
 
 		public default void setThrownException(@RMISerialize Throwable e) {
+		}
+
+		public default void setAbortExceptions(@RMISerialize Throwable[] abortExceptions) {
 		}
 
 		public default void setDisplayInformation(String timelinelabel, String title) {

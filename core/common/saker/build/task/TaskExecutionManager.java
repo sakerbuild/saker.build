@@ -4908,6 +4908,7 @@ public final class TaskExecutionManager {
 						btrace.setThrownException(e);
 						throw e;
 					} finally {
+						btrace.setAbortExceptions(innertaskcontext.getAbortExceptions());
 						btrace.endInnerTask();
 					}
 				}
