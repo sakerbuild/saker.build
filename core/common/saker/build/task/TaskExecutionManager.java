@@ -6554,35 +6554,19 @@ public final class TaskExecutionManager {
 					//do not put the execution result to the task results, as it has failed via an exception, but not abortion
 					//the previous execution result will be added when the build is finished
 
-					executionresult.setFailedOutput(taskrunningexception, abortexceptions, buildUUID);
+					executionresult.setFailedOutput(taskrunningexception, abortexceptions, result, buildUUID);
 					spawnedtask.executionFailed(taskrunningexception, abortexceptions);
 					future.failed(this, taskrunningexception, abortexceptions, taskcontext.resultDependencies);
 					taskRunningFailureExceptions.add(ImmutableUtils.makeImmutableMapEntry(taskid,
 							createFailException(taskid, taskrunningexception, abortexceptions)));
 					return;
-//					throw createFailException(taskid, taskrunningexception, abortexceptions);
-				}
-				boolean hasabortedexception = !ObjectUtils.isNullOrEmpty(abortexceptions);
-				if (hasabortedexception) {
-//					if (result != null) {
-//						InvalidTaskResultException exc = new InvalidTaskResultException(
-//								"Task reported exception, but did not return null result. (" + result + ")", taskid);
-//						for (Throwable abexc : abortexceptions) {
-//							exc.addSuppressed(abexc);
-//						}
-					//TODO ignore the exception
-					//do not throw this exception, as this is not really necessary, and just disrupts the builds without 
-					// having any advantage. warning is better
-//						future.failed(this, taskrunningexception, abortexceptions, taskcontext.resultDependencies);
-//						return;
-//						throw exc;
-//					}
 				}
 
 				executiondependencies.setSelfOutputChangeDetector(taskcontext.reportedOutputChangeDetector);
 
+				boolean hasabortedexception = !ObjectUtils.isNullOrEmpty(abortexceptions);
 				if (hasabortedexception) {
-					executionresult.setFailedOutput(taskrunningexception, abortexceptions, buildUUID);
+					executionresult.setFailedOutput(taskrunningexception, abortexceptions, result, buildUUID);
 				} else {
 					executionresult.setOutput(result, buildUUID);
 				}
@@ -6601,7 +6585,6 @@ public final class TaskExecutionManager {
 					taskRunningFailureExceptions.add(ImmutableUtils.makeImmutableMapEntry(taskid,
 							createFailException(taskid, taskrunningexception, abortexceptions)));
 					return;
-//					throw createFailException(taskid, taskrunningexception, abortexceptions);
 				}
 
 				if (capabilities.isCacheable()) {

@@ -51,7 +51,6 @@ import saker.build.task.dependencies.TaskOutputChangeDetector;
 import saker.build.task.exception.IllegalTaskOperationException;
 import saker.build.task.exception.InnerTaskInitializationException;
 import saker.build.task.exception.InvalidTaskInvocationConfigurationException;
-import saker.build.task.exception.InvalidTaskResultException;
 import saker.build.task.exception.TaskEnvironmentSelectionFailedException;
 import saker.build.task.exception.TaskExecutionException;
 import saker.build.task.exception.TaskExecutionFailedException;
@@ -607,9 +606,9 @@ public interface TaskContext extends TaskResultResolver, TaskDirectoryContext, T
 	 * Calling this function will set a pending cause exception for the task result. Tasks which retrieve the result of
 	 * this task will receive this exception.
 	 * <p>
-	 * The execution of this task will continue, and is required to return <code>null</code> as a result from
-	 * {@link Task#run(TaskContext)}. Not returning <code>null</code> will result in an
-	 * {@link InvalidTaskResultException} after finishing the task.
+	 * The execution of this task will continue, and the task may still return an object from the
+	 * {@link Task#run(TaskContext)} method. This task result will not be visible to other tasks, but this task can
+	 * still retrieve it using {@link #getPreviousTaskOutput(Class)} when it is run next time.
 	 * <p>
 	 * Aborting excecution using this functions is preferable to throwing an exception directly when the task is able to
 	 * handle previously thrown exceptions in the next run.

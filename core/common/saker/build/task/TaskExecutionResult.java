@@ -686,9 +686,11 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		this.dependencies.buildModificationStamp = buildchangemodificationstamp;
 	}
 
-	public void setFailedOutput(Throwable cause, List<Throwable> abortExceptions, Object buildchangemodificationstamp) {
+	public void setFailedOutput(Throwable cause, List<Throwable> abortExceptions, R result,
+			Object buildchangemodificationstamp) {
 		this.failCauseException = cause;
 		this.abortExceptions = abortExceptions;
+		this.output = result;
 		this.dependencies.buildModificationStamp = buildchangemodificationstamp;
 	}
 
