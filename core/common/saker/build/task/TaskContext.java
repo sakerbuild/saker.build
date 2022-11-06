@@ -472,10 +472,10 @@ public interface TaskContext extends TaskResultResolver, TaskDirectoryContext, T
 	 * proper operation. This is in order to ensure that the enclosing task complies with the restrictions that
 	 * computation token usage imposes.
 	 * <p>
-	 * Inner tasks may be declared to be {@linkplain TaskFactory#CAPABILITY_SHORT_TASK}, in which case they behave the
-	 * same way normal tasks would work. They are invoked a single time and are not duplicated (see below). Generally,
-	 * using short inner tasks have limited use-cases, as the work the inner task does can be executed directly in the
-	 * enclosing task.
+	 * Inner tasks may be declared to be {@linkplain TaskFactory#CAPABILITY_SHORT_TASK short}, in which case they behave
+	 * the same way normal tasks would work. They are invoked a single time and are not duplicated (see below).
+	 * Generally, using short inner tasks have limited use-cases, as the work the inner task does can be executed
+	 * directly in the enclosing task.
 	 * <p>
 	 * Inner tasks can select their execution environment the same way as normal tasks do. See
 	 * {@link TaskFactory#getExecutionEnvironmentSelector()}. The execution environment selector will be used to find
@@ -609,6 +609,10 @@ public interface TaskContext extends TaskResultResolver, TaskDirectoryContext, T
 	 * The execution of this task will continue, and the task may still return an object from the
 	 * {@link Task#run(TaskContext)} method. This task result will not be visible to other tasks, but this task can
 	 * still retrieve it using {@link #getPreviousTaskOutput(Class)} when it is run next time.
+	 * <p>
+	 * For inner tasks, calling this function will return this exception via the
+	 * {@link InnerTaskResultHolder#getExceptionIfAny()}, and the inner task may also return an object as a result,
+	 * which is available via {@link InnerTaskResultHolder#getResult()}.
 	 * <p>
 	 * Aborting excecution using this functions is preferable to throwing an exception directly when the task is able to
 	 * handle previously thrown exceptions in the next run.

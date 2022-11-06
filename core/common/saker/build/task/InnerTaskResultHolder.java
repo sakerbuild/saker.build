@@ -36,11 +36,15 @@ import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
  */
 public interface InnerTaskResultHolder<R> {
 	/**
-	 * Gets the result of the task execution, or throws an exception if failed.
+	 * Gets the result of the inner task execution, or throws an exception if it threw an exception.
 	 * <p>
 	 * This method will return the object that was returned from the {@link Task#run(TaskContext)} method of the inner
 	 * task. If the call threw an exception before finishing properly, this method will throw an
 	 * {@link InnerTaskExecutionException} with its cause set to the thrown exception.
+	 * <p>
+	 * If the inner task failed by calling {@link TaskContext#abortExecution(Throwable)}, then this method will still
+	 * return the object that the inner task returned from {@link Task#run(TaskContext)}. <br>
+	 * To get the aborted exception, use {@link #getExceptionIfAny()}.
 	 * 
 	 * @return The result of the task execution.
 	 * @throws InnerTaskExecutionException
@@ -51,7 +55,8 @@ public interface InnerTaskResultHolder<R> {
 	public R getResult() throws InnerTaskExecutionException;
 
 	/**
-	 * Gets the exception that was thrown by the task execution if any.
+	 * Gets the exception that was thrown by the task execution if any, or the
+	 * {@linkplain TaskContext#abortExecution(Throwable) aborted exception}.
 	 * <p>
 	 * If the task execution finished successfully, this method will return <code>null</code>.
 	 * 

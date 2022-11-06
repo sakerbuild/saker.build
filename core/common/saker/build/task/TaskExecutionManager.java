@@ -392,8 +392,7 @@ public final class TaskExecutionManager {
 		}
 	}
 
-	private static final class InternalCachingForwardingTaskContext extends ForwardingTaskContext
-			implements InternalTaskContext {
+	private static final class InternalCachingForwardingTaskContext extends InternalForwardingTaskContext {
 
 		private final InternalTaskBuildTrace buildTrace;
 		private final TaskIdentifier taskId;
@@ -445,61 +444,8 @@ public final class TaskExecutionManager {
 		}
 
 		@Override
-		public Entry<SakerPath, ScriptPosition> internalGetOriginatingBuildFile() {
-			return ((InternalTaskContext) taskContext).internalGetOriginatingBuildFile();
-		}
-
-		@Override
-		public void internalPrintlnVariables(String line) {
-			((InternalTaskContext) taskContext).internalPrintlnVariables(line);
-		}
-
-		@Override
-		public void internalPrintlnVerboseVariables(String line) {
-			((InternalTaskContext) taskContext).internalPrintlnVerboseVariables(line);
-		}
-
-		@Override
-		public PathSakerFileContents internalGetPathSakerFileContents(SakerPath path) {
-			return ((InternalTaskContext) taskContext).internalGetPathSakerFileContents(path);
-		}
-
-		@Override
 		public InternalTaskBuildTrace internalGetBuildTrace() {
 			return buildTrace;
-		}
-
-		@Override
-		public SakerFile internalCreateProviderPathFile(String name, ProviderHolderPathKey pathkey, boolean directory)
-				throws NullPointerException, IOException {
-			return ((InternalTaskContext) taskContext).internalCreateProviderPathFile(name, pathkey, directory);
-		}
-
-		@Override
-		public void internalAddSynchronizeInvalidatedProviderPathFileToDirectory(SakerDirectory directory,
-				ProviderHolderPathKey pathkey, String filename, boolean isdirectory) throws IOException {
-			((InternalTaskContext) taskContext).internalAddSynchronizeInvalidatedProviderPathFileToDirectory(directory,
-					pathkey, filename, isdirectory);
-		}
-
-		@Override
-		public <T> TaskFuture<T> internalStartTaskOnTaskThread(TaskIdentifier taskid, TaskFactory<T> taskfactory,
-				TaskExecutionParameters parameters) {
-			return ((InternalTaskContext) taskContext).internalStartTaskOnTaskThread(taskid, taskfactory, parameters);
-		}
-
-		@Override
-		public <T> T internalRunTaskResultOnTaskThread(TaskIdentifier taskid, TaskFactory<T> taskfactory,
-				TaskExecutionParameters parameters) {
-			return ((InternalTaskContext) taskContext).internalRunTaskResultOnTaskThread(taskid, taskfactory,
-					parameters);
-		}
-
-		@Override
-		public <T> TaskFuture<T> internalRunTaskFutureOnTaskThread(TaskIdentifier taskid, TaskFactory<T> taskfactory,
-				TaskExecutionParameters parameters) {
-			return ((InternalTaskContext) taskContext).internalRunTaskFutureOnTaskThread(taskid, taskfactory,
-					parameters);
 		}
 
 	}
@@ -771,7 +717,8 @@ public final class TaskExecutionManager {
 
 		protected void requireCalledOnMainThread(boolean allowinnertask) {
 			TaskThreadInfo info = THREADLOCAL_TASK_THREAD.get();
-			if (info == null || (!allowinnertask && info.innerTask) || info.taskContext != this) {
+			if (info == null || (!allowinnertask && info.innerTask)
+					|| ((InternalTaskContext) info.taskContext).internalGetTaskContextIdentity() != this) {
 				throw new IllegalTaskOperationException("Method can be called only on the main task thread.",
 						getTaskId());
 			}
@@ -4928,6 +4875,7 @@ public final class TaskExecutionManager {
 						"Cannot specify duplication predicate for short inner tasks. (" + factory.getClass().getName()
 								+ ")");
 			}
+			InnerTaskContext innertaskcontext = null;
 			try {
 				//the inner task is short. it cannot be remote dispatchable
 				//    it can only be invoked on the coordinator
@@ -4945,11 +4893,11 @@ public final class TaskExecutionManager {
 							"Inner task factory created null task: " + factory.getClass().getName());
 				}
 				R res;
-				try (TaskContextReference contextref = TaskContextReference.createForInnerTask(taskcontext)) {
-					InternalTaskBuildTrace btrace = taskcontext.taskBuildTrace.startInnerTask(factory);
-					contextref.initTaskBuildTrace(btrace);
+				innertaskcontext = InnerTaskContext.startInnerTask(taskcontext, factory);
+				try (TaskContextReference contextref = TaskContextReference.createForInnerTask(innertaskcontext)) {
+					InternalTaskBuildTrace btrace = innertaskcontext.internalGetBuildTrace();
 					try {
-						res = task.run(taskcontext);
+						res = task.run(innertaskcontext);
 					} catch (Throwable e) {
 						btrace.setThrownException(e);
 						throw e;
@@ -4957,9 +4905,18 @@ public final class TaskExecutionManager {
 						btrace.endInnerTask();
 					}
 				}
-				return new CompletedInnerTaskResults<>(new CompletedInnerTaskOptionalResult<>(res));
+				return new CompletedInnerTaskResults<>(InnerTaskInvocationManager.createInnerTaskResultHolder(res,
+						innertaskcontext.getAbortExceptions()));
 			} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError | AssertionError
 					| Exception e) {
+				if (innertaskcontext != null) {
+					Throwable[] abortexceptions = innertaskcontext.getAbortExceptions();
+					if (abortexceptions != null) {
+						for (Throwable abortexc : abortexceptions) {
+							e.addSuppressed(abortexc);
+						}
+					}
+				}
 				return new CompletedInnerTaskResults<>(new FailedInnerTaskOptionalResult<>(e));
 			}
 		}

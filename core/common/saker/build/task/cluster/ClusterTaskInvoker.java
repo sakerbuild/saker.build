@@ -249,7 +249,7 @@ public class ClusterTaskInvoker implements TaskInvoker {
 		}
 		ClusterTaskContext clustertaskcontext = new ClusterTaskContext(clusterExecutionContext, realtaskcontext,
 				clusterContentDatabase, event.getTaskUtilities());
-		InternalTaskBuildTrace btrace = clustertaskcontext.internalGetBuildTrace();
+
 		int tokencount = event.getComputationTokenCount();
 
 		//use the real task context as the computation token allocator, 
@@ -268,8 +268,8 @@ public class ClusterTaskInvoker implements TaskInvoker {
 			}
 			try {
 				R taskres;
-				try (TaskContextReference contextref = TaskContextReference.createForMainTask(clustertaskcontext,
-						btrace)) {
+				InternalTaskBuildTrace btrace = clustertaskcontext.internalGetBuildTrace();
+				try (TaskContextReference contextref = TaskContextReference.createForMainTask(clustertaskcontext)) {
 					btrace.startTaskExecution();
 					try {
 						taskres = task.run(clustertaskcontext);

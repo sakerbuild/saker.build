@@ -192,13 +192,19 @@ public class InnerTaskInvocationManager implements Closeable {
 			}
 		}
 
-		public void putResult(R result, boolean last) {
-			results.add(new CompletedInnerTaskOptionalResult<>(result));
+		public void putResult(R result, Throwable[] abortexceptions, boolean last) {
+			InnerTaskResultHolder<R> resultholder = createInnerTaskResultHolder(result, abortexceptions);
+			results.add(resultholder);
 			int resultcount = addResult(last);
 			listener.notifyResultReady(resultcount, last);
 		}
 
-		public void putExceptionResult(Throwable e, boolean last) {
+		public void putExceptionResult(Throwable e, Throwable[] abortexceptions, boolean last) {
+			if (abortexceptions != null) {
+				for (Throwable abortexc : abortexceptions) {
+					e.addSuppressed(abortexc);
+				}
+			}
 			results.add(new FailedInnerTaskOptionalResult<>(e));
 			int resultcount = addResult(last);
 			listener.notifyResultReady(resultcount, last);
@@ -278,7 +284,7 @@ public class InnerTaskInvocationManager implements Closeable {
 
 		private void runDuplicatedInnerTaskWithComputationToken(ComputationToken token, boolean releasable) {
 			try {
-				try (TaskContextReference contextref = TaskContextReference.createForInnerTask(taskContext)) {
+				try {
 					while (!duplicationCancelled) {
 						if (Thread.interrupted()) {
 							return;
@@ -305,7 +311,7 @@ public class InnerTaskInvocationManager implements Closeable {
 						if (task == null) {
 							break;
 						}
-						runSingleInnerTask(contextref, task, false);
+						runSingleInnerTask(task, false);
 						if (!duplicationPredicate.shouldInvokeOnceMore()) {
 							setShouldntInvokeOnceMore();
 							break;
@@ -349,8 +355,6 @@ public class InnerTaskInvocationManager implements Closeable {
 			}
 		}
 
-		//suppress unused task context reference warning
-		@SuppressWarnings("try")
 		private void runImpl() {
 			//implementation: allocate a core computation token for the invocation
 			//    the core should succeed if there are available tokens, or the allocator is already used
@@ -401,21 +405,20 @@ public class InnerTaskInvocationManager implements Closeable {
 					if (task == null) {
 						return;
 					}
-					try (TaskContextReference contextref = TaskContextReference.createForInnerTask(taskContext)) {
-						runSingleInnerTask(contextref, task, true);
-					}
+					runSingleInnerTask(task, true);
 				}
 			}
 		}
 
-		private void runSingleInnerTask(TaskContextReference contextref, Task<? extends R> task, boolean last) {
+		//suppress unused task context reference warning
+		@SuppressWarnings("try")
+		private void runSingleInnerTask(Task<? extends R> task, boolean last) {
+			InnerTaskContext innertaskcontext = InnerTaskContext.startInnerTask(taskContext, taskFactory);
 			R result;
-			try {
-				InternalTaskBuildTrace btrace = ((InternalTaskContext) taskContext).internalGetBuildTrace()
-						.startInnerTask(taskFactory);
-				contextref.initTaskBuildTrace(btrace);
+			try (TaskContextReference contextref = TaskContextReference.createForInnerTask(innertaskcontext)) {
+				InternalTaskBuildTrace btrace = innertaskcontext.internalGetBuildTrace();
 				try {
-					result = task.run(taskContext);
+					result = task.run(innertaskcontext);
 				} catch (Throwable e) {
 					btrace.setThrownException(e);
 					throw e;
@@ -424,17 +427,17 @@ public class InnerTaskInvocationManager implements Closeable {
 				}
 			} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
 					| StackOverflowError e) {
-				this.putExceptionResult(e, last);
+				this.putExceptionResult(e, innertaskcontext.getAbortExceptions(), last);
 				return;
 			} catch (Throwable e) {
 				try {
-					this.putExceptionResult(e, last);
+					this.putExceptionResult(e, innertaskcontext.getAbortExceptions(), last);
 				} catch (Throwable e2) {
 					e.addSuppressed(e2);
 				}
 				throw e;
 			}
-			this.putResult(result, last);
+			this.putResult(result, innertaskcontext.getAbortExceptions(), last);
 			return;
 		}
 	}
@@ -483,6 +486,21 @@ public class InnerTaskInvocationManager implements Closeable {
 		weakInnerThreads.add(resulthandle.invokerThread);
 		thread.start();
 		return resulthandle;
+	}
+
+	public static <R> InnerTaskResultHolder<R> createInnerTaskResultHolder(R result, Throwable[] abortexceptions) {
+		InnerTaskResultHolder<R> resultholder;
+		if (abortexceptions != null) {
+			//most be at least one element if its non null
+			Throwable abortexc = abortexceptions[0];
+			for (int i = 1; i < abortexceptions.length; i++) {
+				abortexc.addSuppressed(abortexceptions[i]);
+			}
+			resultholder = new AbortedInnerTaskOptionalResult<>(result, abortexc);
+		} else {
+			resultholder = new CompletedInnerTaskOptionalResult<>(result);
+		}
+		return resultholder;
 	}
 
 	@Override

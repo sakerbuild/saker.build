@@ -19,7 +19,6 @@ import java.io.Closeable;
 
 import saker.apiextract.api.ExcludeApi;
 import saker.build.task.TaskExecutionManager.TaskThreadInfo;
-import saker.build.trace.InternalBuildTraceImpl;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 
 // explicitly exclude this api class, as it is implementation detail
@@ -59,15 +58,9 @@ public final class TaskContextReference implements Closeable {
 	private final TaskContextReference previous;
 	private volatile TaskContext taskContext;
 	private final TaskThreadInfo previousThreadInfo;
-	private InternalTaskBuildTrace taskBuildTrace;
 
-	private TaskContextReference(TaskContext taskContext) {
-		this(taskContext, null, false);
-	}
-
-	private TaskContextReference(TaskContext taskContext, InternalTaskBuildTrace taskBuildTrace, boolean innertask) {
+	private TaskContextReference(TaskContext taskContext, boolean innertask) {
 		this.taskContext = taskContext;
-		this.taskBuildTrace = taskBuildTrace;
 		this.previous = CURRENT_THREAD_TASK_CONTEXT.get();
 		this.previousThreadInfo = TaskExecutionManager.THREADLOCAL_TASK_THREAD.get();
 		CURRENT_THREAD_TASK_CONTEXT.set(this);
@@ -75,25 +68,11 @@ public final class TaskContextReference implements Closeable {
 	}
 
 	public static TaskContextReference createForMainTask(TaskContext taskcontext) {
-		return createForMainTask(taskcontext, null);
-	}
-
-	public static TaskContextReference createForMainTask(TaskContext taskcontext,
-			InternalTaskBuildTrace taskbuildtrace) {
-		return new TaskContextReference(taskcontext, taskbuildtrace, false);
+		return new TaskContextReference(taskcontext, false);
 	}
 
 	public static TaskContextReference createForInnerTask(TaskContext taskcontext) {
-		return createForInnerTask(taskcontext, null);
-	}
-
-	public static TaskContextReference createForInnerTask(TaskContext taskcontext,
-			InternalTaskBuildTrace taskbuildtrace) {
-		return new TaskContextReference(taskcontext, taskbuildtrace, true);
-	}
-
-	public void initTaskBuildTrace(InternalTaskBuildTrace taskBuildTrace) {
-		this.taskBuildTrace = taskBuildTrace;
+		return new TaskContextReference(taskcontext, true);
 	}
 
 	public TaskContext get() {
@@ -101,7 +80,7 @@ public final class TaskContextReference implements Closeable {
 	}
 
 	public InternalTaskBuildTrace getTaskBuildTrace() {
-		return taskBuildTrace;
+		return ((InternalTaskContext) taskContext).internalGetBuildTrace();
 	}
 
 	@Override
@@ -117,7 +96,6 @@ public final class TaskContextReference implements Closeable {
 			TaskExecutionManager.THREADLOCAL_TASK_THREAD.set(previousThreadInfo);
 		}
 		this.taskContext = null;
-		this.taskBuildTrace = null;
 	}
 
 	@Override
