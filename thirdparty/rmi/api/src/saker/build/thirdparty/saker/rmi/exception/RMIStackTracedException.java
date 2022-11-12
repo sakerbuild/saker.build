@@ -15,7 +15,9 @@
  */
 package saker.build.thirdparty.saker.rmi.exception;
 
-import java.lang.reflect.InvocationTargetException;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Exception to hold the originating information for exceptions which fail to transfer over RMI.
@@ -35,34 +37,51 @@ public class RMIStackTracedException extends RMIRuntimeException {
 	 * The message, causes, suppressed exceptions, and stacktrace will be recursively copied from the argument
 	 * exception.
 	 * 
-	 * @param cause
+	 * @param exception
 	 *            The exception to copy.
 	 * @throws NullPointerException
 	 *             If the argument is <code>null</code>.
 	 */
-	public RMIStackTracedException(Throwable cause) throws NullPointerException {
-		super(cause.toString(), getCauseOfCause(cause));
-		setStackTrace(cause.getStackTrace());
-		addSuppresseds(this, cause);
+	public RMIStackTracedException(Throwable exception) throws NullPointerException {
+		this(exception, new IdentityHashMap<>());
 	}
 
-	private static RMIStackTracedException getCauseOfCause(Throwable cause) {
-		if (cause == null) {
+	private RMIStackTracedException(Throwable exception, Map<Throwable, RMIStackTracedException> seenexceptions)
+			throws NullPointerException {
+		super(exception.toString());
+		seenexceptions.put(exception, this);
+		setStackTrace(exception.getStackTrace());
+
+		this.initCause(getCauseOfException(exception, seenexceptions));
+		addSuppresseds(this, exception, seenexceptions);
+	}
+
+	private static RMIStackTracedException getCauseOfException(Throwable exc,
+			Map<Throwable, RMIStackTracedException> seenexceptions) {
+		if (exc == null) {
 			return null;
 		}
-		Throwable directcause = cause.getCause();
-		if (directcause != null) {
-			return new RMIStackTracedException(directcause);
-		}
-		if (cause instanceof InvocationTargetException) {
-			return new RMIStackTracedException(((InvocationTargetException) cause).getTargetException());
+		Throwable cause = exc.getCause();
+		if (cause != null) {
+			RMIStackTracedException found = seenexceptions.get(cause);
+			if (found != null) {
+				return found;
+			}
+			return new RMIStackTracedException(cause, seenexceptions);
 		}
 		return null;
 	}
 
-	private static void addSuppresseds(Throwable target, Throwable cause) {
+	private static void addSuppresseds(Throwable target, Throwable cause,
+			Map<Throwable, RMIStackTracedException> seenexceptions) {
+
 		for (Throwable sup : cause.getSuppressed()) {
-			target.addSuppressed(new RMIStackTracedException(sup));
+			RMIStackTracedException found = seenexceptions.get(sup);
+			if (found != null) {
+				target.addSuppressed(found);
+			} else {
+				target.addSuppressed(new RMIStackTracedException(sup, seenexceptions));
+			}
 		}
 	}
 

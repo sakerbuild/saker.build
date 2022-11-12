@@ -28,6 +28,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamClass;
 import java.io.OutputStream;
+import java.io.UTFDataFormatException;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
@@ -48,10 +49,10 @@ import java.util.ServiceConfigurationError;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.function.Function;
 
 import saker.build.thirdparty.saker.rmi.connection.RequestHandler.Request;
 import saker.build.thirdparty.saker.rmi.exception.RMICallFailedException;
@@ -61,6 +62,7 @@ import saker.build.thirdparty.saker.rmi.exception.RMIIOFailureException;
 import saker.build.thirdparty.saker.rmi.exception.RMIInvalidConfigurationException;
 import saker.build.thirdparty.saker.rmi.exception.RMIObjectTransferFailureException;
 import saker.build.thirdparty.saker.rmi.exception.RMIProxyCreationFailedException;
+import saker.build.thirdparty.saker.rmi.exception.RMIResourceUnavailableException;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.rmi.exception.RMIStackTracedException;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
@@ -70,6 +72,7 @@ import saker.build.thirdparty.saker.rmi.io.writer.ObjectWriterKind;
 import saker.build.thirdparty.saker.rmi.io.writer.RMIObjectWriteHandler;
 import saker.build.thirdparty.saker.rmi.io.writer.SelectorRMIObjectWriteHandler;
 import saker.build.thirdparty.saker.rmi.io.writer.WrapperRMIObjectWriteHandler;
+import saker.build.thirdparty.saker.util.ArrayUtils;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
@@ -88,6 +91,8 @@ import saker.build.thirdparty.saker.util.ref.StrongSoftReference;
 // this is used when we write a command and automatically flush with outputFlusher
 @SuppressWarnings("try")
 final class RMIStream implements Closeable {
+	private static final RMIVariables[] EMPTY_RMI_VARIABLES_ARRAY = new RMIVariables[0];
+
 	public static final String EXCEPTION_MESSAGE_DIRECT_REQUESTS_FORBIDDEN = "Direct requests are forbidden.";
 
 	private static final AtomicIntegerFieldUpdater<RMIStream> AIFU_streamCloseWritten = AtomicIntegerFieldUpdater
@@ -125,8 +130,10 @@ final class RMIStream implements Closeable {
 	private static final short COMMAND_METHODCALL_CONTEXTVAR = 29;
 	private static final short COMMAND_METHODCALL_CONTEXTVAR_REDISPATCH = 30;
 	private static final short COMMAND_METHODCALL_CONTEXTVAR_NOT_FOUND = 31;
+	private static final short COMMAND_ASYNC_RESPONSE = 32;
+	private static final short COMMAND_METHODCALL_ASYNC_WITH_RESPONSE = 33;
 
-	private static final short COMMAND_END_VALUE = 32;
+	private static final short COMMAND_END_VALUE = 34;
 
 	private static final short OBJECT_NULL = 0;
 	private static final short OBJECT_BOOLEAN = 1;
@@ -226,71 +233,86 @@ final class RMIStream implements Closeable {
 		OBJECT_READERS[OBJECT_FIELD] = (s, vars, in) -> s.readField(in, null);
 	}
 
-	interface CommandHandler {
-		public void accept(RMIStream stream, DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction)
-				throws IOException;
-
-		public default boolean isPreventGarbageCollection() {
-			return false;
-		}
-
-		public default boolean isPendingResponse() {
-			return false;
-		}
+	@FunctionalInterface
+	public interface CommandHandler {
+		/**
+		 * @return <code>true</code> if the next reading task has been offered
+		 */
+		public boolean handleCommand(RMIStream stream, RunInputRunnable inputrunnable,
+				DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction) throws IOException;
 	}
 
-	private interface SimpleCommandHandler extends CommandHandler {
-		public void accept(RMIStream stream, DataInputUnsyncByteArrayInputStream in) throws IOException;
+	@FunctionalInterface
+	public interface SimpleCommandHandler extends CommandHandler {
+		public void handleCommand(RMIStream stream, DataInputUnsyncByteArrayInputStream in) throws IOException;
 
 		@Override
-		public default void accept(RMIStream stream, DataInputUnsyncByteArrayInputStream in,
-				ReferencesReleasedAction gcaction) throws IOException {
-			this.accept(stream, in);
-		}
-	}
-
-	private interface GarbageCollectionPreventingCommandHandler extends CommandHandler {
-		@Override
-		public void accept(RMIStream stream, DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction)
-				throws IOException;
-
-		@Override
-		public default boolean isPreventGarbageCollection() {
+		public default boolean handleCommand(RMIStream stream, RunInputRunnable inputrunnable,
+				DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction) throws IOException {
+			inputrunnable.offerSelfStreamTask();
+			this.handleCommand(stream, in);
 			return true;
 		}
 	}
 
-	private interface PendingResponseSimpleCommandHandler extends SimpleCommandHandler {
+	@FunctionalInterface
+	public interface GarbageCollectionPreventingCommandHandler extends CommandHandler {
+		public void handleCommand(RMIStream stream, DataInputUnsyncByteArrayInputStream in,
+				ReferencesReleasedAction gcaction) throws IOException;
+
 		@Override
-		public default boolean isPendingResponse() {
+		public default boolean handleCommand(RMIStream stream, RunInputRunnable inputrunnable,
+				DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction) throws IOException {
+			gcaction.increasePendingRequestCount();
+			inputrunnable.offerSelfStreamTask();
+			this.handleCommand(stream, in, gcaction);
 			return true;
 		}
 	}
 
-	private interface PendingResponseGarbageCollectionPreventingCommandHandler extends CommandHandler {
+	@FunctionalInterface
+	public interface PendingResponseSimpleCommandHandler extends SimpleCommandHandler {
 		@Override
-		public void accept(RMIStream stream, DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction)
-				throws IOException;
-
-		@Override
-		public default boolean isPreventGarbageCollection() {
-			return true;
+		public default boolean handleCommand(RMIStream stream, RunInputRunnable inputrunnable,
+				DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction) throws IOException {
+			stream.requestHandlerAddResponseCount();
+			try {
+				return SimpleCommandHandler.super.handleCommand(stream, inputrunnable, in, gcaction);
+			} finally {
+				stream.requestHandlerRemoveResponseCount();
+			}
 		}
 
+	}
+
+	@FunctionalInterface
+	public interface PendingResponseGarbageCollectionPreventingCommandHandler extends CommandHandler {
+		public void handleCommand(RMIStream stream, DataInputUnsyncByteArrayInputStream in,
+				ReferencesReleasedAction gcaction) throws IOException;
+
 		@Override
-		public default boolean isPendingResponse() {
-			return true;
+		public default boolean handleCommand(RMIStream stream, RunInputRunnable inputrunnable,
+				DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction) throws IOException {
+			gcaction.increasePendingRequestCount();
+			stream.requestHandlerAddResponseCount();
+			try {
+				inputrunnable.offerSelfStreamTask();
+				this.handleCommand(stream, in, gcaction);
+				return true;
+			} finally {
+				stream.requestHandlerRemoveResponseCount();
+			}
 		}
 	}
 
 	//package private so testcases can access and override it if necessary
 	static final CommandHandler[] COMMAND_HANDLERS = new CommandHandler[COMMAND_END_VALUE];
 	static {
-		COMMAND_HANDLERS[COMMAND_NEWINSTANCE] = (GarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstance;
+		COMMAND_HANDLERS[COMMAND_NEWINSTANCE] = (CommandHandler) RMIStream::handleCommandNewInstance;
 		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstanceRedispatch;
-		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_UNKNOWNCLASS] = (GarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstanceUnknownClass;
+		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_UNKNOWNCLASS] = (CommandHandler) RMIStream::handleCommandNewInstanceUnknownClass;
 		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_UNKNOWNCLASS_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstanceUnknownClassRedispatch;
-		COMMAND_HANDLERS[COMMAND_METHODCALL] = (GarbageCollectionPreventingCommandHandler) RMIStream::handleCommandMethodCall;
+		COMMAND_HANDLERS[COMMAND_METHODCALL] = (CommandHandler) RMIStream::handleCommandMethodCall;
 		COMMAND_HANDLERS[COMMAND_METHODCALL_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandMethodCallRedispatch;
 		COMMAND_HANDLERS[COMMAND_METHODRESULT] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandMethodResult;
 		//new instance result doesn't prevent garbage collection, as it only reads a remote index
@@ -312,11 +334,14 @@ final class RMIStream implements Closeable {
 		COMMAND_HANDLERS[COMMAND_CACHED_FIELD] = (SimpleCommandHandler) RMIStream::handleCommandCachedField;
 		COMMAND_HANDLERS[COMMAND_INTERRUPT_REQUEST] = (SimpleCommandHandler) RMIStream::handleCommandInterruptRequest;
 		COMMAND_HANDLERS[COMMAND_DIRECT_REQUEST_FORBIDDEN] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandDirectRequestForbidden;
-		COMMAND_HANDLERS[COMMAND_METHODCALL_ASYNC] = (GarbageCollectionPreventingCommandHandler) RMIStream::handleCommandMethodCallAsync;
+		COMMAND_HANDLERS[COMMAND_METHODCALL_ASYNC] = (CommandHandler) RMIStream::handleCommandMethodCallAsync;
 
-		COMMAND_HANDLERS[COMMAND_METHODCALL_CONTEXTVAR] = (GarbageCollectionPreventingCommandHandler) RMIStream::handleCommandContextVariableMethodCall;
+		//protocol 2
+		COMMAND_HANDLERS[COMMAND_METHODCALL_CONTEXTVAR] = (CommandHandler) RMIStream::handleCommandContextVariableMethodCall;
 		COMMAND_HANDLERS[COMMAND_METHODCALL_CONTEXTVAR_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandContextVariableMethodCallRedispatch;
 		COMMAND_HANDLERS[COMMAND_METHODCALL_CONTEXTVAR_NOT_FOUND] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandContextVariableMethodCallVariableNotFound;
+		COMMAND_HANDLERS[COMMAND_ASYNC_RESPONSE] = (SimpleCommandHandler) RMIStream::handleCommandAsyncResponse;
+		COMMAND_HANDLERS[COMMAND_METHODCALL_ASYNC_WITH_RESPONSE] = (CommandHandler) RMIStream::handleCommandMethodCallAsyncWithResponse;
 	}
 
 	interface RequestScopeHandler {
@@ -446,6 +471,12 @@ final class RMIStream implements Closeable {
 
 	private static final AtomicReferenceFieldUpdater<RMIStream, RequestHandlerState> ARFU_requestHandlerState = AtomicReferenceFieldUpdater
 			.newUpdater(RMIStream.class, RequestHandlerState.class, "requestHandlerState");
+	@SuppressWarnings({ "unchecked", "rawtypes" })
+	private static final AtomicReferenceFieldUpdater<RMIStream, Function<? super Request, ? extends RMIRuntimeException>> ARFU_requestHandlerCloseReason = (AtomicReferenceFieldUpdater) AtomicReferenceFieldUpdater
+			.newUpdater(RMIStream.class, Function.class, "requestHandlerCloseReason");
+
+	private static final AtomicReferenceFieldUpdater<RMIStream, RMIVariables[]> ARFU_associatedVariables = AtomicReferenceFieldUpdater
+			.newUpdater(RMIStream.class, RMIVariables[].class, "associatedVariables");
 
 	protected final RMIConnection connection;
 	protected final RequestHandler requestHandler;
@@ -475,7 +506,12 @@ final class RMIStream implements Closeable {
 	private final ClassLoader nullClassLoader;
 	private final ClassLoaderReflectionElementSupplier nullClassLoaderSupplier;
 
-	private final Collection<RMIVariables> associatedVariables = ConcurrentHashMap.newKeySet();
+	/**
+	 * The array of associated variables, or <code>null</code> if the stream read IO has shut down.
+	 */
+	private volatile RMIVariables[] associatedVariables = EMPTY_RMI_VARIABLES_ARRAY;
+
+	private volatile Function<? super Request, ? extends RMIRuntimeException> requestHandlerCloseReason;
 
 	private class CommandFlusher implements Closeable {
 		final StrongSoftReference<DataOutputUnsyncByteArrayOutputStream> buffer;
@@ -493,13 +529,13 @@ final class RMIStream implements Closeable {
 		}
 
 		@Override
-		public void close() throws IOException {
+		public void close() {
 			flushCommand(buffer);
 		}
 	}
 
 	//XXX a test is recommended for this mechanism, to check that no gc action is pending when an RMIVariables is closed
-	static final class ReferencesReleasedAction {
+	public static final class ReferencesReleasedAction {
 		private static final class ReleaseData {
 			protected final RMIVariables vars;
 			protected final int localId;
@@ -666,7 +702,7 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private class RunInputRunnable implements Runnable {
+	public final class RunInputRunnable implements Runnable {
 		// this field could be kept on a per-RMIVariables basis, but this is fine for now
 		protected ReferencesReleasedAction gcAction = new ReferencesReleasedAction();
 
@@ -733,27 +769,14 @@ final class RMIStream implements Closeable {
 							default: {
 								CommandHandler commandhandler = getCommandHandler(command);
 								if (commandhandler == null) {
-									connection.offerStreamTask(this);
+									offerSelfStreamTask();
 									handleUnknownCommand(command, in);
 								} else {
-									ReferencesReleasedAction currentaction;
-									if (commandhandler.isPreventGarbageCollection()) {
-										currentaction = this.gcAction;
-										currentaction.increasePendingRequestCount();
-									} else {
-										currentaction = null;
+									if (commandhandler.handleCommand(RMIStream.this, this, in, this.gcAction)) {
+										break;
 									}
-									if (commandhandler.isPendingResponse()) {
-										requestHandlerAddResponseCount();
-									}
-									try {
-										connection.offerStreamTask(this);
-									} catch (Throwable e) {
-										//remove the pending response if we failed to reach the command handling
-										requestHandlerRemoveResponseCount();
-										throw e;
-									}
-									commandhandler.accept(RMIStream.this, in, currentaction);
+									//continue the loop, as the next reading task hasn't been offered
+									continue block_read_loop;
 								}
 								break;
 							}
@@ -771,6 +794,10 @@ final class RMIStream implements Closeable {
 			return true;
 		}
 
+		protected void offerSelfStreamTask() {
+			connection.offerStreamTask(this);
+		}
+
 		@Override
 		public void run() {
 			Throwable streamerrorexc = null;
@@ -780,12 +807,27 @@ final class RMIStream implements Closeable {
 					//return and dont close the sockets
 					return;
 				} // else the stream is exiting
+				initRequestHandlerCloseReason(req -> new RMIIOFailureException("Reached end of RMI stream."));
 			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
 					| ServiceConfigurationError e) {
 				streamerrorexc = e;
+				addRequestHandlerCloseReason(r -> new RMIIOFailureException("Failed to read data from RMI socket.", e));
 			}
-			//close the request handler, as the stream reading is exiting
-			closeRequestHandler();
+			try {
+				RMIVariables[] assocvars = ARFU_associatedVariables.getAndSet(RMIStream.this, null);
+				//close the request handler, as the stream reading is exiting
+				closeRequestHandler();
+				if (assocvars != null) {
+					//shouldn't be null, but safety check
+					for (RMIVariables vars : assocvars) {
+						vars.clearAsyncRequestsOnReadIOFailure();
+					}
+				}
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
+				// this code shouldn't throw, but just in case handle it
+				streamerrorexc = IOUtils.addExc(streamerrorexc, e);
+			}
 			if (streamerrorexc != null) {
 				streamError(streamerrorexc);
 				//the stream error exception was handled
@@ -848,6 +890,41 @@ final class RMIStream implements Closeable {
 		connection.offerStreamTask(new RunInputRunnable());
 	}
 
+	private Function<? super Request, ? extends RMIRuntimeException> getRequestHandlerCloseReason() {
+		Function<? super Request, ? extends RMIRuntimeException> result = this.requestHandlerCloseReason;
+		if (result != null) {
+			return result;
+		}
+		return req -> {
+			return new RMIResourceUnavailableException("RMI stream closed.");
+		};
+	}
+
+	private void initRequestHandlerCloseReason(
+			Function<? super Request, ? extends RMIRuntimeException> requestHandlerCloseReason) {
+		ARFU_requestHandlerCloseReason.compareAndSet(this, null, requestHandlerCloseReason);
+	}
+
+	private void addRequestHandlerCloseReason(
+			Function<? super Request, ? extends RMIRuntimeException> requestHandlerCloseReason) {
+		while (true) {
+			Function<? super Request, ? extends RMIRuntimeException> f = this.requestHandlerCloseReason;
+			Function<? super Request, ? extends RMIRuntimeException> nfunc;
+			if (f == null) {
+				nfunc = requestHandlerCloseReason;
+			} else {
+				nfunc = req -> {
+					RMIRuntimeException res = f.apply(req);
+					res.addSuppressed(requestHandlerCloseReason.apply(req));
+					return res;
+				};
+			}
+			if (ARFU_requestHandlerCloseReason.compareAndSet(this, f, nfunc)) {
+				break;
+			}
+		}
+	}
+
 	private void closeRequestHandler() {
 		while (true) {
 			RequestHandlerState state = this.requestHandlerState;
@@ -857,7 +934,7 @@ final class RMIStream implements Closeable {
 			RequestHandlerState nstate = state.close();
 			if (ARFU_requestHandlerState.compareAndSet(this, state, nstate)) {
 				if (nstate.unprocessedResponseCount == 0) {
-					requestHandler.close();
+					requestHandler.close(getRequestHandlerCloseReason());
 				}
 				break;
 			}
@@ -879,7 +956,7 @@ final class RMIStream implements Closeable {
 			RequestHandlerState nstate = state.removeResponseCount();
 			if (ARFU_requestHandlerState.compareAndSet(this, state, nstate)) {
 				if (nstate.closed && nstate.unprocessedResponseCount == 0) {
-					requestHandler.close();
+					requestHandler.close(getRequestHandlerCloseReason());
 				}
 				break;
 			}
@@ -901,6 +978,7 @@ final class RMIStream implements Closeable {
 		}
 		outSemaphore.acquireUninterruptibly();
 		try {
+			initRequestHandlerCloseReason(req -> new RMIIOFailureException("RMI stream closed."));
 			writeStreamCloseIfNotWrittenLocked();
 		} finally {
 			outSemaphore.release();
@@ -1023,23 +1101,37 @@ final class RMIStream implements Closeable {
 	}
 
 	protected void flushCommand(StrongSoftReference<DataOutputUnsyncByteArrayOutputStream> bufferref)
-			throws IOException {
+			throws RMIIOFailureException {
 		try {
-			checkClosed();
-
 			outSemaphore.acquireUninterruptibly();
+			//check closed in the lock
+			//the exception from the checkClosed() doesn't need to be passed to streamError()
+			if (streamCloseWritten != 0) {
+				outSemaphore.release();
+				throw new RMIResourceUnavailableException("Stream already closed.");
+			}
 			try {
 				//XXX we might remove checkClosed calls from the command writers
-				bufferref.get().writeTo(blockOut);
-				blockOut.nextBlock();
-				//need to flush, as the underlying output stream might be buffered, or anything
-				blockOut.flush();
-			} finally {
-				outSemaphore.release();
+				try {
+					bufferref.get().writeTo(blockOut);
+					blockOut.nextBlock();
+					//need to flush, as the underlying output stream might be buffered, or anything
+					blockOut.flush();
+				} finally {
+					//we need to release the lock before handling the possible IOException
+					//as that might recursively call other writer functions to the stream
+					//(like close writing)
+					outSemaphore.release();
+				}
+			} catch (IOException e) {
+				try {
+					streamError(e);
+				} catch (Throwable e2) {
+					e2.addSuppressed(e);
+					throw e2;
+				}
+				throw new RMIIOFailureException("Failed to write RMI command to stream.", e);
 			}
-		} catch (IOException e) {
-			streamError(e);
-			throw e;
 		} finally {
 			connection.releaseCachedByteBuffer(bufferref);
 		}
@@ -1800,14 +1892,6 @@ final class RMIStream implements Closeable {
 		return connection.getClassLoaderByIdOptional(clid);
 	}
 
-	static class ClassLoaderNotFoundIOException extends IOException {
-		private static final long serialVersionUID = 1L;
-
-		public ClassLoaderNotFoundIOException(String classloaderid) {
-			super("ClassLoader not found for id: " + classloaderid);
-		}
-	}
-
 	private static class ClassSetPartiallyReadException extends Exception {
 		private static final long serialVersionUID = 1L;
 
@@ -2073,7 +2157,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private void writeMethodParameters(RMIVariables variables, ExecutableTransferProperties<?> execproperties,
-			Object[] arguments, DataOutputUnsyncByteArrayOutputStream out) throws IOException {
+			Object[] arguments, DataOutputUnsyncByteArrayOutputStream out) {
 		if (ObjectUtils.isNullOrEmpty(arguments)) {
 			out.writeShort(0);
 			return;
@@ -2082,8 +2166,14 @@ final class RMIStream implements Closeable {
 		Executable exec = execproperties.getExecutable();
 		Class<?>[] paramtypes = exec.getParameterTypes();
 		for (int i = 0; i < arguments.length; i++) {
-			Object argument = unwrapWrapperForTransfer(arguments[i], variables);
-			writeObjectUsingWriteHandler(execproperties.getParameterWriter(i), variables, argument, out, paramtypes[i]);
+			try {
+				Object argument = unwrapWrapperForTransfer(arguments[i], variables);
+				writeObjectUsingWriteHandler(execproperties.getParameterWriter(i), variables, argument, out,
+						paramtypes[i]);
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
+				throw new RMIObjectTransferFailureException("Failed to write method call argument[" + i + "].", e);
+			}
 		}
 	}
 
@@ -2269,16 +2359,19 @@ final class RMIStream implements Closeable {
 	private RMIVariables readVariablesValidate(DataInputUnsyncByteArrayInputStream in)
 			throws IOException, RMICallFailedException {
 		RMIVariables variables = readVariablesImpl(in);
-		if (variables == null) {
-			throw new RMICallFailedException("Variables not found.");
-		}
+		validateVariables(variables);
 		return variables;
+	}
+
+	private static void validateVariables(RMIVariables variables) {
+		if (variables == null) {
+			throw new RMIResourceUnavailableException("Variables not found.");
+		}
 	}
 
 	protected RMIVariables readVariablesImpl(DataInputUnsyncByteArrayInputStream in) throws EOFException {
 		int variablesid = in.readInt();
-		RMIVariables variables = connection.getVariablesByLocalId(variablesid);
-		return variables;
+		return connection.getVariablesByLocalId(variablesid);
 	}
 
 	private static void writeVariables(RMIVariables variables, DataOutputUnsyncByteArrayOutputStream out) {
@@ -2303,7 +2396,7 @@ final class RMIStream implements Closeable {
 		}
 
 		@Override
-		public void executeRedispatchAction() throws IOException {
+		public void executeRedispatchAction() {
 			invokeAndWriteMethodCall(requestId, variables, invokeObject, method, args);
 		}
 
@@ -2328,7 +2421,7 @@ final class RMIStream implements Closeable {
 		}
 
 		@Override
-		public void executeRedispatchAction() throws IOException {
+		public void executeRedispatchAction() {
 			instantiateAndWriteNewInstanceCall(requestId, variables, constructor, args);
 		}
 
@@ -2357,7 +2450,7 @@ final class RMIStream implements Closeable {
 		}
 
 		@Override
-		public void executeRedispatchAction() throws IOException {
+		public void executeRedispatchAction() {
 			instantiateAndWriteUnknownNewInstanceCall(requestId, variables, cl, className, argClassNames, args);
 		}
 
@@ -2375,7 +2468,7 @@ final class RMIStream implements Closeable {
 		}
 
 		@Override
-		public void executeRedispatchAction() throws IOException {
+		public void executeRedispatchAction() {
 			throw new RMIContextVariableNotFoundException(varname);
 		}
 
@@ -2391,108 +2484,92 @@ final class RMIStream implements Closeable {
 	}
 
 	private void handleCommandPong(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		try {
-			int reqid = in.readInt();
-			requestHandler.addResponse(reqid, new PingResponse());
-		} finally {
-			requestHandlerRemoveResponseCount();
-		}
+		int reqid = in.readInt();
+		requestHandler.addResponse(reqid, new PingResponse());
 	}
 
 	private void handleCommandNewVariablesResult(DataInputUnsyncByteArrayInputStream in) throws IOException {
+		int reqid = in.readInt();
 		try {
-			int reqid = in.readInt();
-			try {
-				int remoteid = in.readInt();
+			int remoteid = in.readInt();
 
-				if (remoteid == RMIVariables.NO_OBJECT_ID) {
-					requestHandler.addResponse(reqid,
-							new NewVariablesFailedResponse(new RMICallFailedException("Failed to create variables.")));
-				} else {
-					requestHandler.addResponse(reqid, new NewVariablesResponse(remoteid));
-				}
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
+			if (remoteid == RMIVariables.NO_OBJECT_ID) {
 				requestHandler.addResponse(reqid,
-						new NewVariablesFailedResponse(new RMICallFailedException("Failed to read response.", e)));
+						new NewVariablesFailedResponse(new RMICallFailedException("Failed to create variables.")));
+			} else {
+				requestHandler.addResponse(reqid, new NewVariablesResponse(remoteid));
 			}
-		} finally {
-			requestHandlerRemoveResponseCount();
+		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+				| ServiceConfigurationError e) {
+			requestHandler.addResponse(reqid,
+					new NewVariablesFailedResponse(new RMICallFailedException("Failed to read response.", e)));
 		}
 	}
 
 	private void handleCommandNewInstanceResult(DataInputUnsyncByteArrayInputStream in) throws IOException {
+		int reqid = in.readInt();
+		boolean interrupted = false;
+		int interruptreqcount = 0;
 		try {
-			int reqid = in.readInt();
-			boolean interrupted = false;
-			int interruptreqcount = 0;
-			try {
-				int remoteindex = in.readInt();
-				int compressedinterruptstatus = in.readInt();
+			int remoteindex = in.readInt();
+			int compressedinterruptstatus = in.readInt();
 
-				interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
-				interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
+			interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
+			interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
 
-				requestHandler.addResponse(reqid, new NewInstanceResponse(interrupted, interruptreqcount, remoteindex));
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
-						new RMICallFailedException("Failed to read new instance result.", e)));
-			}
-		} finally {
-			requestHandlerRemoveResponseCount();
+			requestHandler.addResponse(reqid, new NewInstanceResponse(interrupted, interruptreqcount, remoteindex));
+		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+				| ServiceConfigurationError e) {
+			requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
+					new RMICallFailedException("Failed to read new instance result.", e)));
 		}
 	}
 
 	private void handleCommandGetContextVariableResult(DataInputUnsyncByteArrayInputStream in) throws IOException {
+		int variablesid = in.readInt();
+		int reqid = in.readInt();
 		try {
-			RMIVariables vars = readVariablesValidate(in);
-			int reqid = in.readInt();
-			try {
-				Object obj = readObject(vars, in);
+			RMIVariables vars = connection.getVariablesByLocalId(variablesid);
+			validateVariables(vars);
+			Object obj = readObject(vars, in);
 
-				requestHandler.addResponse(reqid, new GetContextVariableResponse(obj));
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				requestHandler.addResponse(reqid, new GetContextVariableFailedResponse(
-						new RMICallFailedException("Failed to read response.", e)));
-			}
-		} finally {
-			requestHandlerRemoveResponseCount();
+			requestHandler.addResponse(reqid, new GetContextVariableResponse(obj));
+		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+				| ServiceConfigurationError e) {
+			requestHandler.addResponse(reqid,
+					new GetContextVariableFailedResponse(new RMICallFailedException("Failed to read response.", e)));
 		}
 	}
 
 	private void handleCommandDirectRequestForbidden(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		try {
-			int reqid = in.readInt();
-			short cmd = in.readShort();
-			switch (cmd) {
-				case COMMAND_METHODRESULT_FAIL: {
-					requestHandler.addResponse(reqid, DirectForbiddenMethodCallResponse.INSTANCE);
-					break;
-				}
-				case COMMAND_NEWINSTANCERESULT_FAIL: {
-					requestHandler.addResponse(reqid, DirectForbiddenNewInstanceResponse.INSTANCE);
-					break;
-				}
-				case COMMAND_UNKNOWN_NEWINSTANCE_RESULT: {
-					requestHandler.addResponse(reqid, DirectForbiddenUnknownNewInstanceResponse.INSTANCE);
-					break;
-				}
-				default: {
-					requestHandler.addResponse(reqid, new CommandFailedResponse(new RMICallForbiddenException(
-							EXCEPTION_MESSAGE_DIRECT_REQUESTS_FORBIDDEN + " (Unknown command: " + cmd + ")")));
-					break;
-				}
+		int reqid = in.readInt();
+		short cmd = in.readShort();
+		switch (cmd) {
+			case COMMAND_METHODRESULT_FAIL: {
+				requestHandler.addResponse(reqid, DirectForbiddenMethodCallResponse.INSTANCE);
+				break;
 			}
-		} finally {
-			requestHandlerRemoveResponseCount();
+			case COMMAND_NEWINSTANCERESULT_FAIL: {
+				requestHandler.addResponse(reqid, DirectForbiddenNewInstanceResponse.INSTANCE);
+				break;
+			}
+			case COMMAND_UNKNOWN_NEWINSTANCE_RESULT: {
+				requestHandler.addResponse(reqid, DirectForbiddenUnknownNewInstanceResponse.INSTANCE);
+				break;
+			}
+			default: {
+				requestHandler.addResponse(reqid, new CommandFailedResponse(new RMICallForbiddenException(
+						EXCEPTION_MESSAGE_DIRECT_REQUESTS_FORBIDDEN + " (Unknown command: " + cmd + ")")));
+				break;
+			}
 		}
 	}
 
 	private void handleCommandGetContextVariable(DataInputUnsyncByteArrayInputStream in) throws IOException {
-		RMIVariables vars = readVariablesValidate(in);
+		int variablesid = in.readInt();
 		int reqid = in.readInt();
+		RMIVariables vars = connection.getVariablesByLocalId(variablesid);
+		validateVariables(vars);
 		String varid = in.readUTF();
 
 		writeGetContextVarResponse(reqid, vars, connection.getLocalContextVariable(varid));
@@ -2560,110 +2637,107 @@ final class RMIStream implements Closeable {
 	}
 
 	private void handleCommandNewVariables(DataInputUnsyncByteArrayInputStream in) throws IOException {
+		//read failures are protocol errors
 		int reqid = in.readInt();
+		int remoteid;
+		String name;
 		try {
-			int remoteid = in.readInt();
-			String name = in.readUTF();
+			remoteid = in.readInt();
+			name = in.readUTF();
 			if (name.isEmpty()) {
 				name = null;
 			}
-
+		} catch (IOException e) {
+			//protocol error, but still attempt to write a response
+			try {
+				writeCommandNewVariablesResult(reqid, RMIVariables.NO_OBJECT_ID);
+			} catch (Throwable e2) {
+				e.addSuppressed(e2);
+			}
+			throw e;
+		}
+		try {
 			RMIVariables vars = connection.newRemoteVariables(name, remoteid, this);
 			int localid = vars.getLocalIdentifier();
 
 			writeCommandNewVariablesResult(reqid, localid);
-		} catch (IOException e) {
-			writeCommandNewVariablesResult(reqid, RMIVariables.NO_OBJECT_ID);
 		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
 				| ServiceConfigurationError e) {
+			//XXX do something with these exceptions, they're currently ignored
 			writeCommandNewVariablesResult(reqid, RMIVariables.NO_OBJECT_ID);
 		}
 	}
 
 	private void handleCommandNewInstanceUnknownClassResult(DataInputUnsyncByteArrayInputStream in) throws IOException {
+		int reqid = in.readInt();
+		boolean interrupted = false;
+		int interruptreqcount = 0;
 		try {
-			int reqid = in.readInt();
-			boolean interrupted = false;
-			int interruptreqcount = 0;
+			RMIVariables variables = readVariablesValidate(in);
+			int compressedinterruptstatus = in.readInt();
+			int remoteindex = in.readInt();
+			Set<Class<?>> interfaces;
 			try {
-				RMIVariables variables = readVariablesValidate(in);
-				int compressedinterruptstatus = in.readInt();
-				int remoteindex = in.readInt();
-				Set<Class<?>> interfaces;
-				try {
-					interfaces = readClassesSet(in, variables);
-				} catch (ClassSetPartiallyReadException e) {
-					interfaces = e.getReadClasses();
-				}
-
-				interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
-				interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
-
-				requestHandler.addResponse(reqid,
-						new UnknownNewInstanceResponse(interrupted, interruptreqcount, remoteindex, interfaces));
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				requestHandler.addResponse(reqid, new UnknownNewInstanceFailedResponse(interrupted, interruptreqcount,
-						new RMICallFailedException("Failed to read new instance result.", e)));
+				interfaces = readClassesSet(in, variables);
+			} catch (ClassSetPartiallyReadException e) {
+				interfaces = e.getReadClasses();
 			}
-		} finally {
-			requestHandlerRemoveResponseCount();
+
+			interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
+			interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
+
+			requestHandler.addResponse(reqid,
+					new UnknownNewInstanceResponse(interrupted, interruptreqcount, remoteindex, interfaces));
+		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+				| ServiceConfigurationError e) {
+			requestHandler.addResponse(reqid, new UnknownNewInstanceFailedResponse(interrupted, interruptreqcount,
+					new RMICallFailedException("Failed to read new instance result.", e)));
 		}
 	}
 
 	private void handleCommandNewInstanceResultFailure(DataInputUnsyncByteArrayInputStream in) throws IOException {
+		int reqid = in.readInt();
+		boolean interrupted = false;
+		int interruptreqcount = 0;
 		try {
-			int reqid = in.readInt();
-			boolean interrupted = false;
-			int interruptreqcount = 0;
-			try {
-				int compressedinterruptstatus = in.readInt();
-				Throwable exc = readException(in);
+			int compressedinterruptstatus = in.readInt();
+			Throwable exc = readException(in);
 
-				interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
-				interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
+			interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
+			interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
 
-				requestHandler.addResponse(reqid, new NewInstanceFailedResponse(interrupted, interruptreqcount, exc));
-			} catch (RMIRuntimeException e) {
-				requestHandler.addResponse(reqid,
-						new UnknownNewInstanceFailedResponse(interrupted, interruptreqcount, e));
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				requestHandler.addResponse(reqid, new UnknownNewInstanceFailedResponse(interrupted, interruptreqcount,
-						new RMICallFailedException("Failed to read remote exception.", e)));
-			}
-		} finally {
-			requestHandlerRemoveResponseCount();
+			requestHandler.addResponse(reqid, new NewInstanceFailedResponse(interrupted, interruptreqcount, exc));
+		} catch (RMIRuntimeException e) {
+			requestHandler.addResponse(reqid, new NewInstanceFailedResponse(interrupted, interruptreqcount, e));
+		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+				| ServiceConfigurationError e) {
+			requestHandler.addResponse(reqid, new NewInstanceFailedResponse(interrupted, interruptreqcount,
+					new RMICallFailedException("Failed to read remote exception.", e)));
 		}
 	}
 
 	private void handleCommandMethodResultFailure(DataInputUnsyncByteArrayInputStream in) throws IOException {
+		int reqid = in.readInt();
+		boolean interrupted = false;
+		int interruptreqcount = 0;
 		try {
-			int reqid = in.readInt();
-			boolean interrupted = false;
-			int interruptreqcount = 0;
-			try {
-				int compressedinterruptstatus = in.readInt();
-				Throwable exc = readException(in);
+			int compressedinterruptstatus = in.readInt();
+			Throwable exc = readException(in);
 
-				interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
-				interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
+			interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
+			interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
 
-				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount, exc));
-			} catch (RMIRuntimeException e) {
-				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount, e));
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
-						new RMICallFailedException("Failed to read remote exception.", e)));
-			}
-		} finally {
-			requestHandlerRemoveResponseCount();
+			requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount, exc));
+		} catch (RMIRuntimeException e) {
+			requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount, e));
+		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+				| ServiceConfigurationError e) {
+			requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
+					new RMICallFailedException("Failed to read remote exception.", e)));
 		}
 	}
 
-	private void writeDirectRequestForbidden(short command, int reqid) throws IOException {
-		checkClosed();
+	private void writeDirectRequestForbidden(short command, int reqid) {
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_DIRECT_REQUEST_FORBIDDEN);
@@ -2672,33 +2746,50 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private void handleCommandNewInstance(DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction)
-			throws IOException {
-		int reqid;
-		RMIVariables variables;
-		Constructor<?> constructor;
-		Object[] args;
-		try {
-			reqid = in.readInt();
-			if (!connection.isAllowDirectRequests()) {
-				writeDirectRequestForbidden(COMMAND_NEWINSTANCERESULT_FAIL, reqid);
-				return;
-			}
-			try {
-				variables = readVariablesValidate(in);
-				constructor = readConstructor(in);
-				args = readMethodParameters(variables, in);
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				writeCommandExceptionResult(COMMAND_NEWINSTANCERESULT_FAIL, reqid, e, false, 0);
-				return;
-			}
-		} finally {
-			gcaction.decreasePendingRequestCount();
+	private boolean handleCommandNewInstance(RunInputRunnable inputrunnable, DataInputUnsyncByteArrayInputStream in,
+			ReferencesReleasedAction gcaction) throws IOException {
+		//throws IOException if fails, protocol error
+		int reqid = in.readInt();
+		if (!connection.isAllowDirectRequests()) {
+			writeDirectRequestForbidden(COMMAND_NEWINSTANCERESULT_FAIL, reqid);
+			return false;
 		}
-		//release the action for garbage collection
-		gcaction = null;
-		instantiateAndWriteNewInstanceCall(reqid, variables, constructor, args);
+		RMIVariables variables = null;
+		boolean ongoingrequestadded = false;
+		try {
+			Constructor<?> constructor;
+			Object[] args;
+
+			gcaction.increasePendingRequestCount();
+			try {
+				boolean streamtaskoffered = false;
+				try {
+					variables = readVariablesValidate(in);
+					variables.addOngoingRequest();
+					ongoingrequestadded = true;
+
+					inputrunnable.offerSelfStreamTask();
+					streamtaskoffered = true;
+
+					constructor = readConstructor(in);
+					args = readMethodParameters(variables, in);
+				} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+						| ServiceConfigurationError e) {
+					writeCommandExceptionResult(COMMAND_NEWINSTANCERESULT_FAIL, reqid, e, false, 0);
+					return streamtaskoffered;
+				}
+			} finally {
+				gcaction.decreasePendingRequestCount();
+			}
+			//release the action for garbage collection
+			gcaction = null;
+			instantiateAndWriteNewInstanceCall(reqid, variables, constructor, args);
+			return true;
+		} finally {
+			if (ongoingrequestadded) {
+				variables.removeOngoingRequest();
+			}
+		}
 	}
 
 	private void handleCommandNewInstanceRedispatch(DataInputUnsyncByteArrayInputStream in,
@@ -2724,49 +2815,65 @@ final class RMIStream implements Closeable {
 			}
 		} finally {
 			gcaction.decreasePendingRequestCount();
-			requestHandlerRemoveResponseCount();
 		}
 	}
 
-	private void handleCommandNewInstanceUnknownClass(DataInputUnsyncByteArrayInputStream in,
-			ReferencesReleasedAction gcaction) throws IOException {
-		int reqid;
-		RMIVariables variables;
-		ClassLoader cl;
-		String classname;
-		String[] argclassnames;
-		Object[] args;
-		try {
-			reqid = in.readInt();
-			if (!connection.isAllowDirectRequests()) {
-				writeDirectRequestForbidden(COMMAND_UNKNOWN_NEWINSTANCE_RESULT, reqid);
-				return;
-			}
-			try {
-				variables = readVariablesValidate(in);
-				int localclassloaderid = in.readInt();
-				cl = getClassLoaderWithId(variables, localclassloaderid);
-
-				classname = in.readUTF();
-				int arglen = in.readInt();
-
-				argclassnames = new String[arglen];
-				args = new Object[arglen];
-				for (int i = 0; i < arglen; i++) {
-					argclassnames[i] = in.readUTF();
-					args[i] = readObject(variables, in);
-				}
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				writeCommandExceptionResult(COMMAND_UNKNOWN_NEWINSTANCE_RESULT, reqid, e, false, 0);
-				return;
-			}
-		} finally {
-			gcaction.decreasePendingRequestCount();
+	private boolean handleCommandNewInstanceUnknownClass(RunInputRunnable inputrunnable,
+			DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction) throws IOException {
+		//throws IOException if fails, protocol error
+		int reqid = in.readInt();
+		if (!connection.isAllowDirectRequests()) {
+			writeDirectRequestForbidden(COMMAND_NEWINSTANCERESULT_FAIL, reqid);
+			return false;
 		}
-		//release the action for garbage collection
-		gcaction = null;
-		instantiateAndWriteUnknownNewInstanceCall(reqid, variables, cl, classname, argclassnames, args);
+		RMIVariables variables = null;
+		boolean ongoingrequestadded = false;
+		try {
+			ClassLoader cl;
+			String classname;
+			String[] argclassnames;
+			Object[] args;
+
+			gcaction.increasePendingRequestCount();
+			try {
+				boolean streamtaskoffered = false;
+				try {
+					variables = readVariablesValidate(in);
+					variables.addOngoingRequest();
+					ongoingrequestadded = true;
+
+					inputrunnable.offerSelfStreamTask();
+					streamtaskoffered = true;
+
+					int localclassloaderid = in.readInt();
+					cl = getClassLoaderWithId(variables, localclassloaderid);
+
+					classname = in.readUTF();
+					int arglen = in.readInt();
+
+					argclassnames = new String[arglen];
+					args = new Object[arglen];
+					for (int i = 0; i < arglen; i++) {
+						argclassnames[i] = in.readUTF();
+						args[i] = readObject(variables, in);
+					}
+				} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+						| ServiceConfigurationError e) {
+					writeCommandExceptionResult(COMMAND_NEWINSTANCERESULT_FAIL, reqid, e, false, 0);
+					return streamtaskoffered;
+				}
+			} finally {
+				gcaction.decreasePendingRequestCount();
+			}
+			//release the action for garbage collection
+			gcaction = null;
+			instantiateAndWriteUnknownNewInstanceCall(reqid, variables, cl, classname, argclassnames, args);
+			return true;
+		} finally {
+			if (ongoingrequestadded) {
+				variables.removeOngoingRequest();
+			}
+		}
 	}
 
 	private void handleCommandNewInstanceUnknownClassRedispatch(DataInputUnsyncByteArrayInputStream in,
@@ -2803,133 +2910,278 @@ final class RMIStream implements Closeable {
 			}
 		} finally {
 			gcaction.decreasePendingRequestCount();
-			requestHandlerRemoveResponseCount();
 		}
 	}
 
-	private void handleCommandMethodCallAsync(DataInputUnsyncByteArrayInputStream in,
-			ReferencesReleasedAction gcaction) {
+	private boolean handleCommandMethodCallAsync(RunInputRunnable inputrunnable, DataInputUnsyncByteArrayInputStream in,
+			ReferencesReleasedAction gcaction) throws EOFException {
+		RMIVariables variables;
+
+		//throws IOException if fails, protocol error
+		variables = readVariablesImpl(in);
+		if (variables == null) {
+			//the variables was closed on this side, or doesnt exist
+			//can't do much about it in case of async call
+			return false;
+		}
+		if (!variables.tryOngoingRequest()) {
+			//failed to add an ongoing request
+			//variables probably got closed meanwhile
+			return false;
+		}
+		//throws IOException if fails, protocol error
+		int localid = in.readInt();
 		try {
-			RMIVariables variables;
 			Object invokeobject;
 			Object[] args;
 			Method method;
+			gcaction.increasePendingRequestCount();
 			try {
-				variables = readVariablesValidate(in);
-				int localid = in.readInt();
+				//we can offer the task at this point
+				inputrunnable.offerSelfStreamTask();
 				invokeobject = readMethodInvokeObject(variables, localid);
+
 				if (invokeobject == null && !connection.isAllowDirectRequests()) {
 					//forbidden to call static methods
 					//XXX should notify the user somehow
-					return;
-				}
-				method = readMethod(in, invokeobject);
-				//TODO check disallowing direct requests if the called method has a non-interface declaring class (or java.lang.Object)
-				if (((method.getModifiers() & Modifier.STATIC) == Modifier.STATIC)
-						&& !connection.isAllowDirectRequests()) {
-					//XXX should notify the user somehow
-					return;
+					return true;
 				}
 
-				args = readMethodParameters(variables, in);
+				try {
+					method = readMethod(in, invokeobject);
+					//TODO check disallowing direct requests if the called method has a non-interface declaring class (or java.lang.Object)
+					if (((method.getModifiers() & Modifier.STATIC) == Modifier.STATIC)
+							&& !connection.isAllowDirectRequests()) {
+						//XXX should notify the user somehow
+						return true;
+					}
+					args = readMethodParameters(variables, in);
+				} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+						| ServiceConfigurationError e) {
+					//XXX should notify the user somehow
+					return true;
+				}
 			} finally {
 				gcaction.decreasePendingRequestCount();
 			}
 			//release the action for garbage collection
 			gcaction = null;
-			variables.addOngoingRequest();
 			try {
 				ReflectUtils.invokeMethod(invokeobject, method, args);
+				return true;
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
+				//XXX should notify the user somehow
+				return true;
+			}
+		} finally {
+			variables.removeOngoingRequest();
+		}
+	}
+
+	private boolean handleCommandMethodCallAsyncWithResponse(RunInputRunnable inputrunnable,
+			DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction) throws EOFException {
+		boolean writtenresponse = false;
+
+		//throws IOException if fails, protocol error
+		//the remote id is only used for sending back the response
+		int variablesremoteid = in.readInt();
+		try {
+			//throws IOException if fails, protocol error
+			RMIVariables variables = readVariablesImpl(in);
+			if (variables == null) {
+				//the variables was closed on this side, or doesnt exist
+				//can't do much about it in case of async call
+				return false;
+			}
+			if (!variables.tryOngoingRequest()) {
+				//failed to add an ongoing request
+				//variables probably got closed meanwhile
+				return false;
+			}
+			try {
+				Object invokeobject;
+				Object[] args;
+				Method method;
+
+				gcaction.increasePendingRequestCount();
+				try {
+					//we can offer the task at this point, after starting the request, and increasing the GC pending count
+					inputrunnable.offerSelfStreamTask();
+
+					//throws IOException if fails, protocol error
+					int localid = in.readInt();
+					invokeobject = readMethodInvokeObject(variables, localid);
+
+					if (invokeobject == null && !connection.isAllowDirectRequests()) {
+						//forbidden to call static methods
+						//XXX should notify the user somehow
+						return true;
+					}
+
+					try {
+						method = readMethod(in, invokeobject);
+						//TODO check disallowing direct requests if the called method has a non-interface declaring class (or java.lang.Object)
+						if (((method.getModifiers() & Modifier.STATIC) == Modifier.STATIC)
+								&& !connection.isAllowDirectRequests()) {
+							//XXX should notify the user somehow
+							return true;
+						}
+						args = readMethodParameters(variables, in);
+					} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+							| ServiceConfigurationError e) {
+						//XXX should notify the user somehow
+						return true;
+					}
+				} finally {
+					gcaction.decreasePendingRequestCount();
+				}
+				//release the action for garbage collection
+				gcaction = null;
+				try {
+					ReflectUtils.invokeMethod(invokeobject, method, args);
+					return true;
+				} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+						| ServiceConfigurationError e) {
+					//XXX should notify the user somehow
+					return true;
+				}
 			} finally {
+				//the response should be written before the request is finished
+				//set the written response flag, so we don't write it in the finally block
+				writtenresponse = true;
+				try {
+					writeCommandAsyncResponse(variablesremoteid);
+				} finally {
+					//this should be always called even if the response writing fails for some reason
+					variables.removeOngoingRequest();
+				}
+			}
+		} finally {
+			if (!writtenresponse) {
+				//some exception or something happened, and we haven't written the response above
+				//write it now, as this is necessary 
+				writeCommandAsyncResponse(variablesremoteid);
+			}
+		}
+	}
+
+	private boolean handleCommandMethodCall(RunInputRunnable inputrunnable, DataInputUnsyncByteArrayInputStream in,
+			ReferencesReleasedAction gcaction) throws IOException {
+		//throws IOException if fails, protocol error
+		int reqid = in.readInt();
+
+		RMIVariables variables = null;
+		boolean ongoingrequestadded = false;
+		try {
+			Object invokeobject;
+			MethodTransferProperties transfermethod;
+			Object[] args;
+
+			gcaction.increasePendingRequestCount();
+			try {
+				boolean streamtaskoffered = false;
+				try {
+					variables = readVariablesValidate(in);
+					variables.addOngoingRequest();
+					ongoingrequestadded = true;
+
+					inputrunnable.offerSelfStreamTask();
+					streamtaskoffered = true;
+
+					int localid = in.readInt();
+					invokeobject = readMethodInvokeObject(variables, localid);
+					if (invokeobject == null && !connection.isAllowDirectRequests()) {
+						//forbidden to call static methods
+						writeDirectRequestForbidden(COMMAND_METHODRESULT_FAIL, reqid);
+						return true;
+					}
+					Method method = readMethod(in, invokeobject);
+					//TODO check disallowing direct requests if the called method has a non-interface declaring class (or java.lang.Object)
+					if (((method.getModifiers() & Modifier.STATIC) == Modifier.STATIC)
+							&& !connection.isAllowDirectRequests()) {
+						writeDirectRequestForbidden(COMMAND_METHODRESULT_FAIL, reqid);
+						return true;
+					}
+
+					transfermethod = variables.getPropertiesCheckClosed().getExecutableProperties(method);
+					args = readMethodParameters(variables, in);
+				} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+						| ServiceConfigurationError e) {
+					writeCommandExceptionResult(COMMAND_METHODRESULT_FAIL, reqid, e, false, 0);
+					return streamtaskoffered;
+				}
+			} finally {
+				gcaction.decreasePendingRequestCount();
+			}
+			//release the action for garbage collection
+			gcaction = null;
+			invokeAndWriteMethodCall(reqid, variables, invokeobject, transfermethod, args);
+			return true;
+		} finally {
+			if (ongoingrequestadded) {
 				variables.removeOngoingRequest();
 			}
-		} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-				| ServiceConfigurationError e) {
-			//XXX should notify the user somehow
-			return;
 		}
 	}
 
-	private void handleCommandMethodCall(DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction)
-			throws IOException {
-		int reqid;
-		RMIVariables variables;
-		Object invokeobject;
-		MethodTransferProperties transfermethod;
-		Object[] args;
+	private boolean handleCommandContextVariableMethodCall(RunInputRunnable inputrunnable,
+			DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction) throws IOException {
+		//throws IOException if fails, protocol error
+		int reqid = in.readInt();
+
+		RMIVariables variables = null;
+		boolean ongoingrequestadded = false;
 		try {
-			reqid = in.readInt();
+			Object invokeobject;
+			MethodTransferProperties transfermethod;
+			Object[] args;
+
+			gcaction.increasePendingRequestCount();
 			try {
-				variables = readVariablesValidate(in);
-				int localid = in.readInt();
-				invokeobject = readMethodInvokeObject(variables, localid);
-				if (invokeobject == null && !connection.isAllowDirectRequests()) {
-					//forbidden to call static methods
-					writeDirectRequestForbidden(COMMAND_METHODRESULT_FAIL, reqid);
-					return;
-				}
-				Method method = readMethod(in, invokeobject);
-				//TODO check disallowing direct requests if the called method has a non-interface declaring class (or java.lang.Object)
-				if (((method.getModifiers() & Modifier.STATIC) == Modifier.STATIC)
-						&& !connection.isAllowDirectRequests()) {
-					writeDirectRequestForbidden(COMMAND_METHODRESULT_FAIL, reqid);
-					return;
-				}
+				boolean streamtaskoffered = false;
+				try {
+					variables = readVariablesValidate(in);
+					variables.addOngoingRequest();
+					ongoingrequestadded = true;
 
-				transfermethod = variables.getPropertiesCheckClosed().getExecutableProperties(method);
-				args = readMethodParameters(variables, in);
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				writeCommandExceptionResult(COMMAND_METHODRESULT_FAIL, reqid, e, false, 0);
-				return;
+					inputrunnable.offerSelfStreamTask();
+					streamtaskoffered = true;
+
+					String varid = in.readUTF();
+					invokeobject = connection.getLocalContextVariable(varid);
+
+					if (invokeobject == null) {
+						writeCommandContextVariableMethodCallVariableNotFound(reqid, varid);
+						return true;
+					}
+					Method method = readMethod(in, invokeobject);
+					//TODO check disallowing direct requests if the called method has a non-interface declaring class (or java.lang.Object)
+					if (((method.getModifiers() & Modifier.STATIC) == Modifier.STATIC)
+							&& !connection.isAllowDirectRequests()) {
+						writeDirectRequestForbidden(COMMAND_METHODRESULT_FAIL, reqid);
+						return true;
+					}
+
+					transfermethod = variables.getPropertiesCheckClosed().getExecutableProperties(method);
+					args = readMethodParameters(variables, in);
+				} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+						| ServiceConfigurationError e) {
+					writeCommandExceptionResult(COMMAND_METHODRESULT_FAIL, reqid, e, false, 0);
+					return streamtaskoffered;
+				}
+			} finally {
+				gcaction.decreasePendingRequestCount();
 			}
+			//release the action for garbage collection
+			gcaction = null;
+			invokeAndWriteMethodCall(reqid, variables, invokeobject, transfermethod, args);
+			return true;
 		} finally {
-			gcaction.decreasePendingRequestCount();
-		}
-		//release the action for garbage collection
-		gcaction = null;
-		invokeAndWriteMethodCall(reqid, variables, invokeobject, transfermethod, args);
-	}
-
-	private void handleCommandContextVariableMethodCall(DataInputUnsyncByteArrayInputStream in,
-			ReferencesReleasedAction gcaction) throws IOException {
-		int reqid;
-		RMIVariables variables;
-		Object invokeobject;
-		MethodTransferProperties transfermethod;
-		Object[] args;
-		try {
-			reqid = in.readInt();
-			try {
-				variables = readVariablesValidate(in);
-				String varid = in.readUTF();
-				invokeobject = connection.getLocalContextVariable(varid);
-
-				if (invokeobject == null) {
-					writeCommandContextVariableMethodCallVariableNotFound(reqid, varid);
-					return;
-				}
-				Method method = readMethod(in, invokeobject);
-				//TODO check disallowing direct requests if the called method has a non-interface declaring class (or java.lang.Object)
-				if (((method.getModifiers() & Modifier.STATIC) == Modifier.STATIC)
-						&& !connection.isAllowDirectRequests()) {
-					writeDirectRequestForbidden(COMMAND_METHODRESULT_FAIL, reqid);
-					return;
-				}
-
-				transfermethod = variables.getPropertiesCheckClosed().getExecutableProperties(method);
-				args = readMethodParameters(variables, in);
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				writeCommandExceptionResult(COMMAND_METHODRESULT_FAIL, reqid, e, false, 0);
-				return;
+			if (ongoingrequestadded) {
+				variables.removeOngoingRequest();
 			}
-		} finally {
-			gcaction.decreasePendingRequestCount();
 		}
-		//release the action for garbage collection
-		gcaction = null;
-		invokeAndWriteMethodCall(reqid, variables, invokeobject, transfermethod, args);
 	}
 
 	private void handleCommandMethodCallRedispatch(DataInputUnsyncByteArrayInputStream in,
@@ -2967,7 +3219,6 @@ final class RMIStream implements Closeable {
 			}
 		} finally {
 			gcaction.decreasePendingRequestCount();
-			requestHandlerRemoveResponseCount();
 		}
 	}
 
@@ -2976,8 +3227,8 @@ final class RMIStream implements Closeable {
 		try {
 			int reqid = in.readInt();
 			try {
-				int dispatchid = in.readInt();
 				RMIVariables variables = readVariablesValidate(in);
+				int dispatchid = in.readInt();
 				String varid = in.readUTF();
 				Object invokeobject = connection.getLocalContextVariable(varid);
 
@@ -3006,7 +3257,6 @@ final class RMIStream implements Closeable {
 			}
 		} finally {
 			gcaction.decreasePendingRequestCount();
-			requestHandlerRemoveResponseCount();
 		}
 	}
 
@@ -3015,6 +3265,27 @@ final class RMIStream implements Closeable {
 		int reqid = in.readInt();
 		String varname = in.readUTF();
 		requestHandler.addResponse(reqid, new ContextVariableNotFoundResponse(varname));
+	}
+
+	private void handleCommandAsyncResponse(DataInputUnsyncByteArrayInputStream in) throws IOException {
+		RMIVariables vars = readVariablesImpl(in);
+		if (vars != null) {
+			vars.removeOngoingAsyncRequest();
+		}
+	}
+
+	/**
+	 * @param variablesremoteid
+	 *            The {@link RMIVariables#getRemoteIdentifier()} of the variables.
+	 */
+	//parameter is an integer instead of an RMIVariables, so if it gets closed on the server, 
+	//then a response can still be sent back based on the identifier
+	private void writeCommandAsyncResponse(int variablesremoteid) {
+		try (CommandFlusher flusher = new CommandFlusher()) {
+			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
+			out.writeShort(COMMAND_ASYNC_RESPONSE);
+			out.writeInt(variablesremoteid);
+		}
 	}
 
 	private static void checkRedispatchResponseAdded(boolean responseadded) {
@@ -3033,33 +3304,45 @@ final class RMIStream implements Closeable {
 	private void handleCommandMethodResult(DataInputUnsyncByteArrayInputStream in, ReferencesReleasedAction gcaction)
 			throws IOException {
 		try {
-			int reqid = in.readInt();
 			boolean interrupted = false;
 			int interruptreqcount = 0;
-			try {
-				RMIVariables variables = readVariablesValidate(in);
-				int compressedinterruptstatus = in.readInt();
-				Object value = readObject(variables, in);
+			RMIVariables variables;
 
+			int reqid = in.readInt();
+			try {
+				variables = readVariablesValidate(in);
+				int compressedinterruptstatus = in.readInt();
 				interrupted = isCompressedInterruptStatusInvokerThreadInterrupted(compressedinterruptstatus);
 				interruptreqcount = getCompressedInterruptStatusDeliveredRequestCount(compressedinterruptstatus);
+			} catch (IOException e) {
+				requestHandler.addResponse(reqid, new MethodCallIOFailureResponse(interrupted, interruptreqcount,
+						"Failed to read method result.", e));
+				return;
+			} catch (RMIRuntimeException e) {
+				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount, e));
+				return;
+			}
 
-				requestHandler.addResponse(reqid, new MethodCallResponse(interrupted, interruptreqcount, value));
+			Object value;
+			try {
+				value = readObject(variables, in);
 			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
 					| ServiceConfigurationError e) {
-				requestHandler.addResponse(reqid, new MethodCallFailedResponse(interrupted, interruptreqcount,
-						new RMICallFailedException("Failed to read method result.", e)));
+				requestHandler.addResponse(reqid, new MethodCallObjectTransferFailedResponse(interrupted,
+						interruptreqcount, "Failed to read method result.", e));
+				return;
 			}
+
+			requestHandler.addResponse(reqid, new MethodCallResponse(interrupted, interruptreqcount, value));
 		} finally {
 			gcaction.decreasePendingRequestCount();
-			requestHandlerRemoveResponseCount();
 		}
 	}
 
 	private void handleCommandCloseVariables(DataInputUnsyncByteArrayInputStream in) throws EOFException {
 		RMIVariables vars = readVariablesImpl(in);
 		if (vars != null) {
-			connection.remotelyClosedVariables(vars);
+			vars.remotelyClosed();
 		}
 	}
 
@@ -3085,8 +3368,7 @@ final class RMIStream implements Closeable {
 				"Object with id: " + localid + " is not an instance of " + ClassLoader.class.getName());
 	}
 
-	void writeCommandReferencesReleased(RMIVariables variables, int remoteid, int count)
-			throws IOException, InterruptedException {
+	void writeCommandReferencesReleased(RMIVariables variables, int remoteid, int count) throws InterruptedException {
 		if (count <= 0) {
 			throw new IllegalArgumentException("Count must be greater than zero: " + count);
 		}
@@ -3107,7 +3389,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private void instantiateAndWriteUnknownNewInstanceCall(int reqid, RMIVariables variables, ClassLoader cl,
-			String classname, String[] argclassnames, Object[] args) throws IOException {
+			String classname, String[] argclassnames, Object[] args) {
 
 		Thread thread = Thread.currentThread();
 		variables.addOngoingRequest();
@@ -3191,7 +3473,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private void instantiateAndWriteNewInstanceCall(int reqid, RMIVariables variables, Constructor<?> constructor,
-			Object[] args) throws IOException {
+			Object[] args) {
 		Thread thread = Thread.currentThread();
 		variables.addOngoingRequest();
 		try {
@@ -3218,7 +3500,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private void invokeAndWriteMethodCall(int reqid, RMIVariables variables, Object invokeobject,
-			MethodTransferProperties method, Object[] args) throws IOException {
+			MethodTransferProperties method, Object[] args) {
 		Thread thread = Thread.currentThread();
 		variables.addOngoingRequest();
 		try {
@@ -3243,8 +3525,7 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private void writeCommandInterruptRequest(int reqid) throws IOException {
-		checkClosed();
+	private void writeCommandInterruptRequest(int reqid) {
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_INTERRUPT_REQUEST);
@@ -3252,8 +3533,7 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private void writeCommandPing(int reqid) throws IOException {
-		checkClosed();
+	private void writeCommandPing(int reqid) {
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_PING);
@@ -3261,18 +3541,22 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private void writeCommandGetContextVar(int reqid, RMIVariables vars, String variableid) throws IOException {
-		checkClosed();
+	private void writeCommandGetContextVar(int reqid, RMIVariables vars, String variableid) {
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_GET_CONTEXT_VAR);
 			writeVariables(vars, out);
 			out.writeInt(reqid);
-			out.writeUTF(variableid);
+			try {
+				out.writeUTF(variableid);
+			} catch (UTFDataFormatException e) {
+				// if the variable id is too long
+				throw new IllegalArgumentException("Invalid context variable name: " + variableid, e);
+			}
 		}
 	}
 
-	private void writeGetContextVarResponse(int reqid, RMIVariables vars, Object result) throws IOException {
+	private void writeGetContextVarResponse(int reqid, RMIVariables vars, Object result) {
 		checkClosed();
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
@@ -3287,8 +3571,7 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private void writeCommandPong(int reqid) throws IOException {
-		checkClosed();
+	private void writeCommandPong(int reqid) {
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_PONG);
@@ -3297,67 +3580,51 @@ final class RMIStream implements Closeable {
 	}
 
 	private void writeCommandCachedClass(ClassReflectionElementSupplier clazz, int index) {
-		checkClosed();
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_CACHED_CLASS);
 			writeClassData(clazz, out);
 			out.writeInt(index);
-		} catch (IOException e) {
-			streamError(e);
 		}
 	}
 
 	private void writeCommandCachedClassLoader(ClassLoaderReflectionElementSupplier cl, int index) {
-		checkClosed();
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_CACHED_CLASSLOADER);
 			writeClassLoaderData(cl, out);
 			out.writeInt(index);
-		} catch (IOException e) {
-			streamError(e);
 		}
 	}
 
 	private void writeCommandCachedMethod(MethodReflectionElementSupplier method, int index) {
-		checkClosed();
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_CACHED_METHOD);
 			writeMethodData(method, out);
 			out.writeInt(index);
-		} catch (IOException e) {
-			streamError(e);
 		}
 	}
 
 	private void writeCommandCachedConstructor(ConstructorReflectionElementSupplier constructor, int index) {
-		checkClosed();
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_CACHED_CONSTRUCTOR);
 			writeConstructorData(constructor, out);
 			out.writeInt(index);
-		} catch (IOException e) {
-			streamError(e);
 		}
 	}
 
 	private void writeCommandCachedField(FieldReflectionElementSupplier field, int index) {
-		checkClosed();
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_CACHED_FIELD);
 			writeFieldData(field, out);
 			out.writeInt(index);
-		} catch (IOException e) {
-			streamError(e);
 		}
 	}
 
-	private void writeCommandNewVariablesResult(int reqid, int localid) throws IOException {
-		checkClosed();
+	private void writeCommandNewVariablesResult(int reqid, int localid) {
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_NEW_VARIABLES_RESULT);
@@ -3399,7 +3666,7 @@ final class RMIStream implements Closeable {
 	private Object readNewRemoteObject(RMIVariables variables, DataInputUnsyncByteArrayInputStream in)
 			throws IOException {
 		if (variables == null) {
-			throw new IOException("Failed to read remote object with null variables.");
+			throw new RMIObjectTransferFailureException("Failed to read remote object with null variables.");
 		}
 		Set<Class<?>> classes;
 		try {
@@ -3412,8 +3679,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private void writeCommandUnknownNewInstanceResult(RMIVariables variables, int reqid, int localindex,
-			Set<Class<?>> interfaces, boolean currentthreadinterrupted, int interruptreqcount) throws IOException {
-		checkClosed();
+			Set<Class<?>> interfaces, boolean currentthreadinterrupted, int interruptreqcount) {
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_UNKNOWN_NEWINSTANCE_RESULT);
@@ -3426,8 +3692,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private void writeCommandNewInstanceResult(int reqid, int localindex, boolean currentthreadinterrupted,
-			int interruptreqcount) throws IOException {
-		checkClosed();
+			int interruptreqcount) {
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_NEWINSTANCE_RESULT);
@@ -3438,7 +3703,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private void writeCommandMethodCallAsync(RMIVariables variables, int remoteid, MethodTransferProperties method,
-			Object[] arguments) throws IOException {
+			Object[] arguments) {
 		checkClosed();
 		StrongSoftReference<DataOutputUnsyncByteArrayOutputStream> buffer = connection.getCachedByteBuffer();
 		DataOutputUnsyncByteArrayOutputStream out = buffer.get();
@@ -3452,12 +3717,30 @@ final class RMIStream implements Closeable {
 		Semaphore gcsemaphore = variables.gcCommandSemaphore;
 		gcsemaphore.acquireUninterruptibly();
 		try {
-			try {
-				writeMethodParameters(variables, method, arguments, out);
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				throw new RMIObjectTransferFailureException("Failed to write method call parameters.", e);
-			}
+			writeMethodParameters(variables, method, arguments, out);
+			flushCommand(buffer);
+		} finally {
+			gcsemaphore.release();
+		}
+	}
+
+	private void writeCommandMethodCallAsyncWithResponse(RMIVariables variables, int remoteid,
+			MethodTransferProperties method, Object[] arguments) {
+		checkClosed();
+		StrongSoftReference<DataOutputUnsyncByteArrayOutputStream> buffer = connection.getCachedByteBuffer();
+		DataOutputUnsyncByteArrayOutputStream out = buffer.get();
+
+		out.writeShort(COMMAND_METHODCALL_ASYNC_WITH_RESPONSE);
+		out.writeInt(variables.getLocalIdentifier());
+		writeVariables(variables, out);
+		out.writeInt(remoteid);
+
+		writeMethod(method.getExecutable(), out);
+
+		Semaphore gcsemaphore = variables.gcCommandSemaphore;
+		gcsemaphore.acquireUninterruptibly();
+		try {
+			writeMethodParameters(variables, method, arguments, out);
 			flushCommand(buffer);
 		} finally {
 			gcsemaphore.release();
@@ -3465,7 +3748,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private void writeCommandMethodCall(RMIVariables variables, int reqid, int remoteid,
-			MethodTransferProperties method, Object[] arguments, Integer dispatch) throws IOException {
+			MethodTransferProperties method, Object[] arguments, Integer dispatch) {
 		checkClosed();
 		StrongSoftReference<DataOutputUnsyncByteArrayOutputStream> buffer = connection.getCachedByteBuffer();
 		DataOutputUnsyncByteArrayOutputStream out = buffer.get();
@@ -3486,12 +3769,7 @@ final class RMIStream implements Closeable {
 		Semaphore gcsemaphore = variables.gcCommandSemaphore;
 		gcsemaphore.acquireUninterruptibly();
 		try {
-			try {
-				writeMethodParameters(variables, method, arguments, out);
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				throw new RMIObjectTransferFailureException("Failed to write method call parameters.", e);
-			}
+			writeMethodParameters(variables, method, arguments, out);
 			flushCommand(buffer);
 		} finally {
 			gcsemaphore.release();
@@ -3499,7 +3777,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private void writeCommandContextVariableMethodCall(RMIVariables variables, int reqid, String variablename,
-			MethodTransferProperties method, Object[] arguments, Integer dispatch) throws IOException {
+			MethodTransferProperties method, Object[] arguments, Integer dispatch) {
 		checkClosed();
 		StrongSoftReference<DataOutputUnsyncByteArrayOutputStream> buffer = connection.getCachedByteBuffer();
 		DataOutputUnsyncByteArrayOutputStream out = buffer.get();
@@ -3507,25 +3785,25 @@ final class RMIStream implements Closeable {
 		if (dispatch == null) {
 			out.writeShort(COMMAND_METHODCALL_CONTEXTVAR);
 			out.writeInt(reqid);
+			writeVariables(variables, out);
 		} else {
 			out.writeShort(COMMAND_METHODCALL_CONTEXTVAR_REDISPATCH);
 			out.writeInt(reqid);
+			writeVariables(variables, out);
 			out.writeInt(dispatch);
 		}
-		writeVariables(variables, out);
-		out.writeUTF(variablename);
+		try {
+			out.writeUTF(variablename);
+		} catch (UTFDataFormatException e) {
+			throw new IllegalArgumentException("Invalid context variable name: " + variablename, e);
+		}
 
 		writeMethod(method.getExecutable(), out);
 
 		Semaphore gcsemaphore = variables.gcCommandSemaphore;
 		gcsemaphore.acquireUninterruptibly();
 		try {
-			try {
-				writeMethodParameters(variables, method, arguments, out);
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				throw new RMIObjectTransferFailureException("Failed to write method call parameters.", e);
-			}
+			writeMethodParameters(variables, method, arguments, out);
 			flushCommand(buffer);
 		} finally {
 			gcsemaphore.release();
@@ -3533,7 +3811,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private void writeCommandNewRemoteInstance(RMIVariables variables, int reqid,
-			ConstructorTransferProperties<?> constructor, Object[] arguments, Integer dispatch) throws IOException {
+			ConstructorTransferProperties<?> constructor, Object[] arguments, Integer dispatch) {
 		checkClosed();
 		StrongSoftReference<DataOutputUnsyncByteArrayOutputStream> buffer = connection.getCachedByteBuffer();
 		DataOutputUnsyncByteArrayOutputStream out = buffer.get();
@@ -3553,12 +3831,7 @@ final class RMIStream implements Closeable {
 		Semaphore gcsemaphore = variables.gcCommandSemaphore;
 		gcsemaphore.acquireUninterruptibly();
 		try {
-			try {
-				writeMethodParameters(variables, constructor, arguments, out);
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				throw new RMIObjectTransferFailureException("Failed to write constructor call parameters.", e);
-			}
+			writeMethodParameters(variables, constructor, arguments, out);
 			flushCommand(buffer);
 		} finally {
 			gcsemaphore.release();
@@ -3566,7 +3839,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private void writeCommandNewRemoteInstanceUnknownClass(RMIVariables variables, int reqid, int remoteclassloaderid,
-			String classname, String[] argumentclassnames, Object[] arguments, Integer dispatch) throws IOException {
+			String classname, String[] argumentclassnames, Object[] arguments, Integer dispatch) {
 		if (argumentclassnames.length != arguments.length) {
 			throw new RMICallFailedException("Length of argument types doesn't match provided argument object count: "
 					+ argumentclassnames.length + " != " + arguments.length);
@@ -3586,22 +3859,32 @@ final class RMIStream implements Closeable {
 		writeVariables(variables, out);
 		out.writeInt(remoteclassloaderid);
 
-		out.writeUTF(classname);
+		try {
+			out.writeUTF(classname);
+		} catch (UTFDataFormatException e) {
+			throw new RMIObjectTransferFailureException("Failed to transfer class name: " + classname, e);
+		}
 		out.writeInt(argumentclassnames.length);
 
 		Semaphore gcsemaphore = variables.gcCommandSemaphore;
 		gcsemaphore.acquireUninterruptibly();
 		try {
-			try {
-				for (int i = 0; i < argumentclassnames.length; i++) {
-					out.writeUTF(argumentclassnames[0]);
+			for (int i = 0; i < argumentclassnames.length; i++) {
+				try {
+					out.writeUTF(argumentclassnames[i]);
+				} catch (UTFDataFormatException e) {
+					throw new RMIObjectTransferFailureException(
+							"Failed to transfer argument[" + i + "] class name: " + argumentclassnames[i], e);
+				}
+				try {
 					Object obj = arguments[i];
 					writeObjectUsingWriteHandler(RMIObjectWriteHandler.defaultWriter(), variables, obj, out,
 							ObjectUtils.classOf(obj));
+				} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+						| ServiceConfigurationError e) {
+					throw new RMIObjectTransferFailureException("Failed to write constructor call argument[" + i + "].",
+							e);
 				}
-			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
-					| ServiceConfigurationError e) {
-				throw new RMIObjectTransferFailureException("Failed to write constructor call parameters.", e);
 			}
 			flushCommand(buffer);
 		} finally {
@@ -3610,8 +3893,7 @@ final class RMIStream implements Closeable {
 	}
 
 	private void writeCommandMethodResult(RMIVariables variables, int reqid, Object returnvalue,
-			MethodTransferProperties executableproperties, boolean currentthreadinterrupted, int interruptreqcount)
-			throws IOException {
+			MethodTransferProperties executableproperties, boolean currentthreadinterrupted, int interruptreqcount) {
 		returnvalue = unwrapWrapperForTransfer(returnvalue, variables);
 
 		checkClosed();
@@ -3630,7 +3912,8 @@ final class RMIStream implements Closeable {
 			try {
 				writeObjectUsingWriteHandler(executableproperties.getReturnValueWriter(), variables, returnvalue, out,
 						executableproperties.getReturnType());
-			} catch (Exception e) {
+			} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+					| ServiceConfigurationError e) {
 				//failed to write the return value for some reason
 
 				//remove all previously written data from the buffer
@@ -3661,42 +3944,46 @@ final class RMIStream implements Closeable {
 		return -(comressedstatus + 1);
 	}
 
-	private void writeCommandContextVariableMethodCallVariableNotFound(int reqid, String varname) throws IOException {
-		checkClosed();
+	private void writeCommandContextVariableMethodCallVariableNotFound(int reqid, String varname) {
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_METHODCALL_CONTEXTVAR_NOT_FOUND);
 			out.writeInt(reqid);
-			out.writeUTF(varname);
+			try {
+				out.writeUTF(varname);
+			} catch (UTFDataFormatException e) {
+				// can't really happen, because the variable name was once encoded when we received it
+				// so we sould be able to encode it again, it must be an internal error if we cant
+				throw new IllegalStateException("Internal error, failed to re-encode context variable name: " + varname,
+						e);
+			}
 		}
 	}
 
 	private void writeCommandExceptionResult(short commandname, int reqid, Throwable exc,
-			boolean currentthreadinterrupted, int interruptreqcount) throws IOException {
-		checkClosed();
+			boolean currentthreadinterrupted, int interruptreqcount) {
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			writeCommandExceptionResult(commandname, reqid, exc, currentthreadinterrupted, interruptreqcount, out);
-		} catch (IOException ioe) {
-			ioe.addSuppressed(exc);
-			throw ioe;
 		}
 	}
 
 	private void writeCommandExceptionResult(short commandname, int reqid, Throwable exc,
-			boolean currentthreadinterrupted, int interruptreqcount, DataOutputUnsyncByteArrayOutputStream out)
-			throws IOException {
+			boolean currentthreadinterrupted, int interruptreqcount, DataOutputUnsyncByteArrayOutputStream out) {
 		out.writeShort(commandname);
 		out.writeInt(reqid);
 		out.writeInt(compressInterruptStatus(currentthreadinterrupted, interruptreqcount));
 		writeException(exc, out);
 	}
 
-	private void writeException(Throwable exc, DataOutputUnsyncByteArrayOutputStream out) throws IOException {
+	private void writeException(Throwable exc, DataOutputUnsyncByteArrayOutputStream out) {
 		if (!tryWriteException(exc, out)) {
 			Throwable ioe = new RMIStackTracedException(exc);
 			if (!tryWriteException(ioe, out)) {
-				throw new IOException(ioe);
+				//writing RMIStackTracedException should always succeed, 
+				//as they don't contain any special fields or anything
+				//consider this a harder failure
+				throw new RMIIOFailureException(ioe);
 			}
 		}
 	}
@@ -3808,18 +4095,21 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	private void writeCommandNewVariables(String name, int identifier, int reqid) throws IOException {
-		checkClosed();
+	private void writeCommandNewVariables(String name, int identifier, int reqid) {
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_NEW_VARIABLES);
 			out.writeInt(reqid);
 			out.writeInt(identifier);
-			out.writeUTF(name == null ? "" : name);
+			try {
+				out.writeUTF(name == null ? "" : name);
+			} catch (UTFDataFormatException e) {
+				throw new IllegalArgumentException("Failed to write variables context name: " + name, e);
+			}
 		}
 	}
 
-	private void writeCommandCloseVariables(RMIVariables variables) throws IOException {
+	private void writeCommandCloseVariables(RMIVariables variables) {
 		try (CommandFlusher flusher = new CommandFlusher()) {
 			DataOutputUnsyncByteArrayOutputStream out = flusher.getBuffer();
 			out.writeShort(COMMAND_CLOSE_VARIABLES);
@@ -3829,19 +4119,13 @@ final class RMIStream implements Closeable {
 
 	protected void checkClosed() throws RMIIOFailureException {
 		if (streamCloseWritten != 0) {
-			throw new RMIIOFailureException("Stream closed.");
-		}
-	}
-
-	private static void checkAborting(Integer currentrequestid, RMIVariables vars) throws RMIIOFailureException {
-		if (currentrequestid != null && vars.isAborting()) {
-			throw new RMIIOFailureException("RMI variables is aborting. No new requests are allowed.");
+			throw new RMIResourceUnavailableException("Stream already closed.");
 		}
 	}
 
 	private void checkAborting(Integer currentrequestid) throws RMIIOFailureException {
 		if (currentrequestid != null && connection.isAborting()) {
-			throw new RMIIOFailureException("RMI connection is aborting. No new requests are allowed.");
+			throw new RMIResourceUnavailableException("RMI connection is aborting. No new requests are allowed.");
 		}
 	}
 
@@ -3887,10 +4171,10 @@ final class RMIStream implements Closeable {
 		}
 	}
 
+	//caller should call RMIVariables.addOngoingRequest(), which checks for RMIVariables state
 	Object callMethod(RMIVariables variables, int remoteid, MethodTransferProperties method, Object[] arguments)
 			throws RMIIOFailureException, InvocationTargetException {
 		Integer currentservingrequest = requestScopeHandler.getCurrentServingRequest();
-		checkAborting(currentservingrequest, variables);
 		return callMethod(variables, remoteid, method, currentservingrequest, arguments);
 	}
 
@@ -3898,22 +4182,17 @@ final class RMIStream implements Closeable {
 			Object[] arguments) throws RMIIOFailureException, InvocationTargetException {
 		try (Request request = requestHandler.newRequest()) {
 			int reqid = request.getRequestId();
-			try {
-				writeCommandMethodCall(variables, reqid, remoteid, method, arguments, dispatch);
-			} catch (IOException e) {
-				streamError(e);
-				throw new RMIIOFailureException(e);
-			}
+			writeCommandMethodCall(variables, reqid, remoteid, method, arguments, dispatch);
 			MethodCallResponse mcr = waitInterruptTrackingResponse(request, MethodCallResponse.class);
 
 			return mcr.getReturnValue();
 		}
 	}
 
+	//caller should call RMIVariables.addOngoingRequest(), which checks for RMIVariables state
 	Object callContextVariableMethod(RMIVariables variables, String variablename, MethodTransferProperties method,
 			Object[] arguments) throws RMIIOFailureException, InvocationTargetException {
 		Integer currentservingrequest = requestScopeHandler.getCurrentServingRequest();
-		checkAborting(currentservingrequest, variables);
 		return callContextVariableMethod(variables, variablename, method, currentservingrequest, arguments);
 	}
 
@@ -3922,12 +4201,7 @@ final class RMIStream implements Closeable {
 			throws RMIIOFailureException, InvocationTargetException {
 		try (Request request = requestHandler.newRequest()) {
 			int reqid = request.getRequestId();
-			try {
-				writeCommandContextVariableMethodCall(variables, reqid, variablename, method, arguments, dispatch);
-			} catch (IOException e) {
-				streamError(e);
-				throw new RMIIOFailureException(e);
-			}
+			writeCommandContextVariableMethodCall(variables, reqid, variablename, method, arguments, dispatch);
 			MethodCallResponse mcr = waitInterruptTrackingResponse(request, MethodCallResponse.class);
 
 			return mcr.getReturnValue();
@@ -3936,65 +4210,77 @@ final class RMIStream implements Closeable {
 
 	void callMethodAsync(RMIVariables variables, int remoteid, MethodTransferProperties method, Object[] arguments)
 			throws RMIIOFailureException {
-		checkAborting(null, variables);
-		try {
-			writeCommandMethodCallAsync(variables, remoteid, method, arguments);
-		} catch (IOException e) {
-			streamError(e);
-			throw new RMIIOFailureException(e);
+		if (connection.getProtocolVersion() >= 2) {
+			//supports response for async
+			//the ongoing request will be removed when that response arrives
+			variables.addOngoingAsyncRequest();
+			try {
+				writeCommandMethodCallAsyncWithResponse(variables, remoteid, method, arguments);
+			} catch (Throwable e) {
+				try {
+					variables.removeOngoingAsyncRequest();
+				} catch (Throwable e2) {
+					e.addSuppressed(e2);
+				}
+				throw e;
+			}
+		} else {
+			//add ongoing request, and remove it right away
+			//which checks for the state of the RMIVariables
+			//as well as prevents the streams and connection to be concurrently closed
+			variables.addOngoingAsyncRequest();
+			try {
+				writeCommandMethodCallAsync(variables, remoteid, method, arguments);
+			} finally {
+				variables.removeOngoingAsyncRequest();
+			}
 		}
 	}
 
 	private <RetType extends InterruptStatusTrackingRequestResponse> RetType waitInterruptTrackingResponse(
 			Request request, Class<RetType> type) {
-		try {
-			int interruptreqcount = 0;
-			while (true) {
-				try {
-					RequestResponse response = (RequestResponse) request.waitResponseInterruptible();
-					if (type.isInstance(response)) {
-						InterruptStatusTrackingRequestResponse intres = (InterruptStatusTrackingRequestResponse) response;
-						if (intres.isInvokerThreadInterrupted()
-								|| intres.getDeliveredInterruptRequestCount() < interruptreqcount) {
-							Thread.currentThread().interrupt();
-						}
-						@SuppressWarnings("unchecked")
-						RetType res = (RetType) intres;
-						return res;
+		int interruptreqcount = 0;
+		while (true) {
+			try {
+				RequestResponse response = (RequestResponse) request.waitResponseInterruptible();
+				if (type.isInstance(response)) {
+					InterruptStatusTrackingRequestResponse intres = (InterruptStatusTrackingRequestResponse) response;
+					if (intres.isInvokerThreadInterrupted()
+							|| intres.getDeliveredInterruptRequestCount() < interruptreqcount) {
+						Thread.currentThread().interrupt();
 					}
-					invokeDispatchingOrThrow(response);
-				} catch (InterruptedException e) {
-					++interruptreqcount;
-					writeCommandInterruptRequest(request.getRequestId());
+					@SuppressWarnings("unchecked")
+					RetType res = (RetType) intres;
+					return res;
 				}
+				invokeDispatchingOrThrow(response);
+			} catch (InterruptedException e) {
+				++interruptreqcount;
+				writeCommandInterruptRequest(request.getRequestId());
 			}
-		} catch (IOException e) {
-			streamError(e);
-			throw new RMIIOFailureException(e);
 		}
 	}
 
-	private void invokeDispatchingOrThrow(RequestResponse response) throws RMIIOFailureException {
+	private static void invokeDispatchingOrThrow(RequestResponse response) throws RMIIOFailureException {
 		if (response instanceof RedispatchResponse) {
 			RedispatchResponse mrr = (RedispatchResponse) response;
-			try {
-				mrr.executeRedispatchAction();
-			} catch (IOException e) {
-				streamError(e);
-			}
+			mrr.executeRedispatchAction();
 		} else {
-			throw new RMIIOFailureException("Unknown response received: " + response);
+			throw new RMICallFailedException("Unknown response received: " + response);
 		}
 	}
 
 	protected final void streamError(Throwable exc) {
+		//only set the close reason if this is the first exception that we encounter, otherwise some other error
+		//was recorded, and this is probably also a cause of that
+		initRequestHandlerCloseReason(req -> new RMIIOFailureException("RMI stream error.", exc));
 		connection.streamError(this, exc);
 	}
 
+	//caller should call RMIVariables.addOngoingRequest(), which checks for RMIVariables state
 	Object newRemoteInstance(RMIVariables variables, ConstructorTransferProperties<?> constructor, Object... arguments)
 			throws RMIIOFailureException, InvocationTargetException, RMICallFailedException {
 		Integer currentservingrequest = requestScopeHandler.getCurrentServingRequest();
-		checkAborting(currentservingrequest, variables);
 		return newRemoteInstance(variables, constructor, currentservingrequest, arguments);
 	}
 
@@ -4004,12 +4290,7 @@ final class RMIStream implements Closeable {
 		try (Request request = requestHandler.newRequest()) {
 			int reqid = request.getRequestId();
 
-			try {
-				writeCommandNewRemoteInstance(variables, reqid, constructor, arguments, dispatch);
-			} catch (IOException e) {
-				streamError(e);
-				throw new RMIIOFailureException(e);
-			}
+			writeCommandNewRemoteInstance(variables, reqid, constructor, arguments, dispatch);
 
 			NewInstanceResponse response = waitInterruptTrackingResponse(request, NewInstanceResponse.class);
 
@@ -4020,11 +4301,11 @@ final class RMIStream implements Closeable {
 		}
 	}
 
+	//caller should call RMIVariables.addOngoingRequest(), which checks for RMIVariables state
 	Object newRemoteOnlyInstance(RMIVariables variables, int remoteclassloaderid, String classname,
 			String[] constructorargumentclasses, Object[] constructorarguments)
 			throws RMIIOFailureException, RMICallFailedException, InvocationTargetException {
 		Integer currentservingrequest = requestScopeHandler.getCurrentServingRequest();
-		checkAborting(currentservingrequest, variables);
 		return newRemoteOnlyInstance(variables, remoteclassloaderid, classname, constructorargumentclasses,
 				constructorarguments, currentservingrequest);
 	}
@@ -4035,16 +4316,10 @@ final class RMIStream implements Closeable {
 		try (Request request = requestHandler.newRequest()) {
 			int reqid = request.getRequestId();
 
-			try {
-				writeCommandNewRemoteInstanceUnknownClass(variables, reqid, remoteclassloaderid, classname,
-						constructorargumentclasses, constructorarguments, dispatch);
-			} catch (IOException e) {
-				streamError(e);
-				throw new RMIIOFailureException(e);
-			}
+			writeCommandNewRemoteInstanceUnknownClass(variables, reqid, remoteclassloaderid, classname,
+					constructorargumentclasses, constructorarguments, dispatch);
 
-			UnknownNewInstanceResponse response = waitInterruptTrackingResponse(request,
-					UnknownNewInstanceResponse.class);
+			NewInstanceResponse response = waitInterruptTrackingResponse(request, NewInstanceResponse.class);
 			//get remote id before testing for instanceof, as getting the id will throw an appropriate exception
 			int remoteid = response.getRemoteId();
 			Set<Class<?>> interfaces = response.getInterfaces();
@@ -4053,65 +4328,115 @@ final class RMIStream implements Closeable {
 		}
 	}
 
-	void writeVariablesClosed(RMIVariables variables) throws IOException {
-		if (!associatedVariables.remove(variables)) {
-			throw new IllegalArgumentException("RMIVariables is not associated with this stream.");
+	/**
+	 * Called while locked on {@link RMIConnection} state lock.
+	 * 
+	 * @param variables
+	 */
+	void writeVariablesClosed(RMIVariables variables) {
+		while (true) {
+			RMIVariables[] vars = this.associatedVariables;
+			if (vars == null) {
+				//stream IO shut down, writing below might fail, but probably okay for the caller
+				break;
+			}
+			int associndex = variables.streamAssociationIndex;
+			if (associndex < 0) {
+				//the variables is not associated with this stream
+				//might be because the initialization failed/aborted, so it wasn't fully assigned to this stream
+				//skip removal from the array, and just go and write the close command
+				break;
+			}
+			if (associndex >= vars.length || vars[associndex] != variables) {
+				throw new IllegalArgumentException("RMIVariables is not associated with this stream.");
+			}
+			RMIVariables[] narray;
+			if (vars.length == 0) {
+				narray = EMPTY_RMI_VARIABLES_ARRAY;
+				if (ARFU_associatedVariables.compareAndSet(this, vars, narray)) {
+					variables.streamAssociationIndex = -1;
+					break;
+				}
+			} else if (associndex == vars.length - 1) {
+				narray = Arrays.copyOf(vars, vars.length - 1);
+				if (ARFU_associatedVariables.compareAndSet(this, vars, narray)) {
+					variables.streamAssociationIndex = -1;
+					break;
+				}
+			} else {
+				narray = new RMIVariables[vars.length - 1];
+				System.arraycopy(vars, 0, narray, 0, associndex);
+				RMIVariables movedvars = vars[vars.length - 1];
+				narray[associndex] = movedvars;
+				System.arraycopy(vars, associndex + 1, narray, associndex + 1, vars.length - associndex - 2);
+
+				if (ARFU_associatedVariables.compareAndSet(this, vars, narray)) {
+					variables.streamAssociationIndex = -1;
+					movedvars.streamAssociationIndex = associndex;
+					break;
+				}
+			}
+			//try again
 		}
-		try {
-			writeCommandCloseVariables(variables);
-		} catch (IOException e) {
-			streamError(e);
-			throw e;
+		writeCommandCloseVariables(variables);
+	}
+
+	/**
+	 * Called while locked on {@link RMIConnection} state lock.
+	 * 
+	 * @param variables
+	 * @return <code>true</code> if the stream is alive, and the association was successful.
+	 */
+	boolean associateVariables(RMIVariables variables) {
+		while (true) {
+			RMIVariables[] vars = this.associatedVariables;
+			if (vars == null) {
+				return false;
+			}
+			RMIVariables[] narray = ArrayUtils.appended(vars, variables);
+			variables.streamAssociationIndex = vars.length;
+			if (ARFU_associatedVariables.compareAndSet(this, vars, narray)) {
+				return true;
+			}
+			//try again
 		}
 	}
 
-	void associateVariables(RMIVariables variables) {
-		if (!associatedVariables.add(variables)) {
-			throw new IllegalArgumentException("Failed to associate RMIVariables with stream.");
-		}
-	}
-
+	/**
+	 * @return negative if the stream IO has shut down.
+	 */
 	int getAssociatedRMIVariablesCount() {
-		return associatedVariables.size();
+		RMIVariables[] vars = associatedVariables;
+		if (vars == null) {
+			return -1;
+		}
+		return vars.length;
 	}
 
 	int createNewVariables(String name, int varlocalid) throws RMIRuntimeException {
-		checkAborting();
-
 		try (Request request = requestHandler.newRequest()) {
 			int reqid = request.getRequestId();
 			writeCommandNewVariables(name, varlocalid, reqid);
 			NewVariablesResponse nvr = request.waitInstanceOfResponse(NewVariablesResponse.class);
 			return nvr.getRemoteIdentifier();
-		} catch (IOException e) {
-			streamError(e);
-			throw new RMIIOFailureException(e);
 		}
 	}
 
-	public void ping() throws IOException {
+	public void ping() {
 		checkAborting();
 
 		try (Request request = requestHandler.newRequest()) {
 			int reqid = request.getRequestId();
 			writeCommandPing(reqid);
 			request.waitInstanceOfResponse(PingResponse.class);
-		} catch (IOException e) {
-			streamError(e);
-			throw e;
 		}
 	}
 
-	Object getRemoteContextVariable(RMIVariables vars, String variablename) throws IOException {
-		checkAborting();
-
+	Object getRemoteContextVariable(RMIVariables vars, String variablename) {
 		try (Request request = requestHandler.newRequest()) {
 			int reqid = request.getRequestId();
 			writeCommandGetContextVar(reqid, vars, variablename);
 			return request.waitInstanceOfResponse(GetContextVariableResponse.class).getVariable();
-		} catch (IOException e) {
-			streamError(e);
-			throw e;
 		}
 	}
 

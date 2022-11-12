@@ -16,24 +16,24 @@
 package saker.build.thirdparty.saker.rmi.connection;
 
 import java.lang.reflect.InvocationTargetException;
-import java.util.Set;
 
 import saker.build.thirdparty.saker.rmi.exception.RMICallFailedException;
+import saker.build.thirdparty.saker.rmi.exception.RMIIOFailureException;
 
-class NewInstanceResponse extends InterruptStatusTrackingRequestResponse {
-	private final int remoteId;
+class MethodCallIOFailureResponse extends MethodCallResponse {
+	private final String message;
+	private final Throwable exception;
 
-	public NewInstanceResponse(boolean invokerThreadInterrupted, int deliveredInterruptRequestCount, int remoteId) {
-		super(invokerThreadInterrupted, deliveredInterruptRequestCount);
-		this.remoteId = remoteId;
+	public MethodCallIOFailureResponse(boolean invokerThreadInterrupted, int deliveredInterruptRequestCount,
+			String message, Throwable exception) {
+		super(invokerThreadInterrupted, deliveredInterruptRequestCount, null);
+		this.message = message;
+		this.exception = exception;
 	}
 
-	public int getRemoteId() throws InvocationTargetException, RMICallFailedException {
-		return remoteId;
+	@Override
+	public Object getReturnValue() throws InvocationTargetException, RMICallFailedException {
+		throw new RMIIOFailureException(message, exception);
 	}
 
-	public Set<Class<?>> getInterfaces() throws InvocationTargetException, RMICallFailedException {
-		//only relevant in case of UnknownNewInstanceResponse, but this is declared here for better source compatibility
-		throw new UnsupportedOperationException();
-	}
 }

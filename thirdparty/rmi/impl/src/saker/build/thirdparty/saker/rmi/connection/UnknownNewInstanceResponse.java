@@ -29,6 +29,7 @@ class UnknownNewInstanceResponse extends NewInstanceResponse {
 		this.interfaces = interfaces;
 	}
 
+	@Override
 	public Set<Class<?>> getInterfaces() throws InvocationTargetException, RMICallFailedException {
 		return interfaces;
 	}

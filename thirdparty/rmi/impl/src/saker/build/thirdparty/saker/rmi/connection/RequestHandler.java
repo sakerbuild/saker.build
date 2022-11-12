@@ -22,13 +22,19 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Function;
 
-class RequestHandler implements Closeable {
+import saker.build.thirdparty.saker.rmi.exception.RMICallFailedException;
+import saker.build.thirdparty.saker.rmi.exception.RMIResourceUnavailableException;
+import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
+import saker.build.thirdparty.saker.util.ObjectUtils;
+
+class RequestHandler {
 	public static final int NO_REQUEST_ID = 0;
 
 	public static final class Request implements Closeable {
 		private static final class State {
-			public boolean closed;
+			public Function<? super Request, ? extends RMIRuntimeException> closedExceptionCreator;
 			public Object response;
 			public Thread waitingThread;
 
@@ -39,22 +45,23 @@ class RequestHandler implements Closeable {
 				if (s.response != null) {
 					throw new IllegalStateException("Previous response wasn't processed yet.");
 				}
-				this.closed = s.closed;
+				this.closedExceptionCreator = s.closedExceptionCreator;
 				this.response = response;
 				this.waitingThread = s.waitingThread;
 				return this;
 			}
 
-			public State close(State s) {
+			public State close(State s,
+					Function<? super Request, ? extends RMIRuntimeException> closedExceptionCreator) {
 				this.response = s.response;
 				this.waitingThread = s.waitingThread;
-				this.closed = true;
+				this.closedExceptionCreator = closedExceptionCreator;
 				return this;
 			}
 
 			public State takeResponse(State s, Thread currentthread) {
 				this.response = null;
-				this.closed = s.closed;
+				this.closedExceptionCreator = s.closedExceptionCreator;
 				if (s.response != null) {
 					this.waitingThread = null;
 				} else {
@@ -66,8 +73,8 @@ class RequestHandler implements Closeable {
 			@Override
 			public String toString() {
 				StringBuilder builder = new StringBuilder();
-				builder.append("State[closed=");
-				builder.append(closed);
+				builder.append("State[closedExceptionCreator=");
+				builder.append(closedExceptionCreator);
 				builder.append(", response=");
 				builder.append(response);
 				builder.append(", waitingThread=");
@@ -90,21 +97,22 @@ class RequestHandler implements Closeable {
 		}
 
 		@SuppressWarnings("unchecked")
-		public <T> T waitInstanceOfResponse(Class<T> clazz) throws IOException {
+		public <T> T waitInstanceOfResponse(Class<T> clazz) throws RMICallFailedException {
 			Object resp = waitResponse();
 			if (!clazz.isInstance(resp)) {
-				throw new IOException("Invalid response for request (" + resp.getClass() + "): " + resp
-						+ " expected instance of: " + clazz);
+				throw new RMICallFailedException("Invalid response for request (" + ObjectUtils.classNameOf(resp)
+						+ "): " + resp + " expected instance of: " + clazz);
 			}
 			return (T) resp;
 		}
 
 		@SuppressWarnings("unchecked")
-		public <T> T waitInstanceOfResponseInterruptible(Class<T> clazz) throws IOException, InterruptedException {
+		public <T> T waitInstanceOfResponseInterruptible(Class<T> clazz)
+				throws RMICallFailedException, InterruptedException {
 			Object resp = waitResponseInterruptible();
 			if (!clazz.isInstance(resp)) {
-				throw new IOException("Invalid response for request (" + resp.getClass() + "): " + resp
-						+ " expected instance of: " + clazz);
+				throw new RMICallFailedException("Invalid response for request (" + ObjectUtils.classNameOf(resp)
+						+ "): " + resp + " expected instance of: " + clazz);
 			}
 			return (T) resp;
 		}
@@ -117,7 +125,7 @@ class RequestHandler implements Closeable {
 		@SuppressWarnings("unused")
 		private volatile State state = INITIAL_STATE;
 
-		public Object waitResponseInterruptible() throws IOException, InterruptedException {
+		public Object waitResponseInterruptible() throws InterruptedException {
 			//waiting thread has been set, and we have no response
 			Thread currentthread = Thread.currentThread();
 			while (true) {
@@ -126,8 +134,8 @@ class RequestHandler implements Closeable {
 				if (prevs.response != null) {
 					return prevs.response;
 				}
-				if (prevs.closed) {
-					throw new IOException("Failed to receive response for request ID: " + requestId + ", closed.");
+				if (prevs.closedExceptionCreator != null) {
+					throw prevs.closedExceptionCreator.apply(this);
 				}
 				if (Thread.interrupted()) {
 					throw new InterruptedException();
@@ -136,7 +144,7 @@ class RequestHandler implements Closeable {
 			}
 		}
 
-		public Object waitResponse() throws IOException {
+		public Object waitResponse() {
 			//waiting thread has been set, and we have no response
 			boolean interrupted = false;
 			Thread currentthread = Thread.currentThread();
@@ -147,8 +155,8 @@ class RequestHandler implements Closeable {
 					if (prevs.response != null) {
 						return prevs.response;
 					}
-					if (prevs.closed) {
-						throw new IOException("Failed to receive response for request ID: " + requestId + ", closed.");
+					if (prevs.closedExceptionCreator != null) {
+						throw prevs.closedExceptionCreator.apply(this);
 					}
 					LockSupport.park();
 					if (Thread.interrupted()) {
@@ -164,12 +172,21 @@ class RequestHandler implements Closeable {
 
 		@Override
 		public void close() {
-			wakeClose();
+			wakeClose(Request::createExceptionClosedHandler);
 			owner.requests.remove(requestId, this);
 		}
 
-		private void wakeClose() {
-			State prevs = ARFU_state.getAndUpdate(this, new State()::close);
+		private void wakeClose(Function<? super Request, ? extends RMIRuntimeException> closedExceptionCreator) {
+			State nstate = new State();
+			State prevs;
+			while (true) {
+				prevs = this.state;
+				nstate.close(prevs, closedExceptionCreator);
+				if (ARFU_state.compareAndSet(this, prevs, nstate)) {
+					break;
+				}
+				//try again
+			}
 			wakeUpState(prevs);
 		}
 
@@ -201,6 +218,16 @@ class RequestHandler implements Closeable {
 			builder.append("]");
 			return builder.toString();
 		}
+
+		public static RMIRuntimeException createExceptionClosedHandler(Request handler) {
+			return new RMIResourceUnavailableException(
+					"Failed to receive response for request ID: " + handler.requestId + ", closed.");
+		}
+
+		public static RMIRuntimeException createExceptionClosedByCaller(Request handler) {
+			return new RMICallFailedException(
+					"Failed to receive response for request ID: " + handler.requestId + ", closed by caller.");
+		}
 	}
 
 	protected final ConcurrentNavigableMap<Integer, Request> requests = new ConcurrentSkipListMap<>();
@@ -226,14 +253,13 @@ class RequestHandler implements Closeable {
 		return true;
 	}
 
-	@Override
-	public void close() {
+	public void close(Function<? super Request, ? extends RMIRuntimeException> closedExceptionCreator) {
 		while (true) {
 			Entry<Integer, Request> entry = requests.pollFirstEntry();
 			if (entry == null) {
 				break;
 			}
-			entry.getValue().wakeClose();
+			entry.getValue().wakeClose(closedExceptionCreator);
 		}
 	}
 }

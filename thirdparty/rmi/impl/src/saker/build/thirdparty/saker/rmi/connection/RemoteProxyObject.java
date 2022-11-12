@@ -22,9 +22,10 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.ReentrantLock;
 
 import saker.apiextract.api.ExcludeApi;
-import saker.build.thirdparty.saker.rmi.exception.RMICallFailedException;
 import saker.build.thirdparty.saker.rmi.exception.RMICallForbiddenException;
+import saker.build.thirdparty.saker.rmi.exception.RMIResourceUnavailableException;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
+import saker.build.thirdparty.saker.util.ArrayUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
 
@@ -36,6 +37,14 @@ import saker.build.thirdparty.saker.util.ReflectUtils;
  */
 @ExcludeApi
 public abstract class RemoteProxyObject {
+
+	/**
+	 * The {@link StackTraceElement} signalling that a remote call was made on the stack.
+	 */
+	//let the method name be an invalid name, and have brackets around it, like <clinit> has
+	private static final StackTraceElement RMI_REMOTE_CALL_STACK_TRACE_ELEMENT = new StackTraceElement("saker.rmi",
+			"<REMOTE-CALL>", null, -1);
+
 	//Bytecode for the proxy objects are generated in the class ProxyGenerator.
 	protected final Reference<? extends RMIVariables> variables;
 	protected final int remoteId;
@@ -68,7 +77,9 @@ public abstract class RemoteProxyObject {
 		} catch (RMIRuntimeException e) {
 			throw getExceptionRethrowException(m, e);
 		} catch (InvocationTargetException e) {
-			throw e.getTargetException();
+			Throwable targetexc = e.getTargetException();
+			targetexc.setStackTrace(mergeStackTrace(targetexc, Thread.currentThread().getStackTrace()));
+			throw targetexc;
 		} finally {
 			reachabilityFence(remoteobject);
 		}
@@ -88,8 +99,17 @@ public abstract class RemoteProxyObject {
 		} catch (RMIRuntimeException e) {
 			throw getExceptionRethrowException(m, e);
 		} catch (InvocationTargetException e) {
-			throw e.getTargetException();
+			Throwable targetexc = e.getTargetException();
+			targetexc.setStackTrace(mergeStackTrace(targetexc, Thread.currentThread().getStackTrace()));
+			throw targetexc;
 		}
+	}
+
+	private static StackTraceElement[] mergeStackTrace(Throwable targetexc, StackTraceElement[] threadstack) {
+		//threadstack will have the java.lang.Thread.getStackTrace() method call at the 0 index
+		//replace this with one that signals the RMI transfer over the wire
+		threadstack[0] = RMI_REMOTE_CALL_STACK_TRACE_ELEMENT;
+		return ArrayUtils.concat(targetexc.getStackTrace(), threadstack);
 	}
 
 	protected static final RMIVariables getVariables(RemoteProxyObject remoteobject) {
@@ -121,7 +141,7 @@ public abstract class RemoteProxyObject {
 	static final RMIVariables getCheckVariables(RemoteProxyObject remoteobject) {
 		RMIVariables variables = remoteobject.variables.get();
 		if (variables == null) {
-			throw new RMICallFailedException("RMIVariables not found. (RMI connection closed?)");
+			throw new RMIResourceUnavailableException("RMIVariables not found. (RMI connection closed?)");
 		}
 		return variables;
 	}
