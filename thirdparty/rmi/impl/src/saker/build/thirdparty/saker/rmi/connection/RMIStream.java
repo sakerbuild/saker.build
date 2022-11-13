@@ -49,9 +49,9 @@ import java.util.ServiceConfigurationError;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.Lock;
 import java.util.function.Function;
 
 import saker.build.thirdparty.saker.rmi.connection.RequestHandler.Request;
@@ -86,6 +86,7 @@ import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncBufferedInputStream;
 import saker.build.thirdparty.saker.util.io.function.IOBiConsumer;
 import saker.build.thirdparty.saker.util.ref.StrongSoftReference;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 
 // suppress the warnings of unused resource in try-with-resource body
 // this is used when we write a command and automatically flush with outputFlusher
@@ -494,7 +495,7 @@ final class RMIStream implements Closeable {
 	/**
 	 * A non-reentrant lock for accessing the output stream.
 	 */
-	protected final Semaphore outSemaphore = new Semaphore(1);
+	protected final Lock outLock = ThreadUtils.newExclusiveLock();
 
 	private final RMICommCache<ClassReflectionElementSupplier> commClasses;
 	private final RMICommCache<ClassLoaderReflectionElementSupplier> commClassLoaders;
@@ -834,7 +835,7 @@ final class RMIStream implements Closeable {
 				streamerrorexc = null;
 			}
 
-			outSemaphore.acquireUninterruptibly();
+			outLock.lock();
 			try {
 				try {
 					writeStreamCloseIfNotWrittenLocked();
@@ -847,7 +848,7 @@ final class RMIStream implements Closeable {
 					streamerrorexc = IOUtils.addExc(streamerrorexc, e);
 				}
 			} finally {
-				outSemaphore.release();
+				outLock.unlock();
 			}
 			try {
 				connection.removeStream(RMIStream.this);
@@ -976,12 +977,12 @@ final class RMIStream implements Closeable {
 		if (streamCloseWritten != 0) {
 			return;
 		}
-		outSemaphore.acquireUninterruptibly();
+		outLock.lock();
 		try {
 			initRequestHandlerCloseReason(req -> new RMIIOFailureException("RMI stream closed."));
 			writeStreamCloseIfNotWrittenLocked();
 		} finally {
-			outSemaphore.release();
+			outLock.unlock();
 		}
 	}
 
@@ -1103,11 +1104,11 @@ final class RMIStream implements Closeable {
 	protected void flushCommand(StrongSoftReference<DataOutputUnsyncByteArrayOutputStream> bufferref)
 			throws RMIIOFailureException {
 		try {
-			outSemaphore.acquireUninterruptibly();
+			outLock.lock();
 			//check closed in the lock
 			//the exception from the checkClosed() doesn't need to be passed to streamError()
 			if (streamCloseWritten != 0) {
-				outSemaphore.release();
+				outLock.unlock();
 				throw new RMIResourceUnavailableException("Stream already closed.");
 			}
 			try {
@@ -1121,7 +1122,7 @@ final class RMIStream implements Closeable {
 					//we need to release the lock before handling the possible IOException
 					//as that might recursively call other writer functions to the stream
 					//(like close writing)
-					outSemaphore.release();
+					outLock.unlock();
 				}
 			} catch (IOException e) {
 				try {
@@ -3379,12 +3380,12 @@ final class RMIStream implements Closeable {
 		out.writeInt(remoteid);
 		out.writeInt(count);
 
-		Semaphore gcsemaphore = variables.gcCommandSemaphore;
-		gcsemaphore.acquire();
+		Lock gclock = variables.gcCommandLock;
+		gclock.lockInterruptibly();
 		try {
 			flushCommand(buffer);
 		} finally {
-			gcsemaphore.release();
+			gclock.unlock();
 		}
 	}
 
@@ -3714,13 +3715,13 @@ final class RMIStream implements Closeable {
 
 		writeMethod(method.getExecutable(), out);
 
-		Semaphore gcsemaphore = variables.gcCommandSemaphore;
-		gcsemaphore.acquireUninterruptibly();
+		Lock gclock = variables.gcCommandLock;
+		gclock.lock();
 		try {
 			writeMethodParameters(variables, method, arguments, out);
 			flushCommand(buffer);
 		} finally {
-			gcsemaphore.release();
+			gclock.unlock();
 		}
 	}
 
@@ -3737,13 +3738,13 @@ final class RMIStream implements Closeable {
 
 		writeMethod(method.getExecutable(), out);
 
-		Semaphore gcsemaphore = variables.gcCommandSemaphore;
-		gcsemaphore.acquireUninterruptibly();
+		Lock gclock = variables.gcCommandLock;
+		gclock.lock();
 		try {
 			writeMethodParameters(variables, method, arguments, out);
 			flushCommand(buffer);
 		} finally {
-			gcsemaphore.release();
+			gclock.unlock();
 		}
 	}
 
@@ -3766,13 +3767,13 @@ final class RMIStream implements Closeable {
 
 		writeMethod(method.getExecutable(), out);
 
-		Semaphore gcsemaphore = variables.gcCommandSemaphore;
-		gcsemaphore.acquireUninterruptibly();
+		Lock gclock = variables.gcCommandLock;
+		gclock.lock();
 		try {
 			writeMethodParameters(variables, method, arguments, out);
 			flushCommand(buffer);
 		} finally {
-			gcsemaphore.release();
+			gclock.unlock();
 		}
 	}
 
@@ -3800,13 +3801,13 @@ final class RMIStream implements Closeable {
 
 		writeMethod(method.getExecutable(), out);
 
-		Semaphore gcsemaphore = variables.gcCommandSemaphore;
-		gcsemaphore.acquireUninterruptibly();
+		Lock gclock = variables.gcCommandLock;
+		gclock.lock();
 		try {
 			writeMethodParameters(variables, method, arguments, out);
 			flushCommand(buffer);
 		} finally {
-			gcsemaphore.release();
+			gclock.unlock();
 		}
 	}
 
@@ -3828,13 +3829,13 @@ final class RMIStream implements Closeable {
 
 		writeConstructor(constructor.getExecutable(), out);
 
-		Semaphore gcsemaphore = variables.gcCommandSemaphore;
-		gcsemaphore.acquireUninterruptibly();
+		Lock gclock = variables.gcCommandLock;
+		gclock.lock();
 		try {
 			writeMethodParameters(variables, constructor, arguments, out);
 			flushCommand(buffer);
 		} finally {
-			gcsemaphore.release();
+			gclock.unlock();
 		}
 	}
 
@@ -3866,8 +3867,8 @@ final class RMIStream implements Closeable {
 		}
 		out.writeInt(argumentclassnames.length);
 
-		Semaphore gcsemaphore = variables.gcCommandSemaphore;
-		gcsemaphore.acquireUninterruptibly();
+		Lock gclock = variables.gcCommandLock;
+		gclock.lock();
 		try {
 			for (int i = 0; i < argumentclassnames.length; i++) {
 				try {
@@ -3888,7 +3889,7 @@ final class RMIStream implements Closeable {
 			}
 			flushCommand(buffer);
 		} finally {
-			gcsemaphore.release();
+			gclock.unlock();
 		}
 	}
 
@@ -3906,8 +3907,8 @@ final class RMIStream implements Closeable {
 
 		out.writeInt(compressInterruptStatus(currentthreadinterrupted, interruptreqcount));
 
-		Semaphore gcsemaphore = variables.gcCommandSemaphore;
-		gcsemaphore.acquireUninterruptibly();
+		Lock gclock = variables.gcCommandLock;
+		gclock.lock();
 		try {
 			try {
 				writeObjectUsingWriteHandler(executableproperties.getReturnValueWriter(), variables, returnvalue, out,
@@ -3925,7 +3926,7 @@ final class RMIStream implements Closeable {
 			}
 			flushCommand(buffer);
 		} finally {
-			gcsemaphore.release();
+			gclock.unlock();
 		}
 	}
 

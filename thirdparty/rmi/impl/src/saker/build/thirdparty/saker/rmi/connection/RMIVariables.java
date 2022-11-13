@@ -15,7 +15,6 @@
  */
 package saker.build.thirdparty.saker.rmi.connection;
 
-import java.io.IOException;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -33,22 +32,24 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
+import java.util.concurrent.locks.Lock;
 
 import saker.build.thirdparty.saker.rmi.exception.RMICallFailedException;
 import saker.build.thirdparty.saker.rmi.exception.RMICallForbiddenException;
-import saker.build.thirdparty.saker.rmi.exception.RMIResourceUnavailableException;
 import saker.build.thirdparty.saker.rmi.exception.RMIContextVariableNotFoundException;
 import saker.build.thirdparty.saker.rmi.exception.RMIIOFailureException;
 import saker.build.thirdparty.saker.rmi.exception.RMIObjectTransferFailureException;
+import saker.build.thirdparty.saker.rmi.exception.RMIResourceUnavailableException;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.classloader.FilteringClassLoader;
 import saker.build.thirdparty.saker.util.classloader.MultiClassLoader;
+import saker.build.thirdparty.saker.util.thread.BooleanLatch;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 
 /**
  * Class for enclosing RMI proxies, referenced objects, and providing invocation functionality for the RMI runtime.
@@ -173,6 +174,7 @@ public class RMIVariables implements AutoCloseable {
 	 * @see #STATE_MASK_ONGOING_ASYNC_REQUEST_COUNT
 	 */
 	private volatile long state;
+	private final BooleanLatch closedLatch = BooleanLatch.newBooleanLatch();
 
 	private RMITransferPropertiesHolder properties;
 
@@ -182,12 +184,12 @@ public class RMIVariables implements AutoCloseable {
 	 * This field is kept on a per RMIVariables basis instead of a per RMIStream basis, as the objects are tracked in
 	 * variables contexts.
 	 * <p>
-	 * The waiting on this sempahore is interruptable when writing the gc command, but is acquired uninterruptibly when
-	 * waiting to write command other than gc. This is because the semaphore should be available quickly after a gc
-	 * command, so interruption handling is not strictly necessary in case an other commands, however, in case when
-	 * writing a gc command, it can be handled on the gc thread.
+	 * The waiting on this lock is interruptable when writing the gc command, but is acquired uninterruptibly when
+	 * waiting to write command other than gc. This is because the lock should be available quickly after a gc command,
+	 * so interruption handling is not strictly necessary in case an other commands, however, in case when writing a gc
+	 * command, it can be handled on the gc thread.
 	 */
-	protected final Semaphore gcCommandSemaphore = new Semaphore(1);
+	protected final Lock gcCommandLock = ThreadUtils.newExclusiveLock();
 
 	RMIVariables(int localIdentifier, int remoteIdentifier, RMIConnection connection, RMIStream stream) {
 		//XXX we could allow the user to add custom transfer properties just for this variables instance
@@ -286,6 +288,21 @@ public class RMIVariables implements AutoCloseable {
 			}
 			break;
 		}
+	}
+
+	/**
+	 * Waits for this RMI variables to get closed, and all request to be finished.
+	 * <p>
+	 * This method doesn't close the variables, only waits for it to get closed, and the ongoing request to be finished.
+	 * <p>
+	 * You need to call {@link #close()} in some other way, otherwise this method may wait indefinitely.
+	 * 
+	 * @throws InterruptedException
+	 *             If the current thread is interrupted while waiting.
+	 * @since saker.rmi 0.8.3
+	 */
+	public void waitClosure() throws InterruptedException {
+		closedLatch.await();
 	}
 
 	/**
@@ -1125,8 +1142,10 @@ public class RMIVariables implements AutoCloseable {
 			long bothc = state & STATE_MASK_BOTH_REQUEST_COUNT;
 			long c = (bothc & STATE_MASK_ONGOING_ASYNC_REQUEST_COUNT) >>> STATE_ONGOING_ASYNC_REQUEST_COUNT_SHIFT;
 			if (c == 0) {
-				//safety check
-				throw new IllegalStateException("No ongoing async requests.");
+				//if the async request count is zero, then just ignore this removal, don't throw
+				//this can happen if the IO reading breaks, and the async request count gets cleared
+				//in clearAsyncRequestsOnReadIOFailure() before we get here
+				return;
 			}
 			long nbothc = (bothc & STATE_MASK_ONGOING_REQUEST_COUNT)
 					| ((c - 1) << STATE_ONGOING_ASYNC_REQUEST_COUNT_SHIFT);
@@ -1149,13 +1168,13 @@ public class RMIVariables implements AutoCloseable {
 	void clearAsyncRequestsOnReadIOFailure() {
 		while (true) {
 			long state = this.state;
+			if (((state & STATE_BIT_CLOSED) == STATE_BIT_CLOSED)) {
+				//the state is already closed, so we don't have anything to do
+				return;
+			}
 
 			long bothc = state & STATE_MASK_BOTH_REQUEST_COUNT;
-			long c = (bothc & STATE_MASK_ONGOING_ASYNC_REQUEST_COUNT) >>> STATE_ONGOING_ASYNC_REQUEST_COUNT_SHIFT;
-			if (c == 0) {
-				//safety check
-				throw new IllegalStateException("No ongoing async requests.");
-			}
+			//set the ongoing async request count to 0 by removing those bits
 			long nbothc = (bothc & STATE_MASK_ONGOING_REQUEST_COUNT);
 			//also set the aborting flag, because the variables should be closing after a read failure on the stream
 			//because we won't be receiving any response anymore 
@@ -1250,7 +1269,7 @@ public class RMIVariables implements AutoCloseable {
 			}
 		}
 		RemoteProxyObject result = createProxyObjectForClass(requestedclass, remoteid);
-		return putCreatedProxyToCache(result, remoteid);
+		return putCreatedProxyToCache(result, remoteid, cached);
 	}
 
 	/**
@@ -1266,7 +1285,7 @@ public class RMIVariables implements AutoCloseable {
 			}
 		}
 		RemoteProxyObject result = createProxyObject(interfaces, remoteid);
-		return putCreatedProxyToCache(result, remoteid);
+		return putCreatedProxyToCache(result, remoteid, cached);
 	}
 
 	Object getObjectWithLocalId(int localid) {
@@ -1633,9 +1652,9 @@ public class RMIVariables implements AutoCloseable {
 		}
 	}
 
-	private RemoteProxyObject putCreatedProxyToCache(RemoteProxyObject result, int remoteid) {
+	private RemoteProxyObject putCreatedProxyToCache(RemoteProxyObject result, int remoteid,
+			RemoteProxyReference cached) {
 		RemoteProxyReference putreference = new RemoteProxyReference(result, gcReferenceQueue, remoteid);
-		RemoteProxyReference cached = cachedRemoteProxies.get(remoteid);
 		while (true) {
 			if (cached == null) {
 				RemoteProxyReference prev = cachedRemoteProxies.putIfAbsent(remoteid, putreference);
@@ -1728,21 +1747,25 @@ public class RMIVariables implements AutoCloseable {
 	 */
 	private void closeWithNoOngoingRequest() {
 		//enqueue a reference to notify the gc thread about exiting
-		gcThreadThisWeakReference.enqueue();
+		try {
+			gcThreadThisWeakReference.enqueue();
 
-		connection.closeVariables(this);
+			connection.closeVariables(this);
 
-		cachedRemoteProxies.clear();
-		localIdentifiersToLocalObjects.clear();
-		synchronized (refSync) {
-			localObjectsToLocalReferences.clear();
+			cachedRemoteProxies.clear();
+			localIdentifiersToLocalObjects.clear();
+			synchronized (refSync) {
+				localObjectsToLocalReferences.clear();
+			}
+			proxyBaseClassLoader = null;
+			proxyConstructors = null;
+			proxyMarkerClass = null;
+			markerClassLookup = null;
+			multiProxyClassDefiners = null;
+			properties = null;
+		} finally {
+			closedLatch.signal();
 		}
-		proxyBaseClassLoader = null;
-		proxyConstructors = null;
-		proxyMarkerClass = null;
-		markerClassLookup = null;
-		multiProxyClassDefiners = null;
-		properties = null;
 	}
 
 }
