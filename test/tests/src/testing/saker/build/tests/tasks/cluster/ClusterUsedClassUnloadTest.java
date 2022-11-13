@@ -24,6 +24,7 @@ import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.IOUtils;
+import testing.saker.SakerJavaTestingInvoker;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
 import testing.saker.build.tests.EnvironmentTestCaseConfiguration;
@@ -86,6 +87,12 @@ public class ClusterUsedClassUnloadTest extends CollectingMetricEnvironmentTestC
 		}
 		clearMetric();
 
+		if (Boolean.parseBoolean(SakerJavaTestingInvoker.getTestInvokerParameters().get("IsCiBuild"))) {
+			//the test is kind of flaky, so don't fail this on CI builds
+			//dont do the below tasks, as that would overallocate memory, and would destabilize the build process
+			return;
+		}
+
 		try {
 			for (int i = 0; i <= 15; ++i) {
 				System.gc();
@@ -99,7 +106,7 @@ public class ClusterUsedClassUnloadTest extends CollectingMetricEnvironmentTestC
 						//attempt to allocate a lot of memory, to cause soft references to be cleared
 						List<byte[]> allocated = new ArrayList<>();
 						while (true) {
-							allocated.add(new byte[32 * 1024 * 1024]);
+							allocated.add(new byte[128 * 1024 * 1024]);
 						}
 					} catch (OutOfMemoryError e) {
 						//this is expected and desired
