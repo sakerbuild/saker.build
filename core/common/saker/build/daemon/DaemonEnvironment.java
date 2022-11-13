@@ -27,7 +27,7 @@ import saker.build.file.provider.LocalFileProvider;
 import saker.build.file.provider.SakerFileProvider;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.project.ProjectCacheHandle;
-import saker.build.task.cluster.TaskInvokerFactory;
+import saker.build.task.cluster.TaskInvoker;
 import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
@@ -44,7 +44,7 @@ public interface DaemonEnvironment extends Closeable {
 	}
 
 	@RMIWrap(RMIArrayListRemoteElementWrapper.class)
-	public default Collection<? extends TaskInvokerFactory> getClientClusterTaskInvokerFactories() {
+	public default Collection<? extends TaskInvoker> getClientClusterTaskInvokers() {
 		return Collections.emptyList();
 	}
 

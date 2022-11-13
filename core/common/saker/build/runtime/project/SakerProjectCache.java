@@ -296,7 +296,7 @@ public class SakerProjectCache implements ProjectCacheHandle {
 				}
 				if (clusterMirrorHandler == null) {
 					clusterMirrorHandler = new FileMirrorHandler(clustermirrordirectory, clustermodifiedpathconfig,
-							clusterDatabase, executioncontext);
+							clusterDatabase);
 				}
 			}
 			if (clusterFileWatchHandler != null) {

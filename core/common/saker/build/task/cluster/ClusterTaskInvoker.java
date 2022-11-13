@@ -44,7 +44,6 @@ import saker.build.task.TaskInvocationManager.SelectionResult;
 import saker.build.task.TaskInvocationManager.TaskInvocationContext;
 import saker.build.task.TaskInvocationManager.TaskInvocationEvent;
 import saker.build.task.TaskInvocationManager.TaskInvocationEventVisitor;
-import saker.build.task.TaskInvoker;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -52,7 +51,7 @@ import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
 import saker.build.trace.InternalBuildTrace.InternalTaskBuildTrace;
 
-public class ClusterTaskInvoker implements TaskInvoker {
+public class ClusterTaskInvoker {
 	private SakerEnvironmentImpl environment;
 	private IdentifierAccessDisablerSakerEnvironment suitableTesterSakerEnvironment;
 
@@ -76,7 +75,6 @@ public class ClusterTaskInvoker implements TaskInvoker {
 		this.innerTaskInvoker = new InnerTaskInvocationManager(clusterExecutionContext);
 	}
 
-	@Override
 	public void run(TaskInvocationContext context) throws Exception {
 		try (ThreadWorkPool workpool = ThreadUtils.newDynamicWorkPool("Cluster-worker-")) {
 			while (true) {

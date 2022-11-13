@@ -19,9 +19,10 @@ class InnerTaskContext extends InternalForwardingTaskContext {
 		this.buildTrace = buildTrace;
 	}
 
-	public static InnerTaskContext startInnerTask(TaskContext taskContext, TaskFactory<?> innertaskfactory) {
+	public static InnerTaskContext startInnerTask(TaskContext taskContext, TaskFactory<?> innertaskfactory,
+			int cputokencount) {
 		return new InnerTaskContext(taskContext, ((InternalTaskContext) taskContext).internalGetBuildTrace()
-				.startInnerTask(taskContext.getExecutionContext(), innertaskfactory));
+				.startInnerTask(taskContext.getExecutionContext(), innertaskfactory, cputokencount));
 	}
 
 	public Throwable[] getAbortExceptions() {

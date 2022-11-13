@@ -15,7 +15,8 @@
  */
 package saker.build.daemon;
 
-import saker.build.task.cluster.TaskInvokerFactory;
+import java.util.UUID;
+
 import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
 
 public interface DaemonAccess {
@@ -23,8 +24,11 @@ public interface DaemonAccess {
 	public DaemonEnvironment getDaemonEnvironment();
 
 	@RMICacheResult
-	public TaskInvokerFactory getClusterTaskInvokerFactory();
+	public DaemonClientServer getDaemonClientServer();
 
 	@RMICacheResult
-	public DaemonClientServer getDaemonClientServer();
+	public UUID getEnvironmentIdentifier();
+
+	@RMICacheResult
+	public boolean isClusterAvailable();
 }

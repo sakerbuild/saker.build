@@ -413,7 +413,8 @@ public class InnerTaskInvocationManager implements Closeable {
 		//suppress unused task context reference warning
 		@SuppressWarnings("try")
 		private void runSingleInnerTask(Task<? extends R> task, boolean last) {
-			InnerTaskContext innertaskcontext = InnerTaskContext.startInnerTask(taskContext, taskFactory);
+			InnerTaskContext innertaskcontext = InnerTaskContext.startInnerTask(taskContext, taskFactory,
+					computationTokenCount);
 			R result;
 			try (TaskContextReference contextref = TaskContextReference.createForInnerTask(innertaskcontext)) {
 				InternalTaskBuildTrace btrace = innertaskcontext.internalGetBuildTrace();

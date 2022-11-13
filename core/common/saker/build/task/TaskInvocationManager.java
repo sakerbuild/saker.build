@@ -53,7 +53,7 @@ import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.ExecutionContextImpl;
 import saker.build.task.TaskExecutionManager.ManagerInnerTaskResults;
 import saker.build.task.TaskExecutionManager.TaskExecutorContext;
-import saker.build.task.cluster.TaskInvokerFactory;
+import saker.build.task.cluster.TaskInvoker;
 import saker.build.task.cluster.TaskInvokerInformation;
 import saker.build.task.exception.ClusterEnvironmentSelectionFailedException;
 import saker.build.task.exception.ClusterTaskExecutionFailedException;
@@ -149,7 +149,7 @@ public class TaskInvocationManager implements Closeable {
 	private final ExecutionContextImpl executionContext;
 	private final SakerEnvironment localTesterEnvironment;
 	private final LazySupplier<?> clusterStartSupplier;
-	private final Collection<? extends TaskInvokerFactory> invokerFactories;
+	private final Collection<? extends TaskInvoker> taskInvokers;
 	private final InnerTaskInvocationManager innerTaskInvoker;
 
 	private ThreadUtils.ThreadWorkPool invokerPool;
@@ -157,9 +157,9 @@ public class TaskInvocationManager implements Closeable {
 
 	private volatile boolean closed = false;
 
-	public TaskInvocationManager(ExecutionContextImpl executioncontext,
-			Collection<? extends TaskInvokerFactory> taskinvokerfactories, ThreadGroup clusterInteractionThreadGroup) {
-		this.invokerFactories = taskinvokerfactories;
+	public TaskInvocationManager(ExecutionContextImpl executioncontext, Collection<? extends TaskInvoker> taskinvokers,
+			ThreadGroup clusterInteractionThreadGroup) {
+		this.taskInvokers = taskinvokers;
 		this.environment = executioncontext.getRealEnvironment();
 		this.localTesterEnvironment = new IdentifierAccessDisablerSakerEnvironment(executioncontext.getEnvironment());
 		this.executionContext = executioncontext;
@@ -214,7 +214,7 @@ public class TaskInvocationManager implements Closeable {
 			}
 		}
 
-		if (!remotedispatchable || ObjectUtils.isNullOrEmpty(invokerFactories)) {
+		if (!remotedispatchable || ObjectUtils.isNullOrEmpty(taskInvokers)) {
 			final Exception finallocalselectionexception = localselectionexception;
 			return () -> {
 				if (finallocalselectionexception != null) {
@@ -259,7 +259,7 @@ public class TaskInvocationManager implements Closeable {
 			//proceed with cluster invocation
 		}
 		TaskExecutionRequestImpl<R> request = null;
-		if (capabilities.isRemoteDispatchable() && !ObjectUtils.isNullOrEmpty(invokerFactories)) {
+		if (capabilities.isRemoteDispatchable() && !ObjectUtils.isNullOrEmpty(taskInvokers)) {
 			ensureClustersStarted();
 
 			request = new TaskExecutionRequestImpl<>(invocationContexts, factory, capabilities, selectionresult,
@@ -462,25 +462,16 @@ public class TaskInvocationManager implements Closeable {
 		this.invokerPool = ThreadUtils.newDynamicWorkPool(clusterInteractionThreadGroup, "Task-invoker-");
 		List<TaskInvocationContextImpl> invocationcontexts = new ArrayList<>();
 		invocationContexts = invocationcontexts;
+		ExecutionContextImpl executioncontext = this.executionContext;
 		TaskInvokerInformation taskinvokerinformation = new TaskInvokerInformation(
-				LocalFileProvider.getProviderKeyStatic(), executionContext.getDatabaseConfiguretion());
+				LocalFileProvider.getProviderKeyStatic(), executioncontext.getDatabaseConfiguretion());
 
-		for (TaskInvokerFactory invokerfactory : invokerFactories) {
+		for (TaskInvoker invoker : taskInvokers) {
 			TaskInvocationContextImpl taskinvocationcontext = new TaskInvocationContextImpl(
-					invokerfactory.getEnvironmentIdentifier());
+					invoker.getEnvironmentIdentifier());
 			invocationcontexts.add(taskinvocationcontext);
 			this.invokerPool.offer(() -> {
-				try {
-					TaskInvoker pullingtaskinvoker = invokerfactory.createTaskInvoker(executionContext,
-							taskinvokerinformation);
-					taskinvocationcontext.run(pullingtaskinvoker);
-				} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
-						| StackOverflowError e) {
-					taskinvocationcontext.close(e, false);
-				} catch (Throwable e) {
-					taskinvocationcontext.close(e, false);
-					throw e;
-				}
+				taskinvocationcontext.run(invoker, executioncontext, taskinvokerinformation);
 			});
 		}
 	}
@@ -2045,10 +2036,14 @@ public class TaskInvocationManager implements Closeable {
 			this.environmentIdentifier = environmentIdentifier;
 		}
 
-		public void run(TaskInvoker taskinvoker) throws Exception {
+		public void run(TaskInvoker invoker, ExecutionContext executioncontext,
+				TaskInvokerInformation invokerinformation) {
 			try {
-				taskinvoker.run(this);
+				invoker.run(executioncontext, invokerinformation, this);
 				clusterExit();
+			} catch (Exception | LinkageError | ServiceConfigurationError | OutOfMemoryError | AssertionError
+					| StackOverflowError e) {
+				clusterRunningAborted(e);
 			} catch (Throwable e) {
 				clusterRunningAborted(e);
 				throw e;

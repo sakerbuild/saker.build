@@ -180,7 +180,7 @@ public class TaskUtils {
 	}
 
 	private static class ClassInfoCacheCacheKey implements CacheKey<Supplier<ClassInfoCache>, ClassInfoCache> {
-		//wrapes the data into a supplier to avoid strong referencing the data
+		//wraps the data into a supplier to avoid strong referencing the data
 
 		private static final ClassInfoCacheCacheKey INSTANCE = new ClassInfoCacheCacheKey();
 
@@ -255,19 +255,20 @@ public class TaskUtils {
 			}
 		}
 
-		private List<FieldInfo> fields = new ArrayList<>();
-		private Class<?> superClass;
+		protected final List<FieldInfo> fields;
+		protected final Class<?> superClass;
 
 		public ClassSakerIOInfo(Class<?> clazz) {
 			superClass = clazz.getSuperclass();
-			for (Field f : clazz.getDeclaredFields()) {
+			Field[] declaredfields = clazz.getDeclaredFields();
+			this.fields = new ArrayList<>(declaredfields.length);
+			for (Field f : declaredfields) {
 				DataContext dataContext = f.getAnnotation(DataContext.class);
 				SakerInput input = f.getAnnotation(SakerInput.class);
 				if (ObjectUtils.hasNonNull(dataContext, input)) {
-					fields.add(new FieldInfo(f, dataContext, input));
+					this.fields.add(new FieldInfo(f, dataContext, input));
 				}
 			}
-			fields = ImmutableUtils.unmodifiableList(fields);
 		}
 
 		public Collection<FieldInfo> getFields() {

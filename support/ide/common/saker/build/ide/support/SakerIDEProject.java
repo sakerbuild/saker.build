@@ -126,7 +126,7 @@ import saker.build.scripting.model.ScriptModellingEnvironment;
 import saker.build.scripting.model.ScriptSyntaxModel;
 import saker.build.scripting.model.SimpleScriptModellingEnvironmentConfiguration;
 import saker.build.scripting.model.info.ExternalScriptInformationProvider;
-import saker.build.task.cluster.TaskInvokerFactory;
+import saker.build.task.cluster.TaskInvoker;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -1258,7 +1258,7 @@ public final class SakerIDEProject {
 		ExecutionRepositoryConfiguration repositoryconfiguration = createRepositoryConfiguration(properties);
 		Map<String, String> userparameters = SakerIDEPlugin.entrySetToMap(properties.getUserParameters());
 
-		Collection<TaskInvokerFactory> taskinvokerfactories = new ArrayList<>();
+		Collection<TaskInvoker> taskinvokers = new ArrayList<>();
 		if (!ObjectUtils.isNullOrEmpty(daemonconnectionproperties)) {
 			for (DaemonConnectionIDEProperty connprop : daemonconnectionproperties) {
 				String connectionname = connprop.getConnectionName();
@@ -1267,18 +1267,18 @@ public final class SakerIDEProject {
 					if (conn == null) {
 						throw new IllegalArgumentException("Failed to retrieve daemon connection: " + connectionname);
 					}
-					TaskInvokerFactory taskinvokerfactory = conn.getClusterTaskInvokerFactory();
-					if (taskinvokerfactory == null) {
+					TaskInvoker taskinvoker = conn.getClusterTaskInvoker();
+					if (taskinvoker == null) {
 						throw new IllegalArgumentException(
 								"Build daemon doesn't support using it as cluster: " + connectionname);
 					}
-					taskinvokerfactories.add(taskinvokerfactory);
+					taskinvokers.add(taskinvoker);
 				}
 			}
 		}
 		if (execdaemonenv != null
 				&& SakerIDESupportUtils.getBooleanValueOrDefault(properties.getUseClientsAsClusters(), false)) {
-			ObjectUtils.addAll(taskinvokerfactories, execdaemonenv.getClientClusterTaskInvokerFactories());
+			ObjectUtils.addAll(taskinvokers, execdaemonenv.getClientClusterTaskInvokers());
 		}
 
 		ExecutionParametersImpl parameters = new ExecutionParametersImpl();
@@ -1296,7 +1296,7 @@ public final class SakerIDEProject {
 			parameters.setMirrorDirectory(SakerPath.valueOf(mirrordirprop));
 		}
 
-		parameters.setTaskInvokerFactories(taskinvokerfactories);
+		parameters.setTaskInvokers(taskinvokers);
 		parameters.setBuildInfo(buildinfo);
 		parameters.setBuildTraceOutputPathKey(buildtraceoutpathkey);
 		parameters.setBuildTraceEmbedArtifacts(

@@ -22,7 +22,7 @@ import java.net.SocketAddress;
 import javax.net.SocketFactory;
 
 import saker.build.runtime.environment.SakerEnvironmentImpl;
-import saker.build.task.cluster.TaskInvokerFactory;
+import saker.build.task.cluster.TaskInvoker;
 import saker.build.thirdparty.saker.rmi.annot.invoke.RMICacheResult;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
@@ -34,6 +34,9 @@ import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.util.rmi.SakerRMIHelper;
 
+/**
+ * A connection to a remote build daemon.
+ */
 public interface RemoteDaemonConnection extends Closeable {
 	public interface ConnectionIOErrorListener {
 		/**
@@ -43,10 +46,20 @@ public interface RemoteDaemonConnection extends Closeable {
 		public void onConnectionError(Throwable exc);
 	}
 
+	/**
+	 * Gets the remote daemon environment representation.
+	 * 
+	 * @return The daemon environment.
+	 */
 	public DaemonEnvironment getDaemonEnvironment();
 
 	public boolean isConnected();
 
+	/**
+	 * Gets the network address of the remote daemon.
+	 * 
+	 * @return The address.
+	 */
 	@RMISerialize
 	@RMICacheResult
 	public SocketAddress getAddress();
@@ -54,7 +67,7 @@ public interface RemoteDaemonConnection extends Closeable {
 	public void addConnectionIOErrorListener(ConnectionIOErrorListener listener);
 
 	//doc: returns null if unsupported
-	public TaskInvokerFactory getClusterTaskInvokerFactory();
+	public TaskInvoker getClusterTaskInvoker();
 
 	//doc: closes the connection, not the daemon environment
 	@Override

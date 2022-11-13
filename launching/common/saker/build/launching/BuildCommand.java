@@ -97,7 +97,7 @@ import saker.build.runtime.params.NestRepositoryClassPathLocation;
 import saker.build.runtime.project.ProjectCacheHandle;
 import saker.build.runtime.repository.SakerRepositoryFactory;
 import saker.build.scripting.ScriptAccessProvider;
-import saker.build.task.cluster.TaskInvokerFactory;
+import saker.build.task.cluster.TaskInvoker;
 import saker.build.task.utils.TaskUtils;
 import saker.build.thirdparty.saker.util.ArrayUtils;
 import saker.build.thirdparty.saker.util.DateUtils;
@@ -967,7 +967,7 @@ public class BuildCommand {
 			}
 			params.setRepositoryConfiguration(repoconfigbuilder.build());
 		}
-		Collection<TaskInvokerFactory> taskinvokerfactories = new ArrayList<>();
+		Collection<TaskInvoker> taskinvokers = new ArrayList<>();
 		if (!clusters.isEmpty()) {
 			for (String clusterconnectionname : clusters) {
 				if (RESERVED_CONNECTION_NAMES.contains(clusterconnectionname)) {
@@ -979,12 +979,12 @@ public class BuildCommand {
 					throw new InvalidArgumentValueException(
 							"Daemon connection not found for cluster: " + clusterconnectionname, PARAM_NAME_CLUSTER);
 				}
-				TaskInvokerFactory clustertaskinvokerfactory = clusterconn.getClusterTaskInvokerFactory();
-				if (clustertaskinvokerfactory == null) {
+				TaskInvoker clustertaskinvoker = clusterconn.getClusterTaskInvoker();
+				if (clustertaskinvoker == null) {
 					throw new InvalidBuildConfigurationException(
 							"Daemon doesn't support using it as build cluster: " + clusterconnectionname);
 				}
-				taskinvokerfactories.add(clustertaskinvokerfactory);
+				taskinvokers.add(clustertaskinvoker);
 			}
 		}
 		if (clusterUseClients) {
@@ -999,10 +999,10 @@ public class BuildCommand {
 				useenv = null;
 			}
 			if (useenv != null) {
-				taskinvokerfactories.addAll(useenv.getClientClusterTaskInvokerFactories());
+				taskinvokers.addAll(useenv.getClientClusterTaskInvokers());
 			}
 		}
-		params.setTaskInvokerFactories(taskinvokerfactories);
+		params.setTaskInvokers(taskinvokers);
 		return params;
 	}
 

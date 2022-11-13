@@ -16,7 +16,7 @@ public interface ClusterTaskBuildTrace extends InternalTaskBuildTrace {
 	}
 
 	public default void startClusterInnerTask(Object innertaskidentity, long nanos,
-			@RMISerialize UUID executionEnvironmentUUID, String innertaskclassname) {
+			@RMISerialize UUID executionEnvironmentUUID, String innertaskclassname, int cputokencount) {
 	}
 
 	public default void endClusterInnerTask(Object innertaskidentity, long nanos) {

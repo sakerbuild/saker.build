@@ -50,17 +50,15 @@ public class FileMirrorHandler {
 	private final NavigableMap<String, String> normalizedRootsToRealRootsMap = new TreeMap<>();
 
 	private final ContentDatabase contentDatabase;
-	private final ExecutionContext executionContext;
 
 	public FileMirrorHandler(Path mirrorDirectoryPath, ExecutionPathConfiguration pathconfig,
-			ContentDatabase contentdatabase, ExecutionContext executioncontext) {
+			ContentDatabase contentdatabase) {
 		Objects.requireNonNull(pathconfig, "pathConfiguration");
 		Objects.requireNonNull(contentdatabase, "contentdatabase");
 
 		this.contentDatabase = contentdatabase;
 		this.mirrorDirectoryPath = mirrorDirectoryPath;
 		this.pathConfiguration = pathconfig;
-		this.executionContext = executioncontext;
 		for (String rootname : pathconfig.getRootNames()) {
 			String normalized = normalizeRootName(rootname);
 			realRootsToNormalizedRootsMap.put(rootname, normalized);
@@ -76,13 +74,13 @@ public class FileMirrorHandler {
 		return mirrorDirectoryPath;
 	}
 
-	public Path mirror(SakerFile file) throws IOException {
-		return mirror(file, DirectoryVisitPredicate.everything());
+	public Path mirror(SakerFile file, InternalExecutionContext executioncontext) throws IOException {
+		return mirror(file, DirectoryVisitPredicate.everything(), executioncontext);
 	}
 
-	public Path mirror(SakerFile file, DirectoryVisitPredicate synchpredicate) throws IOException {
-		FilePathContents filepathcontents = ((InternalExecutionContext) executionContext)
-				.internalGetFilePathContents(file);
+	public Path mirror(SakerFile file, DirectoryVisitPredicate synchpredicate,
+			InternalExecutionContext executioncontext) throws IOException {
+		FilePathContents filepathcontents = executioncontext.internalGetFilePathContents(file);
 		SakerPath filepath = SakerPathFiles.requireAbsolutePath(filepathcontents.getPath());
 		return mirror(filepath, file, synchpredicate, filepathcontents.getContents());
 	}

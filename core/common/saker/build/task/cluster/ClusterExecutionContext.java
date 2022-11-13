@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.NavigableSet;
 import java.util.Set;
 import java.util.UUID;
 
@@ -74,7 +73,7 @@ class ClusterExecutionContext implements ExecutionContext, InternalExecutionCont
 //	}
 
 	public Path mirror(SakerFile file, DirectoryVisitPredicate synchpredicate) throws IOException {
-		return getMirrorHandlerThrow().mirror(file, synchpredicate);
+		return getMirrorHandlerThrow().mirror(file, synchpredicate, this);
 	}
 
 	public Path mirror(SakerPath filepath, SakerFile file, DirectoryVisitPredicate synchpredicate,

@@ -15,7 +15,6 @@
  */
 package saker.build.daemon;
 
-import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.Collection;
 import java.util.HashSet;
@@ -23,19 +22,17 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
-import java.util.function.Supplier;
 
 import saker.build.file.content.ContentDatabaseImpl;
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.ExecutionContextImpl;
-import saker.build.task.ForwardingTaskInvoker;
 import saker.build.task.TaskInvocationManager.TaskInvocationContext;
-import saker.build.task.TaskInvoker;
-import saker.build.task.cluster.TaskInvokerFactory;
-import saker.build.task.cluster.TaskInvokerFactoryRMIWrapper;
+import saker.build.task.cluster.TaskInvoker;
+import saker.build.task.cluster.TaskInvokerRMIWrapper;
 import saker.build.task.cluster.TaskInvokerInformation;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
+import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.rmi.exception.RMICallForbiddenException;
 import saker.build.thirdparty.saker.util.ArrayUtils;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
@@ -50,13 +47,15 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 	protected static final class ConnectionImpl {
 		protected final RMIConnection rmiConnection;
 		protected final DaemonEnvironment environment;
-		protected final Supplier<TaskInvokerFactory> clusterInvokerFactory;
+		protected final boolean clusterAvailable;
 		protected final ClassLoaderResolverRegistry connectionClassLoaderRegistry;
+		protected final UUID environmentIdentifier;
 
 		public ConnectionImpl(RMIConnection rmiConnection, DaemonAccess access, DaemonEnvironment environment) {
 			this.rmiConnection = rmiConnection;
 			this.environment = environment;
-			this.clusterInvokerFactory = access::getClusterTaskInvokerFactory;
+			this.clusterAvailable = access.isClusterAvailable();
+			this.environmentIdentifier = access.getEnvironmentIdentifier();
 			this.connectionClassLoaderRegistry = (ClassLoaderResolverRegistry) rmiConnection.getClassLoaderResolver();
 		}
 	}
@@ -152,13 +151,12 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 	}
 
 	@Override
-	public TaskInvokerFactory getClusterTaskInvokerFactory() {
+	public TaskInvoker getClusterTaskInvoker() {
 		ConnectionImpl connection = getConnection();
-		TaskInvokerFactory invokerfactory = connection.clusterInvokerFactory.get();
-		if (invokerfactory == null) {
+		if (!connection.clusterAvailable) {
 			return null;
 		}
-		return new TaskInvokerFactoryImpl(connection, invokerfactory);
+		return new TaskInvokerImpl(connection.rmiConnection, connection.environmentIdentifier);
 	}
 
 	@Override
@@ -175,28 +173,28 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 		}
 	}
 
-	@RMIWrap(TaskInvokerFactoryRMIWrapper.class)
-	public static final class TaskInvokerFactoryImpl implements TaskInvokerFactory {
+	@RMIWrap(TaskInvokerRMIWrapper.class)
+	public static final class TaskInvokerImpl implements TaskInvoker {
+		private final RMIConnection rmiConnection;
 		private final ClassLoaderResolverRegistry connectionClassLoaderRegistry;
-		private final TaskInvokerFactory invokerFactory;
+		private final UUID environmentIdentifier;
 
-		private TaskInvokerFactoryImpl(ConnectionImpl connection, TaskInvokerFactory invokerfactory) {
-			connectionClassLoaderRegistry = connection.connectionClassLoaderRegistry;
-			this.invokerFactory = invokerfactory;
-		}
-
-		public TaskInvokerFactoryImpl(ClassLoaderResolverRegistry connectionClassLoaderRegistry,
-				TaskInvokerFactory invokerFactory) {
-			this.connectionClassLoaderRegistry = connectionClassLoaderRegistry;
-			this.invokerFactory = invokerFactory;
+		public TaskInvokerImpl(RMIConnection rmiConnection, UUID environmentIdentifier) {
+			this.rmiConnection = rmiConnection;
+			this.environmentIdentifier = environmentIdentifier;
+			this.connectionClassLoaderRegistry = (ClassLoaderResolverRegistry) rmiConnection.getClassLoaderResolver();
 		}
 
 		@Override
-		public TaskInvoker createTaskInvoker(ExecutionContext executioncontext,
-				TaskInvokerInformation invokerinformation) throws IOException, NullPointerException {
+		public void run(ExecutionContext executioncontext, TaskInvokerInformation invokerinformation,
+				TaskInvocationContext context) throws Exception {
+
 			Objects.requireNonNull(executioncontext, "execution context");
 			if (RMIConnection.isRemoteObject(executioncontext)) {
 				throw new RMICallForbiddenException("Cannot create task invoker for remote execution context.");
+			}
+			if (RMIConnection.isRemoteObject(context)) {
+				throw new RMICallForbiddenException("Cannot create task invoker for remote invocation context.");
 			}
 			if (!(executioncontext instanceof ExecutionContextImpl)) {
 				throw new IllegalArgumentException(
@@ -211,23 +209,25 @@ class RemoteDaemonConnectionImpl implements RemoteDaemonConnection {
 			//    as a single class can be available through multiple registries.
 			//    if the registry is modified before creating the task invoker
 			//    then the passed classes through execution context might not be found on the remote endpoint
-			TaskInvoker subjecttaskinvoker = invokerFactory.createTaskInvoker(executioncontext, invokerinformation);
-			return new ForwardingTaskInvoker(subjecttaskinvoker) {
-				@Override
-				public void run(TaskInvocationContext context) throws Exception {
-					try {
-						connectionClassLoaderRegistry.register(resolverid, dbclresolver);
-						super.run(context);
-					} finally {
-						connectionClassLoaderRegistry.unregister(resolverid, dbclresolver);
-					}
+			try {
+				connectionClassLoaderRegistry.register(resolverid, dbclresolver);
+				RMIVariables vars = rmiConnection.newVariables();
+				try {
+					LocalDaemonEnvironment.runClusterInvokerContextVariable(vars, executioncontext, invokerinformation,
+							context);
+				} finally {
+					vars.close();
 				}
-			};
+				//wait for the closure of the variables, so all of the build related calls are done
+				vars.waitClosure();
+			} finally {
+				connectionClassLoaderRegistry.unregister(resolverid, dbclresolver);
+			}
 		}
 
 		@Override
 		public UUID getEnvironmentIdentifier() {
-			return invokerFactory.getEnvironmentIdentifier();
+			return environmentIdentifier;
 		}
 	}
 

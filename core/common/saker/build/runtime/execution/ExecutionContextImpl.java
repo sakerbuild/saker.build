@@ -88,7 +88,7 @@ import saker.build.task.TaskExecutionManager;
 import saker.build.task.TaskExecutionManager.TaskResultCollectionImpl;
 import saker.build.task.TaskExecutionResult;
 import saker.build.task.TaskFactory;
-import saker.build.task.cluster.TaskInvokerFactory;
+import saker.build.task.cluster.TaskInvoker;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
@@ -184,9 +184,9 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		parameters = new ExecutionParametersImpl(parameters);
 		parameters.defaultize();
 
-		Collection<? extends TaskInvokerFactory> taskinvokerfactories = parameters.getTaskInvokerFactories();
-		if (!ObjectUtils.isNullOrEmpty(taskinvokerfactories)) {
-			for (TaskInvokerFactory tif : taskinvokerfactories) {
+		Collection<? extends TaskInvoker> taskinvokers = parameters.getTaskInvokers();
+		if (!ObjectUtils.isNullOrEmpty(taskinvokers)) {
+			for (TaskInvoker tif : taskinvokers) {
 				if (environment.getEnvironmentIdentifier().equals(tif.getEnvironmentIdentifier())) {
 					throw new InvalidBuildConfigurationException(
 							"The build environment that is used to execute the build is configured as a cluster too. "
@@ -337,7 +337,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 			throw new FileNotFoundException("Working directory not found: " + workingdirectorysakerpath);
 		}
 
-		mirrorHandler = new FileMirrorHandler(mirrordirpath, pathConfiguration, this.contentDatabase, this);
+		mirrorHandler = new FileMirrorHandler(mirrordirpath, pathConfiguration, this.contentDatabase);
 
 		if (builddirectoryabssakerpath != null) {
 			this.buildSakerDirectory = getDirectoryCreate(builddirectoryabssakerpath);
@@ -486,8 +486,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 			TaskExecutionManager manager = new TaskExecutionManager(prevresults);
 			tasExecutionManager = manager;
 
-			Collection<? extends TaskInvokerFactory> taskinvokerfactories = executionParameters
-					.getTaskInvokerFactories();
+			Collection<? extends TaskInvoker> taskinvokers = executionParameters.getTaskInvokers();
 			BuildDataCache builddatacache = executionParameters.getBuildDataCache();
 			if (builddatacache != null) {
 				buildCacheAccessor = new BuildCacheAccessor(builddatacache, contentDatabase.getClassLoaderResolver());
@@ -496,7 +495,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 			try {
 				this.buildTrace.startExecute();
 				try {
-					manager.execute(taskfactory, taskid, this, taskinvokerfactories, buildCacheAccessor, buildTrace);
+					manager.execute(taskfactory, taskid, this, taskinvokers, buildCacheAccessor, buildTrace);
 					this.buildTrace.endExecute(true);
 				} catch (Throwable e) {
 					this.buildTrace.endExecute(false);
@@ -633,7 +632,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 	public Path mirror(SakerFile file, DirectoryVisitPredicate synchpredicate)
 			throws IOException, FileMirroringUnavailableException {
-		return mirrorHandler.mirror(file, synchpredicate);
+		return mirrorHandler.mirror(file, synchpredicate, this);
 	}
 
 	public Path mirror(SakerPath filepath, SakerFile file, DirectoryVisitPredicate synchpredicate)

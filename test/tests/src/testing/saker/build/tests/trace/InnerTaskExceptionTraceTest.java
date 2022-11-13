@@ -1,5 +1,6 @@
 package testing.saker.build.tests.trace;
 
+import java.io.IOException;
 import java.util.List;
 
 import saker.build.file.path.ProviderHolderPathKey;
@@ -155,6 +156,17 @@ public class InnerTaskExceptionTraceTest extends ClusterBuildTestCase {
 	protected void runTestImpl() throws Throwable {
 		ProviderHolderPathKey tracepathkey = SakerPathFiles.getPathKey(files, BUILD_TRACE_PATH);
 		parameters.setBuildTraceOutputPathKey(tracepathkey);
+		//run multiple times as that caused some bugs surface, which caused cluster trace to be incorrect
+		for (int i = 0; i < 20; i++) {
+			System.out.println("Run-" + i);
+			runLocalTests(tracepathkey);
+
+			runClusterTests(tracepathkey);
+		}
+	}
+
+	private void runLocalTests(ProviderHolderPathKey tracepathkey)
+			throws AssertionError, InterruptedException, IOException {
 		{
 			assertTaskException(InnerTaskExecutionException.class,
 					() -> runTask("throwing", new ThrowingInnerStarterTaskFactory()));
@@ -206,7 +218,10 @@ public class InnerTaskExceptionTraceTest extends ClusterBuildTestCase {
 					new UnsupportedOperationException(ShortAbortingInnerTaskFactory.class.getSimpleName()).toString()),
 					abortexcstr);
 		}
+	}
 
+	private void runClusterTests(ProviderHolderPathKey tracepathkey)
+			throws AssertionError, InterruptedException, IOException {
 		{
 			assertTaskException(InnerTaskExecutionException.class,
 					() -> runTask("clusterthrowing", new ClusterThrowingInnerStarterTaskFactory()));

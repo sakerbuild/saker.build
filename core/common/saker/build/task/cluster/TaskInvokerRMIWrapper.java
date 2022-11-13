@@ -19,31 +19,31 @@ import java.io.IOException;
 import java.util.UUID;
 
 import saker.build.runtime.execution.ExecutionContext;
-import saker.build.task.TaskInvoker;
+import saker.build.task.TaskInvocationManager.TaskInvocationContext;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 
-public class TaskInvokerFactoryRMIWrapper implements RMIWrapper, TaskInvokerFactory {
-	private TaskInvokerFactory factory;
+public class TaskInvokerRMIWrapper implements RMIWrapper, TaskInvoker {
+	private TaskInvoker invoker;
 	private UUID environmentIdentifier;
 
-	public TaskInvokerFactoryRMIWrapper() {
+	public TaskInvokerRMIWrapper() {
 	}
 
-	public TaskInvokerFactoryRMIWrapper(TaskInvokerFactory factory) {
-		this.factory = factory;
+	public TaskInvokerRMIWrapper(TaskInvoker invoker) {
+		this.invoker = invoker;
 	}
 
 	@Override
 	public void writeWrapped(RMIObjectOutput out) throws IOException {
-		out.writeRemoteObject(factory);
-		out.writeSerializedObject(factory.getEnvironmentIdentifier());
+		out.writeRemoteObject(invoker);
+		out.writeSerializedObject(invoker.getEnvironmentIdentifier());
 	}
 
 	@Override
 	public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
-		factory = (TaskInvokerFactory) in.readObject();
+		invoker = (TaskInvoker) in.readObject();
 		environmentIdentifier = (UUID) in.readObject();
 	}
 
@@ -54,13 +54,13 @@ public class TaskInvokerFactoryRMIWrapper implements RMIWrapper, TaskInvokerFact
 
 	@Override
 	public Object getWrappedObject() {
-		return factory;
+		return invoker;
 	}
 
 	@Override
-	public TaskInvoker createTaskInvoker(ExecutionContext executioncontext, TaskInvokerInformation invokerinformation)
-			throws IOException, NullPointerException {
-		return factory.createTaskInvoker(executioncontext, invokerinformation);
+	public void run(ExecutionContext executioncontext, TaskInvokerInformation invokerinformation,
+			TaskInvocationContext context) throws Exception {
+		invoker.run(executioncontext, invokerinformation, context);
 	}
 
 	@Override

@@ -27,9 +27,10 @@ public class TraceTestUtils {
 		Object c = bt;
 		for (Object o : fieldpath) {
 			if (o instanceof String) {
-				c = ((Map<?, ?>) c).get(o);
+				Map<?, ?> map = (Map<?, ?>) c;
+				c = map.get(o);
 				if (c == null) {
-					throw new NoSuchElementException(o.toString());
+					throw new NoSuchElementException(o.toString() + " keys: " + map.keySet());
 				}
 				continue;
 			}

@@ -67,7 +67,7 @@ import saker.build.scripting.TargetConfigurationReadingResult;
 import saker.build.task.BuildTargetTaskResult;
 import saker.build.task.TaskFactory;
 import saker.build.task.TaskResultCollection;
-import saker.build.task.cluster.TaskInvokerFactory;
+import saker.build.task.cluster.TaskInvoker;
 import saker.build.task.exception.InnerTaskExecutionException;
 import saker.build.task.exception.MultiTaskExecutionFailedException;
 import saker.build.task.exception.TaskException;
@@ -364,7 +364,7 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 					Set<String> configclusternames = testconfig.getClusterNames();
 					Map<String, LocalDaemonEnvironment> clusterenvironments = Collections.emptyNavigableMap();
 					if (!ObjectUtils.isNullOrEmpty(configclusternames)) {
-						Collection<TaskInvokerFactory> taskinvokerfactories = new ArrayList<>();
+						Collection<TaskInvoker> taskinvokers = new ArrayList<>();
 						ClassLoaderResolverRegistry daemonbaseregistry = RemoteDaemonConnection
 								.createConnectionBaseClassLoaderResolver();
 						daemonbaseregistry.register(TEST_CLASSLOADER_RESOLVER_ID, testclresolver);
@@ -406,14 +406,13 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 											.classResolver(new ClassLoaderResolverRegistry(daemonbaseregistry)));
 							rescloser.add(daemonconnection);
 
-							TaskInvokerFactory daemontaskinvokerfactory = daemonconnection
-									.getClusterTaskInvokerFactory();
-							assertNonNull(daemontaskinvokerfactory);
-							taskinvokerfactories.add(daemontaskinvokerfactory);
+							TaskInvoker daemontaskinvoker = daemonconnection.getClusterTaskInvoker();
+							assertNonNull(daemontaskinvoker);
+							taskinvokers.add(daemontaskinvoker);
 
 							clusterenvironments.put(clustername, clusterdaemon);
 						}
-						params.setTaskInvokerFactories(taskinvokerfactories);
+						params.setTaskInvokers(taskinvokers);
 					}
 					params.defaultize();
 
@@ -504,6 +503,10 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 
 	protected TestMetric createMetric() {
 		return null;
+	}
+
+	protected void clearMetric() {
+		this.metric = null;
 	}
 
 	protected TestMetric getMetric() {

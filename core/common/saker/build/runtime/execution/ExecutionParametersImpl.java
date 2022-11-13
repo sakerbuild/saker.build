@@ -38,7 +38,7 @@ import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.runtime.params.ExecutionRepositoryConfiguration;
 import saker.build.runtime.params.ExecutionScriptConfiguration;
 import saker.build.task.TaskProgressMonitor;
-import saker.build.task.cluster.TaskInvokerFactory;
+import saker.build.task.cluster.TaskInvoker;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
@@ -69,7 +69,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 	private ExecutionPathConfiguration pathConfiguration;
 	private ExecutionScriptConfiguration scriptConfiguration;
 
-	private Collection<TaskInvokerFactory> taskInvokerFactories = Collections.emptyList();
+	private Collection<TaskInvoker> taskInvokers = Collections.emptyList();
 
 	private DatabaseConfiguration databaseConfiguration;
 
@@ -106,7 +106,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		this.buildDataCache = copy.buildDataCache;
 		this.userParameters = ImmutableUtils.makeImmutableNavigableMap(copy.getUserParameters());
 		this.protectionWriteEnabledDirectories = ObjectUtils.cloneArrayList(copy.protectionWriteEnabledDirectories);
-		this.taskInvokerFactories = ObjectUtils.cloneArrayList(copy.taskInvokerFactories);
+		this.taskInvokers = ObjectUtils.cloneArrayList(copy.taskInvokers);
 		this.publishCachedTasks = copy.publishCachedTasks;
 		this.secretInputReader = copy.secretInputReader;
 		this.userPrompHandler = copy.userPrompHandler;
@@ -137,13 +137,13 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		if (userParameters == null) {
 			userParameters = Collections.emptyNavigableMap();
 		}
-		if (taskInvokerFactories == null) {
-			taskInvokerFactories = Collections.emptyList();
+		if (taskInvokers == null) {
+			taskInvokers = Collections.emptyList();
 		}
 	}
 
-	public Collection<? extends TaskInvokerFactory> getTaskInvokerFactories() {
-		return taskInvokerFactories;
+	public Collection<? extends TaskInvoker> getTaskInvokers() {
+		return taskInvokers;
 	}
 
 	public SecretInputReader getSecretInputReader() {
@@ -257,8 +257,8 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 		return publishCachedTasks;
 	}
 
-	public void setTaskInvokerFactories(Collection<TaskInvokerFactory> taskInvokerFactories) {
-		this.taskInvokerFactories = taskInvokerFactories;
+	public void setTaskInvokers(Collection<TaskInvoker> taskInvokers) {
+		this.taskInvokers = taskInvokers;
 	}
 
 	public void setRepositoryConfiguration(ExecutionRepositoryConfiguration repositoryConfiguration) {
@@ -495,7 +495,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 			out.writeObject(params.userPrompHandler);
 			out.writeObject(params.databaseConfiguration);
 
-			SerialUtils.writeExternalCollection(out, params.taskInvokerFactories);
+			SerialUtils.writeExternalCollection(out, params.taskInvokers);
 			SerialUtils.writeExternalCollection(out, params.protectionWriteEnabledDirectories);
 			SerialUtils.writeExternalMap(out, params.userParameters);
 
@@ -532,7 +532,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 			params.userPrompHandler = (BuildUserPromptHandler) in.readObject();
 			params.databaseConfiguration = (DatabaseConfiguration) in.readObject();
 
-			params.taskInvokerFactories = SerialUtils.readExternalImmutableList(in);
+			params.taskInvokers = SerialUtils.readExternalImmutableList(in);
 			params.protectionWriteEnabledDirectories = SerialUtils.readExternalImmutableList(in);
 			params.userParameters = SerialUtils.readExternalImmutableLinkedHashMap(in);
 

@@ -114,7 +114,7 @@ import saker.build.task.TaskExecutionResult.TaskDependencies;
 import saker.build.task.TaskExecutionResult.TaskDependencies.NullFileDependencyTag;
 import saker.build.task.TaskInvocationManager.SelectionResult;
 import saker.build.task.TaskInvocationManager.TaskInvocationResult;
-import saker.build.task.cluster.TaskInvokerFactory;
+import saker.build.task.cluster.TaskInvoker;
 import saker.build.task.delta.BuildDelta;
 import saker.build.task.delta.DeltaType;
 import saker.build.task.delta.FileChangeDelta;
@@ -4368,7 +4368,7 @@ public final class TaskExecutionManager {
 	}
 
 	public void execute(TaskFactory<?> factory, TaskIdentifier taskid, ExecutionContextImpl executioncontext,
-			Collection<? extends TaskInvokerFactory> taskinvokerfactories, BuildCacheAccessor buildcache,
+			Collection<? extends TaskInvoker> taskinvokers, BuildCacheAccessor buildcache,
 			InternalBuildTrace buildtrace) throws MultiTaskExecutionFailedException {
 		Objects.requireNonNull(taskid, "taskid");
 		Objects.requireNonNull(factory, "factory");
@@ -4391,7 +4391,7 @@ public final class TaskExecutionManager {
 		boolean failedexecution = false;
 		TaskInvocationManager invocationmanager = null;
 		try {
-			invocationmanager = createTaskInvocationManager(executioncontext, taskinvokerfactories,
+			invocationmanager = createTaskInvocationManager(executioncontext, taskinvokers,
 					clusterInteractionThreadGroup);
 			this.invocationManager = invocationmanager;
 
@@ -4554,9 +4554,9 @@ public final class TaskExecutionManager {
 		return new EnvironmentSelectionResult(selectionresult.getQualifierEnvironmentProperties());
 	}
 
-	private TaskInvocationManager createTaskInvocationManager(ExecutionContextImpl executioncontext,
-			Collection<? extends TaskInvokerFactory> taskinvokerfactories, ThreadGroup clusterInteractionThreadGroup) {
-		return new TaskInvocationManager(executioncontext, taskinvokerfactories, clusterInteractionThreadGroup);
+	private static TaskInvocationManager createTaskInvocationManager(ExecutionContextImpl executioncontext,
+			Collection<? extends TaskInvoker> taskinvokers, ThreadGroup clusterInteractionThreadGroup) {
+		return new TaskInvocationManager(executioncontext, taskinvokers, clusterInteractionThreadGroup);
 	}
 
 	//this method can be called even if the count is 0
@@ -4899,7 +4899,8 @@ public final class TaskExecutionManager {
 							"Inner task factory created null task: " + factory.getClass().getName());
 				}
 				R res;
-				innertaskcontext = InnerTaskContext.startInnerTask(taskcontext, factory);
+				innertaskcontext = InnerTaskContext.startInnerTask(taskcontext, factory,
+						configuration.getRequestedComputationTokenCount());
 				try (TaskContextReference contextref = TaskContextReference.createForInnerTask(innertaskcontext)) {
 					InternalTaskBuildTrace btrace = innertaskcontext.internalGetBuildTrace();
 					try {

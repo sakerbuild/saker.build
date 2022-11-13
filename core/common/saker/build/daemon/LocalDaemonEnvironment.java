@@ -71,10 +71,9 @@ import saker.build.runtime.project.ProjectCacheHandle;
 import saker.build.runtime.project.SakerExecutionCache;
 import saker.build.runtime.project.SakerProjectCache;
 import saker.build.task.TaskInvocationManager.TaskInvocationContext;
-import saker.build.task.TaskInvoker;
 import saker.build.task.cluster.ClusterTaskInvoker;
-import saker.build.task.cluster.TaskInvokerFactory;
-import saker.build.task.cluster.TaskInvokerFactoryRMIWrapper;
+import saker.build.task.cluster.TaskInvoker;
+import saker.build.task.cluster.TaskInvokerRMIWrapper;
 import saker.build.task.cluster.TaskInvokerInformation;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.connection.RMIConnection;
@@ -83,12 +82,10 @@ import saker.build.thirdparty.saker.rmi.connection.RMIServer;
 import saker.build.thirdparty.saker.rmi.connection.RMISocketConfiguration;
 import saker.build.thirdparty.saker.rmi.connection.RMIVariables;
 import saker.build.thirdparty.saker.rmi.exception.RMIContextVariableNotFoundException;
-import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectOutput;
 import saker.build.thirdparty.saker.rmi.io.wrap.RMIWrapper;
 import saker.build.thirdparty.saker.util.DateUtils;
-import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.StringUtils;
@@ -112,6 +109,8 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	 */
 	public static final String RMI_CONTEXT_VARIABLE_DAEMON_ACCESS = "saker.daemon.access";
 
+	public static final String RMI_CONTEXT_VARIABLE_CLUSTER_INVOKER = "saker.daemon.cluster.invoker";
+
 	public static final String DAEMON_LOCK_FILE_NAME = ".lock.daemon";
 
 	private static final int STATE_UNSTARTED = 0;
@@ -120,6 +119,9 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	private static final int STATE_CLOSED = 3;
 	private static final AtomicIntegerFieldUpdater<LocalDaemonEnvironment> AIFU_state = AtomicIntegerFieldUpdater
 			.newUpdater(LocalDaemonEnvironment.class, "state");
+
+	private static final Method METHOD_TASK_INVOKER_FACTORY_RUN = ReflectUtils.getMethodAssert(TaskInvoker.class, "run",
+			ExecutionContext.class, TaskInvokerInformation.class, TaskInvocationContext.class);
 
 	/**
 	 * Format:
@@ -184,8 +186,7 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	/**
 	 * Synchronized collection.
 	 */
-	private Set<WeakReference<TaskInvokerFactory>> clientClusterTaskInvokers = Collections
-			.synchronizedSet(new HashSet<>());
+	private Set<WeakReference<TaskInvoker>> clientClusterTaskInvokers = Collections.synchronizedSet(new HashSet<>());
 	private Set<? extends AddressResolver> connectToAsClusterAddresses;
 	private ThreadWorkPool clusterClientConnectingWorkPool;
 	private ThreadGroup clusterClientConnectingThreadGroup;
@@ -621,10 +622,10 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	}
 
 	@Override
-	public Collection<? extends TaskInvokerFactory> getClientClusterTaskInvokerFactories() {
-		Collection<TaskInvokerFactory> result = new ArrayList<>();
+	public Collection<? extends TaskInvoker> getClientClusterTaskInvokers() {
+		Collection<TaskInvoker> result = new ArrayList<>();
 		clientClusterTaskInvokers.forEach(r -> {
-			TaskInvokerFactory tif = r.get();
+			TaskInvoker tif = r.get();
 			if (tif == null) {
 				return;
 			}
@@ -773,6 +774,24 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		}
 	}
 
+	static void runClusterInvokerContextVariable(RMIVariables vars, ExecutionContext executioncontext,
+			TaskInvokerInformation invokerinformation, TaskInvocationContext context) throws Exception {
+		try {
+			vars.invokeContextVariableMethod(RMI_CONTEXT_VARIABLE_CLUSTER_INVOKER, METHOD_TASK_INVOKER_FACTORY_RUN,
+					executioncontext, invokerinformation, context);
+		} catch (InvocationTargetException e) {
+			Throwable cause = e.getCause();
+			if (cause instanceof Exception) {
+				throw (Exception) cause;
+			}
+			//serious error, throw it directly
+			if (cause instanceof Error) {
+				throw (Error) cause;
+			}
+			throw e;
+		}
+	}
+
 	private interface InternalDaemonAccess {
 		public static final Method METHOD_GETDAEMONACCESS = ReflectUtils.getMethodAssert(InternalDaemonAccess.class,
 				"getDaemonAccess");
@@ -799,16 +818,18 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		@Override
 		public void writeWrapped(RMIObjectOutput out) throws IOException {
 			out.writeRemoteObject(daemonAccess.getDaemonEnvironment());
-			out.writeRemoteObject(daemonAccess.getClusterTaskInvokerFactory());
+			out.writeBoolean(daemonAccess.isClusterAvailable());
 			out.writeRemoteObject(daemonAccess.getDaemonClientServer());
+			out.writeSerializedObject(daemonAccess.getEnvironmentIdentifier());
 		}
 
 		@Override
 		public void readWrapped(RMIObjectInput in) throws IOException, ClassNotFoundException {
 			DaemonEnvironment daemonEnvironment = (DaemonEnvironment) in.readObject();
-			TaskInvokerFactory clusterinvokerfactory = (TaskInvokerFactory) in.readObject();
+			boolean clusteravailable = in.readBoolean();
 			DaemonClientServer clientserver = (DaemonClientServer) in.readObject();
-			daemonAccess = new DaemonAccessImpl(daemonEnvironment, clientserver, clusterinvokerfactory);
+			UUID envid = (UUID) in.readObject();
+			daemonAccess = new DaemonAccessImpl(daemonEnvironment, clientserver, clusteravailable, envid);
 		}
 
 		@Override
@@ -827,13 +848,20 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 	private static final class DaemonAccessImpl implements DaemonAccess, InternalDaemonAccess {
 		private final DaemonEnvironment daemonEnvironment;
 		private final DaemonClientServer clientServer;
-		private final TaskInvokerFactory clusterInvokerFactory;
+		private final UUID environmentIdentifier;
+		private final boolean clusterAvailable;
 
-		private DaemonAccessImpl(DaemonEnvironment daemonEnvironment, DaemonClientServer clientserver,
-				TaskInvokerFactory clusterinvokerfactory) {
+		protected DaemonAccessImpl(DaemonEnvironment daemonEnvironment, DaemonClientServer clientserver,
+				boolean clusterAvailable) {
+			this(daemonEnvironment, clientserver, clusterAvailable, daemonEnvironment.getEnvironmentIdentifier());
+		}
+
+		protected DaemonAccessImpl(DaemonEnvironment daemonEnvironment, DaemonClientServer clientserver,
+				boolean clusterAvailable, UUID environmentIdentifier) {
 			this.daemonEnvironment = daemonEnvironment;
 			this.clientServer = clientserver;
-			this.clusterInvokerFactory = clusterinvokerfactory;
+			this.clusterAvailable = clusterAvailable;
+			this.environmentIdentifier = environmentIdentifier;
 		}
 
 		@Override
@@ -847,8 +875,13 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		}
 
 		@Override
-		public TaskInvokerFactory getClusterTaskInvokerFactory() {
-			return clusterInvokerFactory;
+		public UUID getEnvironmentIdentifier() {
+			return environmentIdentifier;
+		}
+
+		@Override
+		public boolean isClusterAvailable() {
+			return clusterAvailable;
 		}
 
 		@Override
@@ -879,18 +912,15 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 					SakerRMIHelper.dumpRMIStatistics(connection);
 				}
 			});
-			LocalDaemonClusterInvokerFactory clusterinvokerfactory;
+			DaemonClientServerImpl clientserver = new DaemonClientServerImpl(connection);
+			connection.putContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_ACCESS,
+					new DaemonAccessImpl(LocalDaemonEnvironment.this, clientserver, actsAsCluster));
 			if (actsAsCluster) {
 				ClassLoaderResolverRegistry connectionclresolver = (ClassLoaderResolverRegistry) connection
 						.getClassLoaderResolver();
-				clusterinvokerfactory = new LocalDaemonClusterInvokerFactory(connectionclresolver,
-						constructLaunchParameters.getClusterMirrorDirectory());
-			} else {
-				clusterinvokerfactory = null;
+				connection.putContextVariable(RMI_CONTEXT_VARIABLE_CLUSTER_INVOKER, new LocalDaemonClusterInvoker(
+						connectionclresolver, constructLaunchParameters.getClusterMirrorDirectory()));
 			}
-			DaemonClientServerImpl clientserver = new DaemonClientServerImpl(connection);
-			connection.putContextVariable(RMI_CONTEXT_VARIABLE_DAEMON_ACCESS,
-					new DaemonAccessImpl(LocalDaemonEnvironment.this, clientserver, clusterinvokerfactory));
 			super.setupConnection(acceptedsocket, connection);
 		}
 
@@ -1037,13 +1067,9 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 								DaemonAccess access = getDaemonAccessContextVariable(vars);
 								DaemonClientServer clientserver = access.getDaemonClientServer();
 
-								ClassLoaderResolverRegistry connectionclresolver = (ClassLoaderResolverRegistry) rmiconn
-										.getClassLoaderResolver();
-								LocalDaemonClusterInvokerFactory clusterinvokerfactory = new LocalDaemonClusterInvokerFactory(
-										connectionclresolver, constructLaunchParameters.getClusterMirrorDirectory());
 								boolean selfconnection = false;
 								try {
-									clientserver.addClientClusterTaskInvokerFactory(clusterinvokerfactory);
+									clientserver.setClientClusterAvailable(environment.getEnvironmentIdentifier());
 								} catch (InvalidBuildConfigurationException e) {
 									String ls = System.lineSeparator();
 									StringBuilder sb = new StringBuilder();
@@ -1119,21 +1145,21 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		}
 
 		@Override
-		public void addClientClusterTaskInvokerFactory(TaskInvokerFactory factory) {
-			if (LocalDaemonEnvironment.this.getEnvironmentIdentifier().equals(factory.getEnvironmentIdentifier())) {
+		public void setClientClusterAvailable(UUID environmentidentifier) {
+			if (LocalDaemonEnvironment.this.getEnvironmentIdentifier().equals(environmentidentifier)) {
 				throw new InvalidBuildConfigurationException("Attempt to add self as build cluster.");
 			}
 			UUID id = UUID.randomUUID();
 			System.out.println("New cluster client connection: " + id);
 			//TODO handle if the connection is gracefully closed by the client (that is not caused by IO error)
 
-			RemoteDaemonConnectionImpl.TaskInvokerFactoryImpl invokerimpl = new RemoteDaemonConnectionImpl.TaskInvokerFactoryImpl(
-					(ClassLoaderResolverRegistry) connection.getClassLoaderResolver(), factory);
-			WeakReference<TaskInvokerFactory> weakref = new WeakReference<>(invokerimpl);
+			RemoteDaemonConnectionImpl.TaskInvokerImpl invokerimpl = new RemoteDaemonConnectionImpl.TaskInvokerImpl(
+					connection, environmentidentifier);
+			WeakReference<TaskInvoker> weakref = new WeakReference<>(invokerimpl);
 			connection.addCloseListener(new RMIConnection.CloseListener() {
 				//reference to keep the proxy alive until the connection is present
 				@SuppressWarnings("unused")
-				private TaskInvokerFactory strongFactoryRef = invokerimpl;
+				private TaskInvoker strongFactoryRef = invokerimpl;
 
 				@Override
 				public void onConnectionClosed() {
@@ -1318,12 +1344,12 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 
 	}
 
-	@RMIWrap(TaskInvokerFactoryRMIWrapper.class)
-	private class LocalDaemonClusterInvokerFactory implements TaskInvokerFactory {
+	@RMIWrap(TaskInvokerRMIWrapper.class)
+	private class LocalDaemonClusterInvoker implements TaskInvoker {
 		private final Path clusterMirrorDirectory;
 		private final ClassLoaderResolverRegistry connectionClassLoaderRegistry;
 
-		public LocalDaemonClusterInvokerFactory(ClassLoaderResolverRegistry connectionclregistry,
+		public LocalDaemonClusterInvoker(ClassLoaderResolverRegistry connectionclregistry,
 				SakerPath clusterMirrorDirectory) {
 			this.connectionClassLoaderRegistry = connectionclregistry;
 			this.clusterMirrorDirectory = clusterMirrorDirectory == null ? null
@@ -1331,69 +1357,61 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		}
 
 		@Override
-		public TaskInvoker createTaskInvoker(ExecutionContext executioncontext,
-				TaskInvokerInformation invokerinformation) throws IOException, NullPointerException {
+		public void run(ExecutionContext executioncontext, TaskInvokerInformation invokerinformation,
+				TaskInvocationContext context) throws Exception {
 			if (!(executioncontext instanceof InternalExecutionContext)) {
 				//safety check this here, later than later
 				//as we're downcasting the execution context
 				throw new IllegalArgumentException(
 						"Invalid execution context instance: " + ObjectUtils.classNameOf(executioncontext));
 			}
+			ExecutionPathConfiguration realpathconfig = executioncontext.getPathConfiguration();
+			ProviderHolderPathKey workingpathkey = realpathconfig.getWorkingDirectoryPathKey();
+			SakerProjectCache project = getProjectImpl(workingpathkey).project;
+			Path modifiedmirrordir;
+			if (clusterMirrorDirectory == null) {
+				modifiedmirrordir = null;
+			} else {
+				//XXX maybe put a notice text file about the origin of the directory
+				modifiedmirrordir = getMirrorDirectoryPathForWorkingDirectory(clusterMirrorDirectory, workingpathkey);
+			}
 
-			return new TaskInvoker() {
-				@Override
-				public void run(TaskInvocationContext context) throws Exception {
-					ExecutionPathConfiguration realpathconfig = executioncontext.getPathConfiguration();
-					ProviderHolderPathKey workingpathkey = realpathconfig.getWorkingDirectoryPathKey();
-					SakerProjectCache project = getProjectImpl(workingpathkey).project;
-					Path modifiedmirrordir;
-					if (clusterMirrorDirectory == null) {
-						modifiedmirrordir = null;
-					} else {
-						//XXX maybe put a notice text file about the origin of the directory
-						modifiedmirrordir = getMirrorDirectoryPathForWorkingDirectory(clusterMirrorDirectory,
-								workingpathkey);
-					}
-
-					InternalBuildTrace internalbuildtrace = ((InternalExecutionContext) executioncontext)
-							.internalGetBuildTrace();
-					internalbuildtrace.startBuildCluster(environment, modifiedmirrordir);
-					ClassLoaderResolverRegistry executionclregistry = new ClassLoaderResolverRegistry(
-							environment.getClassLoaderResolverRegistry());
-					String resolverid = createClusterTaskInvokerRMIRegistryClassResolverId(realpathconfig);
-					connectionClassLoaderRegistry.register(resolverid, executionclregistry);
-					try {
-						try {
-							project.clusterStarting(realpathconfig, executioncontext.getRepositoryConfiguration(),
-									executioncontext.getScriptConfiguration(), executioncontext.getUserParameters(),
-									modifiedmirrordir, invokerinformation.getDatabaseConfiguration(), executioncontext,
-									executionclregistry);
-						} catch (Exception e) {
-							//XXX reify exception
-							throw new IOException(e);
-						}
-
-						SakerExecutionCache execcache = project.getExecutionCache();
-
-						FileMirrorHandler mirrorhandler = project.getClusterMirrorHandler();
-						SakerEnvironment executionenvironment = project.getExecutionCache().getRecordingEnvironment();
-
-						Object execkey = environment.getStartExecutionKey();
-						try {
-							ClusterTaskInvoker clusterinvoker = new ClusterTaskInvoker(environment,
-									executionenvironment, executioncontext, mirrorhandler,
-									execcache.getLoadedBuildRepositories(), project.getClusterContentDatabase(),
-									execcache.getLoadedScriptProviderLocators());
-							clusterinvoker.run(context);
-						} finally {
-							project.clusterFinished(execkey);
-						}
-					} finally {
-						internalbuildtrace.endBuildCluster();
-						connectionClassLoaderRegistry.unregister(resolverid, executionclregistry);
-					}
+			InternalBuildTrace internalbuildtrace = ((InternalExecutionContext) executioncontext)
+					.internalGetBuildTrace();
+			internalbuildtrace.startBuildCluster(environment, modifiedmirrordir);
+			ClassLoaderResolverRegistry executionclregistry = new ClassLoaderResolverRegistry(
+					environment.getClassLoaderResolverRegistry());
+			String resolverid = createClusterTaskInvokerRMIRegistryClassResolverId(realpathconfig);
+			connectionClassLoaderRegistry.register(resolverid, executionclregistry);
+			try {
+				try {
+					project.clusterStarting(realpathconfig, executioncontext.getRepositoryConfiguration(),
+							executioncontext.getScriptConfiguration(), executioncontext.getUserParameters(),
+							modifiedmirrordir, invokerinformation.getDatabaseConfiguration(), executioncontext,
+							executionclregistry);
+				} catch (Exception e) {
+					//XXX reify exception
+					throw new IOException(e);
 				}
-			};
+
+				SakerExecutionCache execcache = project.getExecutionCache();
+
+				FileMirrorHandler mirrorhandler = project.getClusterMirrorHandler();
+				SakerEnvironment executionenvironment = project.getExecutionCache().getRecordingEnvironment();
+
+				Object execkey = environment.getStartExecutionKey();
+				try {
+					ClusterTaskInvoker clusterinvoker = new ClusterTaskInvoker(environment, executionenvironment,
+							executioncontext, mirrorhandler, execcache.getLoadedBuildRepositories(),
+							project.getClusterContentDatabase(), execcache.getLoadedScriptProviderLocators());
+					clusterinvoker.run(context);
+				} finally {
+					project.clusterFinished(execkey);
+				}
+			} finally {
+				internalbuildtrace.endBuildCluster();
+				connectionClassLoaderRegistry.unregister(resolverid, executionclregistry);
+			}
 		}
 
 		@Override
@@ -1431,9 +1449,9 @@ public class LocalDaemonEnvironment implements DaemonEnvironment {
 		}
 
 		@Override
-		public TaskInvokerFactory getClusterTaskInvokerFactory() {
+		public TaskInvoker getClusterTaskInvoker() {
 			//TODO we probably need to adjust the incoming rmi connection class resolver registry. Should we disable multi-hop rmi cluster usage?
-			return subject.getClusterTaskInvokerFactory();
+			return subject.getClusterTaskInvoker();
 		}
 
 		@Override

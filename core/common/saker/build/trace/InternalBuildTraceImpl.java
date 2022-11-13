@@ -155,7 +155,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	protected static final Method METHOD_ENDCLUSTERTASKEXECUTION = ReflectUtils
 			.getMethodAssert(ClusterTaskBuildTrace.class, "endClusterTaskExecution", long.class);
 	protected static final Method METHOD_STARTCLUSTERINNERTASK = ReflectUtils.getMethodAssert(
-			ClusterTaskBuildTrace.class, "startClusterInnerTask", Object.class, long.class, UUID.class, String.class);
+			ClusterTaskBuildTrace.class, "startClusterInnerTask", Object.class, long.class, UUID.class, String.class,
+			int.class);
 	protected static final Method METHOD_ENDCLUSTERINNERTASK = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
 			"endClusterInnerTask", Object.class, long.class);
 	protected static final Method METHOD_SETTHROWNEXCEPTION = ReflectUtils.getMethodAssert(ClusterTaskBuildTrace.class,
@@ -1287,6 +1288,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 							writeFieldName(os, "task_class");
 							writeString(os, ibt.innerTaskClassName);
 
+							if (ibt.computationTokenCount > 0) {
+								writeFieldName(os, "cpu_tokens");
+								writeInt(os, ibt.computationTokenCount);
+							}
+
 							if (ibt.executionEnvironmentUUID != null
 									&& !localEnvironmentReference.environmentInfo.buildEnvironmentUUID
 											.equals(ibt.executionEnvironmentUUID)) {
@@ -2044,11 +2050,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public InternalTaskBuildTrace startInnerTask(ExecutionContext executioncontext,
-				TaskFactory<?> innertaskfactory) {
+		public InternalTaskBuildTrace startInnerTask(ExecutionContext executioncontext, TaskFactory<?> innertaskfactory,
+				int cputokencount) {
 			long nanos = System.nanoTime();
 			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(new Object());
-			innertrace.init(nanos, executionEnvironmentUUID);
+			innertrace.init(nanos, executionEnvironmentUUID, cputokencount);
 			innertrace.setInnerTaskClassName(innertaskfactory.getClass().getName());
 			return innertrace;
 		}
@@ -2067,9 +2073,9 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		@Override
 		public void startClusterInnerTask(Object innertaskidentity, long nanos, UUID environmentuuid,
-				String innertaskclassname) {
+				String innertaskclassname, int cputokencount) {
 			InnerTaskBuildTraceImpl innertrace = getInnerTaskBuildTraceForIdentity(innertaskidentity);
-			innertrace.init(nanos, environmentuuid);
+			innertrace.init(nanos, environmentuuid, cputokencount);
 			innertrace.setInnerTaskClassName(innertaskclassname);
 		}
 
@@ -2186,6 +2192,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			protected String innerTaskClassName;
 			protected ExceptionView thrownException;
 			protected List<ExceptionView> abortExceptions;
+			protected int computationTokenCount;
 
 			protected TaskDisplayInformation displayInformation;
 
@@ -2199,9 +2206,10 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				this.innerTaskIdentity = innerTaskIdentity;
 			}
 
-			public void init(long startNanos, UUID executionEnvironmentUUID) {
+			public void init(long startNanos, UUID executionEnvironmentUUID, int cputokencount) {
 				this.startNanos = startNanos;
 				this.executionEnvironmentUUID = executionEnvironmentUUID;
+				this.computationTokenCount = cputokencount;
 			}
 
 			public void setInnerTaskClassName(String innerTaskClassName) {
@@ -2346,14 +2354,14 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public InternalTaskBuildTrace startInnerTask(ExecutionContext executioncontext,
-				TaskFactory<?> innertaskfactory) {
+		public InternalTaskBuildTrace startInnerTask(ExecutionContext executioncontext, TaskFactory<?> innertaskfactory,
+				int cputokencount) {
 			long currentbuildnanos = System.nanoTime() - readNanos + writeNanos;
 			Object innertaskidentity = new Object();
 			noException(() -> {
 				UUID envuuid = executioncontext.getEnvironment().getEnvironmentIdentifier();
 				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_STARTCLUSTERINNERTASK, innertaskidentity,
-						currentbuildnanos, envuuid, innertaskfactory.getClass().getName());
+						currentbuildnanos, envuuid, innertaskfactory.getClass().getName(), cputokencount);
 			});
 			return new ClusterInnerTaskBuildTraceImpl(innertaskidentity);
 		}

@@ -238,7 +238,7 @@ public interface InternalBuildTrace extends Closeable {
 		 *            For the cluster case, to get the execution environment id.
 		 */
 		public default InternalTaskBuildTrace startInnerTask(ExecutionContext executioncontext,
-				@RMISerialize TaskFactory<?> innertaskfactory) {
+				@RMISerialize TaskFactory<?> innertaskfactory, int cputokencount) {
 			return NullInternalBuildTrace.INSTANCE;
 		}
 
