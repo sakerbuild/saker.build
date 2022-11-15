@@ -17,6 +17,7 @@ import testing.saker.SakerTest;
 import testing.saker.build.tests.TestClusterNameExecutionEnvironmentSelector;
 import testing.saker.build.tests.tasks.SelfStatelessTaskFactory;
 import testing.saker.build.tests.tasks.cluster.ClusterBuildTestCase;
+import testing.saker.build.tests.trace.TraceTestUtils.ExceptionDetailHolder;
 
 //cluster test case so we can test that as well
 @SakerTest
@@ -174,10 +175,10 @@ public class InnerTaskExceptionTraceTest extends ClusterBuildTestCase {
 				project.waitExecutionFinalization();
 			}
 			assertNotEmpty((Iterable<?>) TraceTestUtils.getTraceField(tracepathkey, "tasks", 0, "inner_tasks"));
-			byte[] exceptionobj = (byte[]) TraceTestUtils.getTraceField(tracepathkey, "tasks", 0, "inner_tasks", 0,
-					"exception");
+			ExceptionDetailHolder exceptionobj = (ExceptionDetailHolder) TraceTestUtils.getTraceField(tracepathkey,
+					"tasks", 0, "inner_tasks", 0, "exception_detail");
 			assertNonNull(exceptionobj);
-			String excstr = new String(exceptionobj);
+			String excstr = exceptionobj.getStackTrace();
 			assertTrue(excstr.contains(
 					new UnsupportedOperationException(ThrowingInnerTaskFactory.class.getSimpleName()).toString()),
 					excstr);
@@ -191,11 +192,11 @@ public class InnerTaskExceptionTraceTest extends ClusterBuildTestCase {
 			}
 			assertNotEmpty((Iterable<?>) TraceTestUtils.getTraceField(tracepathkey, "tasks", 0, "inner_tasks"));
 			@SuppressWarnings("unchecked")
-			List<byte[]> abortexceptions = (List<byte[]>) TraceTestUtils.getTraceField(tracepathkey, "tasks", 0,
-					"inner_tasks", 0, "abort_exceptions");
+			List<ExceptionDetailHolder> abortexceptions = (List<ExceptionDetailHolder>) TraceTestUtils
+					.getTraceField(tracepathkey, "tasks", 0, "inner_tasks", 0, "abort_exception_details");
 			assertNonNull(abortexceptions);
 			assertEquals(abortexceptions.size(), 1);
-			String abortexcstr = new String(abortexceptions.get(0));
+			String abortexcstr = abortexceptions.get(0).getStackTrace();
 			assertTrue(abortexcstr.contains(
 					new UnsupportedOperationException(AbortingInnerTaskFactory.class.getSimpleName()).toString()),
 					abortexcstr);
@@ -209,11 +210,11 @@ public class InnerTaskExceptionTraceTest extends ClusterBuildTestCase {
 			}
 			assertNotEmpty((Iterable<?>) TraceTestUtils.getTraceField(tracepathkey, "tasks", 0, "inner_tasks"));
 			@SuppressWarnings("unchecked")
-			List<byte[]> abortexceptions = (List<byte[]>) TraceTestUtils.getTraceField(tracepathkey, "tasks", 0,
-					"inner_tasks", 0, "abort_exceptions");
+			List<ExceptionDetailHolder> abortexceptions = (List<ExceptionDetailHolder>) TraceTestUtils
+					.getTraceField(tracepathkey, "tasks", 0, "inner_tasks", 0, "abort_exception_details");
 			assertNonNull(abortexceptions);
 			assertEquals(abortexceptions.size(), 1);
-			String abortexcstr = new String(abortexceptions.get(0));
+			String abortexcstr = abortexceptions.get(0).getStackTrace();
 			assertTrue(abortexcstr.contains(
 					new UnsupportedOperationException(ShortAbortingInnerTaskFactory.class.getSimpleName()).toString()),
 					abortexcstr);
@@ -229,10 +230,10 @@ public class InnerTaskExceptionTraceTest extends ClusterBuildTestCase {
 				project.waitExecutionFinalization();
 			}
 			assertNotEmpty((Iterable<?>) TraceTestUtils.getTraceField(tracepathkey, "tasks", 0, "inner_tasks"));
-			byte[] exceptionobj = (byte[]) TraceTestUtils.getTraceField(tracepathkey, "tasks", 0, "inner_tasks", 0,
-					"exception");
+			ExceptionDetailHolder exceptionobj = (ExceptionDetailHolder) TraceTestUtils.getTraceField(tracepathkey,
+					"tasks", 0, "inner_tasks", 0, "exception_detail");
 			assertNonNull(exceptionobj);
-			String excstr = new String(exceptionobj);
+			String excstr = exceptionobj.getStackTrace();
 			assertTrue(excstr
 					.contains(new UnsupportedOperationException(ClusterThrowingInnerTaskFactory.class.getSimpleName())
 							.toString()),
@@ -247,11 +248,11 @@ public class InnerTaskExceptionTraceTest extends ClusterBuildTestCase {
 			}
 			assertNotEmpty((Iterable<?>) TraceTestUtils.getTraceField(tracepathkey, "tasks", 0, "inner_tasks"));
 			@SuppressWarnings("unchecked")
-			List<byte[]> abortexceptions = (List<byte[]>) TraceTestUtils.getTraceField(tracepathkey, "tasks", 0,
-					"inner_tasks", 0, "abort_exceptions");
+			List<ExceptionDetailHolder> abortexceptions = (List<ExceptionDetailHolder>) TraceTestUtils
+					.getTraceField(tracepathkey, "tasks", 0, "inner_tasks", 0, "abort_exception_details");
 			assertNonNull(abortexceptions);
 			assertEquals(abortexceptions.size(), 1);
-			String abortexcstr = new String(abortexceptions.get(0));
+			String abortexcstr = abortexceptions.get(0).getStackTrace();
 			assertTrue(abortexcstr
 					.contains(new UnsupportedOperationException(ClusterAbortingInnerTaskFactory.class.getSimpleName())
 							.toString()),

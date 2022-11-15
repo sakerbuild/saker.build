@@ -1101,17 +1101,22 @@ public class SakerLog {
 			}
 			if (skipcount > 0) {
 				if (format.isIncludeSkippedCount()) {
-					ps.append("\t... (skipped " + skipcount + " frames)");
+					ps.append("\t... (skipped ");
+					ps.append(Integer.toString(skipcount));
+					ps.append(" frames)");
 					ps.append(ls);
 				}
 				skipcount = 0;
 			}
-			ps.append("\tat " + traceElement);
+			ps.append("\tat ");
+			ps.append(traceElement.toString());
 			ps.append(ls);
 		}
 		if (skipcount > 0) {
 			if (format.isIncludeSkippedCount()) {
-				ps.append("\t... (skipped " + skipcount + " frames)");
+				ps.append("\t... (skipped ");
+				ps.append(Integer.toString(skipcount));
+				ps.append(" frames)");
 				ps.append(ls);
 			}
 		}
@@ -1121,7 +1126,8 @@ public class SakerLog {
 			if (posst.length > 0) {
 				for (int i = 0; i < posst.length; i++) {
 					ScriptPositionStackTraceElement posste = posst[i];
-					ps.append("\t  at " + posste.toString(workingdir));
+					ps.append("\t  at ");
+					ps.append(posste.toString(workingdir));
 					ps.append(ls);
 				}
 			}
@@ -1163,7 +1169,17 @@ public class SakerLog {
 			ScriptPositionStackTraceElement[] enclosingscripttrace, String caption, String prefix,
 			Set<ExceptionView> printed, SakerPath workingdir, ExceptionFormat format, String ls) throws IOException {
 		if (!printed.add(ev)) {
-			ps.append(prefix + caption + "\t[CIRCULAR REFERENCE:" + ev + "]");
+			if (!prefix.isEmpty()) {
+				ps.append(prefix);
+			}
+			if (!caption.isEmpty()) {
+				ps.append(caption);
+				ps.append("[CIRCULAR REFERENCE:");
+			} else {
+				ps.append("\t[CIRCULAR REFERENCE:");
+			}
+			ps.append(ev.toString());
+			ps.append(']');
 			ps.append(ls);
 		} else {
 			StackTraceElement[] trace = ev.getStackTrace();
@@ -1195,7 +1211,9 @@ public class SakerLog {
 			ScriptPositionStackTraceElement[] scripttrace = enclosingscripttrace;
 
 			// Print our stack trace
-			ps.append(prefix + caption + ev);
+			ps.append(prefix);
+			ps.append(caption);
+			ps.append(ev.toString());
 			ps.append(ls);
 			if (format.isIncludeScriptTrace() && ev instanceof ScriptPositionedExceptionView) {
 				ScriptPositionedExceptionView spev = (ScriptPositionedExceptionView) ev;
@@ -1206,11 +1224,16 @@ public class SakerLog {
 					if (scripttrace.length > 0) {
 						for (int i = 0; i < scripttrace.length - scriptframesincommon; i++) {
 							ScriptPositionStackTraceElement posste = scripttrace[i];
-							ps.append(prefix + "\t  at " + posste.toString(workingdir));
+							ps.append(prefix);
+							ps.append("\t  at ");
+							ps.append(posste.toString(workingdir));
 							ps.append(ls);
 						}
 						if (scriptframesincommon > 0) {
-							ps.append(prefix + "\t  ... (" + scriptframesincommon + " more)");
+							ps.append(prefix);
+							ps.append("\t  ... (");
+							ps.append(Integer.toString(scriptframesincommon));
+							ps.append(" more)");
 							ps.append(ls);
 						}
 					}
@@ -1226,28 +1249,34 @@ public class SakerLog {
 					continue;
 				}
 				if (format.isIncludeSkippedCount() && skipcount > 0) {
-					ps.append(prefix + "\t... (skipped " + skipcount + " frames)");
+					ps.append(prefix);
+					ps.append("\t... (skipped ");
+					ps.append(Integer.toString(skipcount));
+					ps.append(" frames)");
 					ps.append(ls);
 					skipcount = 0;
 				}
-				ps.append(prefix + "\tat " + st);
+				ps.append(prefix);
+				ps.append("\tat ");
+				ps.append(st.toString());
 				ps.append(ls);
 			}
 			if (framesincommon > 0 || skipcount > 0) {
-				StringBuilder sb = new StringBuilder();
-				sb.append(prefix);
-				sb.append("\t... (");
+				ps.append(prefix);
+				ps.append("\t... (");
 				if (format.isIncludeSkippedCount() && skipcount > 0) {
-					sb.append("skipped " + skipcount + " frames");
+					ps.append("skipped ");
+					ps.append(Integer.toString(skipcount));
+					ps.append(" frames");
 					if (framesincommon > 0) {
-						sb.append(", ");
+						ps.append(", ");
 					}
 				}
 				if (framesincommon > 0) {
-					sb.append(framesincommon + " more");
+					ps.append(Integer.toString(framesincommon));
+					ps.append(" more");
 				}
-				sb.append(")");
-				ps.append(sb.toString());
+				ps.append(")");
 				ps.append(ls);
 			}
 
@@ -1258,8 +1287,8 @@ public class SakerLog {
 
 			ExceptionView ourCause = ev.getCause();
 			if (ourCause != null) {
-				printEnclosedStackTrace(ourCause, ps, trace, scripttrace, CAUSE_CAPTION, prefix + "", printed,
-						workingdir, format, ls);
+				printEnclosedStackTrace(ourCause, ps, trace, scripttrace, CAUSE_CAPTION, prefix, printed, workingdir,
+						format, ls);
 			}
 		}
 	}

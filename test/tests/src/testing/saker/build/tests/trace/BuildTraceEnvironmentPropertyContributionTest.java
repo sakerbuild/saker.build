@@ -21,11 +21,18 @@ import testing.saker.SakerTest;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
 import testing.saker.build.tests.TestUtils;
 import testing.saker.build.tests.tasks.SelfStatelessTaskFactory;
-import testing.saker.build.tests.trace.TraceTestUtils.ExceptionStackTraceHolder;
+import testing.saker.build.tests.trace.TraceTestUtils.ExceptionDetailHolder;
 
 @SakerTest
 public class BuildTraceEnvironmentPropertyContributionTest extends CollectingMetricEnvironmentTestCase {
 	private static final SakerPath BUILD_TRACE_PATH = PATH_WORKING_DIRECTORY.resolve("build.trace");
+	private static final RuntimeException VAL_THROWABLE = new RuntimeException("mythrowable");
+	private static final RuntimeException VAL_EXCVIEW = new RuntimeException("myexcview");
+
+	static {
+		VAL_THROWABLE.setStackTrace(new StackTraceElement[] {});
+		VAL_EXCVIEW.setStackTrace(new StackTraceElement[] {});
+	}
 
 	public static final class TraceContributingEnvironmentProperty
 			implements TraceContributorEnvironmentProperty<Object>, Externalizable {
@@ -43,12 +50,10 @@ public class BuildTraceEnvironmentPropertyContributionTest extends CollectingMet
 		public void contributeBuildTraceInformation(Object propertyvalue,
 				PropertyComputationFailedException thrownexception) {
 			BuildTrace.setValues(Collections.singletonMap("key", "val"), BuildTrace.VALUE_CATEGORY_ENVIRONMENT);
-			RuntimeException re = new RuntimeException("mythrowable");
-			re.setStackTrace(new StackTraceElement[] {});
-			RuntimeException ev = new RuntimeException("myexcview");
-			ev.setStackTrace(new StackTraceElement[] {});
-			BuildTrace.setValues(Collections.singletonMap("throwable", re), BuildTrace.VALUE_CATEGORY_ENVIRONMENT);
-			BuildTrace.setValues(Collections.singletonMap("excview", ExceptionView.create(ev)),
+
+			BuildTrace.setValues(Collections.singletonMap("throwable", VAL_THROWABLE),
+					BuildTrace.VALUE_CATEGORY_ENVIRONMENT);
+			BuildTrace.setValues(Collections.singletonMap("excview", ExceptionView.create(VAL_EXCVIEW)),
 					BuildTrace.VALUE_CATEGORY_ENVIRONMENT);
 		}
 
@@ -93,10 +98,9 @@ public class BuildTraceEnvironmentPropertyContributionTest extends CollectingMet
 		}
 		Map<Object, Object> expectmap = TestUtils.hashMapBuilder().put("key", "val")
 				.put("throwable",
-						new ExceptionStackTraceHolder(
-								"java.lang.RuntimeException: mythrowable" + System.lineSeparator()))
+						new ExceptionDetailHolder("java.lang.RuntimeException: mythrowable" + System.lineSeparator()))
 				.put("excview",
-						new ExceptionStackTraceHolder("java.lang.RuntimeException: myexcview" + System.lineSeparator()))
+						new ExceptionDetailHolder("java.lang.RuntimeException: myexcview" + System.lineSeparator()))
 				.build();
 		assertEquals(TraceTestUtils.getTraceField(tracepathkey, "environments", 0, "values"), expectmap);
 

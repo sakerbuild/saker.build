@@ -207,6 +207,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	public static final byte TYPE_FLOAT_AS_STRING = 14;
 	public static final byte TYPE_DOUBLE_AS_STRING = 15;
 	public static final byte TYPE_EXCEPTION_STACKTRACE = 16;
+	public static final byte TYPE_EXCEPTION_DETAIL = 17;
 
 	private static final InheritableThreadLocal<WeakReference<? extends InternalBuildTrace>> baseReferenceThreadLocal = new InheritableThreadLocal<>();
 
@@ -564,7 +565,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 				return val;
 			}
 			if (val instanceof Throwable) {
-				return ExceptionView.create((Throwable) val);
+				return TaskIdExceptionView.create((Throwable) val);
 			}
 			//unrecognized type
 			return null;
@@ -632,7 +633,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			return;
 		}
 		noException(() -> {
-			String stacktrace = printExceptionToString(ExceptionView.create(e));
+			String stacktrace = printExceptionToString(TaskIdExceptionView.create(e));
 			bt.serializationException(stacktrace);
 		});
 	}
@@ -654,7 +655,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		if (e == null) {
 			return;
 		}
-		ignoredStaticException(ExceptionView.create(e));
+		ignoredStaticException(TaskIdExceptionView.create(e));
 	}
 
 	public static void ignoredStaticException(ExceptionView e) {
@@ -1129,17 +1130,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 						writeFieldName(os, "display");
 						writeTypedObject(os, ttrace.traceInfo.standardOutDisplayIdentifier);
 					}
-					TaskDisplayInformation dinfo = ttrace.traceInfo.displayInformation;
-					if (dinfo != null) {
-						if (!ObjectUtils.isNullOrEmpty(dinfo.title)) {
-							writeFieldName(os, "title");
-							writeTypedObject(os, dinfo.title);
-						}
-						if (!ObjectUtils.isNullOrEmpty(dinfo.timelineLabel)) {
-							writeFieldName(os, "label_timeline");
-							writeTypedObject(os, dinfo.timelineLabel);
-						}
-					}
+					addDisplayInformation(os, ttrace.traceInfo.displayInformation);
 
 					if (!ObjectUtils.isNullOrEmpty(ttrace.traceInfo.classification)) {
 						writeFieldName(os, "classification");
@@ -1201,12 +1192,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 					writeString(os, Objects.toString(ttrace.buildDirectory, null));
 				}
 
-				if (ttrace.executionEnvironmentUUID != null
-						&& !localEnvironmentReference.environmentInfo.buildEnvironmentUUID
-								.equals(ttrace.executionEnvironmentUUID)) {
-					writeFieldName(os, "execution_env");
-					writeString(os, ttrace.executionEnvironmentUUID.toString());
-				}
+				addExecutionEnv(os, ttrace.executionEnvironmentUUID);
 
 				if (!ObjectUtils.isNullOrEmpty(ttrace.deltas)) {
 					writeFieldName(os, "deltas");
@@ -1235,26 +1221,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 					writeNull(os);
 				}
 
-				if (ttrace.thrownException != null) {
-					writeFieldName(os, "exception");
-					writeByteArray(os, printExceptionToBytes(ttrace.thrownException));
-				}
-				if (!ObjectUtils.isNullOrEmpty(ttrace.abortExceptions)) {
-					writeFieldName(os, "abort_exceptions");
-					os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
-					for (ExceptionView ev : ttrace.abortExceptions) {
-						writeByteArray(os, printExceptionToBytes(ev));
-					}
-					writeNull(os);
-				}
-				if (!ttrace.ignoredExceptions.isEmpty()) {
-					writeFieldName(os, "ignored_exceptions");
-					os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
-					for (String e : ttrace.ignoredExceptions) {
-						writeByteArray(os, e.getBytes(StandardCharsets.UTF_8));
-					}
-					writeNull(os);
-				}
+				addTraceExceptions(os, ttrace.thrownException, ttrace.abortExceptions, ttrace.ignoredExceptions);
 
 				if (!ObjectUtils.isNullOrEmpty(ttrace.innerBuildTraces)) {
 					writeFieldName(os, "inner_tasks");
@@ -1273,17 +1240,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 							writeFieldName(os, "end");
 							writeLong(os, (ibt.endNanos - this.startNanos) / 1_000_000);
 
-							TaskDisplayInformation dinfo = ibt.displayInformation;
-							if (dinfo != null) {
-								if (!ObjectUtils.isNullOrEmpty(dinfo.title)) {
-									writeFieldName(os, "title");
-									writeTypedObject(os, dinfo.title);
-								}
-								if (!ObjectUtils.isNullOrEmpty(dinfo.timelineLabel)) {
-									writeFieldName(os, "label_timeline");
-									writeTypedObject(os, dinfo.timelineLabel);
-								}
-							}
+							addDisplayInformation(os, ibt.displayInformation);
 
 							writeFieldName(os, "task_class");
 							writeString(os, ibt.innerTaskClassName);
@@ -1293,24 +1250,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 								writeInt(os, ibt.computationTokenCount);
 							}
 
-							if (ibt.executionEnvironmentUUID != null
-									&& !localEnvironmentReference.environmentInfo.buildEnvironmentUUID
-											.equals(ibt.executionEnvironmentUUID)) {
-								writeFieldName(os, "execution_env");
-								writeString(os, ibt.executionEnvironmentUUID.toString());
-							}
-							if (ibt.thrownException != null) {
-								writeFieldName(os, "exception");
-								writeByteArray(os, printExceptionToBytes(ibt.thrownException));
-							}
-							if (!ObjectUtils.isNullOrEmpty(ibt.abortExceptions)) {
-								writeFieldName(os, "abort_exceptions");
-								os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
-								for (ExceptionView ev : ibt.abortExceptions) {
-									writeByteArray(os, printExceptionToBytes(ev));
-								}
-								writeNull(os);
-							}
+							addExecutionEnv(os, ibt.executionEnvironmentUUID);
+							addTraceExceptions(os, ibt.thrownException, ibt.abortExceptions, null);
 
 							if (!ibt.values.isEmpty()) {
 								writeFieldName(os, "values");
@@ -1438,6 +1379,57 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		} catch (Exception e) {
 			//don't throw this one, be non-intrusive
 			e.printStackTrace();
+		}
+	}
+
+	private static void addDisplayInformation(DataOutputStream os, TaskDisplayInformation dinfo) throws IOException {
+		if (dinfo == null) {
+			return;
+		}
+		if (!ObjectUtils.isNullOrEmpty(dinfo.title)) {
+			writeFieldName(os, "title");
+			writeString(os, dinfo.title);
+		}
+		if (!ObjectUtils.isNullOrEmpty(dinfo.timelineLabel)) {
+			writeFieldName(os, "label_timeline");
+			writeString(os, dinfo.timelineLabel);
+		}
+	}
+
+	private void addExecutionEnv(DataOutputStream os, UUID executionenvuuid) throws IOException {
+		if (executionenvuuid != null
+				&& !localEnvironmentReference.environmentInfo.buildEnvironmentUUID.equals(executionenvuuid)) {
+			writeFieldName(os, "execution_env");
+			writeString(os, executionenvuuid.toString());
+		}
+	}
+
+	private void addTraceExceptions(DataOutputStream os, ExceptionView thrownexception,
+			List<ExceptionView> abortexceptions, Iterable<String> ignoredexceptions) throws IOException {
+		if (thrownexception != null) {
+			writeFieldName(os, "exception_detail");
+			writeExceptionDetail(os, thrownexception);
+		}
+		if (!ObjectUtils.isNullOrEmpty(abortexceptions)) {
+			writeFieldName(os, "abort_exception_details");
+			os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
+			for (ExceptionView ev : abortexceptions) {
+				writeExceptionDetail(os, ev);
+			}
+			writeNull(os);
+		}
+
+		if (ignoredexceptions != null) {
+			Iterator<String> it = ignoredexceptions.iterator();
+			if (it.hasNext()) {
+				writeFieldName(os, "ignored_exceptions");
+				os.writeByte(TYPE_ARRAY_NULL_BOUNDED);
+				do {
+					String stacktrace = it.next();
+					writeByteArray(os, stacktrace.getBytes(StandardCharsets.UTF_8));
+				} while (it.hasNext());
+				writeNull(os);
+			}
 		}
 	}
 
@@ -1631,7 +1623,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		bytes.writeTo((OutputStream) os);
 	}
 
-	private static void writeArray(DataOutputStream os, Object o) throws IOException {
+	private void writeArray(DataOutputStream os, Object o) throws IOException {
 		if (o == null) {
 			writeNull(os);
 			return;
@@ -1644,7 +1636,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 	}
 
-	private static void writeArrayCollection(DataOutputStream os, Collection<?> coll) throws IOException {
+	private void writeArrayCollection(DataOutputStream os, Collection<?> coll) throws IOException {
 		if (coll == null) {
 			writeNull(os);
 			return;
@@ -1657,7 +1649,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 	}
 
-	private static void writeArrayNullBounded(DataOutputStream os, Iterable<?> coll) throws IOException {
+	private void writeArrayNullBounded(DataOutputStream os, Iterable<?> coll) throws IOException {
 		if (coll == null) {
 			writeNull(os);
 			return;
@@ -1669,7 +1661,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		writeNull(os);
 	}
 
-	private static void writeObject(DataOutputStream os, Map<String, ?> o) throws IOException {
+	private void writeObject(DataOutputStream os, Map<String, ?> o) throws IOException {
 		if (o == null) {
 			writeNull(os);
 			return;
@@ -1682,7 +1674,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 	}
 
-	private static void writeObjectNullBounded(DataOutputStream os, Map<String, ?> o) throws IOException {
+	private void writeObjectEmptyBounded(DataOutputStream os, Map<String, ?> o) throws IOException {
 		if (o == null) {
 			writeNull(os);
 			return;
@@ -1692,11 +1684,11 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			writeFieldName(os, entry.getKey());
 			writeTypedObject(os, entry.getValue());
 		}
-		writeNull(os);
+		writeFieldName(os, "");
 	}
 
 	@SuppressWarnings("unchecked")
-	private static void writeTypedObject(DataOutputStream os, Object val) throws IOException {
+	private void writeTypedObject(DataOutputStream os, Object val) throws IOException {
 		if (val == null) {
 			writeNull(os);
 		} else if (val instanceof CharSequence) {
@@ -1724,15 +1716,67 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			os.writeByte(TYPE_DOUBLE_AS_STRING);
 			writeStringImpl(os, val.toString());
 		} else if (val instanceof ExceptionView) {
-			os.writeByte(TYPE_EXCEPTION_STACKTRACE);
-			StringBuilder sb = new StringBuilder();
-			((ExceptionView) val).printStackTrace(sb);
-			writeStringImpl(os, sb.toString());
+			writeExceptionDetail(os, ((ExceptionView) val));
 		} else {
 			//unrecognized type
 			os.writeByte(TYPE_OBJECT);
 			os.writeInt(0);
 		}
+	}
+
+	private void writeExceptionDetail(DataOutputStream os, ExceptionView e) throws IOException {
+		writeExceptionDetailImpl(os, e, new IdentityHashMap<>());
+	}
+
+	private void writeExceptionDetailImpl(DataOutputStream os, ExceptionView e,
+			IdentityHashMap<ExceptionView, Integer> writtenexceptions) throws IOException {
+		//only unique id in context of the exception serialization
+		int exccontextid = writtenexceptions.size();
+		Integer previd = writtenexceptions.putIfAbsent(e, exccontextid);
+		if (previd != null) {
+			//already written
+			os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+			writeFieldName(os, "circular_reference");
+			writeInt(os, previd);
+			writeFieldName(os, "");
+			return;
+		}
+		os.writeByte(TYPE_EXCEPTION_DETAIL);
+		os.writeByte(TYPE_OBJECT_EMPTY_BOUNDED);
+		writeFieldName(os, "exc_context_id");
+		writeInt(os, exccontextid);
+
+		if (e instanceof TaskIdExceptionView) {
+			TaskBuildTraceImpl referencedbd = taskBuildTraces.get(((TaskIdExceptionView) e).getTaskIdentifier());
+			if (referencedbd != null) {
+				writeFieldName(os, "task_trace_id");
+				writeInt(os, referencedbd.taskTraceId);
+			}
+		}
+		ExceptionView cause = e.getCause();
+		if (cause != null) {
+			writeFieldName(os, "cause");
+			writeExceptionDetailImpl(os, cause, writtenexceptions);
+		}
+		ExceptionView[] suppressed = e.getSuppressed();
+		if (!ObjectUtils.isNullOrEmpty(suppressed)) {
+			writeFieldName(os, "suppressed");
+			int len = suppressed.length;
+			os.writeByte(TYPE_ARRAY);
+			os.writeInt(len);
+			for (int i = 0; i < len; i++) {
+				writeExceptionDetailImpl(os, suppressed[i], writtenexceptions);
+			}
+		}
+
+		if (exccontextid == 0) {
+			StringBuilder sb = new StringBuilder();
+			e.printStackTrace(sb);
+			writeFieldName(os, "stacktrace");
+			writeString(os, sb.toString());
+		}
+
+		writeFieldName(os, "");
 	}
 
 	private static void writeString(DataOutputStream os, CharSequence s) throws IOException {
@@ -1787,7 +1831,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 		ExceptionView[] views = new ExceptionView[abortExceptions.length];
 		for (int i = 0; i < views.length; i++) {
-			views[i] = ExceptionView.create(abortExceptions[i]);
+			views[i] = TaskIdExceptionView.create(abortExceptions[i]);
 		}
 		return views;
 	}
@@ -1998,7 +2042,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 		@Override
 		public void setThrownException(Throwable e) {
-			this.setThrownException(ExceptionView.create(e));
+			this.setThrownException(TaskIdExceptionView.create(e));
 		}
 
 		@Override
@@ -2170,13 +2214,13 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			this.taskDependencies = taskresult.getDependencies();
 			Throwable failex = taskresult.getFailCauseException();
 			if (failex != null) {
-				this.thrownException = ExceptionView.create(failex);
+				this.thrownException = TaskIdExceptionView.create(failex);
 			}
 			List<Throwable> abortexceptions = taskresult.getAbortExceptions();
 			if (!ObjectUtils.isNullOrEmpty(abortexceptions)) {
 				this.abortExceptions = new ArrayList<>();
 				for (Throwable t : abortexceptions) {
-					this.abortExceptions.add(ExceptionView.create(t));
+					this.abortExceptions.add(TaskIdExceptionView.create(t));
 				}
 			}
 		}
@@ -2239,7 +2283,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 
 			@Override
 			public void setThrownException(Throwable e) {
-				this.setThrownException(ExceptionView.create(e));
+				this.setThrownException(TaskIdExceptionView.create(e));
 			}
 
 			@Override
@@ -2374,7 +2418,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		@Override
 		public void setThrownException(Throwable e) {
 			noException(() -> {
-				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETTHROWNEXCEPTION, ExceptionView.create(e));
+				RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETTHROWNEXCEPTION, TaskIdExceptionView.create(e));
 			});
 		}
 
@@ -2422,7 +2466,7 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 			public void setThrownException(Throwable e) {
 				noException(() -> {
 					RMIVariables.invokeRemoteMethodAsync(trace, METHOD_SETCLUSTERINNERTASKTHROWNEXCEPTION,
-							innerTaskIdentity, ExceptionView.create(e));
+							innerTaskIdentity, TaskIdExceptionView.create(e));
 				});
 			}
 

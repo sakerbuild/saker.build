@@ -24,10 +24,10 @@ import java.io.PrintWriter;
 import java.io.UncheckedIOException;
 import java.util.IdentityHashMap;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.Function;
 
-import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.runtime.execution.SakerLog;
+import saker.build.runtime.execution.SakerLog.CommonExceptionFormat;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 
 /**
@@ -194,7 +194,7 @@ public class ExceptionView implements Externalizable {
 	 * The format is the same as {@link Throwable#printStackTrace()}.
 	 */
 	public void printStackTrace() {
-		printStackTrace(System.err);
+		SakerLog.printFormatException(this, System.err, CommonExceptionFormat.FULL);
 	}
 
 	/**
@@ -206,11 +206,7 @@ public class ExceptionView implements Externalizable {
 	 *            The output stream for the stack trace.
 	 */
 	public void printStackTrace(PrintStream ps) {
-		try {
-			printStackTraceImpl(ps);
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
-		}
+		SakerLog.printFormatException(this, ps, CommonExceptionFormat.FULL);
 	}
 
 	/**
@@ -223,7 +219,7 @@ public class ExceptionView implements Externalizable {
 	 */
 	public void printStackTrace(PrintWriter ps) {
 		try {
-			printStackTraceImpl(ps);
+			SakerLog.printFormatException(this, ps, CommonExceptionFormat.FULL);
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}
@@ -239,11 +235,7 @@ public class ExceptionView implements Externalizable {
 	 * @since saker.build 0.8.14
 	 */
 	public void printStackTrace(StringBuilder sb) {
-		try {
-			printStackTraceImpl(sb);
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
-		}
+		SakerLog.printFormatException(this, sb, CommonExceptionFormat.FULL);
 	}
 
 	@Override
@@ -316,75 +308,4 @@ public class ExceptionView implements Externalizable {
 		result.suppressed = supressed;
 		return result;
 	}
-
-	//XXX use the printing functions in SakerLog instead
-
-	private static final String SUPPRESSED_CAPTION = "Suppressed: ";
-	private static final String CAUSE_CAPTION = "Caused by: ";
-
-	private void printStackTraceImpl(Appendable ps) throws IOException {
-		String ls = System.lineSeparator();
-		ps.append(this.toString());
-		ps.append(ls);
-
-		StackTraceElement[] trace = this.stackTrace;
-		for (StackTraceElement traceElement : trace) {
-			ps.append("\tat " + traceElement);
-			ps.append(ls);
-		}
-		Set<ExceptionView> dejaVu = ObjectUtils.newIdentityHashSet();
-		// Print suppressed exceptions, if any
-		for (ExceptionView se : suppressed) {
-			se.printEnclosedStackTrace(ps, trace, SUPPRESSED_CAPTION, "\t", dejaVu);
-		}
-
-		// Print cause, if any
-		ExceptionView ourCause = this.cause;
-		if (ourCause != null) {
-			ourCause.printEnclosedStackTrace(ps, trace, CAUSE_CAPTION, "", dejaVu);
-		}
-
-	}
-
-	private void printEnclosedStackTrace(Appendable ps, StackTraceElement[] enclosingTrace, String caption,
-			String prefix, Set<ExceptionView> dejaVu) throws IOException {
-		String ls = System.lineSeparator();
-		if (!dejaVu.add(this)) {
-			ps.append("\t[CIRCULAR REFERENCE:" + this + "]");
-			ps.append(ls);
-		} else {
-			StackTraceElement[] trace = this.stackTrace;
-			int m = trace.length - 1;
-			int n = enclosingTrace.length - 1;
-			while (m >= 0 && n >= 0 && trace[m].equals(enclosingTrace[n])) {
-				m--;
-				n--;
-			}
-			int framesInCommon = trace.length - 1 - m;
-
-			// Print our stack trace
-			ps.append(prefix + caption + this);
-			ps.append(ls);
-			for (int i = 0; i <= m; i++) {
-				ps.append(prefix + "\tat " + trace[i]);
-				ps.append(ls);
-			}
-			if (framesInCommon != 0) {
-				ps.append(prefix + "\t... " + framesInCommon + " more");
-				ps.append(ls);
-			}
-
-			// Print suppressed exceptions, if any
-			for (ExceptionView se : this.suppressed) {
-				se.printEnclosedStackTrace(ps, trace, SUPPRESSED_CAPTION, prefix + "\t", dejaVu);
-			}
-
-			// Print cause, if any
-			ExceptionView ourCause = this.cause;
-			if (ourCause != null) {
-				ourCause.printEnclosedStackTrace(ps, trace, CAUSE_CAPTION, prefix, dejaVu);
-			}
-		}
-	}
-
 }

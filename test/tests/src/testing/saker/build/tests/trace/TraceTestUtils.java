@@ -4,12 +4,17 @@ import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
 
 import saker.build.file.path.ProviderHolderPathKey;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.trace.InternalBuildTraceImpl;
 
@@ -148,10 +153,60 @@ public class TraceTestUtils {
 			case InternalBuildTraceImpl.TYPE_EXCEPTION_STACKTRACE: {
 				return new ExceptionStackTraceHolder(readString(is));
 			}
+			case InternalBuildTraceImpl.TYPE_EXCEPTION_DETAIL: {
+				@SuppressWarnings("unchecked")
+				Map<String, Object> detailobj = (Map<String, Object>) readObject(is);
+				if (Integer.valueOf(0).equals(detailobj.get("exc_context_id"))) {
+					return convertToExceptionDetail(detailobj);
+				}
+				return detailobj;
+			}
 			default: {
 				throw new IllegalArgumentException("Unknown type: " + type);
 			}
 		}
+	}
+
+	private static ExceptionDetailHolder convertToExceptionDetail(Map<String, Object> detailobj) {
+		return convertToExceptionDetailImpl(detailobj, new TreeMap<>());
+	}
+
+	@SuppressWarnings("unchecked")
+	private static ExceptionDetailHolder convertToExceptionDetailImpl(Map<String, Object> detailobj,
+			Map<Integer, ExceptionDetailHolder> exceptions) {
+		if (detailobj == null) {
+			return null;
+		}
+		Integer circref = (Integer) detailobj.get("circular_reference");
+		if (circref != null) {
+			ExceptionDetailHolder res = exceptions.get(circref);
+			if (res == null) {
+				throw new IllegalArgumentException(
+						"Circular reference not found with id: " + circref + " in " + exceptions);
+			}
+			return res;
+		}
+		int contextid = (int) detailobj.get("exc_context_id");
+		ExceptionDetailHolder result = new ExceptionDetailHolder();
+		if (exceptions.put(contextid, result) != null) {
+			throw new IllegalArgumentException("Duplicate exception with context id: " + contextid);
+		}
+		result.contextId = contextid;
+		if (contextid == 0) {
+			//stacktrace is only written for the top level exception
+			result.stackTrace = (String) detailobj.get("stacktrace");
+			Objects.requireNonNull(result.stackTrace, "stakctrace");
+		}
+		result.cause = convertToExceptionDetailImpl((Map<String, Object>) detailobj.get("cause"), exceptions);
+		List<?> suppressed = (List<?>) detailobj.get("suppressed");
+		if (suppressed != null) {
+			result.suppressed = new ExceptionDetailHolder[suppressed.size()];
+			for (int i = 0; i < result.suppressed.length; i++) {
+				result.suppressed[i] = convertToExceptionDetailImpl((Map<String, Object>) suppressed.get(i),
+						exceptions);
+			}
+		}
+		return result;
 	}
 
 	public static Map<String, Object> readBuildTrace(DataInputStream is) throws IOException {
@@ -181,7 +236,7 @@ public class TraceTestUtils {
 		return result;
 	}
 
-	public static class ExceptionStackTraceHolder {
+	public static final class ExceptionStackTraceHolder {
 		public final String stackTrace;
 
 		public ExceptionStackTraceHolder(String stackTrace) {
@@ -217,5 +272,103 @@ public class TraceTestUtils {
 		public String toString() {
 			return "ExceptionStackTraceHolder[" + stackTrace.replace("\n", "\\n").replace("\r", "\\r") + "]";
 		}
+	}
+
+	public static final class ExceptionDetailHolder {
+		private transient int contextId;
+		private String stackTrace;
+		private ExceptionDetailHolder cause;
+		private ExceptionDetailHolder[] suppressed;
+
+		private ExceptionDetailHolder() {
+		}
+
+		public ExceptionDetailHolder(String stackTrace) {
+			this.stackTrace = stackTrace;
+		}
+
+		public String getStackTrace() {
+			return stackTrace;
+		}
+
+		public ExceptionDetailHolder getCause() {
+			return cause;
+		}
+
+		public ExceptionDetailHolder[] getSuppressed() {
+			return suppressed;
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + contextId;
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			ExceptionDetailHolder other = (ExceptionDetailHolder) obj;
+			return checkEquals(other, new IdentityHashMap<>());
+		}
+
+		private boolean checkEquals(ExceptionDetailHolder other,
+				IdentityHashMap<ExceptionDetailHolder, Set<ExceptionDetailHolder>> checkedexceptions) {
+			if (other == null) {
+				return false;
+			}
+			if (!checkedexceptions.computeIfAbsent(this, x -> ObjectUtils.newIdentityHashSet()).add(other)) {
+				//already checked, or is being recursively checked now
+				return true;
+			}
+			if (!Objects.equals(this.stackTrace, other.stackTrace)) {
+				return false;
+			}
+			if (this.cause != null) {
+				if (other.cause == null) {
+					return false;
+				}
+				if (!this.cause.checkEquals(other.cause, checkedexceptions)) {
+					return false;
+				}
+			} else if (other.cause != null) {
+				return false;
+			}
+			if (this.suppressed != null) {
+				if (other.suppressed == null) {
+					return false;
+				}
+				if (this.suppressed.length != other.suppressed.length) {
+					return false;
+				}
+				for (int i = 0; i < suppressed.length; i++) {
+					if (!this.suppressed[i].checkEquals(other.suppressed[i], checkedexceptions)) {
+						return false;
+					}
+				}
+			} else if (other.suppressed != null) {
+				return false;
+			}
+			return true;
+		}
+
+		@Override
+		public String toString() {
+			StringBuilder builder = new StringBuilder();
+			builder.append("ExceptionDetailHolder[contextId=");
+			builder.append(contextId);
+			builder.append(", stackTrace=");
+			builder.append(stackTrace);
+			builder.append("]");
+			return builder.toString();
+		}
+
 	}
 }
