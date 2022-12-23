@@ -160,6 +160,7 @@ public class ClassPathLoadManager implements Closeable {
 	private volatile boolean closed = false;
 
 	private ReferenceQueue<Object> refQueue = new ReferenceQueue<>();
+	private Reference<ClassPathLoadManager> cleanerThisReference;
 	private Thread cleanerThread;
 
 	/**
@@ -187,7 +188,8 @@ public class ClassPathLoadManager implements Closeable {
 
 		this.storageDirectoryPath = storagedirectory.normalize();
 
-		cleanerThread = new Thread(threadgroup, new CleanerRunnable(new WeakReference<>(this, refQueue), refQueue),
+		cleanerThisReference = new WeakReference<>(this, refQueue);
+		cleanerThread = new Thread(threadgroup, new CleanerRunnable(cleanerThisReference, refQueue),
 				getClass().getSimpleName() + "-cleaner");
 		cleanerThread.setContextClassLoader(null);
 		cleanerThread.setDaemon(true);
@@ -307,6 +309,8 @@ public class ClassPathLoadManager implements Closeable {
 				lock.unlock();
 			}
 		}
+		//enqueue the reference of us that the cleaner holds, to signal the closing
+		cleanerThisReference.enqueue();
 		cleanerThread.interrupt();
 		try {
 			cleanerThread.join();
@@ -322,12 +326,12 @@ public class ClassPathLoadManager implements Closeable {
 	}
 
 	private static final class CleanerRunnable implements Runnable {
-		private final WeakReference<ClassPathLoadManager> thisref;
-		private final ReferenceQueue<Object> refq;
+		private final Reference<ClassPathLoadManager> thisRef;
+		private final ReferenceQueue<Object> refQueue;
 
-		private CleanerRunnable(WeakReference<ClassPathLoadManager> thisref, ReferenceQueue<Object> refq) {
-			this.thisref = thisref;
-			this.refq = refq;
+		private CleanerRunnable(Reference<ClassPathLoadManager> thisref, ReferenceQueue<Object> refq) {
+			this.thisRef = thisref;
+			this.refQueue = refq;
 		}
 
 		@Override
@@ -335,11 +339,11 @@ public class ClassPathLoadManager implements Closeable {
 			try {
 				while (true) {
 					//interruption is checked in remove() waiting call
-					Reference<? extends Object> ref = refq.remove();
-					if (ref == thisref) {
+					Reference<? extends Object> ref = refQueue.remove();
+					if (ref == thisRef) {
 						break;
 					}
-					ClassPathLoadManager loadmanager = thisref.get();
+					ClassPathLoadManager loadmanager = thisRef.get();
 					if (loadmanager == null) {
 						//the manager has been garbage collected, exit.
 						break;
