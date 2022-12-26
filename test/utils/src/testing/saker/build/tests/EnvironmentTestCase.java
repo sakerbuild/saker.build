@@ -104,7 +104,7 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 	public static final SakerPath PATH_WORKING_DIRECTORY = SakerPath.valueOf(WORKING_DIRECTORY_ROOT);
 	public static final SakerPath PATH_BUILD_DIRECTORY = SakerPath.valueOf(BUILD_DIRECTORY_ROOT);
 
-	private static final String TEST_CLASSLOADER_RESOLVER_ID = "saker.tests.cl";
+	private static final String TEST_CLASSLOADER_RESOLVER_ID_PREFIX = "saker.tests.cl.";
 
 	private static final ThreadGroup COMMON_THREAD_GROUP = new ThreadGroup("Common thread group");
 
@@ -328,8 +328,9 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 
 				SingleClassLoaderResolver testclresolver = new SingleClassLoaderResolver(
 						"tests.cl." + getClass().getName(), getClass().getClassLoader());
+				String testclid = TEST_CLASSLOADER_RESOLVER_ID_PREFIX + getClass().getName();
 				try {
-					env.getClassLoaderResolverRegistry().register(TEST_CLASSLOADER_RESOLVER_ID, testclresolver);
+					env.getClassLoaderResolverRegistry().register(testclid, testclresolver);
 
 					ExecutionParametersImpl params = new ExecutionParametersImpl();
 //					params.setStandardOutput(outStream);
@@ -367,7 +368,7 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 						Collection<TaskInvoker> taskinvokers = new ArrayList<>();
 						ClassLoaderResolverRegistry daemonbaseregistry = RemoteDaemonConnection
 								.createConnectionBaseClassLoaderResolver();
-						daemonbaseregistry.register(TEST_CLASSLOADER_RESOLVER_ID, testclresolver);
+						daemonbaseregistry.register(testclid, testclresolver);
 
 						clusterenvironments = new LinkedHashMap<>();
 						for (String clustername : configclusternames) {
@@ -389,8 +390,7 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 								@Override
 								protected SakerEnvironmentImpl createSakerEnvironment(EnvironmentParameters params) {
 									SakerEnvironmentImpl daemonenv = new SakerEnvironmentImpl(params);
-									daemonenv.getClassLoaderResolverRegistry().register(TEST_CLASSLOADER_RESOLVER_ID,
-											testclresolver);
+									daemonenv.getClassLoaderResolverRegistry().register(testclid, testclresolver);
 									return daemonenv;
 								}
 							};
@@ -437,8 +437,6 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 						this.clusterEnvironments = null;
 					}
 				} finally {
-					env.unredirectStandardIO();
-					env.getClassLoaderResolverRegistry().unregister(TEST_CLASSLOADER_RESOLVER_ID, testclresolver);
 					try {
 						env.clearCachedDatasWaitExecutions();
 					} catch (InterruptedException e) {
@@ -447,6 +445,9 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 					} catch (Exception e) {
 						//in some case this fails somewhy
 						e.printStackTrace();
+					} finally {
+						env.getClassLoaderResolverRegistry().unregister(testclid, testclresolver);
+						env.unredirectStandardIO();
 					}
 				}
 			} catch (AssertionError e) {
