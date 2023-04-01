@@ -48,6 +48,8 @@ import java.util.Objects;
 import java.util.RandomAccess;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 import saker.apiextract.api.PublicApi;
@@ -246,6 +248,8 @@ public class DataConverterUtils {
 		 */
 		private transient boolean callingToString = false;
 
+		private final Lock lock = new ReentrantLock();
+
 		public MappedInterfaceInvocationHandler(TaskResultResolver taskresultresolver, Map<String, ?> map,
 				Class<?> targetClass) {
 			this.taskResultResolver = taskresultresolver;
@@ -263,7 +267,9 @@ public class DataConverterUtils {
 
 		@Override
 		public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-			synchronized (MappedInterfaceInvocationHandler.this) {
+			final Lock lock = this.lock;
+			lock.lock();
+			try {
 				int arglen = args == null ? 0 : args.length;
 				String methodname = method.getName();
 				switch (arglen) {
@@ -318,6 +324,8 @@ public class DataConverterUtils {
 
 				// probably Object method
 				throw new UnsupportedOperationException("Failed to call method: " + method);
+			} finally {
+				lock.unlock();
 			}
 		}
 
