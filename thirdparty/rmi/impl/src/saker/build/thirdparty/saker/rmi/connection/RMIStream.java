@@ -4491,7 +4491,7 @@ final class RMIStream implements Closeable {
 		@Override
 		public String toString() {
 			//the classloader id may contain invalid characters, replace them with escaped zero
-			return "[Classloader with ID: " + classLoaderId + "]".replace("\0", "\\0");
+			return ("[Classloader with ID: " + classLoaderId + "]").replace("\0", "\\0");
 		}
 	}
 

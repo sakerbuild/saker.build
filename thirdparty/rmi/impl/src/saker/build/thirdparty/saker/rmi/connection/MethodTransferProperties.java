@@ -105,7 +105,7 @@ public final class MethodTransferProperties extends ExecutableTransferProperties
 			//TODO allow exception rethrowing on redirect methods if they're called directly using rmi utils
 			if (excrethrow != null) {
 				throw new RMIInvalidConfigurationException("Cannot have " + RMIRedirect.class.getSimpleName() + " and "
-						+ RMIExceptionRethrow.class + " on the same method. (" + method + ")");
+						+ RMIExceptionRethrow.class.getSimpleName() + " on the same method. (" + method + ")");
 			}
 			if (defaultOnFailure) {
 				throw new RMIInvalidConfigurationException("Cannot have " + RMIDefaultOnFailure.class.getSimpleName()
@@ -631,7 +631,8 @@ public final class MethodTransferProperties extends ExecutableTransferProperties
 		Class<?>[] redirectexceptions = redirectmethod.getExceptionTypes();
 		if (!ObjectUtils.isNullOrEmpty(redirectexceptions)) {
 			Class<?>[] baseexceptions = basemethod.getExceptionTypes();
-			outer: for (Class<?> redexc : redirectexceptions) {
+			outer:
+			for (Class<?> redexc : redirectexceptions) {
 				if (RuntimeException.class.isAssignableFrom(redexc) || Error.class.isAssignableFrom(redexc)) {
 					continue;
 				}
