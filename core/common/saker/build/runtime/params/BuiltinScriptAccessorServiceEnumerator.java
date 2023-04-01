@@ -22,6 +22,7 @@ import java.io.ObjectOutput;
 import java.lang.ref.Reference;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Collections;
+import java.util.concurrent.locks.Lock;
 
 import saker.apiextract.api.PublicApi;
 import saker.build.runtime.classpath.ClassPathEnumerationError;
@@ -32,6 +33,7 @@ import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.classloader.MultiDataClassLoader;
 import saker.build.thirdparty.saker.util.classloader.SubDirectoryClassLoaderDataFinder;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.util.config.ReferencePolicy;
 
 /**
@@ -48,7 +50,7 @@ public final class BuiltinScriptAccessorServiceEnumerator
 
 	private static final String CLASSNAME_BUILTIN_SCRIPT_ACCESS_PROVIDER = "saker.build.internal.scripting.language.SakerScriptAccessProvider";
 	private static final String BUILTIN_PARSER_DIRECTORY = "internal/scripting";
-	private static final Object BUILTIN_SCRIPT_ACCESS_PROVIDER_LOAD_LOCK = new Object();
+	private static final Lock BUILTIN_SCRIPT_ACCESS_PROVIDER_LOAD_LOCK = ThreadUtils.newExclusiveLock();
 	private static volatile Reference<Class<? extends ScriptAccessProvider>> builtinScriptAccessProviderClass = null;
 	private static volatile Reference<ScriptAccessProvider> builtinScriptAccessProvider = null;
 
@@ -78,34 +80,39 @@ public final class BuiltinScriptAccessorServiceEnumerator
 	public Iterable<? extends ScriptAccessProvider> getServices(ClassLoader classloader)
 			throws ClassPathEnumerationError {
 		ScriptAccessProvider provider = ObjectUtils.getReference(builtinScriptAccessProvider);
-		if (provider == null) {
-			synchronized (BUILTIN_SCRIPT_ACCESS_PROVIDER_LOAD_LOCK) {
-				provider = ObjectUtils.getReference(builtinScriptAccessProvider);
-				if (provider == null) {
-					Class<? extends ScriptAccessProvider> providerclass = ObjectUtils
-							.getReference(builtinScriptAccessProviderClass);
-					try {
-						if (providerclass == null) {
-							ClassLoader envcl = SakerEnvironmentImpl.class.getClassLoader();
-							ClassLoader cl = new MultiDataClassLoader(envcl,
-									SubDirectoryClassLoaderDataFinder.create(BUILTIN_PARSER_DIRECTORY, envcl));
-							providerclass = Class.forName(CLASSNAME_BUILTIN_SCRIPT_ACCESS_PROVIDER, false, cl)
-									.asSubclass(ScriptAccessProvider.class);
-							builtinScriptAccessProviderClass = ReferencePolicy.createReference(providerclass);
-						}
-						provider = ReflectUtils.newInstance(providerclass);
-						Reference<ScriptAccessProvider> providerref = ReferencePolicy.createReference(provider);
-						builtinScriptAccessProvider = providerref;
-						return Collections.singleton(provider);
-					} catch (InstantiationException | IllegalAccessException | IllegalArgumentException
-							| InvocationTargetException | NoSuchMethodException | SecurityException | ClassCastException
-							| ClassNotFoundException e) {
-						throw new ClassPathEnumerationError(CLASSNAME_BUILTIN_SCRIPT_ACCESS_PROVIDER, e);
-					}
-				}
-			}
+		if (provider != null) {
+			return Collections.singleton(provider);
 		}
-		return Collections.singleton(provider);
+		Lock lock = BUILTIN_SCRIPT_ACCESS_PROVIDER_LOAD_LOCK;
+		lock.lock();
+		try {
+			provider = ObjectUtils.getReference(builtinScriptAccessProvider);
+			if (provider != null) {
+				return Collections.singleton(provider);
+			}
+			Class<? extends ScriptAccessProvider> providerclass = ObjectUtils
+					.getReference(builtinScriptAccessProviderClass);
+			try {
+				if (providerclass == null) {
+					ClassLoader envcl = SakerEnvironmentImpl.class.getClassLoader();
+					ClassLoader cl = new MultiDataClassLoader(envcl,
+							SubDirectoryClassLoaderDataFinder.create(BUILTIN_PARSER_DIRECTORY, envcl));
+					providerclass = Class.forName(CLASSNAME_BUILTIN_SCRIPT_ACCESS_PROVIDER, false, cl)
+							.asSubclass(ScriptAccessProvider.class);
+					builtinScriptAccessProviderClass = ReferencePolicy.createReference(providerclass);
+				}
+				provider = ReflectUtils.newInstance(providerclass);
+				Reference<ScriptAccessProvider> providerref = ReferencePolicy.createReference(provider);
+				builtinScriptAccessProvider = providerref;
+				return Collections.singleton(provider);
+			} catch (InstantiationException | IllegalAccessException | IllegalArgumentException
+					| InvocationTargetException | NoSuchMethodException | SecurityException | ClassCastException
+					| ClassNotFoundException e) {
+				throw new ClassPathEnumerationError(CLASSNAME_BUILTIN_SCRIPT_ACCESS_PROVIDER, e);
+			}
+		} finally {
+			lock.unlock();
+		}
 	}
 
 	@Override
