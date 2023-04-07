@@ -105,6 +105,10 @@ public class SakerProjectCache implements ProjectCacheHandle {
 		this.executionCache = new SakerExecutionCache(environment);
 	}
 
+	public SakerEnvironmentImpl getEnvironment() {
+		return environment;
+	}
+
 	public SakerExecutionCache getExecutionCache() {
 		return executionCache;
 	}

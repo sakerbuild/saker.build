@@ -15,13 +15,13 @@
  */
 package saker.build.runtime.project;
 
-import java.util.Map;
 import java.util.Objects;
 
-import saker.build.runtime.classpath.ClassPathLoadManager;
 import saker.build.runtime.environment.EnvironmentProperty;
 import saker.build.runtime.environment.ForwardingImplSakerEnvironment;
+import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
+import saker.build.trace.InternalBuildTrace;
 import saker.build.util.cache.CacheKey;
 
 public class CacheRecordingForwardingSakerEnvironment extends ForwardingImplSakerEnvironment {
@@ -33,25 +33,16 @@ public class CacheRecordingForwardingSakerEnvironment extends ForwardingImplSake
 	}
 
 	@Override
-	public <T> T getEnvironmentPropertyCurrentValue(EnvironmentProperty<T> environmentproperty) {
+	public <T> T internalGetEnvironmentPropertyCurrentValue(SakerEnvironment environment,
+			EnvironmentProperty<T> environmentproperty, InternalBuildTrace btrace) {
 		Objects.requireNonNull(environmentproperty, "property");
 		cache.recordEnvironmentPropertyAccess(environmentproperty);
-		return super.getEnvironmentPropertyCurrentValue(environmentproperty);
+		return super.internalGetEnvironmentPropertyCurrentValue(environment, environmentproperty, btrace);
 	}
 
 	@Override
 	public <DataType> DataType getCachedData(CacheKey<DataType, ?> key) throws Exception {
 		cache.recordCacheKeyAccess(key);
 		return super.getCachedData(key);
-	}
-
-	@Override
-	public ClassPathLoadManager getClassPathManager() {
-		return super.getClassPathManager();
-	}
-
-	@Override
-	public Map<String, String> getUserParameters() {
-		return super.getUserParameters();
 	}
 }

@@ -784,8 +784,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 	}
 
 	@Override
-	public <T> void environmentPropertyAccessed(SakerEnvironmentImpl environment, EnvironmentProperty<T> property,
-			T value, PropertyComputationFailedException e) {
+	public <T> void environmentPropertyAccessed(EnvironmentProperty<T> property, T value,
+			PropertyComputationFailedException e) {
 		if (!(property instanceof TraceContributorEnvironmentProperty<?>)) {
 			return;
 		}
@@ -2864,8 +2864,8 @@ public class InternalBuildTraceImpl implements ClusterInternalBuildTrace {
 		}
 
 		@Override
-		public <T> void environmentPropertyAccessed(SakerEnvironmentImpl environment, EnvironmentProperty<T> property,
-				T value, PropertyComputationFailedException e) {
+		public <T> void environmentPropertyAccessed(EnvironmentProperty<T> property, T value,
+				PropertyComputationFailedException e) {
 			if (!(property instanceof TraceContributorEnvironmentProperty<?>)) {
 				return;
 			}

@@ -20,9 +20,10 @@ import java.util.Map;
 import java.util.UUID;
 
 import saker.build.runtime.classpath.ClassPathLoadManager;
+import saker.build.trace.InternalBuildTrace;
 import saker.build.util.cache.CacheKey;
 
-public class ForwardingImplSakerEnvironment implements SakerEnvironment {
+public class ForwardingImplSakerEnvironment implements SakerEnvironment, InternalSakerEnvironment {
 	protected final SakerEnvironmentImpl environment;
 
 	public ForwardingImplSakerEnvironment(SakerEnvironmentImpl environment) {
@@ -30,8 +31,14 @@ public class ForwardingImplSakerEnvironment implements SakerEnvironment {
 	}
 
 	@Override
-	public <T> T getEnvironmentPropertyCurrentValue(EnvironmentProperty<T> environmentproperty) {
-		return environment.getEnvironmentPropertyCurrentValue(this, environmentproperty);
+	public final <T> T getEnvironmentPropertyCurrentValue(EnvironmentProperty<T> environmentproperty) {
+		return this.internalGetEnvironmentPropertyCurrentValue(this, environmentproperty, null);
+	}
+
+	@Override
+	public <T> T internalGetEnvironmentPropertyCurrentValue(SakerEnvironment environment,
+			EnvironmentProperty<T> environmentproperty, InternalBuildTrace btrace) {
+		return this.environment.getEnvironmentPropertyCurrentValue(environment, environmentproperty, btrace);
 	}
 
 	@Override
@@ -62,5 +69,14 @@ public class ForwardingImplSakerEnvironment implements SakerEnvironment {
 	@Override
 	public UUID getEnvironmentIdentifier() {
 		return environment.getEnvironmentIdentifier();
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder builder = new StringBuilder(getClass().getSimpleName());
+		builder.append("[environment=");
+		builder.append(environment);
+		builder.append("]");
+		return builder.toString();
 	}
 }

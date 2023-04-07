@@ -20,6 +20,7 @@ import java.io.Externalizable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.io.PrintStream;
@@ -198,10 +199,13 @@ public final class SakerEnvironmentImpl implements Closeable {
 		return run(BuildTargetBootstrapperTaskFactory.getTaskIdentifier(task), task, parameters, projecthandle);
 	}
 
-	public BuildTaskExecutionResult run(TaskIdentifier taskid, TaskFactory<?> task, ExecutionParametersImpl parameters,
+	private BuildTaskExecutionResult run(TaskIdentifier taskid, TaskFactory<?> task, ExecutionParametersImpl parameters,
 			SakerProjectCache project) {
 		Objects.requireNonNull(task, "task");
 		throwRemoteTask(task);
+		if (project != null && project.getEnvironment() != this) {
+			throw new IllegalArgumentException("Trying to run build with project bound to a different environment.");
+		}
 
 		ConcurrentPrependAccumulator<Throwable> uncaughtexceptions = new ConcurrentPrependAccumulator<>();
 
@@ -298,32 +302,67 @@ public final class SakerEnvironmentImpl implements Closeable {
 		}
 	}
 
+	private static boolean isInterruptedRootCause(Throwable e) {
+		while (e != null) {
+			if (e instanceof InterruptedException || e instanceof InterruptedIOException) {
+				return true;
+			}
+			e = e.getCause();
+		}
+		return false;
+	}
+
+	private static boolean isRecomputeEnvironmentProperty(PropertyComputationResultSupplier result) {
+		if (result == null) {
+			return true;
+		}
+		if (isInterruptedRootCause(result.getException())) {
+			//the exception was due to some execution interruption
+			//recompute the environment property value in this case
+			//so an interruption from a build execution doesn't leave a failed value in the cache
+			return true;
+		}
+		return false;
+	}
+
 	public <T> T getEnvironmentPropertyCurrentValue(SakerEnvironment useenvironment,
 			EnvironmentProperty<T> environmentproperty) {
+		return getEnvironmentPropertyCurrentValue(useenvironment, environmentproperty, null);
+	}
+
+	public <T> T getEnvironmentPropertyCurrentValue(SakerEnvironment useenvironment,
+			EnvironmentProperty<T> environmentproperty, InternalBuildTrace btrace) {
 		Objects.requireNonNull(environmentproperty, "property");
-		PropertyComputationResultSupplier result = checkedEnvironmentProperties.get(environmentproperty);
-		if (result == null) {
+
+		Map<EnvironmentProperty<?>, PropertyComputationResultSupplier> cachemap = checkedEnvironmentProperties;
+		PropertyComputationResultSupplier result = cachemap.get(environmentproperty);
+		if (isRecomputeEnvironmentProperty(result)) {
 			Lock lock = getEnvironmentPropertyCalculateLock(environmentproperty);
 			lock.lock();
 			try {
-				result = checkedEnvironmentProperties.get(environmentproperty);
-				if (result == null) {
+				result = cachemap.get(environmentproperty);
+				if (isRecomputeEnvironmentProperty(result)) {
 					TransitivePropertyDependencyCollectionForwardingSakerEnvironment collectingenvironment = new TransitivePropertyDependencyCollectionForwardingSakerEnvironment(
 							useenvironment);
+					PropertyComputationResultSupplier nresult;
 					try {
 						T cval = environmentproperty.getCurrentValue(collectingenvironment);
-						result = new PropertyComputationSuccessfulSupplier(cval);
+						nresult = new PropertyComputationSuccessfulSupplier(cval);
 					} catch (Exception e) {
-						result = new PropertyComputationFailedThrowingSupplier(e);
+						nresult = new PropertyComputationFailedThrowingSupplier(e);
 					}
-					result.transitiveDependentProperties = collectingenvironment.transitiveDependentProperties;
-					checkedEnvironmentProperties.putIfAbsent(environmentproperty, result);
+					nresult.transitiveDependentProperties = collectingenvironment.transitiveDependentProperties;
+					if (result == null) {
+						cachemap.putIfAbsent(environmentproperty, nresult);
+					} else {
+						cachemap.replace(environmentproperty, result, nresult);
+					}
+					result = nresult;
 				}
 			} finally {
 				lock.unlock();
 			}
 		}
-		InternalBuildTrace btrace = InternalBuildTrace.currentOrNull();
 		if (btrace == null) {
 			@SuppressWarnings("unchecked")
 			T resultval = (T) result.get();
@@ -332,10 +371,12 @@ public final class SakerEnvironmentImpl implements Closeable {
 		return getComputedPropertyValueReportBuildTrace(result, environmentproperty, btrace);
 	}
 
+	@SuppressWarnings("unchecked") // result val assignment
 	private <T> void reportComputedPropertyTransitiveBuildTrace(PropertyComputationResultSupplier result,
 			EnvironmentProperty<T> environmentproperty, InternalBuildTrace btrace,
 			Set<EnvironmentProperty<?>> collectedproperties) {
 		if (!collectedproperties.add(environmentproperty)) {
+			//already reported this environment property
 			return;
 		}
 		if (result == null) {
@@ -346,21 +387,19 @@ public final class SakerEnvironmentImpl implements Closeable {
 			return;
 		}
 
+		T resultval = null;
+		PropertyComputationFailedException exc = null;
 		try {
-			@SuppressWarnings("unchecked")
-			T resultval = (T) result.get();
-			try {
-				btrace.environmentPropertyAccessed(this, environmentproperty, resultval, null);
-			} catch (Exception e) {
-				//no exceptions!
-			}
+			resultval = (T) result.get();
 		} catch (PropertyComputationFailedException e) {
-			try {
-				btrace.environmentPropertyAccessed(this, environmentproperty, null, e);
-			} catch (Exception e2) {
-				//no exceptions!
-			}
+			exc = e;
 		}
+		try {
+			btrace.environmentPropertyAccessed(environmentproperty, resultval, exc);
+		} catch (Exception e) {
+			//no exceptions!
+		}
+
 		Set<EnvironmentProperty<?>> props = result.transitiveDependentProperties;
 		if (props != null) {
 			for (EnvironmentProperty<?> ep : props) {
@@ -374,27 +413,15 @@ public final class SakerEnvironmentImpl implements Closeable {
 		}
 	}
 
+	@SuppressWarnings("unchecked") // result cast
 	private <T> T getComputedPropertyValueReportBuildTrace(PropertyComputationResultSupplier result,
 			EnvironmentProperty<T> environmentproperty, InternalBuildTrace btrace) {
 		try {
-			@SuppressWarnings("unchecked")
-			T resultval = (T) result.get();
-			try {
-				btrace.environmentPropertyAccessed(this, environmentproperty, resultval, null);
-				reportComputedPropertyTransitiveBuildTrace(result, environmentproperty, btrace, new HashSet<>());
-			} catch (Exception e) {
-				//no exceptions!
-			}
-			return resultval;
-		} catch (PropertyComputationFailedException e) {
-			try {
-				btrace.environmentPropertyAccessed(this, environmentproperty, null, e);
-				reportComputedPropertyTransitiveBuildTrace(result, environmentproperty, btrace, new HashSet<>());
-			} catch (Exception e2) {
-				//no exceptions!
-			}
-			throw e;
+			reportComputedPropertyTransitiveBuildTrace(result, environmentproperty, btrace, new HashSet<>());
+		} catch (Exception e) {
+			//no exceptions!
 		}
+		return (T) result.get();
 	}
 
 	private Lock getEnvironmentPropertyCalculateLock(EnvironmentProperty<?> environmentproperty) {
@@ -632,9 +659,10 @@ public final class SakerEnvironmentImpl implements Closeable {
 		}
 
 		@Override
-		public <T> T getEnvironmentPropertyCurrentValue(EnvironmentProperty<T> environmentproperty) {
+		public <T> T internalGetEnvironmentPropertyCurrentValue(SakerEnvironment environment,
+				EnvironmentProperty<T> environmentproperty, InternalBuildTrace btrace) {
 			transitiveDependentProperties.add(environmentproperty);
-			return super.getEnvironmentPropertyCurrentValue(environmentproperty);
+			return super.internalGetEnvironmentPropertyCurrentValue(environment, environmentproperty, btrace);
 		}
 	}
 
@@ -777,6 +805,10 @@ public final class SakerEnvironmentImpl implements Closeable {
 
 		public PropertyComputationResultSupplier() {
 		}
+
+		public Throwable getException() {
+			return null;
+		}
 	}
 
 	private static final class PropertyComputationSuccessfulSupplier extends PropertyComputationResultSupplier {
@@ -854,6 +886,11 @@ public final class SakerEnvironmentImpl implements Closeable {
 
 		PropertyComputationFailedThrowingSupplier(Throwable e) {
 			this.e = e;
+		}
+
+		@Override
+		public Throwable getException() {
+			return e;
 		}
 
 		@Override

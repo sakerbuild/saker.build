@@ -60,6 +60,8 @@ import saker.build.file.provider.LocalFileProvider;
 import saker.build.file.provider.RootFileProviderKey;
 import saker.build.file.provider.SakerFileProvider;
 import saker.build.file.provider.SakerPathFiles;
+import saker.build.runtime.environment.EnvironmentProperty;
+import saker.build.runtime.environment.ForwardingSakerEnvironment;
 import saker.build.runtime.environment.SakerEnvironment;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
 import saker.build.runtime.params.DatabaseConfiguration;
@@ -106,6 +108,7 @@ import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.ref.StrongWeakReference;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapSerializeKeyRemoteValueWrapper;
 import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapWrapper;
+import saker.build.thirdparty.saker.util.thread.BooleanLatch;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.trace.InternalBuildTrace;
 import saker.build.trace.InternalBuildTrace.NullInternalBuildTrace;
@@ -262,7 +265,14 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		this.loadedBuildRepositories = useexecutioncache.getLoadedBuildRepositories();
 		this.loadedBuildRepositoryEnvironments = useexecutioncache.getLoadedRepositoryBuildEnvironments();
 		this.loadedScriptProviderLocators = useexecutioncache.getLoadedScriptProviderLocators();
+
 		this.executionEnvironment = useexecutioncache.getRecordingEnvironment();
+		this.executionEnvironment = new ExecutionCachingEnvironmentPropertyForwardingSakerEnvironment(
+				this.executionEnvironment);
+		if (isRecordsBuildTrace()) {
+			this.executionEnvironment = new BuildTraceRecordingForwardingSakerEnvironment(this.executionEnvironment,
+					buildTrace);
+		}
 
 		Path mirrordirpath = null;
 		if (paramsmirrordirectory != null) {
@@ -391,14 +401,16 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	@SuppressWarnings("unchecked")
 	public <T> T getExecutionPropertyCurrentValue(ExecutionProperty<T> executionproperty) {
 		Objects.requireNonNull(executionproperty, "property");
-		Supplier<?> result = checkedExecutionProperties.get(executionproperty);
+
+		Map<ExecutionProperty<?>, Supplier<?>> cachemap = checkedExecutionProperties;
+		Supplier<?> result = cachemap.get(executionproperty);
 		if (result != null) {
 			return (T) result.get();
 		}
 		Lock lock = getExecutionPropertyCalculateLock(executionproperty);
 		lock.lock();
 		try {
-			result = checkedExecutionProperties.get(executionproperty);
+			result = cachemap.get(executionproperty);
 			if (result != null) {
 				return (T) result.get();
 			}
@@ -410,7 +422,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 					throw new PropertyComputationFailedException(e);
 				};
 			}
-			checkedExecutionProperties.putIfAbsent(executionproperty, result);
+			cachemap.putIfAbsent(executionproperty, result);
 			return (T) result.get();
 		} finally {
 			lock.unlock();
@@ -1109,4 +1121,118 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		}
 
 	}
+
+	private static final class FailedEnvironmentPropertyResult<T> implements Supplier<T> {
+		private final Throwable exception;
+
+		public FailedEnvironmentPropertyResult(Throwable exception) {
+			this.exception = exception;
+		}
+
+		@Override
+		public T get() throws PropertyComputationFailedException {
+			throw new PropertyComputationFailedException(exception);
+		}
+	}
+
+	private static final class ComputingPropertyResult<T> implements Supplier<T> {
+		@SuppressWarnings("rawtypes")
+		private static final AtomicReferenceFieldUpdater<ExecutionContextImpl.ComputingPropertyResult, Thread> ARFU_computingThread = AtomicReferenceFieldUpdater
+				.newUpdater(ExecutionContextImpl.ComputingPropertyResult.class, Thread.class, "computingThread");
+
+		private final BooleanLatch latch = BooleanLatch.newBooleanLatch();
+		private volatile Thread computingThread;
+		private Supplier<T> result;
+
+		public void setResult(Supplier<T> result) {
+			this.result = result;
+			latch.signal();
+		}
+
+		protected boolean startCompute() {
+			return ARFU_computingThread.compareAndSet(this, null, Thread.currentThread());
+		}
+
+		@Override
+		public T get() {
+			if (Thread.currentThread() == computingThread) {
+				//check reentrancy so we don't deadlock the computing thread in case of improper implementations
+				throw new IllegalThreadStateException("Reentrant attempt for computing property.");
+			}
+			latch.awaitUninterruptibly();
+			Supplier<T> res = this.result;
+			return res.get();
+		}
+	}
+
+	/**
+	 * Caches the {@link EnvironmentProperty} values on an execution level.
+	 * <p>
+	 * This is necessary so the environment properties always have the same value during a single execution. (Even if
+	 * they might get recalculated)
+	 */
+	private static class ExecutionCachingEnvironmentPropertyForwardingSakerEnvironment
+			extends ForwardingSakerEnvironment {
+		private final Map<EnvironmentProperty<?>, Supplier<?>> checkedEnvironmentProperties = new ConcurrentHashMap<>();
+
+		public ExecutionCachingEnvironmentPropertyForwardingSakerEnvironment(SakerEnvironment environment) {
+			super(environment);
+		}
+
+		@Override
+		public <T> T internalGetEnvironmentPropertyCurrentValue(SakerEnvironment environment,
+				EnvironmentProperty<T> environmentproperty, InternalBuildTrace btrace) {
+			Map<EnvironmentProperty<?>, Supplier<?>> cachemap = checkedEnvironmentProperties;
+			@SuppressWarnings("unchecked")
+			Supplier<T> result = (Supplier<T>) cachemap.computeIfAbsent(environmentproperty,
+					x -> new ComputingPropertyResult<>());
+			if (result instanceof ComputingPropertyResult) {
+				if (((ComputingPropertyResult<T>) result).startCompute()) {
+					//we compute the property value
+					//  else some other thread computes the value, we just wait for it in the .get() call
+					ComputingPropertyResult<T> computingresult = (ComputingPropertyResult<T>) result;
+					try {
+						T resultval = super.internalGetEnvironmentPropertyCurrentValue(environment, environmentproperty,
+								btrace);
+						result = Functionals.valSupplier(resultval);
+					} catch (PropertyComputationFailedException e) {
+						result = new FailedEnvironmentPropertyResult<>(e.getCause());
+					} catch (Throwable e) {
+						//serious error, throw the exception, but set the result, so it is properly set in the cache
+						result = new FailedEnvironmentPropertyResult<>(e);
+						throw e;
+					} finally {
+						//always set the result, so the computing supplier is signalled, and other threads aren't deadlocked
+						computingresult.setResult(result);
+						//replace in the map, so the synchronization mechanism is avoided in future calls 
+						//(they are no longer needed, as the property is calculated)
+						cachemap.replace(environmentproperty, computingresult, result);
+					}
+				}
+			}
+			return result.get();
+		}
+
+	}
+
+	private static final class BuildTraceRecordingForwardingSakerEnvironment
+			extends ExecutionCachingEnvironmentPropertyForwardingSakerEnvironment {
+		private final InternalBuildTrace btrace;
+
+		public BuildTraceRecordingForwardingSakerEnvironment(SakerEnvironment environment, InternalBuildTrace btrace) {
+			super(environment);
+			this.btrace = btrace;
+		}
+
+		@Override
+		public <T> T internalGetEnvironmentPropertyCurrentValue(SakerEnvironment environment,
+				EnvironmentProperty<T> environmentproperty, InternalBuildTrace btrace) {
+			//override the build trace for environment property computation
+			//(the argument should be null, but check just in case)
+			return super.internalGetEnvironmentPropertyCurrentValue(environment, environmentproperty,
+					btrace == null ? this.btrace : btrace);
+		}
+
+	}
+
 }

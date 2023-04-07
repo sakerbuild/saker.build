@@ -108,8 +108,8 @@ public interface InternalBuildTrace extends Closeable {
 	public default void addValues(@RMISerialize Map<?, ?> values, String category) {
 	}
 
-	public default <T> void environmentPropertyAccessed(SakerEnvironmentImpl environment,
-			EnvironmentProperty<T> property, T value, PropertyComputationFailedException e) {
+	public default <T> void environmentPropertyAccessed(EnvironmentProperty<T> property, T value,
+			PropertyComputationFailedException e) {
 	}
 
 	public default void openTargetConfigurationFile(ScriptParsingOptions parsingoptions, SakerFile file) {
