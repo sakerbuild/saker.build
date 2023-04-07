@@ -15,88 +15,23 @@
  */
 package testing.saker.build.tests.tasks;
 
-import java.io.Externalizable;
-import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectOutput;
 import java.util.Set;
 
 import saker.build.runtime.environment.EnvironmentProperty;
-import saker.build.runtime.execution.ExecutionContext;
-import saker.build.task.Task;
 import saker.build.task.TaskContext;
-import saker.build.task.TaskFactory;
 import saker.build.task.exception.IllegalTaskOperationException;
 import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.util.property.SystemPropertyEnvironmentProperty;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
 import testing.saker.build.tests.EnvironmentTestCaseConfiguration;
+import testing.saker.build.tests.tasks.factories.StringEnvironmentPropertyDependentTaskFactory;
 
 @SakerTest
 public class EnvironmentDependencyTaskTest extends CollectingMetricEnvironmentTestCase {
 	private static final String TEST_PROPERTY_NAME = EnvironmentDependencyTaskTest.class.getName() + ".test.property";
 
-	private static class PropertyDependentTaskFactory implements TaskFactory<String>, Externalizable, Task<String> {
-		private static final long serialVersionUID = 1L;
-
-		protected EnvironmentProperty<String> dependency;
-
-		public PropertyDependentTaskFactory() {
-		}
-
-		public PropertyDependentTaskFactory(EnvironmentProperty<String> dependency) {
-			this.dependency = dependency;
-		}
-
-		@Override
-		public Task<? extends String> createTask(ExecutionContext executioncontext) {
-			return this;
-		}
-
-		@Override
-		public String run(TaskContext taskcontext) throws Exception {
-			return taskcontext.getTaskUtilities().getReportEnvironmentDependency(dependency);
-		}
-
-		@Override
-		public void writeExternal(ObjectOutput out) throws IOException {
-			out.writeObject(dependency);
-		}
-
-		@SuppressWarnings("unchecked")
-		@Override
-		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-			dependency = (EnvironmentProperty<String>) in.readObject();
-		}
-
-		@Override
-		public int hashCode() {
-			final int prime = 31;
-			int result = 1;
-			result = prime * result + ((dependency == null) ? 0 : dependency.hashCode());
-			return result;
-		}
-
-		@Override
-		public boolean equals(Object obj) {
-			if (this == obj)
-				return true;
-			if (obj == null)
-				return false;
-			if (getClass() != obj.getClass())
-				return false;
-			PropertyDependentTaskFactory other = (PropertyDependentTaskFactory) obj;
-			if (dependency == null) {
-				if (other.dependency != null)
-					return false;
-			} else if (!dependency.equals(other.dependency))
-				return false;
-			return true;
-		}
-	}
-
-	private static class MultiReportPropertyDependentTaskFactory extends PropertyDependentTaskFactory {
+	private static class MultiReportPropertyDependentTaskFactory extends StringEnvironmentPropertyDependentTaskFactory {
 		private static final long serialVersionUID = 1L;
 
 		public MultiReportPropertyDependentTaskFactory() {
@@ -116,7 +51,8 @@ public class EnvironmentDependencyTaskTest extends CollectingMetricEnvironmentTe
 		}
 	}
 
-	private static class MultiDifferentReportPropertyDependentTaskFactory extends PropertyDependentTaskFactory {
+	private static class MultiDifferentReportPropertyDependentTaskFactory
+			extends StringEnvironmentPropertyDependentTaskFactory {
 		private static final long serialVersionUID = 1L;
 
 		public MultiDifferentReportPropertyDependentTaskFactory() {
@@ -141,7 +77,7 @@ public class EnvironmentDependencyTaskTest extends CollectingMetricEnvironmentTe
 	protected void runTestImpl() throws Throwable {
 		System.clearProperty(TEST_PROPERTY_NAME);
 
-		PropertyDependentTaskFactory fac = new PropertyDependentTaskFactory(
+		StringEnvironmentPropertyDependentTaskFactory fac = new StringEnvironmentPropertyDependentTaskFactory(
 				new SystemPropertyEnvironmentProperty(TEST_PROPERTY_NAME));
 
 		runTask(strTaskId("main"), fac);
@@ -171,7 +107,7 @@ public class EnvironmentDependencyTaskTest extends CollectingMetricEnvironmentTe
 		runTask(strTaskId("main"), fac);
 		assertMap(getMetric().getRunTaskIdResults()).contains(strTaskId("main"), null).noRemaining();
 
-		PropertyDependentTaskFactory multifac = new MultiReportPropertyDependentTaskFactory(
+		StringEnvironmentPropertyDependentTaskFactory multifac = new MultiReportPropertyDependentTaskFactory(
 				new SystemPropertyEnvironmentProperty(TEST_PROPERTY_NAME));
 
 		System.setProperty(TEST_PROPERTY_NAME, "test.multi.value");
@@ -179,7 +115,7 @@ public class EnvironmentDependencyTaskTest extends CollectingMetricEnvironmentTe
 		runTask(strTaskId("multi"), multifac);
 		assertMap(getMetric().getRunTaskIdResults()).contains(strTaskId("multi"), "test.multi.value").noRemaining();
 
-		PropertyDependentTaskFactory multidifffac = new MultiDifferentReportPropertyDependentTaskFactory(
+		StringEnvironmentPropertyDependentTaskFactory multidifffac = new MultiDifferentReportPropertyDependentTaskFactory(
 				new SystemPropertyEnvironmentProperty(TEST_PROPERTY_NAME));
 
 		System.setProperty(TEST_PROPERTY_NAME, "test.multi.diff.value");
