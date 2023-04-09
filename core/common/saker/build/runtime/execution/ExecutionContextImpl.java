@@ -158,7 +158,6 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 	private Object environmentExecutionKey;
 
 	private Map<ExecutionProperty<?>, Supplier<?>> checkedExecutionProperties = new ConcurrentHashMap<>();
-	private final ConcurrentHashMap<ExecutionProperty<?>, StrongWeakReference<Lock>> executionPropertyCalculateLocks = new ConcurrentHashMap<>();
 
 	private BuildTaskResultDatabase results;
 	private TaskResultCollectionImpl resultCollection;
@@ -403,42 +402,34 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 		Objects.requireNonNull(executionproperty, "property");
 
 		Map<ExecutionProperty<?>, Supplier<?>> cachemap = checkedExecutionProperties;
-		Supplier<?> result = cachemap.get(executionproperty);
-		if (result != null) {
-			return (T) result.get();
-		}
-		Lock lock = getExecutionPropertyCalculateLock(executionproperty);
-		lock.lock();
-		try {
-			result = cachemap.get(executionproperty);
-			if (result != null) {
-				return (T) result.get();
+		@SuppressWarnings("unchecked")
+		Supplier<T> result = (Supplier<T>) cachemap.computeIfAbsent(executionproperty,
+				x -> new ComputingPropertyResult<>());
+		if (result instanceof ComputingPropertyResult) {
+			if (((ComputingPropertyResult<?>) result).startCompute()) {
+				//we compute the property value
+				//  else some other thread computes the value, we just wait for it in the .get() call
+				ComputingPropertyResult<T> computingresult = (ComputingPropertyResult<T>) result;
+				try {
+					T cval = executionproperty.getCurrentValue(this);
+					result = Functionals.valSupplier(cval);
+				} catch (Exception e) {
+					result = new FailedPropertyResult<>(e);
+				} catch (Throwable e) {
+					//serious error, throw the exception, but set the result, so it is properly set in the cache
+					result = new FailedPropertyResult<>(e);
+					throw e;
+				} finally {
+					//always set the result, so the computing supplier is signalled, and other threads aren't deadlocked
+					computingresult.setResult(result);
+					//replace in the map, so the synchronization mechanism is avoided in future calls 
+					//(they are no longer needed, as the property is calculated)
+					cachemap.replace(executionproperty, computingresult, result);
+				}
 			}
-			try {
-				T cval = executionproperty.getCurrentValue(this);
-				result = Functionals.valSupplier(cval);
-			} catch (Exception e) {
-				result = () -> {
-					throw new PropertyComputationFailedException(e);
-				};
-			}
-			cachemap.putIfAbsent(executionproperty, result);
-			return (T) result.get();
-		} finally {
-			lock.unlock();
 		}
-	}
 
-	private Lock getExecutionPropertyCalculateLock(ExecutionProperty<?> executionproperty) {
-		StrongWeakReference<Lock> ref = executionPropertyCalculateLocks.compute(executionproperty, (k, v) -> {
-			if (v != null && v.makeStrong()) {
-				return v;
-			}
-			return new StrongWeakReference<>(ThreadUtils.newExclusiveLock());
-		});
-		Lock result = ref.get();
-		ref.makeWeak();
-		return result;
+		return result.get();
 	}
 
 	public boolean hasAnyExecutionPropertyDifference(Map<? extends ExecutionProperty<?>, ?> testproperties) {
@@ -1122,10 +1113,10 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 
 	}
 
-	private static final class FailedEnvironmentPropertyResult<T> implements Supplier<T> {
+	private static final class FailedPropertyResult<T> implements Supplier<T> {
 		private final Throwable exception;
 
-		public FailedEnvironmentPropertyResult(Throwable exception) {
+		public FailedPropertyResult(Throwable exception) {
 			this.exception = exception;
 		}
 
@@ -1187,7 +1178,7 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 			Supplier<T> result = (Supplier<T>) cachemap.computeIfAbsent(environmentproperty,
 					x -> new ComputingPropertyResult<>());
 			if (result instanceof ComputingPropertyResult) {
-				if (((ComputingPropertyResult<T>) result).startCompute()) {
+				if (((ComputingPropertyResult<?>) result).startCompute()) {
 					//we compute the property value
 					//  else some other thread computes the value, we just wait for it in the .get() call
 					ComputingPropertyResult<T> computingresult = (ComputingPropertyResult<T>) result;
@@ -1196,10 +1187,10 @@ public final class ExecutionContextImpl implements ExecutionContext, InternalExe
 								btrace);
 						result = Functionals.valSupplier(resultval);
 					} catch (PropertyComputationFailedException e) {
-						result = new FailedEnvironmentPropertyResult<>(e.getCause());
+						result = new FailedPropertyResult<>(e.getCause());
 					} catch (Throwable e) {
 						//serious error, throw the exception, but set the result, so it is properly set in the cache
-						result = new FailedEnvironmentPropertyResult<>(e);
+						result = new FailedPropertyResult<>(e);
 						throw e;
 					} finally {
 						//always set the result, so the computing supplier is signalled, and other threads aren't deadlocked
