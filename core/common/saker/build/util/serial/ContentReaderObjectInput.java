@@ -54,14 +54,15 @@ public class ContentReaderObjectInput implements ObjectInput {
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_UTF = ImmutableUtils.makeImmutableNavigableSet(
 			new Integer[] { ContentWriterObjectOutput.C_UTF, ContentWriterObjectOutput.C_UTF_LOWBYTES,
 					ContentWriterObjectOutput.C_UTF_IDX, ContentWriterObjectOutput.C_UTF_IDX_1,
-					ContentWriterObjectOutput.C_UTF_IDX_2, ContentWriterObjectOutput.C_UTF_IDX_3 });
+					ContentWriterObjectOutput.C_UTF_IDX_2, ContentWriterObjectOutput.C_UTF_IDX_3,
+					ContentWriterObjectOutput.C_UTF_PREFIXED, ContentWriterObjectOutput.C_UTF_PREFIXED_LOWBYTES, });
 
-	private static final NavigableSet<Integer> EXPECTED_COMMANDS_INT = ImmutableUtils
-			.makeImmutableNavigableSet(new Integer[] { ContentWriterObjectOutput.C_INT,
-					ContentWriterObjectOutput.C_INT_1, ContentWriterObjectOutput.C_INT_2,
-					ContentWriterObjectOutput.C_INT_3, ContentWriterObjectOutput.C_INT_F_1,
-					ContentWriterObjectOutput.C_INT_F_2, ContentWriterObjectOutput.C_INT_F_3,
-					ContentWriterObjectOutput.C_INT_ZERO, ContentWriterObjectOutput.C_INT_NEGATIVE_ONE });
+	private static final NavigableSet<Integer> EXPECTED_COMMANDS_INT = ImmutableUtils.makeImmutableNavigableSet(
+			new Integer[] { ContentWriterObjectOutput.C_INT, ContentWriterObjectOutput.C_INT_1,
+					ContentWriterObjectOutput.C_INT_2, ContentWriterObjectOutput.C_INT_3,
+					ContentWriterObjectOutput.C_INT_F_1, ContentWriterObjectOutput.C_INT_F_2,
+					ContentWriterObjectOutput.C_INT_F_3, ContentWriterObjectOutput.C_INT_ZERO,
+					ContentWriterObjectOutput.C_INT_NEGATIVE_ONE, ContentWriterObjectOutput.C_INT_ONE, });
 
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_LONG = ImmutableUtils
 			.makeImmutableNavigableSet(new Integer[] { ContentWriterObjectOutput.C_LONG,
@@ -342,6 +343,9 @@ public class ContentReaderObjectInput implements ObjectInput {
 			case ContentWriterObjectOutput.C_INT_ZERO: {
 				return 0;
 			}
+			case ContentWriterObjectOutput.C_INT_ONE: {
+				return 1;
+			}
 			case ContentWriterObjectOutput.C_INT_NEGATIVE_ONE: {
 				return -1;
 			}
@@ -472,6 +476,12 @@ public class ContentReaderObjectInput implements ObjectInput {
 				int idx = readIntImpl1();
 				return getUtfWithIndex(idx);
 			}
+			case ContentWriterObjectOutput.C_UTF_PREFIXED: {
+				return readUTFPrefixedImpl();
+			}
+			case ContentWriterObjectOutput.C_UTF_PREFIXED_LOWBYTES: {
+				return readUTFPrefixedLowbytesImpl();
+			}
 			default: {
 				throw new AssertionError(cmd);
 			}
@@ -534,6 +544,80 @@ public class ContentReaderObjectInput implements ObjectInput {
 			}
 
 			String utf = new String(charReadBuffer, 0, slen);
+			addSerializedObject(new PresentSerializedObject<>(utf));
+			return utf;
+		} catch (IOException e) {
+			FailedSerializedObject<?> serializedobj = new FailedSerializedObject<>(() -> {
+				IOException eofe = new SerializationProtocolException("Failed to fully read UTF.");
+				eofe.initCause(e);
+				return eofe;
+			});
+			addSerializedObject(serializedobj);
+			throw e;
+		}
+	}
+
+	private String readUTFPrefixedImpl() throws IOException {
+		try {
+			int index = readInt();
+			int common = readInt();
+			int slen = readInt();
+
+			if (charBytesReadBuffer.length < slen * 2) {
+				charBytesReadBuffer = new byte[Math.max(charBytesReadBuffer.length * 2, slen * 2)];
+			}
+			state.in.readFully(charBytesReadBuffer, 0, slen * 2);
+
+			String prefix = getUtfWithIndex(index);
+
+			if (charReadBuffer.length < slen) {
+				charReadBuffer = new char[Math.max(charReadBuffer.length * 2, slen)];
+			}
+			for (int i = 0; i < slen; i++) {
+				charReadBuffer[i] = (char) (((charBytesReadBuffer[i * 2] & 0xFF) << 8)
+						| (charBytesReadBuffer[i * 2 + 1] & 0xFF));
+			}
+
+			StringBuilder sb = new StringBuilder(common + slen);
+			sb.append(prefix, 0, common);
+			sb.append(charReadBuffer, 0, slen);
+			String utf = sb.toString();
+			addSerializedObject(new PresentSerializedObject<>(utf));
+			return utf;
+		} catch (IOException e) {
+			FailedSerializedObject<?> serializedobj = new FailedSerializedObject<>(() -> {
+				IOException eofe = new SerializationProtocolException("Failed to fully read UTF.");
+				eofe.initCause(e);
+				return eofe;
+			});
+			addSerializedObject(serializedobj);
+			throw e;
+		}
+	}
+
+	private String readUTFPrefixedLowbytesImpl() throws IOException {
+		try {
+			int index = readInt();
+			int common = readInt();
+			int slen = readInt();
+			if (charBytesReadBuffer.length < slen) {
+				charBytesReadBuffer = new byte[Math.max(charBytesReadBuffer.length * 2, slen)];
+			}
+			state.in.readFully(charBytesReadBuffer, 0, slen);
+
+			String prefix = getUtfWithIndex(index);
+
+			if (charReadBuffer.length < slen) {
+				charReadBuffer = new char[Math.max(charReadBuffer.length * 2, slen)];
+			}
+			for (int i = 0; i < slen; i++) {
+				charReadBuffer[i] = (char) (charBytesReadBuffer[i] & 0xFF);
+			}
+
+			StringBuilder sb = new StringBuilder(common + slen);
+			sb.append(prefix, 0, common);
+			sb.append(charReadBuffer, 0, slen);
+			String utf = sb.toString();
 			addSerializedObject(new PresentSerializedObject<>(utf));
 			return utf;
 		} catch (IOException e) {
@@ -1243,6 +1327,14 @@ public class ContentReaderObjectInput implements ObjectInput {
 					readUTFImpl();
 					break;
 				}
+				case ContentWriterObjectOutput.C_UTF_PREFIXED: {
+					readUTFPrefixedImpl();
+					break;
+				}
+				case ContentWriterObjectOutput.C_UTF_PREFIXED_LOWBYTES: {
+					readUTFPrefixedLowbytesImpl();
+					break;
+				}
 				case ContentWriterObjectOutput.C_UTF_LOWBYTES: {
 					readUTFLowBytesImpl();
 					break;
@@ -1317,6 +1409,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 					break;
 				}
 				case ContentWriterObjectOutput.C_INT_ZERO:
+				case ContentWriterObjectOutput.C_INT_ONE:
 				case ContentWriterObjectOutput.C_INT_NEGATIVE_ONE: {
 					break;
 				}

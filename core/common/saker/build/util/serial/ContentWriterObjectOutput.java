@@ -43,6 +43,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -56,7 +57,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 import saker.build.file.path.SakerPath;
-import saker.build.meta.PropertyNames;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
@@ -121,8 +121,13 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	static final int C_INT_NEGATIVE_ONE = 49;
 	static final int C_LONG_ZERO = 50;
 	static final int C_LONG_NEGATIVE_ONE = 51;
+	static final int C_UTF_PREFIXED = 52;
+	static final int C_UTF_PREFIXED_LOWBYTES = 53;
+	static final int C_INT_ONE = 54;
 
-	static final int C_MAX_COMMAND_VALUE = 51;
+	static final int C_MAX_COMMAND_VALUE = 54;
+
+	private static final int UTF_PREFIX_MIN_LEN = 8;
 
 	static String getCommandTypeInfo(int cmd) {
 		switch (cmd) {
@@ -141,6 +146,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			case C_INT_F_2:
 			case C_INT_F_1:
 			case C_INT_ZERO:
+			case C_INT_ONE:
 			case C_INT_NEGATIVE_ONE:
 				return "int";
 			case C_LONG:
@@ -165,6 +171,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			case C_UTF_IDX_2:
 			case C_UTF_IDX_3:
 			case C_UTF_LOWBYTES:
+			case C_UTF_PREFIXED:
+			case C_UTF_PREFIXED_LOWBYTES:
 				return "UTF";
 			case C_CHARS:
 				return "char";
@@ -868,17 +876,18 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		});
 
 		VALUE_CLASS_WRITERS.put(SakerPath.class,
-				(IOBiConsumer<SakerPath, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeUTF(v.toString()));
+				(IOBiConsumer<SakerPath, ContentWriterObjectOutput>) (v, writer) -> writer.writeUTF(v.toString()));
 		VALUE_CLASS_READERS.put(SakerPath.class, reader -> {
+			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
 			SerializedObject<SakerPath> serialobj;
 			try {
-				SakerPath res = SakerPath.valueOf(reader.state.in.readUTF());
+				SakerPath res = SakerPath.valueOf(reader.readUTF());
 				serialobj = new PresentSerializedObject<>(res);
 			} catch (Exception e) {
 				serialobj = new FailedSerializedObject<>(
 						() -> new SerializationProtocolException("Failed to read SakerPath.", e));
 			}
-			reader.addSerializedObject(serialobj);
+			reader.setSerializedObject(idx, serialobj);
 			return serialobj.get();
 		});
 
@@ -901,6 +910,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	private final IdentityHashMap<Object, Integer> objectIndices = new IdentityHashMap<>();
 	private final Map<Object, Object> valueInternalizer = new HashMap<>();
+	private final NavigableMap<String, InternedString> stringInternalizer = new TreeMap<>();
 
 	private final ClassLoaderResolver registry;
 
@@ -960,11 +970,20 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				switch (v & 0x0000_FF00) {
 					case 0x0000_0000: {
 						//starts with 0x0000_00xx
-						if (v == 0) {
-							out.writeByte(C_INT_ZERO);
-						} else {
-							out.writeByte(C_INT_1);
-							out.writeByte(v);
+						switch (v) {
+							case 0: {
+								out.writeByte(C_INT_ZERO);
+								break;
+							}
+							case 1: {
+								out.writeByte(C_INT_ONE);
+								break;
+							}
+							default: {
+								out.writeByte(C_INT_1);
+								out.writeByte(v);
+								break;
+							}
 						}
 						break;
 					}
@@ -1116,41 +1135,129 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		return true;
 	}
 
+	private UTFPrefixInfo getBetterPrefix(String s, int slen, Entry<String, InternedString> first,
+			Entry<String, InternedString> second) {
+		if (first == null) {
+			first = second;
+			if (first == null) {
+				return null;
+			}
+		}
+		//Note: regionMatches has length check for UTF_PREFIX_MIN_LEN in it
+		String firststr = first.getKey();
+		if (s.regionMatches(0, firststr, 0, UTF_PREFIX_MIN_LEN)) {
+			int firstcommon = getPrefixCommonCharCountWithBuffer(slen, firststr, firststr.length(), UTF_PREFIX_MIN_LEN);
+			if (second == null) {
+				return new UTFPrefixInfo(first.getValue(), firstcommon);
+			}
+			String secondstr = second.getKey();
+			if (s.regionMatches(0, secondstr, 0, firstcommon + 1)) {
+				//the second one matches at least one more common character
+				int secondcommon = getPrefixCommonCharCountWithBuffer(slen, secondstr, secondstr.length(),
+						firstcommon + 1);
+				return new UTFPrefixInfo(second.getValue(), secondcommon);
+			}
+			return new UTFPrefixInfo(first.getValue(), firstcommon);
+		}
+		if (second != null) {
+			String secondstr = second.getKey();
+			if (s.regionMatches(0, secondstr, 0, UTF_PREFIX_MIN_LEN)) {
+				int secondcommon = getPrefixCommonCharCountWithBuffer(slen, secondstr, secondstr.length(),
+						UTF_PREFIX_MIN_LEN);
+				return new UTFPrefixInfo(second.getValue(), secondcommon);
+			}
+		}
+		return null;
+	}
+
 	@Override
 	public void writeUTF(String s) throws IOException {
 		Objects.requireNonNull(s, "utf string");
 
-		Integer oidx = objectIndices.get(s);
-		if (oidx != null) {
-			writeUtfWithIndexCommand(oidx);
-			return;
-		}
-		Object prev = valueInternalizer.putIfAbsent(s, s);
-		if (prev != null) {
-			Integer idx = objectIndices.get(prev);
-			writeUtfWithIndexCommand(idx.intValue());
+		Entry<String, InternedString> floorentry = stringInternalizer.floorEntry(s);
+		if (floorentry != null && floorentry.getKey().equals(s)) {
+			writeUtfWithIndexCommand(floorentry.getValue().index);
 			return;
 		}
 
+		int slen = ensureCharWriteBuffer(s);
+		int idx = addSerializedObject(s);
+		stringInternalizer.put(s, new InternedString(s, idx));
+
+		if (slen > UTF_PREFIX_MIN_LEN) {
+			//attempt prefixing if the written string is longer than the min requirement
+			UTFPrefixInfo prefixinfo = getBetterPrefix(s, slen, floorentry, stringInternalizer.higherEntry(s));
+
+			if (prefixinfo != null) {
+				//both strings have a common starting characters
+				int common = prefixinfo.common;
+
+				int writecount = slen - common;
+				if (isLowBytesChars(charWriteBuffer, common, writecount)) {
+					out.ensureCapacity(out.size() + (1 + 5 + 5 + 5) + writecount);
+					out.writeByte(C_UTF_PREFIXED_LOWBYTES);
+					writeInt(prefixinfo.prefix.index);
+					writeInt(common);
+					writeInt(writecount);
+					for (int i = 0; i < writecount; i++) {
+						out.writeByte(charWriteBuffer[common + i]);
+					}
+				} else {
+					out.ensureCapacity(out.size() + (1 + 5 + 5 + 5) + writecount * 2);
+					out.writeByte(C_UTF_PREFIXED);
+					writeInt(prefixinfo.prefix.index);
+					writeInt(common);
+					writeInt(writecount);
+					out.write(charWriteBuffer, common, writecount);
+				}
+				return;
+			}
+		}
+
+		writeUtfData(slen);
+
+	}
+
+	private int getPrefixCommonCharCountWithBuffer(int slen, String otherstr, int olen, int startidx) {
+		int common = startidx;
+		for (int minlen = Math.min(slen, olen); common < minlen; common++) {
+			if (charWriteBuffer[common] != otherstr.charAt(common)) {
+				//found the first different char
+				break;
+			}
+		}
+		return common;
+	}
+
+	private int ensureCharWriteBuffer(String s) {
 		int slen = s.length();
+		ensureCharWriteBuffer(s, slen);
+		return slen;
+	}
+
+	private void ensureCharWriteBuffer(String s, int slen) {
 		if (charWriteBuffer.length < slen) {
 			charWriteBuffer = new char[Math.max(charWriteBuffer.length * 2, slen)];
 		}
 		s.getChars(0, slen, charWriteBuffer, 0);
-		if (isLowBytesChars(charWriteBuffer, 0, slen)) {
-			out.ensureCapacity(out.size() + 5 + slen);
+	}
+
+	private void writeUtfData(int slen) throws IOException {
+		final char[] buffer = charWriteBuffer;
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
+
+		if (isLowBytesChars(buffer, 0, slen)) {
+			out.ensureCapacity(out.size() + (1 + 5) + slen);
 			out.writeByte(C_UTF_LOWBYTES);
 			writeInt(slen);
 			for (int i = 0; i < slen; i++) {
-				out.writeByte(charWriteBuffer[i]);
+				out.writeByte(buffer[i]);
 			}
 		} else {
 			out.writeByte(C_UTF);
 			writeInt(slen);
-			out.write(charWriteBuffer, 0, slen);
+			out.write(buffer, 0, slen);
 		}
-
-		addSerializedObject(s);
 	}
 
 	private void writeUtfWithIndexCommand(Integer oidx) {
@@ -1494,6 +1601,37 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		} finally {
 			int c = out.size() - datacountstartpos;
 			out.replaceInt(c, lenintpos);
+		}
+	}
+
+	private static final class InternedString {
+		protected final String value;
+		protected final int index;
+
+		public InternedString(String value, int index) {
+			this.value = value;
+			this.index = index;
+		}
+
+		@Override
+		public String toString() {
+			StringBuilder builder = new StringBuilder(getClass().getSimpleName());
+			builder.append("[value=");
+			builder.append(value);
+			builder.append(", index=");
+			builder.append(index);
+			builder.append("]");
+			return builder.toString();
+		}
+	}
+
+	private static final class UTFPrefixInfo {
+		protected final InternedString prefix;
+		protected final int common;
+
+		public UTFPrefixInfo(InternedString prefix, int common) {
+			this.prefix = prefix;
+			this.common = common;
 		}
 	}
 
