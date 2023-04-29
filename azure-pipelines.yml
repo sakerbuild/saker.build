@@ -12,9 +12,6 @@ strategy:
     Java9:
       J_JAVA_MAJOR: '9'
       J_JDKS: '8 9'
-    Java10:
-      J_JAVA_MAJOR: '10'
-      J_JDKS: '8 9 10'
     Java11:
       J_JAVA_MAJOR: '11'
       J_JDKS: '8 9 11'
