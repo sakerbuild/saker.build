@@ -63,6 +63,7 @@ import saker.build.file.provider.LocalFileProvider;
 import saker.build.file.provider.RootFileProviderKey;
 import saker.build.file.provider.SakerFileProvider;
 import saker.build.file.provider.SakerPathFiles;
+import saker.build.meta.Versions;
 import saker.build.runtime.execution.BuildUserPromptHandler;
 import saker.build.runtime.params.DatabaseConfiguration;
 import saker.build.runtime.params.ExecutionPathConfiguration;
@@ -84,6 +85,7 @@ import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.MultiplexOutputStream;
 import saker.build.thirdparty.saker.util.io.PriorityMultiplexOutputStream;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
+import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncBufferedInputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncBufferedOutputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
@@ -478,6 +480,9 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 	private static final int OUTPUT_BUFFER_SIZE = 4 * 1024 * 1024;
 	private static final int INPUT_BUFFER_SIZE = 4 * 1024 * 1024;
 
+	private static final int STREAM_HEADER_SIZE = Integer.BYTES * 3;
+	private static final int STREAM_MAGIC = 0x5A7E30BB;
+
 	private static final ToIntBiFunction<SakerPath, Entry<SakerPath, ?>> PATH_ENTRYKEY_PATH_COMPARATOR = (p,
 			chentry) -> p.compareTo(chentry.getKey());
 
@@ -727,22 +732,32 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 
 		descriptorsFileProvider.createDirectories(descriptorsFilePath.getParent());
 		try (OutputStream descos = new UnsyncBufferedOutputStream(
-				ByteSink.toOutputStream(descriptorsFileProvider.openOutput(descriptorsFilePath)), OUTPUT_BUFFER_SIZE);
-				ContentWriterObjectOutput descobjout = new ContentWriterObjectOutput(classLoaderResolver)) {
-			for (Entry<RootFileProviderKey, ConcurrentSkipListMap<SakerPath, ContentHandleImpl>> entry : providerKeyPathDependencies
-					.entrySet()) {
-				RootFileProviderKey fpk = entry.getKey();
-				descobjout.writeObject(fpk);
+				ByteSink.toOutputStream(descriptorsFileProvider.openOutput(descriptorsFilePath)), OUTPUT_BUFFER_SIZE)) {
+			{
+				byte[] header = new byte[STREAM_HEADER_SIZE];
+				int flags = 0; // for future compatibility
+				int version = Versions.VERSION_FULL_COMPOUND;
+				SerialUtils.writeIntToBuffer(STREAM_MAGIC, header, 0);
+				SerialUtils.writeIntToBuffer(flags, header, Integer.BYTES);
+				SerialUtils.writeIntToBuffer(version, header, Integer.BYTES * 2);
+				descos.write(header);
+			}
+			try (ContentWriterObjectOutput descobjout = new ContentWriterObjectOutput(classLoaderResolver)) {
+				for (Entry<RootFileProviderKey, ConcurrentSkipListMap<SakerPath, ContentHandleImpl>> entry : providerKeyPathDependencies
+						.entrySet()) {
+					RootFileProviderKey fpk = entry.getKey();
+					descobjout.writeObject(fpk);
+					descobjout.drainTo(descos);
+
+					writeDependencies(entry.getValue(), descobjout, descos);
+				}
+				descobjout.writeNull();
 				descobjout.drainTo(descos);
 
-				writeDependencies(entry.getValue(), descobjout, descos);
+				//write the key value pairs one by one and drain them
+				descobjout.writeObject(taskResults);
+				descobjout.drainTo(descos);
 			}
-			descobjout.writeNull();
-			descobjout.drainTo(descos);
-
-			//write the key value pairs one by one and drain them
-			descobjout.writeObject(taskResults);
-			descobjout.drainTo(descos);
 		} catch (Exception e) {
 			setDirty();
 			throw new IOException(e);
@@ -829,29 +844,51 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		//use a big buffer for reading the file contents
 		//this reduces the amount of kernel calls (if no default buffering is provided by the Java layer)
 		try (InputStream descis = new UnsyncBufferedInputStream(
-				ByteSource.toInputStream(descriptorsFileProvider.openInput(descriptorsFilePath)), INPUT_BUFFER_SIZE);
-				ContentReaderObjectInput reader = new ContentReaderObjectInput(classLoaderResolver, descis)) {
-			while (true) {
-				RootFileProviderKey fpkey;
-				try {
-					fpkey = (RootFileProviderKey) reader.readObject();
-					if (fpkey == null) {
+				ByteSource.toInputStream(descriptorsFileProvider.openInput(descriptorsFilePath)), INPUT_BUFFER_SIZE)) {
+			{
+				byte[] header = new byte[STREAM_HEADER_SIZE];
+				StreamUtils.readStreamBytesExactly(descis, header);
+				int magic = SerialUtils.readIntFromBuffer(header, 0);
+				int flags = SerialUtils.readIntFromBuffer(header, Integer.BYTES);
+				int version = SerialUtils.readIntFromBuffer(header, Integer.BYTES * 2);
+				//if any of the errors below happen, then we treat it as we have no dependencies, and will 
+				//run the build with a clean state
+				if (magic != STREAM_MAGIC) {
+					throw new IOException("Unrecognized dependencies file magic: 0x" + Integer.toHexString(magic));
+				}
+				if (version != Versions.VERSION_FULL_COMPOUND) {
+					//there might be incompatible changes in the content serialization protocol, so to be safe,
+					//only read files which were written with the same version
+					throw new IOException("Dependencies file version mismatch: " + version + " vs expected: "
+							+ Versions.VERSION_FULL_COMPOUND);
+				}
+				if (flags != 0) {
+					throw new IOException("Unrecognized flags in dependencies file: 0x" + Integer.toHexString(flags));
+				}
+			}
+			try (ContentReaderObjectInput reader = new ContentReaderObjectInput(classLoaderResolver, descis)) {
+				while (true) {
+					RootFileProviderKey fpkey;
+					try {
+						fpkey = (RootFileProviderKey) reader.readObject();
+						if (fpkey == null) {
+							break;
+						}
+					} catch (EOFException e) {
+						e.printStackTrace();
 						break;
 					}
-				} catch (EOFException e) {
-					e.printStackTrace();
-					break;
-				}
-				SakerFileProvider fileprovider = pathconfig.getFileProviderIfPresent(fpkey);
-				if (fileprovider == null) {
-					if (localFilesProviderKey.equals(fpkey)) {
-						fileprovider = localFiles;
+					SakerFileProvider fileprovider = pathconfig.getFileProviderIfPresent(fpkey);
+					if (fileprovider == null) {
+						if (localFilesProviderKey.equals(fpkey)) {
+							fileprovider = localFiles;
+						}
 					}
+					ConcurrentSkipListMap<SakerPath, ContentHandleImpl> coll = getContentHandleCollection(fpkey);
+					readDependencies(fpkey, fileprovider, coll, reader);
 				}
-				ConcurrentSkipListMap<SakerPath, ContentHandleImpl> coll = getContentHandleCollection(fpkey);
-				readDependencies(fpkey, fileprovider, coll, reader);
+				taskResults = (BuildTaskResultDatabase) reader.readObject();
 			}
-			taskResults = (BuildTaskResultDatabase) reader.readObject();
 		} catch (NoSuchFileException | FileNotFoundException e) {
 		} catch (IOException | ClassNotFoundException e) {
 			e.printStackTrace();

@@ -27,6 +27,7 @@ import saker.build.thirdparty.saker.util.io.UnsyncByteArrayInputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import saker.build.util.serial.ContentReaderObjectInput;
 import saker.build.util.serial.ContentWriterObjectOutput;
+import saker.build.util.serial.ObjectTypeException;
 import testing.saker.SakerTest;
 import testing.saker.SakerTestCase;
 
@@ -85,12 +86,14 @@ public class StringContentSerializationTest extends SakerTestCase {
 			}
 
 			{
+				assertException(ObjectTypeException.class, in::readObject);
 				Object r3 = in.readUTF();
 				Object r4 = in.readUTF();
 				assertIdentityEquals(r1, r3);
 				assertIdentityEquals(r1, r4);
 			}
 			{
+				assertException(ObjectTypeException.class, in::readUTF);
 				Object rw1 = in.readObject();
 				Object rw2 = in.readUTF();
 				assertEquals(STR_ABC_WIDE, rw1);
