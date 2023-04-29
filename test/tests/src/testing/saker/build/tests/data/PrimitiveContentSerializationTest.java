@@ -15,7 +15,10 @@
  */
 package testing.saker.build.tests.data;
 
+import java.util.Arrays;
 import java.util.Map;
+import java.util.Random;
+import java.util.stream.StreamSupport;
 
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
 import saker.build.thirdparty.saker.util.classloader.SingleClassLoaderResolver;
@@ -45,8 +48,22 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 				0xFF000000, 0xFF123456, 0xFFFFFFFFFFFFFF00L, 0xFFFFFFFFFFFFFF12L, 0xFFFFFFFFFFFF1234L,
 				0xFFFFFFFFFFFF0000L, 0xFFFFFFFFFF000000L, 0xFFFFFFFFFF123456L, };
 
+		int[] randints = new int[200_000];
+
+		long seed = System.currentTimeMillis();
+		System.out.println("Seed is: " + seed);
+		Random random = new Random(seed);
+
+		for (int i = 0; i < randints.length; i++) {
+			randints[i] = random.nextInt();
+		}
+
 		try (ContentWriterObjectOutput out = new ContentWriterObjectOutput(registry)) {
 			for (int v : ints) {
+				out.writeInt(v);
+				out.writeObject(v);
+			}
+			for (int v : randints) {
 				out.writeInt(v);
 				out.writeObject(v);
 			}
@@ -61,6 +78,10 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 		try (ContentReaderObjectInput in = new ContentReaderObjectInput(registry,
 				new UnsyncByteArrayInputStream(baos.toByteArray()))) {
 			for (int v : ints) {
+				assertEquals(v, in.readInt());
+				assertEquals(v, in.readObject());
+			}
+			for (int v : randints) {
 				assertEquals(v, in.readInt());
 				assertEquals(v, in.readObject());
 			}

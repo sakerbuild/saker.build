@@ -791,11 +791,11 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 		VALUE_CLASS_WRITERS.put(Integer.class,
-				(IOBiConsumer<Integer, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeInt(v));
+				(IOBiConsumer<Integer, ContentWriterObjectOutput>) (v, writer) -> writer.writeRawVarInt(v));
 		VALUE_CLASS_READERS.put(Integer.class, reader -> {
 			SerializedObject<Integer> serialobj;
 			try {
-				Integer res = reader.state.in.readInt();
+				Integer res = reader.readRawVarInt();
 				serialobj = new PresentSerializedObject<>(res);
 			} catch (Exception e) {
 				serialobj = new FailedSerializedObject<>(
@@ -960,6 +960,21 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	public void writeChar(int v) throws IOException {
 		out.writeByte(C_CHAR);
 		out.writeChar(v);
+	}
+
+	void writeRawVarInt(int v) throws IOException {
+		while (true) {
+			int wb = v & 0x7F;
+			v = v >>> 7;
+			if (v != 0) {
+				//still more bytes, add the continue flag
+				out.writeByte(wb | 0x80);
+				continue;
+			}
+			//last byte to be written
+			out.writeByte(wb);
+			break;
+		}
 	}
 
 	@Override
@@ -1196,18 +1211,18 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				if (isLowBytesChars(charWriteBuffer, common, writecount)) {
 					out.ensureCapacity(out.size() + (1 + 5 + 5 + 5) + writecount);
 					out.writeByte(C_UTF_PREFIXED_LOWBYTES);
-					writeInt(prefixinfo.prefix.index);
-					writeInt(common);
-					writeInt(writecount);
+					writeRawVarInt(prefixinfo.prefix.index);
+					writeRawVarInt(common);
+					writeRawVarInt(writecount);
 					for (int i = 0; i < writecount; i++) {
 						out.writeByte(charWriteBuffer[common + i]);
 					}
 				} else {
 					out.ensureCapacity(out.size() + (1 + 5 + 5 + 5) + writecount * 2);
 					out.writeByte(C_UTF_PREFIXED);
-					writeInt(prefixinfo.prefix.index);
-					writeInt(common);
-					writeInt(writecount);
+					writeRawVarInt(prefixinfo.prefix.index);
+					writeRawVarInt(common);
+					writeRawVarInt(writecount);
 					out.write(charWriteBuffer, common, writecount);
 				}
 				return;
@@ -1249,13 +1264,13 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		if (isLowBytesChars(buffer, 0, slen)) {
 			out.ensureCapacity(out.size() + (1 + 5) + slen);
 			out.writeByte(C_UTF_LOWBYTES);
-			writeInt(slen);
+			writeRawVarInt(slen);
 			for (int i = 0; i < slen; i++) {
 				out.writeByte(buffer[i]);
 			}
 		} else {
 			out.writeByte(C_UTF);
-			writeInt(slen);
+			writeRawVarInt(slen);
 			out.write(buffer, 0, slen);
 		}
 	}
@@ -1500,7 +1515,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		addSerializedObject(obj);
 		int len = Array.getLength(obj);
 		int lenpos = out.size();
-		writeInt(len);
+		out.writeInt(len);
 		int i = 0;
 		try {
 			@SuppressWarnings("unchecked")

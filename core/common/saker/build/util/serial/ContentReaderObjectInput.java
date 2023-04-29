@@ -315,6 +315,20 @@ public class ContentReaderObjectInput implements ObjectInput {
 		}
 	}
 
+	int readRawVarInt() throws IOException {
+		int res = 0;
+		int shift = 0;
+		while (true) {
+			int b = state.in.readUnsignedByte();
+			if ((b & 0x80) != 0x80) {
+				res |= b << shift;
+				return res;
+			}
+			res |= (b & 0x7f) << shift;
+			shift += 7;
+		}
+	}
+
 	@Override
 	public int readInt() throws IOException {
 		int cmd = state.expectCommands(EXPECTED_COMMANDS_INT);
@@ -502,7 +516,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 	private String readUTFLowBytesImpl() throws IOException {
 		try {
-			int slen = readInt();
+			int slen = readRawVarInt();
 			if (charBytesReadBuffer.length < slen) {
 				charBytesReadBuffer = new byte[Math.max(charBytesReadBuffer.length * 2, slen)];
 			}
@@ -530,7 +544,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 	private String readUTFImpl() throws IOException {
 		try {
-			int slen = readInt();
+			int slen = readRawVarInt();
 			if (charBytesReadBuffer.length < slen * 2) {
 				charBytesReadBuffer = new byte[Math.max(charBytesReadBuffer.length * 2, slen * 2)];
 			}
@@ -559,9 +573,9 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 	private String readUTFPrefixedImpl() throws IOException {
 		try {
-			int index = readInt();
-			int common = readInt();
-			int slen = readInt();
+			int index = readRawVarInt();
+			int common = readRawVarInt();
+			int slen = readRawVarInt();
 
 			if (charBytesReadBuffer.length < slen * 2) {
 				charBytesReadBuffer = new byte[Math.max(charBytesReadBuffer.length * 2, slen * 2)];
@@ -597,9 +611,9 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 	private String readUTFPrefixedLowbytesImpl() throws IOException {
 		try {
-			int index = readInt();
-			int common = readInt();
-			int slen = readInt();
+			int index = readRawVarInt();
+			int common = readRawVarInt();
+			int slen = readRawVarInt();
 			if (charBytesReadBuffer.length < slen) {
 				charBytesReadBuffer = new byte[Math.max(charBytesReadBuffer.length * 2, slen)];
 			}
@@ -954,7 +968,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 		try {
 			arrayclass = readTypeWithCommand();
 		} catch (Exception e) {
-			int len = readInt();
+			int len = state.in.readInt();
 			checkInvalidLength(len);
 			FailedSerializedObject<Object> serializedobj = new FailedSerializedObject<>(
 					() -> new ClassNotFoundException("Array component class not found.", e));
@@ -964,7 +978,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 			}
 			return serializedobj.get();
 		}
-		int len = readInt();
+		int len = state.in.readInt();
 		checkInvalidLength(len);
 		if (cmd == ContentWriterObjectOutput.C_OBJECT_ARRAY_ERROR) {
 			FailedSerializedObject<Object> serializedobj = new FailedSerializedObject<>(
