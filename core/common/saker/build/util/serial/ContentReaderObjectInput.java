@@ -89,7 +89,11 @@ public class ContentReaderObjectInput implements ObjectInput {
 					ContentWriterObjectOutput.C_OBJECT_SERIALIZABLE,
 					ContentWriterObjectOutput.C_OBJECT_SERIALIZABLE_ERROR, ContentWriterObjectOutput.C_OBJECT_TYPE,
 					ContentWriterObjectOutput.C_OBJECT_VALUE, ContentWriterObjectOutput.C_OBJECT_UTF,
-					ContentWriterObjectOutput.C_OBJECT_PROXY, });
+					ContentWriterObjectOutput.C_OBJECT_PROXY, ContentWriterObjectOutput.C_OBJECT_UTF_IDX,
+					ContentWriterObjectOutput.C_OBJECT_UTF_IDX_1, ContentWriterObjectOutput.C_OBJECT_UTF_IDX_2,
+					ContentWriterObjectOutput.C_OBJECT_UTF_IDX_3, ContentWriterObjectOutput.C_OBJECT_UTF_LOWBYTES,
+					ContentWriterObjectOutput.C_OBJECT_UTF_PREFIXED,
+					ContentWriterObjectOutput.C_OBJECT_UTF_PREFIXED_LOWBYTES, });
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_TYPE = ImmutableUtils
 			.makeImmutableNavigableSet(new Integer[] { ContentWriterObjectOutput.C_OBJECT_TYPE,
 					ContentWriterObjectOutput.C_OBJECT_IDX, ContentWriterObjectOutput.C_OBJECT_IDX_3,
@@ -475,20 +479,16 @@ public class ContentReaderObjectInput implements ObjectInput {
 				return readUTFLowBytesImpl();
 			}
 			case ContentWriterObjectOutput.C_UTF_IDX: {
-				int idx = readIntImpl();
-				return getUtfWithIndex(idx);
+				return getUtfWithIndex(readIntImpl());
 			}
 			case ContentWriterObjectOutput.C_UTF_IDX_3: {
-				int idx = readIntImpl3();
-				return getUtfWithIndex(idx);
+				return getUtfWithIndex(readIntImpl3());
 			}
 			case ContentWriterObjectOutput.C_UTF_IDX_2: {
-				int idx = readIntImpl2();
-				return getUtfWithIndex(idx);
+				return getUtfWithIndex(readIntImpl2());
 			}
 			case ContentWriterObjectOutput.C_UTF_IDX_1: {
-				int idx = readIntImpl1();
-				return getUtfWithIndex(idx);
+				return getUtfWithIndex(readIntImpl1());
 			}
 			case ContentWriterObjectOutput.C_UTF_PREFIXED: {
 				return readUTFPrefixedImpl();
@@ -770,7 +770,28 @@ public class ContentReaderObjectInput implements ObjectInput {
 				return readValueObjectImpl();
 			}
 			case ContentWriterObjectOutput.C_OBJECT_UTF: {
-				return readUTF();
+				return readUTFImpl();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_UTF_LOWBYTES: {
+				return readUTFLowBytesImpl();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_UTF_IDX: {
+				return getUtfWithIndex(readIntImpl());
+			}
+			case ContentWriterObjectOutput.C_OBJECT_UTF_IDX_3: {
+				return getUtfWithIndex(readIntImpl3());
+			}
+			case ContentWriterObjectOutput.C_OBJECT_UTF_IDX_2: {
+				return getUtfWithIndex(readIntImpl2());
+			}
+			case ContentWriterObjectOutput.C_OBJECT_UTF_IDX_1: {
+				return getUtfWithIndex(readIntImpl1());
+			}
+			case ContentWriterObjectOutput.C_OBJECT_UTF_PREFIXED: {
+				return readUTFPrefixedImpl();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_UTF_PREFIXED_LOWBYTES: {
+				return readUTFPrefixedLowbytesImpl();
 			}
 			case ContentWriterObjectOutput.C_OBJECT_NULL: {
 				return null;
@@ -1311,7 +1332,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 					break;
 				}
 				case ContentWriterObjectOutput.C_OBJECT_UTF: {
-					readUTF();
+					readUTFImpl();
 					break;
 				}
 				case ContentWriterObjectOutput.C_OBJECT_NULL: {
@@ -1341,32 +1362,39 @@ public class ContentReaderObjectInput implements ObjectInput {
 					readUTFImpl();
 					break;
 				}
+				case ContentWriterObjectOutput.C_OBJECT_UTF_PREFIXED:
 				case ContentWriterObjectOutput.C_UTF_PREFIXED: {
 					readUTFPrefixedImpl();
 					break;
 				}
+				case ContentWriterObjectOutput.C_OBJECT_UTF_PREFIXED_LOWBYTES:
 				case ContentWriterObjectOutput.C_UTF_PREFIXED_LOWBYTES: {
 					readUTFPrefixedLowbytesImpl();
 					break;
 				}
+				case ContentWriterObjectOutput.C_OBJECT_UTF_LOWBYTES:
 				case ContentWriterObjectOutput.C_UTF_LOWBYTES: {
 					readUTFLowBytesImpl();
 					break;
 				}
+				case ContentWriterObjectOutput.C_OBJECT_UTF_IDX:
 				case ContentWriterObjectOutput.C_UTF_IDX: {
 					//idx
 					state.in.readInt();
 					break;
 				}
+				case ContentWriterObjectOutput.C_OBJECT_UTF_IDX_3:
 				case ContentWriterObjectOutput.C_UTF_IDX_3: {
 					state.in.readByte();
 					state.in.readShort();
 					break;
 				}
+				case ContentWriterObjectOutput.C_OBJECT_UTF_IDX_2:
 				case ContentWriterObjectOutput.C_UTF_IDX_2: {
 					state.in.readShort();
 					break;
 				}
+				case ContentWriterObjectOutput.C_OBJECT_UTF_IDX_1:
 				case ContentWriterObjectOutput.C_UTF_IDX_1: {
 					state.in.readByte();
 					break;

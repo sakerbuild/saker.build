@@ -125,7 +125,15 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	static final int C_UTF_PREFIXED_LOWBYTES = 53;
 	static final int C_INT_ONE = 54;
 
-	static final int C_MAX_COMMAND_VALUE = 54;
+	static final int C_OBJECT_UTF_IDX = 55;
+	static final int C_OBJECT_UTF_IDX_1 = 56;
+	static final int C_OBJECT_UTF_IDX_2 = 57;
+	static final int C_OBJECT_UTF_IDX_3 = 58;
+	static final int C_OBJECT_UTF_LOWBYTES = 59;
+	static final int C_OBJECT_UTF_PREFIXED = 60;
+	static final int C_OBJECT_UTF_PREFIXED_LOWBYTES = 61;
+
+	static final int C_MAX_COMMAND_VALUE = 61;
 
 	private static final int UTF_PREFIX_MIN_LEN = 8;
 
@@ -185,6 +193,13 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			case C_OBJECT_CUSTOM_SERIALIZABLE_ERROR:
 				return "object";
 			case C_OBJECT_UTF:
+			case C_OBJECT_UTF_IDX:
+			case C_OBJECT_UTF_IDX_1:
+			case C_OBJECT_UTF_IDX_2:
+			case C_OBJECT_UTF_IDX_3:
+			case C_OBJECT_UTF_LOWBYTES:
+			case C_OBJECT_UTF_PREFIXED:
+			case C_OBJECT_UTF_PREFIXED_LOWBYTES:
 				return "object (String)";
 			case C_OBJECT_ARRAY:
 			case C_OBJECT_ARRAY_ERROR:
@@ -1189,9 +1204,13 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	public void writeUTF(String s) throws IOException {
 		Objects.requireNonNull(s, "utf string");
 
+		writeUTFImpl(s, false);
+	}
+
+	private void writeUTFImpl(String s, boolean objwrite) throws SerializationProtocolException, IOException {
 		Entry<String, InternedString> floorentry = stringInternalizer.floorEntry(s);
 		if (floorentry != null && floorentry.getKey().equals(s)) {
-			writeUtfWithIndexCommand(floorentry.getValue().index);
+			writeUtfWithIndexCommand(floorentry.getValue().index, objwrite);
 			return;
 		}
 
@@ -1210,7 +1229,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				int writecount = slen - common;
 				if (isLowBytesChars(charWriteBuffer, common, writecount)) {
 					out.ensureCapacity(out.size() + (1 + 5 + 5 + 5) + writecount);
-					out.writeByte(C_UTF_PREFIXED_LOWBYTES);
+					out.writeByte(objwrite ? C_OBJECT_UTF_PREFIXED_LOWBYTES : C_UTF_PREFIXED_LOWBYTES);
 					writeRawVarInt(prefixinfo.prefix.index);
 					writeRawVarInt(common);
 					writeRawVarInt(writecount);
@@ -1219,7 +1238,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 					}
 				} else {
 					out.ensureCapacity(out.size() + (1 + 5 + 5 + 5) + writecount * 2);
-					out.writeByte(C_UTF_PREFIXED);
+					out.writeByte(objwrite ? C_OBJECT_UTF_PREFIXED : C_UTF_PREFIXED);
 					writeRawVarInt(prefixinfo.prefix.index);
 					writeRawVarInt(common);
 					writeRawVarInt(writecount);
@@ -1229,8 +1248,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			}
 		}
 
-		writeUtfData(slen);
-
+		writeUtfData(slen, objwrite);
 	}
 
 	private int getPrefixCommonCharCountWithBuffer(int slen, String otherstr, int olen, int startidx) {
@@ -1257,40 +1275,40 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		s.getChars(0, slen, charWriteBuffer, 0);
 	}
 
-	private void writeUtfData(int slen) throws IOException {
+	private void writeUtfData(int slen, boolean objwrite) throws IOException {
 		final char[] buffer = charWriteBuffer;
 		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 
 		if (isLowBytesChars(buffer, 0, slen)) {
 			out.ensureCapacity(out.size() + (1 + 5) + slen);
-			out.writeByte(C_UTF_LOWBYTES);
+			out.writeByte(objwrite ? C_OBJECT_UTF_LOWBYTES : C_UTF_LOWBYTES);
 			writeRawVarInt(slen);
 			for (int i = 0; i < slen; i++) {
 				out.writeByte(buffer[i]);
 			}
 		} else {
-			out.writeByte(C_UTF);
+			out.writeByte(objwrite ? C_OBJECT_UTF : C_UTF);
 			writeRawVarInt(slen);
 			out.write(buffer, 0, slen);
 		}
 	}
 
-	private void writeUtfWithIndexCommand(Integer oidx) {
+	private void writeUtfWithIndexCommand(Integer oidx, boolean objwrite) {
 		if ((oidx & 0xFFFF0000) != 0) {
 			if ((oidx & 0xFF000000) != 0) {
-				out.writeByte(C_UTF_IDX);
+				out.writeByte(objwrite ? C_OBJECT_UTF_IDX : C_UTF_IDX);
 				out.writeInt(oidx);
 			} else {
-				out.writeByte(C_UTF_IDX_3);
+				out.writeByte(objwrite ? C_OBJECT_UTF_IDX_3 : C_UTF_IDX_3);
 				out.writeByte(oidx >>> 16);
 				out.writeShort(oidx);
 			}
 		} else {
 			if ((oidx & 0x0000FF00) != 0) {
-				out.writeByte(C_UTF_IDX_2);
+				out.writeByte(objwrite ? C_OBJECT_UTF_IDX_2 : C_UTF_IDX_2);
 				out.writeShort(oidx);
 			} else {
-				out.writeByte(C_UTF_IDX_1);
+				out.writeByte(objwrite ? C_OBJECT_UTF_IDX_1 : C_UTF_IDX_1);
 				out.writeByte(oidx);
 			}
 		}
@@ -1329,8 +1347,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return;
 		}
 		if (obj instanceof String) {
-			out.writeByte(C_OBJECT_UTF);
-			writeUTF((String) obj);
+			writeUTFImpl((String) obj, true);
 			return;
 		}
 		Class<? extends Object> objclass = obj.getClass();
