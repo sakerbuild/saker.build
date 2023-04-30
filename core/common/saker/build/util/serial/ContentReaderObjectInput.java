@@ -98,6 +98,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 			.makeImmutableNavigableSet(new Integer[] { ContentWriterObjectOutput.C_OBJECT_TYPE,
 					ContentWriterObjectOutput.C_OBJECT_IDX, ContentWriterObjectOutput.C_OBJECT_IDX_3,
 					ContentWriterObjectOutput.C_OBJECT_IDX_2, ContentWriterObjectOutput.C_OBJECT_IDX_1 });
+	private static final NavigableSet<Integer> EXPECTED_COMMANDS_BOOLEAN = ImmutableUtils.makeImmutableNavigableSet(
+			new Integer[] { ContentWriterObjectOutput.C_BOOLEAN_FALSE, ContentWriterObjectOutput.C_BOOLEAN_TRUE });
 
 	static class ReadState {
 		final DataInputStream in;
@@ -260,8 +262,18 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 	@Override
 	public boolean readBoolean() throws IOException {
-		state.expectCommand(ContentWriterObjectOutput.C_BOOLEAN);
-		return state.in.readBoolean();
+		int cmd = state.expectCommands(EXPECTED_COMMANDS_BOOLEAN);
+		switch (cmd) {
+			case ContentWriterObjectOutput.C_BOOLEAN_TRUE: {
+				return true;
+			}
+			case ContentWriterObjectOutput.C_BOOLEAN_FALSE: {
+				return false;
+			}
+			default: {
+				throw new AssertionError(cmd);
+			}
+		}
 	}
 
 	@Override
@@ -803,7 +815,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 				return readExternalProxy();
 			}
 			default: {
-				throw new AssertionError();
+				throw new AssertionError(cmd);
 			}
 		}
 	}
@@ -1399,8 +1411,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 					state.in.readByte();
 					break;
 				}
-				case ContentWriterObjectOutput.C_BOOLEAN: {
-					state.in.readBoolean();
+				case ContentWriterObjectOutput.C_BOOLEAN_FALSE:
+				case ContentWriterObjectOutput.C_BOOLEAN_TRUE: {
 					break;
 				}
 				case ContentWriterObjectOutput.C_BYTE: {

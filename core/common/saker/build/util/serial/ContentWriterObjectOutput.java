@@ -77,7 +77,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	static final int C_LONG = 5;
 	static final int C_FLOAT = 6;
 	static final int C_DOUBLE = 7;
-	static final int C_BOOLEAN = 8;
+	static final int C_BOOLEAN_TRUE = 8;
 	static final int C_UTF = 9;
 	static final int C_CHARS = 10;
 	static final int C_BYTEARRAY = 11;
@@ -133,7 +133,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	static final int C_OBJECT_UTF_PREFIXED = 60;
 	static final int C_OBJECT_UTF_PREFIXED_LOWBYTES = 61;
 
-	static final int C_MAX_COMMAND_VALUE = 61;
+	static final int C_BOOLEAN_FALSE = 62;
+
+	static final int C_MAX_COMMAND_VALUE = 62;
 
 	private static final int UTF_PREFIX_MIN_LEN = 8;
 
@@ -171,7 +173,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				return "float";
 			case C_DOUBLE:
 				return "double";
-			case C_BOOLEAN:
+			case C_BOOLEAN_FALSE:
+			case C_BOOLEAN_TRUE:
 				return "boolean";
 			case C_UTF:
 			case C_UTF_IDX:
@@ -955,8 +958,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	@Override
 	public void writeBoolean(boolean v) throws IOException {
-		out.writeByte(C_BOOLEAN);
-		out.writeBoolean(v);
+		out.writeByte(v ? C_BOOLEAN_TRUE : C_BOOLEAN_FALSE);
 	}
 
 	@Override
@@ -1398,11 +1400,11 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			writeCustomSerializableWithCommand(obj, objclass, serwriter);
 			return;
 		}
-		//do not warn for enumsets
 		if (Proxy.isProxyClass(objclass)) {
 			writeProxyObjectWithCommand(obj);
 			return;
 		}
+		//do not warn for enumsets
 		if (!EnumSet.class.isAssignableFrom(objclass) && !(obj instanceof Throwable) && warnedClasses.add(objclass)) {
 			//shouldnt warn in case of serializing a throwable instance, or enum set
 			if (TestFlag.ENABLED) {

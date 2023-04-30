@@ -15,10 +15,8 @@
  */
 package testing.saker.build.tests.data;
 
-import java.util.Arrays;
 import java.util.Map;
 import java.util.Random;
-import java.util.stream.StreamSupport;
 
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
 import saker.build.thirdparty.saker.util.classloader.SingleClassLoaderResolver;
@@ -59,6 +57,11 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 		}
 
 		try (ContentWriterObjectOutput out = new ContentWriterObjectOutput(registry)) {
+			out.writeBoolean(true);
+			out.writeBoolean(false);
+			out.writeObject(true);
+			out.writeObject(false);
+
 			for (int v : ints) {
 				out.writeInt(v);
 				out.writeObject(v);
@@ -77,6 +80,11 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 		System.out.println("Size: " + baos.size());
 		try (ContentReaderObjectInput in = new ContentReaderObjectInput(registry,
 				new UnsyncByteArrayInputStream(baos.toByteArray()))) {
+			assertTrue(in.readBoolean());
+			assertFalse(in.readBoolean());
+			assertEquals(true, in.readObject());
+			assertEquals(false, in.readObject());
+
 			for (int v : ints) {
 				assertEquals(v, in.readInt());
 				assertEquals(v, in.readObject());
