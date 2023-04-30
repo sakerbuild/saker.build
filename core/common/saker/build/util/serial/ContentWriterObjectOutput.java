@@ -1341,13 +1341,13 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			out.writeByte(C_OBJECT_NULL);
 			return;
 		}
+		if (obj instanceof String) {
+			writeUTFImpl((String) obj, true);
+			return;
+		}
 		Integer oidx = objectIndices.get(obj);
 		if (oidx != null) {
 			writeObjectIdxWithCommandImpl(oidx);
-			return;
-		}
-		if (obj instanceof String) {
-			writeUTFImpl((String) obj, true);
 			return;
 		}
 		Class<? extends Object> objclass = obj.getClass();
