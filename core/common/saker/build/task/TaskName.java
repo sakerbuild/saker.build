@@ -36,7 +36,7 @@ import saker.build.thirdparty.saker.util.StringUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 
 /**
- * Task representing a name that can be used to identify and locate tasks from external sources.
+ * Represents a name that can be used to identify and locate tasks from external sources.
  * <p>
  * A task name consists of a lowercase name string and arbitrary amount of lowercase qualifiers. <br>
  * Name parts are in the format matching the following regular expression: <br>
