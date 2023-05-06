@@ -54,7 +54,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 import saker.build.file.path.SakerPath;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -924,6 +924,27 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 	}
+
+	private static final Map<Class<?>, BiConsumer<? super DataOutputUnsyncByteArrayOutputStream, ?>> ARRAY_WRITERS = new HashMap<>();
+	static {
+		ARRAY_WRITERS.put(byte.class,
+				(BiConsumer<DataOutputUnsyncByteArrayOutputStream, byte[]>) DataOutputUnsyncByteArrayOutputStream::write);
+		ARRAY_WRITERS.put(short.class,
+				(BiConsumer<DataOutputUnsyncByteArrayOutputStream, short[]>) DataOutputUnsyncByteArrayOutputStream::write);
+		ARRAY_WRITERS.put(int.class,
+				(BiConsumer<DataOutputUnsyncByteArrayOutputStream, int[]>) DataOutputUnsyncByteArrayOutputStream::write);
+		ARRAY_WRITERS.put(long.class,
+				(BiConsumer<DataOutputUnsyncByteArrayOutputStream, long[]>) DataOutputUnsyncByteArrayOutputStream::write);
+		ARRAY_WRITERS.put(float.class,
+				(BiConsumer<DataOutputUnsyncByteArrayOutputStream, float[]>) DataOutputUnsyncByteArrayOutputStream::write);
+		ARRAY_WRITERS.put(double.class,
+				(BiConsumer<DataOutputUnsyncByteArrayOutputStream, double[]>) DataOutputUnsyncByteArrayOutputStream::write);
+		ARRAY_WRITERS.put(char.class,
+				(BiConsumer<DataOutputUnsyncByteArrayOutputStream, char[]>) DataOutputUnsyncByteArrayOutputStream::write);
+		ARRAY_WRITERS.put(boolean.class,
+				(BiConsumer<DataOutputUnsyncByteArrayOutputStream, boolean[]>) DataOutputUnsyncByteArrayOutputStream::write);
+	}
+
 	private final DataOutputUnsyncByteArrayOutputStream out = new DataOutputUnsyncByteArrayOutputStream();
 
 	private final IdentityHashMap<Object, Integer> objectIndices = new IdentityHashMap<>();
@@ -933,18 +954,6 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	private final ClassLoaderResolver registry;
 
 	private final Set<Class<?>> warnedClasses = new HashSet<>();
-
-	private Map<Class<?>, Consumer<?>> arrayWriters = new HashMap<>();
-	{
-		arrayWriters.put(byte.class, (Consumer<byte[]>) out::write);
-		arrayWriters.put(short.class, (Consumer<short[]>) out::write);
-		arrayWriters.put(int.class, (Consumer<int[]>) out::write);
-		arrayWriters.put(long.class, (Consumer<long[]>) out::write);
-		arrayWriters.put(float.class, (Consumer<float[]>) out::write);
-		arrayWriters.put(double.class, (Consumer<double[]>) out::write);
-		arrayWriters.put(char.class, (Consumer<char[]>) out::write);
-		arrayWriters.put(boolean.class, (Consumer<boolean[]>) out::write);
-	}
 
 	private char[] charWriteBuffer = ObjectUtils.EMPTY_CHAR_ARRAY;
 
@@ -1538,9 +1547,10 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		int i = 0;
 		try {
 			@SuppressWarnings("unchecked")
-			Consumer<Object> writer = (Consumer<Object>) arrayWriters.get(componenttype);
+			BiConsumer<? super DataOutputUnsyncByteArrayOutputStream, Object> writer = (BiConsumer<? super DataOutputUnsyncByteArrayOutputStream, Object>) ARRAY_WRITERS
+					.get(componenttype);
 			if (writer != null) {
-				writer.accept(obj);
+				writer.accept(out, obj);
 			} else {
 				Object[] oarray = (Object[]) obj;
 				for (; i < len; i++) {

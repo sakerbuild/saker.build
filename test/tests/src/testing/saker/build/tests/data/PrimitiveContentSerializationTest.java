@@ -56,6 +56,10 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 			randints[i] = random.nextInt();
 		}
 
+		Object[] arrays = new Object[] { new byte[] { 1, 2, 3 }, new short[] { 1, 2, 3 }, new int[] { 1, 2, 3 },
+				new long[] { 1, 2, 3 }, new char[] { 1, 2, 3 }, new float[] { 1, 2, 3 }, new double[] { 1, 2, 3 },
+				new boolean[] { true, false }, };
+
 		try (ContentWriterObjectOutput out = new ContentWriterObjectOutput(registry)) {
 			out.writeBoolean(true);
 			out.writeBoolean(false);
@@ -73,6 +77,10 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 			for (long v : longs) {
 				out.writeLong(v);
 				out.writeObject(v);
+			}
+
+			for (Object arr : arrays) {
+				out.writeObject(arr);
 			}
 
 			out.drainTo((ByteSink) baos);
@@ -96,6 +104,10 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 			for (long v : longs) {
 				assertEquals(v, in.readLong());
 				assertEquals(v, in.readObject());
+			}
+
+			for (Object arr : arrays) {
+				assertEquals(arr, in.readObject());
 			}
 		}
 	}

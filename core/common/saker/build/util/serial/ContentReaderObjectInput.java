@@ -45,7 +45,7 @@ import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.io.DataInputUnsyncByteArrayInputStream;
 import saker.build.thirdparty.saker.util.io.LimitInputStream;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
-import saker.build.thirdparty.saker.util.io.function.IOFunction;
+import saker.build.thirdparty.saker.util.io.function.IOBiConsumer;
 import saker.build.thirdparty.saker.util.io.function.ObjectReaderFunction;
 import saker.build.trace.InternalBuildTraceImpl;
 import testing.saker.build.flag.TestFlag;
@@ -213,16 +213,46 @@ public class ContentReaderObjectInput implements ObjectInput {
 		}
 	}
 
-	private static final Map<Class<?>, IOFunction<DataInput, Object>> primitiveArrayElementReaders = new HashMap<>();
+	private static final Map<Class<?>, IOBiConsumer<? super DataInput, ?>> PRIVMITIVE_ARRAY_READERS = new HashMap<>();
 	static {
-		primitiveArrayElementReaders.put(byte.class, DataInput::readByte);
-		primitiveArrayElementReaders.put(short.class, DataInput::readShort);
-		primitiveArrayElementReaders.put(int.class, DataInput::readInt);
-		primitiveArrayElementReaders.put(long.class, DataInput::readLong);
-		primitiveArrayElementReaders.put(float.class, DataInput::readFloat);
-		primitiveArrayElementReaders.put(double.class, DataInput::readDouble);
-		primitiveArrayElementReaders.put(char.class, DataInput::readChar);
-		primitiveArrayElementReaders.put(boolean.class, DataInput::readBoolean);
+		PRIVMITIVE_ARRAY_READERS.put(byte.class, (DataInput in, byte[] array) -> {
+			in.readFully(array);
+		});
+		PRIVMITIVE_ARRAY_READERS.put(short.class, (DataInput in, short[] array) -> {
+			for (int i = 0; i < array.length; i++) {
+				array[i] = in.readShort();
+			}
+		});
+		PRIVMITIVE_ARRAY_READERS.put(int.class, (DataInput in, int[] array) -> {
+			for (int i = 0; i < array.length; i++) {
+				array[i] = in.readInt();
+			}
+		});
+		PRIVMITIVE_ARRAY_READERS.put(long.class, (DataInput in, long[] array) -> {
+			for (int i = 0; i < array.length; i++) {
+				array[i] = in.readLong();
+			}
+		});
+		PRIVMITIVE_ARRAY_READERS.put(float.class, (DataInput in, float[] array) -> {
+			for (int i = 0; i < array.length; i++) {
+				array[i] = in.readFloat();
+			}
+		});
+		PRIVMITIVE_ARRAY_READERS.put(double.class, (DataInput in, double[] array) -> {
+			for (int i = 0; i < array.length; i++) {
+				array[i] = in.readDouble();
+			}
+		});
+		PRIVMITIVE_ARRAY_READERS.put(char.class, (DataInput in, char[] array) -> {
+			for (int i = 0; i < array.length; i++) {
+				array[i] = in.readChar();
+			}
+		});
+		PRIVMITIVE_ARRAY_READERS.put(boolean.class, (DataInput in, boolean[] array) -> {
+			for (int i = 0; i < array.length; i++) {
+				array[i] = in.readBoolean();
+			}
+		});
 	}
 
 	ReadState state;
@@ -1026,12 +1056,11 @@ public class ContentReaderObjectInput implements ObjectInput {
 		Class<?> componenttype = arrayclass.getComponentType();
 		Object array = Array.newInstance(componenttype, len);
 		int serobjidx = addSerializedObject(new PresentSerializedObject<>(array));
-		IOFunction<DataInput, Object> reader = primitiveArrayElementReaders.get(componenttype);
+		@SuppressWarnings("unchecked")
+		IOBiConsumer<? super DataInput, Object> reader = (IOBiConsumer<? super DataInput, Object>) PRIVMITIVE_ARRAY_READERS
+				.get(componenttype);
 		if (reader != null) {
-			for (int i = 0; i < len; i++) {
-				Object readelement = reader.apply(state.in);
-				Array.set(array, i, readelement);
-			}
+			reader.accept(state.in, array);
 		} else {
 			Object[] objarr = (Object[]) array;
 			for (int i = 0; i < len; i++) {
