@@ -24,8 +24,8 @@ import java.io.InputStream;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
 import java.lang.reflect.Array;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -39,7 +39,6 @@ import java.util.Set;
 import saker.build.thirdparty.saker.util.ArrayUtils;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
-import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.StringUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
 import saker.build.thirdparty.saker.util.io.DataInputUnsyncByteArrayInputStream;
@@ -257,7 +256,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 	ReadState state;
 
-	private List<SerializedObject<?>> serializedObjects = new ArrayList<>();
+	private final List<SerializedObject<?>> serializedObjects = new ArrayList<>();
+	private final Map<Class<?>, Constructor<? extends Externalizable>> externalizableConstructors = new HashMap<>();
 
 	private final ClassLoaderResolver registry;
 
@@ -1248,9 +1248,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 		Externalizable instance;
 		try {
-			instance = (Externalizable) ReflectUtils.newInstance(type);
-		} catch (InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException
-				| NoSuchMethodException | SecurityException | ClassCastException e) {
+			instance = getExternalizableConstructor(type).newInstance();
+		} catch (ReflectiveOperationException | IllegalArgumentException | SecurityException | ClassCastException e) {
 			addSerializedObject(new FailedSerializedObject<>(() -> new SerializationReflectionException(
 					"Failed to instantiate Externalizable: " + type.getName(), e)));
 			preReadExternalizableHeaderFailure(len);
@@ -1290,7 +1289,32 @@ public class ContentReaderObjectInput implements ObjectInput {
 		return instance;
 	}
 
-	private void preReadExternalizableHeaderFailure(int len) throws IOException {
+	//document exception to avoid IDE warning
+	/**
+	 * @throws NoSuchMethodException
+	 *             If the constructor was not found.
+	 * @throws SecurityException
+	 *             In case of security exception
+	 */
+	private Constructor<? extends Externalizable> getExternalizableConstructor(Class<?> type)
+			throws NoSuchMethodException, SecurityException {
+		Constructor<? extends Externalizable> constructor = externalizableConstructors.computeIfAbsent(type, t -> {
+			try {
+				@SuppressWarnings("unchecked")
+				Constructor<? extends Externalizable> con = (Constructor<? extends Externalizable>) t
+						.getDeclaredConstructor();
+				//set accessible just in case1
+				con.setAccessible(true);
+				return con;
+			} catch (NoSuchMethodException | SecurityException e) {
+				//sneakily throw, excepion declared in enclosing method
+				throw ObjectUtils.sneakyThrow(e);
+			}
+		});
+		return constructor;
+	}
+
+	private void preReadExternalizableHeaderFailure(int len) {
 		if (len <= 0) {
 			return;
 		}
