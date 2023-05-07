@@ -36,6 +36,15 @@ import saker.build.thirdparty.saker.util.ImmutableUtils;
  * This input stream class is not thread safe.
  */
 public class ConcatInputStream extends InputStream {
+	/*
+	 * The implementation only attempts to forward the call to a single input stream
+	 * in a single call to this input stream, so the possible exceptions won't be 
+	 * swallowed by the ConcatInputStream.
+	 * Otherwise in case of read(byte[], int, int), if we read from multiple streams
+	 * until the buffer is filled, then if the read from as second stream fails with an exception
+	 * but we already successfully read from a previous stream, then we need to return the bytes 
+	 * of the first read, yet we shouldn't just swallow the exception.
+	 */
 
 	private InputStream currentInputStream;
 	private Iterator<? extends InputStream> iterator;
@@ -49,8 +58,10 @@ public class ConcatInputStream extends InputStream {
 	 * 
 	 * @param inputstreams
 	 *            The input streams.
+	 * @throws NullPointerException
+	 *             If the argument array is <code>null</code>.
 	 */
-	public ConcatInputStream(InputStream... inputstreams) {
+	public ConcatInputStream(InputStream... inputstreams) throws NullPointerException {
 		this(ImmutableUtils.asUnmodifiableArrayList(inputstreams).iterator());
 	}
 
@@ -75,10 +86,12 @@ public class ConcatInputStream extends InputStream {
 	 * 
 	 * @param isiterator
 	 *            An iterator for input streams.
+	 * @throws NullPointerException
+	 *             If the iterator is <code>null</code>.
 	 */
-	public ConcatInputStream(Iterator<? extends InputStream> isiterator) {
+	public ConcatInputStream(Iterator<? extends InputStream> isiterator) throws NullPointerException {
 		this.iterator = isiterator;
-		this.currentInputStream = iterator.hasNext() ? iterator.next() : null;
+		this.currentInputStream = nextStream(isiterator);
 	}
 
 	@Override
@@ -87,7 +100,7 @@ public class ConcatInputStream extends InputStream {
 		if (it == null) {
 			throw new IOException("closed.");
 		}
-		for (InputStream is = currentInputStream; is != null; is = iterator.hasNext() ? it.next() : null) {
+		for (InputStream is = currentInputStream; is != null; currentInputStream = (is = nextStream(it))) {
 			int res = is.read();
 			if (res >= 0) {
 				return res;
@@ -101,24 +114,17 @@ public class ConcatInputStream extends InputStream {
 		if (len == 0) {
 			return 0;
 		}
-		if (currentInputStream == null) {
-			return -1;
-		}
 		Iterator<? extends InputStream> it = iterator;
 		if (it == null) {
 			throw new IOException("closed.");
 		}
-		int read = 0;
-		for (; read < len && currentInputStream != null; currentInputStream = it.hasNext() ? it.next() : null) {
-			int isread = currentInputStream.read(b, off + read, len - read);
-			if (isread > 0) {
-				read += isread;
-			}
-			if (read == len) {
+		for (InputStream is = currentInputStream; is != null; currentInputStream = (is = nextStream(it))) {
+			int read = is.read(b, off, len);
+			if (read > 0) {
 				return read;
 			}
 		}
-		return read == 0 ? -1 : read;
+		return -1;
 	}
 
 	@Override
@@ -130,17 +136,13 @@ public class ConcatInputStream extends InputStream {
 		if (it == null) {
 			throw new IOException("closed.");
 		}
-		final long originaln = n;
-		for (; n > 0 && currentInputStream != null; currentInputStream = it.hasNext() ? it.next() : null) {
-			long isskip = currentInputStream.skip(n);
+		for (InputStream is = currentInputStream; is != null; currentInputStream = (is = nextStream(it))) {
+			long isskip = is.skip(n);
 			if (isskip > 0) {
-				n -= isskip;
-			}
-			if (n == 0) {
-				break;
+				return isskip;
 			}
 		}
-		return originaln - n;
+		return 0;
 	}
 
 	@Override
@@ -156,5 +158,17 @@ public class ConcatInputStream extends InputStream {
 	public void close() throws IOException {
 		currentInputStream = null;
 		iterator = null;
+	}
+
+	private static InputStream nextStream(Iterator<? extends InputStream> it) {
+		while (it.hasNext()) {
+			InputStream is = it.next();
+			if (is == null) {
+				//skip nulls (this is likely an invalid input for the ConcatInputStream, but we're better be error tolerant)
+				continue;
+			}
+			return is;
+		}
+		return null;
 	}
 }
