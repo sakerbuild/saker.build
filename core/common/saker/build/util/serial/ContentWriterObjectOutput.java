@@ -764,21 +764,6 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	static final Map<Class<?>, IOBiConsumer<?, ContentWriterObjectOutput>> VALUE_CLASS_WRITERS = new HashMap<>();
 	static final Map<Class<?>, ObjectReaderFunction<ContentReaderObjectInput, ?>> VALUE_CLASS_READERS = new HashMap<>();
 	static {
-//		VALUE_CLASS_WRITERS.put(String.class,
-//				(IOBiConsumer<String, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeStringLengthChars(v));
-//		VALUE_CLASS_READERS.put(String.class, reader -> {
-//			SerializedObject<String> serialobj;
-//			try {
-//				String res = DataInputUnsyncByteArrayInputStream.readStringLengthChars(reader.state.in);
-//				serialobj = new PresentSerializedObject<>(res);
-//			} catch (Exception e) {
-//				serialobj = new FailedSerializedObject<>(
-//						() -> new SerializationProtocolException("Failed to read String.", e));
-//			}
-//			reader.addSerializedObject(serialobj);
-//			return serialobj.get();
-//		});
-
 		VALUE_CLASS_WRITERS.put(UUID.class,
 				(IOBiConsumer<UUID, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeUTF(v.toString()));
 		VALUE_CLASS_READERS.put(UUID.class, reader -> {
@@ -938,17 +923,18 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		});
 
 		VALUE_CLASS_WRITERS.put(URI.class,
-				(IOBiConsumer<URI, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeUTF(v.toString()));
+				(IOBiConsumer<URI, ContentWriterObjectOutput>) (v, writer) -> writer.writeUTF(v.toString()));
 		VALUE_CLASS_READERS.put(URI.class, reader -> {
+			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
 			SerializedObject<URI> serialobj;
 			try {
-				URI res = new URI(reader.state.in.readUTF());
+				URI res = new URI(reader.readUTF());
 				serialobj = new PresentSerializedObject<>(res);
 			} catch (Exception e) {
 				serialobj = new FailedSerializedObject<>(
 						() -> new SerializationProtocolException("Failed to read URI.", e));
 			}
-			reader.addSerializedObject(serialobj);
+			reader.setSerializedObject(idx, serialobj);
 			return serialobj.get();
 		});
 	}
