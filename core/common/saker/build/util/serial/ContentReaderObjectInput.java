@@ -83,7 +83,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 					ContentWriterObjectOutput.C_OBJECT_ARRAY_ERROR, ContentWriterObjectOutput.C_OBJECT_CLASSLOADER,
 					ContentWriterObjectOutput.C_OBJECT_CUSTOM_SERIALIZABLE,
 					ContentWriterObjectOutput.C_OBJECT_CUSTOM_SERIALIZABLE_ERROR,
-					ContentWriterObjectOutput.C_OBJECT_ENUM, ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE,
+					ContentWriterObjectOutput.C_OBJECT_ENUM, ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE_1,
+					ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE_4,
 					ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE_ERROR, ContentWriterObjectOutput.C_OBJECT_NULL,
 					ContentWriterObjectOutput.C_OBJECT_SERIALIZABLE,
 					ContentWriterObjectOutput.C_OBJECT_SERIALIZABLE_ERROR, ContentWriterObjectOutput.C_OBJECT_TYPE,
@@ -804,7 +805,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 				return readArrayImpl(cmd);
 			}
 			case ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE_ERROR:
-			case ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE: {
+			case ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE_1:
+			case ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE_4: {
 				return readExternalizableImpl(cmd);
 			}
 			case ContentWriterObjectOutput.C_OBJECT_TYPE: {
@@ -1237,6 +1239,29 @@ public class ContentReaderObjectInput implements ObjectInput {
 		return serializedObjects.get(idx).get();
 	}
 
+	private int readExternalizableLength(int cmd) throws IOException {
+		int len;
+		switch (cmd) {
+			case ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE_ERROR: {
+				len = state.in.readInt();
+				break;
+			}
+			case ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE_1: {
+				len = state.in.readUnsignedByte();
+				break;
+			}
+			case ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE_4: {
+				len = state.in.readInt();
+				break;
+			}
+			default: {
+				throw new AssertionError(cmd);
+			}
+		}
+		checkInvalidLength(len);
+		return len;
+	}
+
 	private Externalizable readExternalizableImpl(int cmd) throws IOException, ClassNotFoundException {
 		Class<?> type;
 		try {
@@ -1245,13 +1270,11 @@ public class ContentReaderObjectInput implements ObjectInput {
 			FailedSerializedObject<Externalizable> serializedobj = new FailedSerializedObject<>(
 					() -> new ClassNotFoundException("Externalizable class not found.", e));
 			addSerializedObject(serializedobj);
-			int len = state.in.readInt();
-			checkInvalidLength(len);
+			int len = readExternalizableLength(cmd);
 			preReadExternalizableHeaderFailure(len);
 			return serializedobj.get();
 		}
-		int len = state.in.readInt();
-		checkInvalidLength(len);
+		int len = readExternalizableLength(cmd);
 
 		if (cmd == ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE_ERROR) {
 			FailedSerializedObject<Externalizable> serializedobj = new FailedSerializedObject<>(
@@ -1399,7 +1422,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 					break;
 				}
 				case ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE_ERROR:
-				case ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE: {
+				case ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE_1:
+				case ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE_4: {
 					readExternalizableImpl(cmd);
 					break;
 				}

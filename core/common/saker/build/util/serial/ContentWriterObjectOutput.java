@@ -134,11 +134,14 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	static final int C_OBJECT_CLASSLOADER = C_CHARS + 1;
 	static final int C_OBJECT_ARRAY = C_OBJECT_CLASSLOADER + 1;
-	static final int C_OBJECT_EXTERNALIZABLE = C_OBJECT_ARRAY + 1;
+	//externalizable with 1 byte length value
+	static final int C_OBJECT_EXTERNALIZABLE_1 = C_OBJECT_ARRAY + 1;
+	//externalizable with 4 byte length value
+	static final int C_OBJECT_EXTERNALIZABLE_4 = C_OBJECT_EXTERNALIZABLE_1 + 1;
 
 	//The base <code>C_OBJECT_IDX_N</code> value, to which the number of bytes can be added to get the command value.
 	//E.g.: C_OBJECT_IDX_BASE + 2 == C_OBJECT_IDX_2
-	static final int C_OBJECT_IDX_BASE = C_OBJECT_EXTERNALIZABLE;
+	static final int C_OBJECT_IDX_BASE = C_OBJECT_EXTERNALIZABLE_4;
 	static final int C_OBJECT_IDX_1 = C_OBJECT_IDX_BASE + 1;
 	static final int C_OBJECT_IDX_2 = C_OBJECT_IDX_BASE + 2;
 	static final int C_OBJECT_IDX_3 = C_OBJECT_IDX_BASE + 3;
@@ -169,7 +172,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	static final int C_OBJECT_PROXY = C_OBJECT_UTF_PREFIXED_LOWBYTES + 1;
 
-	static final int C_MAX_COMMAND_VALUE = 63;
+	static final int C_MAX_COMMAND_VALUE = 64;
 	static {
 		if (TestFlag.ENABLED) {
 			//check that the last command value equals to the max command value constants
@@ -250,7 +253,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			case C_OBJECT_ARRAY:
 			case C_OBJECT_ARRAY_ERROR:
 				return "object (array)";
-			case C_OBJECT_EXTERNALIZABLE:
+			case C_OBJECT_EXTERNALIZABLE_1:
+			case C_OBJECT_EXTERNALIZABLE_4:
 			case C_OBJECT_EXTERNALIZABLE_ERROR:
 				return "object (Externalizable)";
 			case C_OBJECT_NULL:
@@ -1574,7 +1578,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	private void writeExternalizableWithCommandImpl(Externalizable obj, Class<? extends Object> objclass)
 			throws IOException {
 		int startsize = out.size();
-		out.writeByte(C_OBJECT_EXTERNALIZABLE);
+		out.writeByte(C_OBJECT_EXTERNALIZABLE_4);
 		writeTypeWithCommandOrIdx(objclass);
 
 		addSerializedObject(obj);
@@ -1587,11 +1591,36 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			obj.writeExternal(this);
 		} catch (Exception e) {
 			out.replaceByte(C_OBJECT_EXTERNALIZABLE_ERROR, startsize);
+			int c = out.size() - lencalcstartpos;
+			out.replaceInt(c, sizeintpos);
+
 			//don't need to handle the object table corruption, as the output is pre-read when deserialized
 			throw new ObjectWriteException("Failed to write Externalizable object. (" + obj.getClass().getName() + ")",
 					e);
-		} finally {
+		} catch (Throwable e) {
+			out.replaceByte(C_OBJECT_EXTERNALIZABLE_ERROR, startsize);
 			int c = out.size() - lencalcstartpos;
+			out.replaceInt(c, sizeintpos);
+			throw e;
+		}
+		int c = out.size() - lencalcstartpos;
+		if (c <= 255) {
+			//use a single byte length field to reduce the many unnecessary 00 00 00 bytes in the serialized stream
+			//as in case of lot of small externalizable objects, it can take a lot of space
+			//so the following:
+			//    LENMSB LENB2 LENB3 LENLSB DATA DATA DATA...
+			//becomes
+			//    LEN DATA DATA DATA...
+			out.replaceByte(c, sizeintpos);
+			out.replaceByte(C_OBJECT_EXTERNALIZABLE_1, startsize);
+
+			//move the serialized data
+			byte[] buf = out.getBuffer();
+			System.arraycopy(buf, lencalcstartpos, buf, sizeintpos + 1, c);
+
+			//remove the extra 3 bytes from the end
+			out.reduceSize(out.size() - 3);
+		} else {
 			out.replaceInt(c, sizeintpos);
 		}
 	}
