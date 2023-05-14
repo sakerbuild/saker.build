@@ -878,12 +878,6 @@ public class ContentReaderObjectInput implements ObjectInput {
 	public void close() throws IOException {
 	}
 
-	int addSerializedObject(PresentSerializedObject<?> obj) {
-		int idx = serializedObjects.size();
-		serializedObjects.add(obj);
-		return idx;
-	}
-
 	int addSerializedObject(SerializedObject<?> obj) {
 		int idx = serializedObjects.size();
 		serializedObjects.add(obj);
