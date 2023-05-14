@@ -55,6 +55,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 import saker.build.file.path.SakerPath;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -962,8 +963,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	private final DataOutputUnsyncByteArrayOutputStream out = new DataOutputUnsyncByteArrayOutputStream();
 
 	private final IdentityHashMap<Object, Integer> objectIndices = new IdentityHashMap<>();
-	private final Map<Object, Object> valueInternalizer = new HashMap<>();
-	private final NavigableMap<String, InternedString> stringInternalizer = new TreeMap<>();
+	private final Map<Object, InternedValue<Object>> valueInternalizer = new HashMap<>();
+	private final NavigableMap<String, InternedValue<String>> stringInternalizer = new TreeMap<>();
 
 	private final ClassLoaderResolver registry;
 
@@ -1190,8 +1191,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		return true;
 	}
 
-	private UTFPrefixInfo getBetterPrefix(String s, int slen, Entry<String, InternedString> first,
-			Entry<String, InternedString> second) {
+	private UTFPrefixInfo getBetterPrefix(String s, int slen, Entry<String, InternedValue<String>> first,
+			Entry<String, InternedValue<String>> second) {
 		if (first == null) {
 			first = second;
 			if (first == null) {
@@ -1233,9 +1234,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	}
 
 	private void writeUTFImpl(String s, boolean objwrite) throws SerializationProtocolException, IOException {
-		NavigableMap<String, InternedString> internalizer = this.stringInternalizer;
+		NavigableMap<String, InternedValue<String>> internalizer = this.stringInternalizer;
 
-		Entry<String, InternedString> floorentry = internalizer.floorEntry(s);
+		Entry<String, InternedValue<String>> floorentry = internalizer.floorEntry(s);
 		if (floorentry != null && floorentry.getKey().equals(s)) {
 			writeUtfWithIndexCommand(floorentry.getValue().index, objwrite ? C_OBJECT_UTF_IDX_BASE : C_UTF_IDX_BASE);
 			return;
@@ -1243,7 +1244,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 		int slen = ensureCharWriteBuffer(s);
 		int idx = internalizer.size();
-		InternedString prev = internalizer.put(s, new InternedString(s, idx));
+		InternedValue<?> prev = internalizer.put(s, new InternedValue<>(s, idx));
 		if (prev != null) {
 			//sanity check
 			throw new SerializationProtocolException("Internal Error: String is already present: " + s);
@@ -1366,6 +1367,23 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		}
 	}
 
+	private class ValueInternalizeWriter<V> implements Function<Object, InternedValue<V>> {
+		protected final V obj;
+
+		protected boolean computed;
+
+		public ValueInternalizeWriter(V obj) {
+			this.obj = obj;
+		}
+
+		@Override
+		public InternedValue<V> apply(Object k) {
+			computed = true;
+			return new InternedValue<>(obj, -1);
+		}
+
+	}
+
 	@Override
 	public void writeObject(Object obj) throws IOException {
 		if (obj == null) {
@@ -1386,15 +1404,18 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		IOBiConsumer<Object, ContentWriterObjectOutput> objwriter = (IOBiConsumer<Object, ContentWriterObjectOutput>) VALUE_CLASS_WRITERS
 				.get(objclass);
 		if (objwriter != null) {
-			Object prev = valueInternalizer.putIfAbsent(obj, obj);
-			if (prev != null) {
-				writeObjectIdxWithCommandImpl(objectIndices.get(prev));
+			ValueInternalizeWriter<Object> writer = new ValueInternalizeWriter<>(obj);
+			InternedValue<Object> internvalue = valueInternalizer.computeIfAbsent(obj, writer);
+			if (writer.computed) {
+				//a newly added serialized object
+				out.writeByte(C_OBJECT_VALUE);
+				writeTypeWithCommandOrIdx(objclass);
+				internvalue.index = addSerializedObject(obj);
+				objwriter.accept(obj, ContentWriterObjectOutput.this);
 				return;
 			}
-			out.writeByte(C_OBJECT_VALUE);
-			writeTypeWithCommandOrIdx(objclass);
-			addSerializedObject(obj);
-			objwriter.accept(obj, this);
+			//the value was already interned
+			writeObjectIdxWithCommandImpl(internvalue.index);
 			return;
 		}
 		if (objclass.isArray()) {
@@ -1669,11 +1690,11 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		}
 	}
 
-	private static final class InternedString {
-		protected final String value;
-		protected final int index;
+	private static final class InternedValue<T> {
+		protected final T value;
+		protected int index;
 
-		public InternedString(String value, int index) {
+		public InternedValue(T value, int index) {
 			this.value = value;
 			this.index = index;
 		}
@@ -1691,10 +1712,10 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	}
 
 	private static final class UTFPrefixInfo {
-		protected final InternedString prefix;
+		protected final InternedValue<String> prefix;
 		protected final int common;
 
-		public UTFPrefixInfo(InternedString prefix, int common) {
+		public UTFPrefixInfo(InternedValue<String> prefix, int common) {
 			this.prefix = prefix;
 			this.common = common;
 		}
