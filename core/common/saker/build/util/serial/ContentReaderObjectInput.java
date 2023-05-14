@@ -52,19 +52,19 @@ import testing.saker.build.flag.TestFlag;
 public class ContentReaderObjectInput implements ObjectInput {
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_UTF = ImmutableUtils.makeImmutableNavigableSet(
 			new Integer[] { ContentWriterObjectOutput.C_UTF, ContentWriterObjectOutput.C_UTF_LOWBYTES,
-					ContentWriterObjectOutput.C_UTF_IDX, ContentWriterObjectOutput.C_UTF_IDX_1,
+					ContentWriterObjectOutput.C_UTF_IDX_4, ContentWriterObjectOutput.C_UTF_IDX_1,
 					ContentWriterObjectOutput.C_UTF_IDX_2, ContentWriterObjectOutput.C_UTF_IDX_3,
 					ContentWriterObjectOutput.C_UTF_PREFIXED, ContentWriterObjectOutput.C_UTF_PREFIXED_LOWBYTES, });
 
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_INT = ImmutableUtils.makeImmutableNavigableSet(
-			new Integer[] { ContentWriterObjectOutput.C_INT, ContentWriterObjectOutput.C_INT_1,
+			new Integer[] { ContentWriterObjectOutput.C_INT_4, ContentWriterObjectOutput.C_INT_1,
 					ContentWriterObjectOutput.C_INT_2, ContentWriterObjectOutput.C_INT_3,
 					ContentWriterObjectOutput.C_INT_F_1, ContentWriterObjectOutput.C_INT_F_2,
 					ContentWriterObjectOutput.C_INT_F_3, ContentWriterObjectOutput.C_INT_ZERO,
 					ContentWriterObjectOutput.C_INT_NEGATIVE_ONE, ContentWriterObjectOutput.C_INT_ONE, });
 
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_LONG = ImmutableUtils
-			.makeImmutableNavigableSet(new Integer[] { ContentWriterObjectOutput.C_LONG,
+			.makeImmutableNavigableSet(new Integer[] { ContentWriterObjectOutput.C_LONG_8,
 					ContentWriterObjectOutput.C_LONG_2, ContentWriterObjectOutput.C_LONG_4,
 					ContentWriterObjectOutput.C_LONG_6, ContentWriterObjectOutput.C_LONG_F_2,
 					ContentWriterObjectOutput.C_LONG_F_4, ContentWriterObjectOutput.C_LONG_F_6,
@@ -77,7 +77,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 			new Integer[] { ContentWriterObjectOutput.C_CHAR, ContentWriterObjectOutput.C_CHARS });
 
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_OBJECT = ImmutableUtils
-			.makeImmutableNavigableSet(new Integer[] { ContentWriterObjectOutput.C_OBJECT_IDX,
+			.makeImmutableNavigableSet(new Integer[] { ContentWriterObjectOutput.C_OBJECT_IDX_4,
 					ContentWriterObjectOutput.C_OBJECT_IDX_3, ContentWriterObjectOutput.C_OBJECT_IDX_2,
 					ContentWriterObjectOutput.C_OBJECT_IDX_1, ContentWriterObjectOutput.C_OBJECT_ARRAY,
 					ContentWriterObjectOutput.C_OBJECT_ARRAY_ERROR, ContentWriterObjectOutput.C_OBJECT_CLASSLOADER,
@@ -88,14 +88,14 @@ public class ContentReaderObjectInput implements ObjectInput {
 					ContentWriterObjectOutput.C_OBJECT_SERIALIZABLE,
 					ContentWriterObjectOutput.C_OBJECT_SERIALIZABLE_ERROR, ContentWriterObjectOutput.C_OBJECT_TYPE,
 					ContentWriterObjectOutput.C_OBJECT_VALUE, ContentWriterObjectOutput.C_OBJECT_UTF,
-					ContentWriterObjectOutput.C_OBJECT_PROXY, ContentWriterObjectOutput.C_OBJECT_UTF_IDX,
+					ContentWriterObjectOutput.C_OBJECT_PROXY, ContentWriterObjectOutput.C_OBJECT_UTF_IDX_4,
 					ContentWriterObjectOutput.C_OBJECT_UTF_IDX_1, ContentWriterObjectOutput.C_OBJECT_UTF_IDX_2,
 					ContentWriterObjectOutput.C_OBJECT_UTF_IDX_3, ContentWriterObjectOutput.C_OBJECT_UTF_LOWBYTES,
 					ContentWriterObjectOutput.C_OBJECT_UTF_PREFIXED,
 					ContentWriterObjectOutput.C_OBJECT_UTF_PREFIXED_LOWBYTES, });
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_TYPE = ImmutableUtils
 			.makeImmutableNavigableSet(new Integer[] { ContentWriterObjectOutput.C_OBJECT_TYPE,
-					ContentWriterObjectOutput.C_OBJECT_IDX, ContentWriterObjectOutput.C_OBJECT_IDX_3,
+					ContentWriterObjectOutput.C_OBJECT_IDX_4, ContentWriterObjectOutput.C_OBJECT_IDX_3,
 					ContentWriterObjectOutput.C_OBJECT_IDX_2, ContentWriterObjectOutput.C_OBJECT_IDX_1 });
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_BOOLEAN = ImmutableUtils.makeImmutableNavigableSet(
 			new Integer[] { ContentWriterObjectOutput.C_BOOLEAN_FALSE, ContentWriterObjectOutput.C_BOOLEAN_TRUE });
@@ -388,7 +388,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 			case ContentWriterObjectOutput.C_INT_3: {
 				return readIntImpl3();
 			}
-			case ContentWriterObjectOutput.C_INT: {
+			case ContentWriterObjectOutput.C_INT_4: {
 				return readIntImpl();
 			}
 			case ContentWriterObjectOutput.C_INT_F_1: {
@@ -428,7 +428,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 			case ContentWriterObjectOutput.C_LONG_6: {
 				return readLongImpl6();
 			}
-			case ContentWriterObjectOutput.C_LONG: {
+			case ContentWriterObjectOutput.C_LONG_8: {
 				return readLongImpl();
 			}
 			case ContentWriterObjectOutput.C_LONG_F_2: {
@@ -520,7 +520,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 			case ContentWriterObjectOutput.C_UTF_LOWBYTES: {
 				return readUTFLowBytesImpl();
 			}
-			case ContentWriterObjectOutput.C_UTF_IDX: {
+			case ContentWriterObjectOutput.C_UTF_IDX_4: {
 				return getUtfWithIndex(readIntImpl());
 			}
 			case ContentWriterObjectOutput.C_UTF_IDX_3: {
@@ -774,7 +774,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 	public Object readObject() throws ClassNotFoundException, IOException {
 		int cmd = state.expectCommands(EXPECTED_COMMANDS_OBJECT);
 		switch (cmd) {
-			case ContentWriterObjectOutput.C_OBJECT_IDX: {
+			case ContentWriterObjectOutput.C_OBJECT_IDX_4: {
 				return readObjectIdxImpl();
 			}
 			case ContentWriterObjectOutput.C_OBJECT_IDX_3: {
@@ -817,7 +817,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 			case ContentWriterObjectOutput.C_OBJECT_UTF_LOWBYTES: {
 				return readUTFLowBytesImpl();
 			}
-			case ContentWriterObjectOutput.C_OBJECT_UTF_IDX: {
+			case ContentWriterObjectOutput.C_OBJECT_UTF_IDX_4: {
 				return getUtfWithIndex(readIntImpl());
 			}
 			case ContentWriterObjectOutput.C_OBJECT_UTF_IDX_3: {
@@ -900,7 +900,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 			case ContentWriterObjectOutput.C_OBJECT_TYPE: {
 				return readTypeImpl();
 			}
-			case ContentWriterObjectOutput.C_OBJECT_IDX: {
+			case ContentWriterObjectOutput.C_OBJECT_IDX_4: {
 				return getTypeIdxImpl(readIntImpl());
 			}
 			case ContentWriterObjectOutput.C_OBJECT_IDX_3: {
@@ -1403,7 +1403,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 				case ContentWriterObjectOutput.C_OBJECT_NULL: {
 					break;
 				}
-				case ContentWriterObjectOutput.C_OBJECT_IDX: {
+				case ContentWriterObjectOutput.C_OBJECT_IDX_4: {
 					readIntImpl();
 					break;
 				}
@@ -1442,8 +1442,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 					readUTFLowBytesImpl();
 					break;
 				}
-				case ContentWriterObjectOutput.C_OBJECT_UTF_IDX:
-				case ContentWriterObjectOutput.C_UTF_IDX: {
+				case ContentWriterObjectOutput.C_OBJECT_UTF_IDX_4:
+				case ContentWriterObjectOutput.C_UTF_IDX_4: {
 					//idx
 					state.in.readInt();
 					break;
@@ -1511,7 +1511,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 					readIntImpl3();
 					break;
 				}
-				case ContentWriterObjectOutput.C_INT: {
+				case ContentWriterObjectOutput.C_INT_4: {
 					readIntImpl();
 					break;
 				}
@@ -1520,7 +1520,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 				case ContentWriterObjectOutput.C_INT_NEGATIVE_ONE: {
 					break;
 				}
-				case ContentWriterObjectOutput.C_LONG: {
+				case ContentWriterObjectOutput.C_LONG_8: {
 					readLongImpl();
 					break;
 				}

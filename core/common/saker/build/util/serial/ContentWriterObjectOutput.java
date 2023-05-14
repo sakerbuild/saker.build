@@ -73,67 +73,95 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	static final int C_BYTE = 1;
 	static final int C_CHAR = 2;
 	static final int C_SHORT = 3;
-	static final int C_INT = 4;
-	static final int C_LONG = 5;
-	static final int C_FLOAT = 6;
-	static final int C_DOUBLE = 7;
-	static final int C_BOOLEAN_TRUE = 8;
-	static final int C_UTF = 9;
-	static final int C_CHARS = 10;
-	static final int C_BYTEARRAY = 11;
-	static final int C_OBJECT_CLASSLOADER = 12;
-	static final int C_OBJECT_ARRAY = 13;
-	static final int C_OBJECT_EXTERNALIZABLE = 14;
-	static final int C_OBJECT_IDX = 15;
-	static final int C_OBJECT_NULL = 16;
-	static final int C_OBJECT_SERIALIZABLE = 17;
-	static final int C_OBJECT_TYPE = 18;
-	static final int C_OBJECT_VALUE = 19;
-	static final int C_OBJECT_ENUM = 20;
-	static final int C_OBJECT_ARRAY_ERROR = 21;
-	static final int C_OBJECT_EXTERNALIZABLE_ERROR = 22;
-	static final int C_OBJECT_SERIALIZABLE_ERROR = 23;
-	static final int C_OBJECT_CUSTOM_SERIALIZABLE = 24;
-	static final int C_OBJECT_CUSTOM_SERIALIZABLE_ERROR = 25;
-	static final int C_UTF_IDX = 26;
-	static final int C_UTF_LOWBYTES = 27;
-	static final int C_INT_3 = 28;
-	static final int C_INT_2 = 29;
-	static final int C_INT_1 = 30;
-	static final int C_OBJECT_UTF = 31;
-	static final int C_OBJECT_IDX_3 = 32;
-	static final int C_OBJECT_IDX_2 = 33;
-	static final int C_OBJECT_IDX_1 = 34;
-	static final int C_OBJECT_PROXY = 35;
-	static final int C_UTF_IDX_3 = 36;
-	static final int C_UTF_IDX_2 = 37;
-	static final int C_UTF_IDX_1 = 38;
-	static final int C_LONG_2 = 39;
-	static final int C_LONG_4 = 40;
-	static final int C_LONG_6 = 41;
-	static final int C_INT_F_3 = 42;
-	static final int C_INT_F_2 = 43;
-	static final int C_INT_F_1 = 44;
-	static final int C_LONG_F_6 = 45;
-	static final int C_LONG_F_4 = 46;
-	static final int C_LONG_F_2 = 47;
-	static final int C_INT_ZERO = 48;
-	static final int C_INT_NEGATIVE_ONE = 49;
-	static final int C_LONG_ZERO = 50;
-	static final int C_LONG_NEGATIVE_ONE = 51;
-	static final int C_UTF_PREFIXED = 52;
-	static final int C_UTF_PREFIXED_LOWBYTES = 53;
-	static final int C_INT_ONE = 54;
 
-	static final int C_OBJECT_UTF_IDX = 55;
-	static final int C_OBJECT_UTF_IDX_1 = 56;
-	static final int C_OBJECT_UTF_IDX_2 = 57;
-	static final int C_OBJECT_UTF_IDX_3 = 58;
+	//The base <code>C_INT_N</code> value, to which the number of bytes can be added to get the command value.
+	//E.g.: C_INT_BASE + 2 == C_INT_2
+	static final int C_INT_BASE = 3;
+	static final int C_INT_1 = C_INT_BASE + 1;
+	static final int C_INT_2 = C_INT_BASE + 2;
+	static final int C_INT_3 = C_INT_BASE + 3;
+	static final int C_INT_4 = C_INT_BASE + 4;
+
+	static final int C_INT_F_1 = 8;
+	static final int C_INT_F_2 = 9;
+	static final int C_INT_F_3 = 10;
+
+	static final int C_INT_ZERO = 11;
+	static final int C_INT_NEGATIVE_ONE = 12;
+	static final int C_INT_ONE = 13;
+
+	//The base <code>C_LONG_N</code> value, to which the number of EVEN bytes can be added to get the command value.
+	//E.g.: C_LONG_BASE + (4 / 2) == C_LONG_4
+	//      to write a long as 4 bytes
+	static final int C_LONG_BASE = 13;
+	static final int C_LONG_2 = C_LONG_BASE + 1;
+	static final int C_LONG_4 = C_LONG_BASE + 2;
+	static final int C_LONG_6 = C_LONG_BASE + 3;
+	static final int C_LONG_8 = C_LONG_BASE + 4;
+
+	static final int C_LONG_F_2 = 18;
+	static final int C_LONG_F_4 = 19;
+	static final int C_LONG_F_6 = 20;
+	static final int C_LONG_ZERO = 21;
+	static final int C_LONG_NEGATIVE_ONE = 22;
+
+	static final int C_FLOAT = 23;
+	static final int C_DOUBLE = 24;
+
+	static final int C_BOOLEAN_TRUE = 25;
+	static final int C_BOOLEAN_FALSE = 26;
+
+	static final int C_UTF = 27;
+	//The base <code>C_UTF_IDX_N</code> value, to which the number of bytes can be added to get the command value.
+	//E.g.: C_UTF_IDX_BASE + 2 == C_UTF_IDX_2
+	static final int C_UTF_IDX_BASE = 27;
+	static final int C_UTF_IDX_1 = C_UTF_IDX_BASE + 1;
+	static final int C_UTF_IDX_2 = C_UTF_IDX_BASE + 2;
+	static final int C_UTF_IDX_3 = C_UTF_IDX_BASE + 3;
+	static final int C_UTF_IDX_4 = C_UTF_IDX_BASE + 4;
+	static final int C_UTF_LOWBYTES = 32;
+	static final int C_UTF_PREFIXED = 33;
+	static final int C_UTF_PREFIXED_LOWBYTES = 34;
+
+	static final int C_BYTEARRAY = 35;
+	static final int C_CHARS = 36;
+
+	static final int C_OBJECT_CLASSLOADER = 37;
+	static final int C_OBJECT_ARRAY = 38;
+	static final int C_OBJECT_EXTERNALIZABLE = 39;
+
+	//The base <code>C_OBJECT_IDX_N</code> value, to which the number of bytes can be added to get the command value.
+	//E.g.: C_OBJECT_IDX_BASE + 2 == C_OBJECT_IDX_2
+	static final int C_OBJECT_IDX_BASE = 39;
+	static final int C_OBJECT_IDX_1 = C_OBJECT_IDX_BASE + 1;
+	static final int C_OBJECT_IDX_2 = C_OBJECT_IDX_BASE + 2;
+	static final int C_OBJECT_IDX_3 = C_OBJECT_IDX_BASE + 3;
+	static final int C_OBJECT_IDX_4 = C_OBJECT_IDX_BASE + 4;
+
+	static final int C_OBJECT_NULL = 44;
+	static final int C_OBJECT_SERIALIZABLE = 45;
+	static final int C_OBJECT_TYPE = 46;
+	static final int C_OBJECT_VALUE = 47;
+	static final int C_OBJECT_ENUM = 48;
+	static final int C_OBJECT_ARRAY_ERROR = 49;
+	static final int C_OBJECT_EXTERNALIZABLE_ERROR = 50;
+	static final int C_OBJECT_SERIALIZABLE_ERROR = 51;
+	static final int C_OBJECT_CUSTOM_SERIALIZABLE = 52;
+	static final int C_OBJECT_CUSTOM_SERIALIZABLE_ERROR = 53;
+
+	static final int C_OBJECT_UTF = 54;
+	//The base <code>C_OBJECT_UTF_IDX_N</code> value, to which the number of bytes can be added to get the command value.
+	//E.g.: C_OBJECT_UTF_IDX_BASE + 2 == C_OBJECT_UTF_IDX_2
+	static final int C_OBJECT_UTF_IDX_BASE = 54;
+	static final int C_OBJECT_UTF_IDX_1 = C_OBJECT_UTF_IDX_BASE + 1;
+	static final int C_OBJECT_UTF_IDX_2 = C_OBJECT_UTF_IDX_BASE + 2;
+	static final int C_OBJECT_UTF_IDX_3 = C_OBJECT_UTF_IDX_BASE + 3;
+	static final int C_OBJECT_UTF_IDX_4 = C_OBJECT_UTF_IDX_BASE + 4;
 	static final int C_OBJECT_UTF_LOWBYTES = 59;
 	static final int C_OBJECT_UTF_PREFIXED = 60;
 	static final int C_OBJECT_UTF_PREFIXED_LOWBYTES = 61;
 
-	static final int C_BOOLEAN_FALSE = 62;
+	static final int C_OBJECT_PROXY = 62;
 
 	static final int C_MAX_COMMAND_VALUE = 62;
 
@@ -148,7 +176,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				return "char";
 			case C_SHORT:
 				return "short";
-			case C_INT:
+			case C_INT_4:
 			case C_INT_3:
 			case C_INT_2:
 			case C_INT_1:
@@ -159,7 +187,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			case C_INT_ONE:
 			case C_INT_NEGATIVE_ONE:
 				return "int";
-			case C_LONG:
+			case C_LONG_8:
 			case C_LONG_2:
 			case C_LONG_4:
 			case C_LONG_6:
@@ -177,7 +205,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			case C_BOOLEAN_TRUE:
 				return "boolean";
 			case C_UTF:
-			case C_UTF_IDX:
+			case C_UTF_IDX_4:
 			case C_UTF_IDX_1:
 			case C_UTF_IDX_2:
 			case C_UTF_IDX_3:
@@ -187,7 +215,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				return "UTF";
 			case C_CHARS:
 				return "char";
-			case C_OBJECT_IDX:
+			case C_OBJECT_IDX_4:
 			case C_OBJECT_IDX_3:
 			case C_OBJECT_IDX_2:
 			case C_OBJECT_IDX_1:
@@ -196,7 +224,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			case C_OBJECT_CUSTOM_SERIALIZABLE_ERROR:
 				return "object";
 			case C_OBJECT_UTF:
-			case C_OBJECT_UTF_IDX:
+			case C_OBJECT_UTF_IDX_4:
 			case C_OBJECT_UTF_IDX_1:
 			case C_OBJECT_UTF_IDX_2:
 			case C_OBJECT_UTF_IDX_3:
@@ -1029,7 +1057,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 						break;
 					}
 					default: {
-						out.writeByte(C_INT);
+						out.writeByte(C_INT_4);
 						out.writeInt(v);
 						break;
 					}
@@ -1075,7 +1103,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 					}
 					default: {
 						//full int
-						out.writeByte(C_INT);
+						out.writeByte(C_INT_4);
 						out.writeInt(v);
 						break;
 					}
@@ -1100,7 +1128,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 					out.writeShort((short) v);
 				}
 			} else {
-				out.writeByte(C_LONG);
+				out.writeByte(C_LONG_8);
 				out.writeLong(v);
 			}
 		} else if (top4 == 0xFFFFFFFF00000000L) {
@@ -1132,7 +1160,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				out.writeInt((int) v);
 			} else {
 				//full long
-				out.writeByte(C_LONG);
+				out.writeByte(C_LONG_8);
 				out.writeLong(v);
 			}
 		}
@@ -1221,7 +1249,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	private void writeUTFImpl(String s, boolean objwrite) throws SerializationProtocolException, IOException {
 		Entry<String, InternedString> floorentry = stringInternalizer.floorEntry(s);
 		if (floorentry != null && floorentry.getKey().equals(s)) {
-			writeUtfWithIndexCommand(floorentry.getValue().index, objwrite);
+			writeUtfWithIndexCommand(floorentry.getValue().index, objwrite ? C_OBJECT_UTF_IDX_BASE : C_UTF_IDX_BASE);
 			return;
 		}
 
@@ -1304,22 +1332,22 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		}
 	}
 
-	private void writeUtfWithIndexCommand(Integer oidx, boolean objwrite) {
+	private void writeUtfWithIndexCommand(int oidx, int idxcommandbase) {
 		if ((oidx & 0xFFFF0000) != 0) {
 			if ((oidx & 0xFF000000) != 0) {
-				out.writeByte(objwrite ? C_OBJECT_UTF_IDX : C_UTF_IDX);
+				out.writeByte(idxcommandbase + 4);
 				out.writeInt(oidx);
 			} else {
-				out.writeByte(objwrite ? C_OBJECT_UTF_IDX_3 : C_UTF_IDX_3);
+				out.writeByte(idxcommandbase + 3);
 				out.writeByte(oidx >>> 16);
 				out.writeShort(oidx);
 			}
 		} else {
 			if ((oidx & 0x0000FF00) != 0) {
-				out.writeByte(objwrite ? C_OBJECT_UTF_IDX_2 : C_UTF_IDX_2);
+				out.writeByte(idxcommandbase + 2);
 				out.writeShort(oidx);
 			} else {
-				out.writeByte(objwrite ? C_OBJECT_UTF_IDX_1 : C_UTF_IDX_1);
+				out.writeByte(idxcommandbase + 1);
 				out.writeByte(oidx);
 			}
 		}
@@ -1328,7 +1356,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	private void writeObjectIdxWithCommandImpl(int oidx) {
 		if ((oidx & 0xFFFF0000) != 0) {
 			if ((oidx & 0xFF000000) != 0) {
-				out.writeByte(C_OBJECT_IDX);
+				out.writeByte(C_OBJECT_IDX_4);
 				out.writeInt(oidx);
 			} else {
 				out.writeByte(C_OBJECT_IDX_3);
