@@ -1233,19 +1233,25 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	}
 
 	private void writeUTFImpl(String s, boolean objwrite) throws SerializationProtocolException, IOException {
-		Entry<String, InternedString> floorentry = stringInternalizer.floorEntry(s);
+		NavigableMap<String, InternedString> internalizer = this.stringInternalizer;
+
+		Entry<String, InternedString> floorentry = internalizer.floorEntry(s);
 		if (floorentry != null && floorentry.getKey().equals(s)) {
 			writeUtfWithIndexCommand(floorentry.getValue().index, objwrite ? C_OBJECT_UTF_IDX_BASE : C_UTF_IDX_BASE);
 			return;
 		}
 
 		int slen = ensureCharWriteBuffer(s);
-		int idx = addSerializedObject(s);
-		stringInternalizer.put(s, new InternedString(s, idx));
+		int idx = internalizer.size();
+		InternedString prev = internalizer.put(s, new InternedString(s, idx));
+		if (prev != null) {
+			//sanity check
+			throw new SerializationProtocolException("Internal Error: String is already present: " + s);
+		}
 
 		if (slen > UTF_PREFIX_MIN_LEN) {
 			//attempt prefixing if the written string is longer than the min requirement
-			UTFPrefixInfo prefixinfo = getBetterPrefix(s, slen, floorentry, stringInternalizer.higherEntry(s));
+			UTFPrefixInfo prefixinfo = getBetterPrefix(s, slen, floorentry, internalizer.higherEntry(s));
 
 			if (prefixinfo != null) {
 				//both strings have a common starting characters
@@ -1506,8 +1512,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	}
 
 	private int addSerializedObject(Object obj) throws SerializationProtocolException {
-		int idx = objectIndices.size();
-		Integer prev = objectIndices.putIfAbsent(obj, idx);
+		IdentityHashMap<Object, Integer> indices = this.objectIndices;
+		int idx = indices.size();
+		Integer prev = indices.putIfAbsent(obj, idx);
 		if (prev != null) {
 			throw new SerializationProtocolException("Internal Error: Object is already present: " + obj);
 		}

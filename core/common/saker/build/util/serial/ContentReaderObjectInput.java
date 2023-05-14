@@ -257,6 +257,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 	ReadState state;
 
 	private final List<SerializedObject<?>> serializedObjects = new ArrayList<>();
+	private final List<SerializedObject<String>> serializedStrings = new ArrayList<>();
 	private final Map<Class<?>, Constructor<? extends Externalizable>> externalizableConstructors = new HashMap<>();
 
 	private final ClassLoaderResolver registry;
@@ -292,18 +293,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 	@Override
 	public boolean readBoolean() throws IOException {
-		int cmd = state.expectCommands(EXPECTED_COMMANDS_BOOLEAN);
-		switch (cmd) {
-			case ContentWriterObjectOutput.C_BOOLEAN_TRUE: {
-				return true;
-			}
-			case ContentWriterObjectOutput.C_BOOLEAN_FALSE: {
-				return false;
-			}
-			default: {
-				throw new AssertionError(cmd);
-			}
-		}
+		return state.expectCommands(EXPECTED_COMMANDS_BOOLEAN) == ContentWriterObjectOutput.C_BOOLEAN_TRUE;
 	}
 
 	@Override
@@ -546,11 +536,11 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 	private String getUtfWithIndex(int idx) throws SerializationProtocolException, IOException {
 		try {
-			if (idx >= serializedObjects.size()) {
+			if (idx >= serializedStrings.size()) {
 				throw new SerializationProtocolException(
-						"Invalid serialized object index: " + idx + " for size: " + serializedObjects.size());
+						"Invalid serialized string index: " + idx + " for size: " + serializedStrings.size());
 			}
-			return (String) serializedObjects.get(idx).get();
+			return serializedStrings.get(idx).get();
 		} catch (ClassNotFoundException e) {
 			throw new SerializationProtocolException("Unexpected type failure.", e);
 		}
@@ -571,15 +561,15 @@ public class ContentReaderObjectInput implements ObjectInput {
 			}
 
 			String utf = new String(charReadBuffer, 0, slen);
-			addSerializedObject(new PresentSerializedObject<>(utf));
+			addSerializedString(new PresentSerializedObject<>(utf));
 			return utf;
 		} catch (IOException e) {
-			FailedSerializedObject<?> serializedobj = new FailedSerializedObject<>(() -> {
+			FailedSerializedObject<String> serializedobj = new FailedSerializedObject<>(() -> {
 				IOException eofe = new SerializationProtocolException("Failed to fully read UTF.");
 				eofe.initCause(e);
 				return eofe;
 			});
-			addSerializedObject(serializedobj);
+			addSerializedString(serializedobj);
 			throw e;
 		}
 	}
@@ -600,15 +590,15 @@ public class ContentReaderObjectInput implements ObjectInput {
 			}
 
 			String utf = new String(charReadBuffer, 0, slen);
-			addSerializedObject(new PresentSerializedObject<>(utf));
+			addSerializedString(new PresentSerializedObject<>(utf));
 			return utf;
 		} catch (IOException e) {
-			FailedSerializedObject<?> serializedobj = new FailedSerializedObject<>(() -> {
+			FailedSerializedObject<String> serializedobj = new FailedSerializedObject<>(() -> {
 				IOException eofe = new SerializationProtocolException("Failed to fully read UTF.");
 				eofe.initCause(e);
 				return eofe;
 			});
-			addSerializedObject(serializedobj);
+			addSerializedString(serializedobj);
 			throw e;
 		}
 	}
@@ -638,15 +628,15 @@ public class ContentReaderObjectInput implements ObjectInput {
 			sb.append(prefix, 0, common);
 			sb.append(charReadBuffer, 0, slen);
 			String utf = sb.toString();
-			addSerializedObject(new PresentSerializedObject<>(utf));
+			addSerializedString(new PresentSerializedObject<>(utf));
 			return utf;
 		} catch (IOException e) {
-			FailedSerializedObject<?> serializedobj = new FailedSerializedObject<>(() -> {
+			FailedSerializedObject<String> serializedobj = new FailedSerializedObject<>(() -> {
 				IOException eofe = new SerializationProtocolException("Failed to fully read UTF.");
 				eofe.initCause(e);
 				return eofe;
 			});
-			addSerializedObject(serializedobj);
+			addSerializedString(serializedobj);
 			throw e;
 		}
 	}
@@ -674,15 +664,15 @@ public class ContentReaderObjectInput implements ObjectInput {
 			sb.append(prefix, 0, common);
 			sb.append(charReadBuffer, 0, slen);
 			String utf = sb.toString();
-			addSerializedObject(new PresentSerializedObject<>(utf));
+			addSerializedString(new PresentSerializedObject<>(utf));
 			return utf;
 		} catch (IOException e) {
-			FailedSerializedObject<?> serializedobj = new FailedSerializedObject<>(() -> {
+			FailedSerializedObject<String> serializedobj = new FailedSerializedObject<>(() -> {
 				IOException eofe = new SerializationProtocolException("Failed to fully read UTF.");
 				eofe.initCause(e);
 				return eofe;
 			});
-			addSerializedObject(serializedobj);
+			addSerializedString(serializedobj);
 			throw e;
 		}
 	}
@@ -879,8 +869,16 @@ public class ContentReaderObjectInput implements ObjectInput {
 	}
 
 	int addSerializedObject(SerializedObject<?> obj) {
-		int idx = serializedObjects.size();
-		serializedObjects.add(obj);
+		List<SerializedObject<?>> objlist = this.serializedObjects;
+		int idx = objlist.size();
+		objlist.add(obj);
+		return idx;
+	}
+
+	int addSerializedString(SerializedObject<String> obj) {
+		List<SerializedObject<String>> objlist = this.serializedStrings;
+		int idx = objlist.size();
+		objlist.add(obj);
 		return idx;
 	}
 
