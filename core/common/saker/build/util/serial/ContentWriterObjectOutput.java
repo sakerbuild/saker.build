@@ -72,99 +72,112 @@ import testing.saker.build.flag.TestFlag;
 
 public class ContentWriterObjectOutput implements ObjectOutput {
 	static final int C_BYTE = 1;
-	static final int C_CHAR = 2;
-	static final int C_SHORT = 3;
+	static final int C_CHAR = C_BYTE + 1;
+
+	//The base <code>C_SHORT_N</code> value, to which the number of bytes can be added to get the command value.
+	//E.g.: C_SHORT_BASE + 2 == C_SHORT_2
+	static final int C_SHORT_BASE = C_CHAR;
+	static final int C_SHORT_1 = C_CHAR + 1;
+	static final int C_SHORT_2 = C_SHORT_1 + 1;
 
 	//The base <code>C_INT_N</code> value, to which the number of bytes can be added to get the command value.
 	//E.g.: C_INT_BASE + 2 == C_INT_2
-	static final int C_INT_BASE = 3;
+	static final int C_INT_BASE = C_SHORT_2;
 	static final int C_INT_1 = C_INT_BASE + 1;
 	static final int C_INT_2 = C_INT_BASE + 2;
 	static final int C_INT_3 = C_INT_BASE + 3;
 	static final int C_INT_4 = C_INT_BASE + 4;
 
-	static final int C_INT_F_1 = 8;
-	static final int C_INT_F_2 = 9;
-	static final int C_INT_F_3 = 10;
+	static final int C_INT_F_1 = C_INT_4 + 1;
+	static final int C_INT_F_2 = C_INT_F_1 + 1;
+	static final int C_INT_F_3 = C_INT_F_2 + 1;
 
-	static final int C_INT_ZERO = 11;
-	static final int C_INT_NEGATIVE_ONE = 12;
-	static final int C_INT_ONE = 13;
+	static final int C_INT_ZERO = C_INT_F_3 + 1;
+	static final int C_INT_NEGATIVE_ONE = C_INT_ZERO + 1;
+	static final int C_INT_ONE = C_INT_NEGATIVE_ONE + 1;
 
 	//The base <code>C_LONG_N</code> value, to which the number of EVEN bytes can be added to get the command value.
 	//E.g.: C_LONG_BASE + (4 / 2) == C_LONG_4
 	//      to write a long as 4 bytes
-	static final int C_LONG_BASE = 13;
+	static final int C_LONG_BASE = C_INT_ONE;
 	static final int C_LONG_2 = C_LONG_BASE + 1;
 	static final int C_LONG_4 = C_LONG_BASE + 2;
 	static final int C_LONG_6 = C_LONG_BASE + 3;
 	static final int C_LONG_8 = C_LONG_BASE + 4;
 
-	static final int C_LONG_F_2 = 18;
-	static final int C_LONG_F_4 = 19;
-	static final int C_LONG_F_6 = 20;
-	static final int C_LONG_ZERO = 21;
-	static final int C_LONG_NEGATIVE_ONE = 22;
+	static final int C_LONG_F_2 = C_LONG_8 + 1;
+	static final int C_LONG_F_4 = C_LONG_F_2 + 1;
+	static final int C_LONG_F_6 = C_LONG_F_4 + 1;
+	static final int C_LONG_ZERO = C_LONG_F_6 + 1;
+	static final int C_LONG_NEGATIVE_ONE = C_LONG_ZERO + 1;
 
-	static final int C_FLOAT = 23;
-	static final int C_DOUBLE = 24;
+	static final int C_FLOAT = C_LONG_NEGATIVE_ONE + 1;
+	static final int C_DOUBLE = C_FLOAT + 1;
 
-	static final int C_BOOLEAN_TRUE = 25;
-	static final int C_BOOLEAN_FALSE = 26;
+	static final int C_BOOLEAN_TRUE = C_DOUBLE + 1;
+	static final int C_BOOLEAN_FALSE = C_BOOLEAN_TRUE + 1;
 
-	static final int C_UTF = 27;
+	static final int C_UTF = C_BOOLEAN_FALSE + 1;
 	//The base <code>C_UTF_IDX_N</code> value, to which the number of bytes can be added to get the command value.
 	//E.g.: C_UTF_IDX_BASE + 2 == C_UTF_IDX_2
-	static final int C_UTF_IDX_BASE = 27;
+	static final int C_UTF_IDX_BASE = C_UTF;
 	static final int C_UTF_IDX_1 = C_UTF_IDX_BASE + 1;
 	static final int C_UTF_IDX_2 = C_UTF_IDX_BASE + 2;
 	static final int C_UTF_IDX_3 = C_UTF_IDX_BASE + 3;
 	static final int C_UTF_IDX_4 = C_UTF_IDX_BASE + 4;
-	static final int C_UTF_LOWBYTES = 32;
-	static final int C_UTF_PREFIXED = 33;
-	static final int C_UTF_PREFIXED_LOWBYTES = 34;
+	static final int C_UTF_LOWBYTES = C_UTF_IDX_4 + 1;
+	static final int C_UTF_PREFIXED = C_UTF_LOWBYTES + 1;
+	static final int C_UTF_PREFIXED_LOWBYTES = C_UTF_PREFIXED + 1;
 
-	static final int C_BYTEARRAY = 35;
-	static final int C_CHARS = 36;
+	static final int C_BYTEARRAY = C_UTF_PREFIXED_LOWBYTES + 1;
+	static final int C_CHARS = C_BYTEARRAY + 1;
 
-	static final int C_OBJECT_CLASSLOADER = 37;
-	static final int C_OBJECT_ARRAY = 38;
-	static final int C_OBJECT_EXTERNALIZABLE = 39;
+	static final int C_OBJECT_CLASSLOADER = C_CHARS + 1;
+	static final int C_OBJECT_ARRAY = C_OBJECT_CLASSLOADER + 1;
+	static final int C_OBJECT_EXTERNALIZABLE = C_OBJECT_ARRAY + 1;
 
 	//The base <code>C_OBJECT_IDX_N</code> value, to which the number of bytes can be added to get the command value.
 	//E.g.: C_OBJECT_IDX_BASE + 2 == C_OBJECT_IDX_2
-	static final int C_OBJECT_IDX_BASE = 39;
+	static final int C_OBJECT_IDX_BASE = C_OBJECT_EXTERNALIZABLE;
 	static final int C_OBJECT_IDX_1 = C_OBJECT_IDX_BASE + 1;
 	static final int C_OBJECT_IDX_2 = C_OBJECT_IDX_BASE + 2;
 	static final int C_OBJECT_IDX_3 = C_OBJECT_IDX_BASE + 3;
 	static final int C_OBJECT_IDX_4 = C_OBJECT_IDX_BASE + 4;
 
-	static final int C_OBJECT_NULL = 44;
-	static final int C_OBJECT_SERIALIZABLE = 45;
-	static final int C_OBJECT_TYPE = 46;
-	static final int C_OBJECT_VALUE = 47;
-	static final int C_OBJECT_ENUM = 48;
-	static final int C_OBJECT_ARRAY_ERROR = 49;
-	static final int C_OBJECT_EXTERNALIZABLE_ERROR = 50;
-	static final int C_OBJECT_SERIALIZABLE_ERROR = 51;
-	static final int C_OBJECT_CUSTOM_SERIALIZABLE = 52;
-	static final int C_OBJECT_CUSTOM_SERIALIZABLE_ERROR = 53;
+	static final int C_OBJECT_NULL = C_OBJECT_IDX_4 + 1;
+	static final int C_OBJECT_SERIALIZABLE = C_OBJECT_NULL + 1;
+	static final int C_OBJECT_TYPE = C_OBJECT_SERIALIZABLE + 1;
+	static final int C_OBJECT_VALUE = C_OBJECT_TYPE + 1;
+	static final int C_OBJECT_ENUM = C_OBJECT_VALUE + 1;
+	static final int C_OBJECT_ARRAY_ERROR = C_OBJECT_ENUM + 1;
+	static final int C_OBJECT_EXTERNALIZABLE_ERROR = C_OBJECT_ARRAY_ERROR + 1;
+	static final int C_OBJECT_SERIALIZABLE_ERROR = C_OBJECT_EXTERNALIZABLE_ERROR + 1;
+	static final int C_OBJECT_CUSTOM_SERIALIZABLE = C_OBJECT_SERIALIZABLE_ERROR + 1;
+	static final int C_OBJECT_CUSTOM_SERIALIZABLE_ERROR = C_OBJECT_CUSTOM_SERIALIZABLE + 1;
 
-	static final int C_OBJECT_UTF = 54;
+	static final int C_OBJECT_UTF = C_OBJECT_CUSTOM_SERIALIZABLE_ERROR + 1;
 	//The base <code>C_OBJECT_UTF_IDX_N</code> value, to which the number of bytes can be added to get the command value.
 	//E.g.: C_OBJECT_UTF_IDX_BASE + 2 == C_OBJECT_UTF_IDX_2
-	static final int C_OBJECT_UTF_IDX_BASE = 54;
+	static final int C_OBJECT_UTF_IDX_BASE = C_OBJECT_UTF;
 	static final int C_OBJECT_UTF_IDX_1 = C_OBJECT_UTF_IDX_BASE + 1;
 	static final int C_OBJECT_UTF_IDX_2 = C_OBJECT_UTF_IDX_BASE + 2;
 	static final int C_OBJECT_UTF_IDX_3 = C_OBJECT_UTF_IDX_BASE + 3;
 	static final int C_OBJECT_UTF_IDX_4 = C_OBJECT_UTF_IDX_BASE + 4;
-	static final int C_OBJECT_UTF_LOWBYTES = 59;
-	static final int C_OBJECT_UTF_PREFIXED = 60;
-	static final int C_OBJECT_UTF_PREFIXED_LOWBYTES = 61;
+	static final int C_OBJECT_UTF_LOWBYTES = C_OBJECT_UTF_IDX_4 + 1;
+	static final int C_OBJECT_UTF_PREFIXED = C_OBJECT_UTF_LOWBYTES + 1;
+	static final int C_OBJECT_UTF_PREFIXED_LOWBYTES = C_OBJECT_UTF_PREFIXED + 1;
 
-	static final int C_OBJECT_PROXY = 62;
+	static final int C_OBJECT_PROXY = C_OBJECT_UTF_PREFIXED_LOWBYTES + 1;
 
-	static final int C_MAX_COMMAND_VALUE = 62;
+	static final int C_MAX_COMMAND_VALUE = 63;
+	static {
+		if (TestFlag.ENABLED) {
+			//check that the last command value equals to the max command value constants
+			if (C_MAX_COMMAND_VALUE != C_OBJECT_PROXY) {
+				throw new AssertionError();
+			}
+		}
+	}
 
 	private static final int UTF_PREFIX_MIN_LEN = 8;
 
@@ -175,7 +188,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				return "byte";
 			case C_CHAR:
 				return "char";
-			case C_SHORT:
+			case C_SHORT_1:
+			case C_SHORT_2:
 				return "short";
 			case C_INT_4:
 			case C_INT_3:
@@ -993,8 +1007,13 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	@Override
 	public void writeShort(int v) throws IOException {
-		out.writeByte(C_SHORT);
-		out.writeShort(v);
+		if ((v & 0xFF00) == 0x0000) {
+			out.writeByte(C_SHORT_1);
+			out.writeByte(v);
+		} else {
+			out.writeByte(C_SHORT_2);
+			out.writeShort(v);
+		}
 	}
 
 	@Override

@@ -99,6 +99,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 					ContentWriterObjectOutput.C_OBJECT_IDX_2, ContentWriterObjectOutput.C_OBJECT_IDX_1 });
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_BOOLEAN = ImmutableUtils.makeImmutableNavigableSet(
 			new Integer[] { ContentWriterObjectOutput.C_BOOLEAN_FALSE, ContentWriterObjectOutput.C_BOOLEAN_TRUE });
+	private static final NavigableSet<Integer> EXPECTED_COMMANDS_SHORT = ImmutableUtils.makeImmutableNavigableSet(
+			new Integer[] { ContentWriterObjectOutput.C_SHORT_1, ContentWriterObjectOutput.C_SHORT_2 });
 
 	static class ReadState {
 		final DataInputStream in;
@@ -313,14 +315,35 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 	@Override
 	public short readShort() throws IOException {
-		state.expectCommand(ContentWriterObjectOutput.C_SHORT);
-		return state.in.readShort();
+		int cmd = state.expectCommands(EXPECTED_COMMANDS_SHORT);
+		switch (cmd) {
+			case ContentWriterObjectOutput.C_SHORT_1: {
+				//read as unsigned byte, as the MSB is zero
+				return (short) state.in.readUnsignedByte();
+			}
+			case ContentWriterObjectOutput.C_SHORT_2: {
+				return state.in.readShort();
+			}
+			default: {
+				throw new AssertionError(cmd);
+			}
+		}
 	}
 
 	@Override
 	public int readUnsignedShort() throws IOException {
-		state.expectCommand(ContentWriterObjectOutput.C_SHORT);
-		return state.in.readUnsignedShort();
+		int cmd = state.expectCommands(EXPECTED_COMMANDS_SHORT);
+		switch (cmd) {
+			case ContentWriterObjectOutput.C_SHORT_1: {
+				return state.in.readUnsignedByte();
+			}
+			case ContentWriterObjectOutput.C_SHORT_2: {
+				return state.in.readUnsignedShort();
+			}
+			default: {
+				throw new AssertionError(cmd);
+			}
+		}
 	}
 
 	@Override
@@ -1535,7 +1558,11 @@ public class ContentReaderObjectInput implements ObjectInput {
 				case ContentWriterObjectOutput.C_LONG_NEGATIVE_ONE: {
 					break;
 				}
-				case ContentWriterObjectOutput.C_SHORT: {
+				case ContentWriterObjectOutput.C_SHORT_1: {
+					state.in.readByte();
+					break;
+				}
+				case ContentWriterObjectOutput.C_SHORT_2: {
 					state.in.readShort();
 					break;
 				}

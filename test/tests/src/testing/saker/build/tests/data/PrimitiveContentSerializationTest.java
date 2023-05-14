@@ -39,6 +39,7 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 		SingleClassLoaderResolver clresolver = new SingleClassLoaderResolver("cl", testclassloader);
 		registry.register("tcl", clresolver);
 
+		short[] shorts = new short[] { 0, 1, 2, -1, -10, 0xFF, (short) 0xFFFF, (short) 0xFF00, 0x00FF };
 		int[] ints = new int[] { 0, 1, 2, -1, -10, 0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF, 0xFFFFFF00, 0xFFFFFF12,
 				0xFFFF1234, 0xFFFF0000, 0xFF000000, 0xFF123456 };
 		long[] longs = new long[] { 0, 1, 2, -1, -10, 0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF, 0xFFFFFFFFFFL,
@@ -66,6 +67,10 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 			out.writeObject(true);
 			out.writeObject(false);
 
+			for (short v : shorts) {
+				out.writeShort(v);
+				out.writeObject(v);
+			}
 			for (int v : ints) {
 				out.writeInt(v);
 				out.writeObject(v);
@@ -93,6 +98,10 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 			assertEquals(true, in.readObject());
 			assertEquals(false, in.readObject());
 
+			for (short v : shorts) {
+				assertEquals(v, in.readShort());
+				assertEquals(v, in.readObject());
+			}
 			for (int v : ints) {
 				assertEquals(v, in.readInt());
 				assertEquals(v, in.readObject());
