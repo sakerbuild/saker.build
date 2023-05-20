@@ -1005,12 +1005,14 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	@Override
 	public void writeByte(int v) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		out.writeByte(C_BYTE);
 		out.writeByte(v);
 	}
 
 	@Override
 	public void writeShort(int v) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		if ((v & 0xFF00) == 0x0000) {
 			out.writeByte(C_SHORT_1);
 			out.writeByte(v);
@@ -1022,11 +1024,13 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	@Override
 	public void writeChar(int v) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		out.writeByte(C_CHAR);
 		out.writeChar(v);
 	}
 
 	void writeRawVarInt(int v) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		while (true) {
 			int wb = v & 0x7F;
 			v = v >>> 7;
@@ -1043,6 +1047,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	@Override
 	public void writeInt(int v) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		switch (v & 0xFFFF_0000) {
 			case 0x0000_0000: {
 				//starts with 0x0000_xxxx
@@ -1125,6 +1130,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	@Override
 	public void writeLong(long v) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		long top4 = v & 0xFFFFFFFF_00000000L;
 		if (top4 == 0x00000000_00000000L) {
 			//starts with 0x00000000_xxxxxxxx
@@ -1178,18 +1184,21 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	@Override
 	public void writeFloat(float v) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		out.writeByte(C_FLOAT);
 		out.writeFloat(v);
 	}
 
 	@Override
 	public void writeDouble(double v) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		out.writeByte(C_DOUBLE);
 		out.writeDouble(v);
 	}
 
 	@Override
 	public void writeBytes(String s) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		out.writeByte(C_BYTEARRAY);
 		writeInt(s.length() * 2);
 		out.writeBytes(s);
@@ -1197,6 +1206,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	@Override
 	public void writeChars(String s) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		out.writeByte(C_CHARS);
 		writeInt(s.length());
 		out.writeChars(s);
@@ -1279,9 +1289,10 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 			if (prefixinfo != null) {
 				//both strings have a common starting characters
-				int common = prefixinfo.common;
+				final int common = prefixinfo.common;
 
-				int writecount = slen - common;
+				final int writecount = slen - common;
+				final DataOutputUnsyncByteArrayOutputStream out = this.out;
 				if (isLowBytesChars(charWriteBuffer, common, writecount)) {
 					out.ensureCapacity(out.size() + (1 + 5 + 5 + 5) + writecount);
 					out.writeByte(objwrite ? C_OBJECT_UTF_PREFIXED_LOWBYTES : C_UTF_PREFIXED_LOWBYTES);
@@ -1349,6 +1360,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	}
 
 	private void writeUtfWithIndexCommand(int oidx, int idxcommandbase) {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		if ((oidx & 0xFFFF0000) != 0) {
 			if ((oidx & 0xFF000000) != 0) {
 				out.writeByte(idxcommandbase + 4);
@@ -1370,6 +1382,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	}
 
 	private void writeObjectIdxWithCommandImpl(int oidx) {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		if ((oidx & 0xFFFF0000) != 0) {
 			if ((oidx & 0xFF000000) != 0) {
 				out.writeByte(C_OBJECT_IDX_4);
@@ -1450,8 +1463,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return;
 		}
 		if (ReflectUtils.isEnumOrEnumAnonymous(objclass)) {
-			out.writeByte(C_OBJECT_ENUM);
-			writeEnumImpl(obj, objclass);
+			writeEnumWithCommandImpl(obj, objclass);
 			return;
 		}
 		if (obj instanceof Externalizable) {
@@ -1492,6 +1504,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	@Override
 	public void write(int b) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		out.writeByte(C_BYTE);
 		out.write(b);
 	}
@@ -1506,6 +1519,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		if (len == 0) {
 			return;
 		}
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		out.writeByte(C_BYTEARRAY);
 		writeInt(len);
 		out.write(b, off, len);
@@ -1520,16 +1534,19 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	}
 
 	public void drainTo(OutputStream os) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		out.writeTo(os);
 		out.reset();
 	}
 
 	public void drainTo(ByteSink os) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		out.writeTo(os);
 		out.reset();
 	}
 
 	public ByteArrayRegion drainToBytes() {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		ByteArrayRegion result = out.toByteArrayRegion();
 		out.reset();
 		return result;
@@ -1565,10 +1582,13 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		return idx;
 	}
 
-	private void writeEnumImpl(Object obj, Class<? extends Object> objclass) throws IOException {
+	private void writeEnumWithCommandImpl(Object obj, Class<? extends Object> objclass) throws IOException {
 		if (objclass.isAnonymousClass()) {
 			objclass = objclass.getSuperclass();
 		}
+
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
+		out.writeByte(C_OBJECT_ENUM);
 		writeTypeWithCommandOrIdx(objclass);
 		Enum<?> e = (Enum<?>) obj;
 		out.writeStringLengthChars(e.name());
@@ -1577,6 +1597,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	private void writeExternalizableWithCommandImpl(Externalizable obj, Class<? extends Object> objclass)
 			throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		int startsize = out.size();
 		out.writeByte(C_OBJECT_EXTERNALIZABLE_4);
 		writeTypeWithCommandOrIdx(objclass);
@@ -1626,6 +1647,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	}
 
 	private void writeArrayImplWithCommandImpl(Object obj, Class<? extends Object> objclass) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		int startsize = out.size();
 		out.writeByte(C_OBJECT_ARRAY);
 		Class<?> componenttype = objclass.getComponentType();
@@ -1696,6 +1718,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	private void writeCustomSerializableWithCommand(Object obj, Class<?> clazz,
 			IOBiConsumer<Object, ContentWriterObjectOutput> serwriter) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		int startsize = out.size();
 		out.writeByte(C_OBJECT_CUSTOM_SERIALIZABLE);
 		writeTypeWithCommandOrIdx(clazz);
@@ -1718,6 +1741,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	}
 
 	private void writeSerializableWithCommand(Object obj) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		addSerializedObject(obj);
 		int startsize = out.size();
 		out.writeByte(C_OBJECT_SERIALIZABLE);
