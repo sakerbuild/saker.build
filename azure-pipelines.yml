@@ -99,6 +99,12 @@ steps:
   displayName: 'Build native lib'
   condition: and(succeeded(), eq( variables['Agent.OS'], 'Windows_NT' ))
 - task: PublishBuildArtifacts@1
+  condition: eq( variables['Agent.OS'], 'Windows_NT' )
+  displayName: 'Publish nativelib trace'
+  inputs:
+    pathtoPublish: build/build_compile_nativelib.trace
+    artifactName: '$(Agent.OS)_nativelib_trace_$(J_JAVA_MAJOR)'
+- task: PublishBuildArtifacts@1
   displayName: 'Publish native libs'
   condition: and(succeeded(), eq( variables['Agent.OS'], 'Windows_NT' ))
   inputs:
