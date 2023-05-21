@@ -42,6 +42,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
@@ -109,6 +110,9 @@ import sipka.syntax.parser.util.Pair;
 import testing.saker.build.flag.TestFlag;
 
 public class SakerParsedModel implements ScriptSyntaxModel {
+	//from tasks.lang / literal_content
+	private static final Pattern SIMPLE_LITERAL_REGEX = Pattern.compile("[^,\\(\\)\\[\\]\\{\\}:;\\s#]+");
+
 	private static final NavigableSet<String> STATEMENT_NAMES_IN_OUT_PARAMETERS = ImmutableUtils
 			.makeImmutableNavigableSet(new String[] { "out_parameter", "in_parameter" });
 
@@ -2770,6 +2774,10 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			Statement paramstm) {
 		List<Statement> comments = getTargetParameterPreComments(parentstatements, paramstm);
 		return createCommentBasedFormattedTextContent(comments);
+	}
+
+	private static boolean isSimpleLiteral(String str) {
+		return SIMPLE_LITERAL_REGEX.matcher(str).matches();
 	}
 
 	private static boolean isAllWhiteSpaceUntil(String str, int start, int endidx) {
@@ -5503,68 +5511,8 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			DocumentRegion pos = stringliteralstm.getPosition();
 			int startpos = pos.getOffset();
 			int endpos = pos.getEndOffset();
-			int literallen = insertliteral.length();
-			StringBuilder escaedsb = new StringBuilder(literallen * 3 / 2);
-			for (int i = 0; i < literallen; i++) {
-				char c = insertliteral.charAt(i);
-				if (c >= 0x20 && c <= 0x7e) {
-					escaedsb.append(c);
-					continue;
-				}
-				switch (c) {
-					case '\t': {
-						escaedsb.append("\\t");
-						break;
-					}
-					case '\b': {
-						escaedsb.append("\\b");
-						break;
-					}
-					case '\n': {
-						escaedsb.append("\\n");
-						break;
-					}
-					case '\r': {
-						escaedsb.append("\\r");
-						break;
-					}
-					case '\f': {
-						escaedsb.append("\\f");
-						break;
-					}
-					case '\"': {
-						escaedsb.append("\\\"");
-						break;
-					}
-					case '\'': {
-						escaedsb.append("\\\'");
-						break;
-					}
-					case '\\': {
-						escaedsb.append("\\\\");
-						break;
-					}
-					case '{': {
-						escaedsb.append("\\{");
-						break;
-					}
-					default: {
-						if (c < 0x20 && c == 0x7F) {
-							//control character in ascii range
-							//to octal string
-							escaedsb.append("\\");
-							escaedsb.append(Integer.toUnsignedString(c, 8));
-						} else {
-							//some other character which is not ascii
-							//append directly, and let the user handle it
-							escaedsb.append(c);
-						}
-						break;
-					}
-				}
-			}
-			SimpleLiteralCompletionProposal result = new SimpleLiteralCompletionProposal(startpos,
-					"\"" + escaedsb + "\"", type);
+			String escaedsb = escapeSimpleLiteralToStringLiteral(insertliteral);
+			SimpleLiteralCompletionProposal result = new SimpleLiteralCompletionProposal(startpos, escaedsb, type);
 			result.setReplaceLength(endpos - startpos);
 			if (offset != stringliteralstm.getEndOffset()) {
 				result.setSelectionOffset(startpos + result.getLiteral().length() - 1);
@@ -5573,9 +5521,102 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		};
 	}
 
+	private static String escapeSimpleLiteralToStringLiteral(String insertliteral) {
+		int literallen = insertliteral.length();
+		StringBuilder escapedsb = new StringBuilder(literallen * 3 / 2);
+		escapedsb.append('"');
+		for (int i = 0; i < literallen; i++) {
+			char c = insertliteral.charAt(i);
+			if (c >= 0x20 && c <= 0x7e) {
+				switch (c) {
+					case '\"': {
+						escapedsb.append("\\\"");
+						break;
+					}
+					case '\'': {
+						escapedsb.append("\\\'");
+						break;
+					}
+					case '\\': {
+						escapedsb.append("\\\\");
+						break;
+					}
+					case '{': {
+						escapedsb.append("\\{");
+						break;
+					}
+					default: {
+						escapedsb.append(c);
+						break;
+					}
+				}
+				continue;
+			}
+			switch (c) {
+				case '\t': {
+					escapedsb.append("\\t");
+					break;
+				}
+				case '\b': {
+					escapedsb.append("\\b");
+					break;
+				}
+				case '\n': {
+					escapedsb.append("\\n");
+					break;
+				}
+				case '\r': {
+					escapedsb.append("\\r");
+					break;
+				}
+				case '\f': {
+					escapedsb.append("\\f");
+					break;
+				}
+				default: {
+					if (c < 0x20 || c == 0x7F) {
+						//control character in ascii range
+						//to octal string
+						escapedsb.append("\\");
+						escapedsb.append(Integer.toUnsignedString(c, 8));
+					} else {
+						//some other character which is not ascii
+						//append directly, and let the user handle it
+						escapedsb.append(c);
+					}
+					break;
+				}
+			}
+		}
+		escapedsb.append('"');
+		return escapedsb.toString();
+	}
+
 	private static ProposalFactory proposalFactoryForPosition(int startpos, int endpos) {
 		return (type, insertliteral) -> {
 			SimpleLiteralCompletionProposal result = new SimpleLiteralCompletionProposal(startpos, insertliteral, type);
+			switch (type) {
+				case TYPE_LITERAL:
+				case TYPE_ENUM:
+				case TYPE_DIRECTORY:
+				case TYPE_FILE:
+				case TYPE_EXECUTION_USER_PARAMETER:
+				case TYPE_PATH:
+				case TYPE_GLOBAL_VARIABLE:
+				case TYPE_STATIC_VARIABLE:
+				case TYPE_VARIABLE:
+				case TOKEN_TYPE_SUBSCRIPT_LITERAL:
+				case TOKEN_TYPE_MAP_KEY_LITERAL: {
+					//only for these sepcific proposal types, as we don't want to escape e.g. example.task()
+					if (!isSimpleLiteral(insertliteral)) {
+						result.setLiteral(escapeSimpleLiteralToStringLiteral(insertliteral));
+					}
+					break;
+				}
+				default: {
+					break;
+				}
+			}
 			result.setReplaceLength(endpos - startpos);
 			return result;
 		};

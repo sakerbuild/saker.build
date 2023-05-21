@@ -36,6 +36,9 @@ public class ProposalApplyScriptModelTest extends ScriptModelTestCase {
 		files.putFile(DEFAULT_BUILD_FILE.getParent().resolve("dir1/file4.txt"), "");
 		files.putFile(DEFAULT_BUILD_FILE.getParent().resolve("dir2/file5.txt"), "");
 
+		files.putFile(DEFAULT_BUILD_FILE.getParent().resolve("file space.txt"), "");
+		files.putFile(DEFAULT_BUILD_FILE.getParent().resolve("dir space/file.txt"), "");
+
 		files.putFile(DEFAULT_BUILD_FILE.getParent().resolve("ufile\u12341.txt"), "");
 	}
 
@@ -45,6 +48,7 @@ public class ProposalApplyScriptModelTest extends ScriptModelTestCase {
 		testSimpleVar();
 		testBaseVar();
 		testFile();
+		testDirectory();
 		testStringFile();
 
 		testEmpty();
@@ -54,6 +58,8 @@ public class ProposalApplyScriptModelTest extends ScriptModelTestCase {
 		testInvalidTaskName();
 
 		testParameterInsert();
+
+		testSpecialEnumLiterals();
 	}
 
 	private void testParameterInsert() throws Exception {
@@ -69,7 +75,7 @@ public class ProposalApplyScriptModelTest extends ScriptModelTestCase {
 			assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "SimpleParam1")),
 					"example.task( SimpleParam1 )");
 		}
-		
+
 		{
 			String data = "example.task( first ,  )";
 			model.createModel(() -> new UnsyncByteArrayInputStream(data.getBytes(StandardCharsets.UTF_8)));
@@ -142,6 +148,8 @@ public class ProposalApplyScriptModelTest extends ScriptModelTestCase {
 				"\"ufile\u12341.txt\"");
 		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "\"dir2/file5.txt\"")),
 				"\"dir2/file5.txt\"");
+		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "\"file space.txt\"")),
+				"\"file space.txt\"");
 
 		//after "f, before i" 
 		proposals = model.getCompletionProposals(2);
@@ -171,11 +179,24 @@ public class ProposalApplyScriptModelTest extends ScriptModelTestCase {
 		proposals = model.getCompletionProposals(data.length());
 		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "file1.txt")), "file1.txt");
 		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "file2.txt")), "file2.txt");
+		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "file space.txt")),
+				"\"file space.txt\"");
 
 		//after f, before i 
 		proposals = model.getCompletionProposals(1);
 		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "file1.txt")), "file1.txt");
 		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "file2.txt")), "file2.txt");
+	}
+
+	private void testDirectory() throws Exception {
+		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
+		List<? extends ScriptCompletionProposal> proposals;
+
+		String data = "di";
+		model.createModel(() -> new UnsyncByteArrayInputStream(data.getBytes(StandardCharsets.UTF_8)));
+		proposals = model.getCompletionProposals(data.length());
+		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "dir1/")), "dir1/");
+		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "dir space/")), "\"dir space/\"");
 	}
 
 	private void testSimpleVar() throws Exception {
@@ -213,6 +234,24 @@ public class ProposalApplyScriptModelTest extends ScriptModelTestCase {
 		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "Target")),
 				"include(Target)\nbuild {}");
 		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "build")), "include(build)\nbuild {}");
+	}
+
+	private void testSpecialEnumLiterals() throws Exception {
+		ScriptSyntaxModel model = environment.getModel(DEFAULT_BUILD_FILE);
+
+		String data = "special.enum.literals(Param1: aa)";
+		model.createModel(() -> new UnsyncByteArrayInputStream(data.getBytes(StandardCharsets.UTF_8)));
+
+		List<? extends ScriptCompletionProposal> proposals = model.getCompletionProposals(data.length() - 1);
+		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "aa:bb")),
+				"special.enum.literals(Param1: \"aa:bb\")");
+		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "aa ss")),
+				"special.enum.literals(Param1: \"aa ss\")");
+		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "aa#hh")),
+				"special.enum.literals(Param1: \"aa#hh\")");
+		assertEquals(applyProposal(data, requireProposalDisplayString(proposals, "aa(po")),
+				"special.enum.literals(Param1: \"aa(po\")");
+
 	}
 
 }
