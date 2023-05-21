@@ -624,7 +624,7 @@ _configure(
 					saker.java.classpath.bundle(Bundles: "saker.apiextract-api-v{ global(VERSION_saker.apiextract) }"),
 				],
 				SDKs: {
-					Java: saker.java.sdk(9),
+					Java: saker.java.sdk([9, 10, 11]),
 				},
 				SourceVersion: RELEASE_8,
 				TargetVersion: RELEASE_8,

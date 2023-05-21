@@ -1,42 +1,61 @@
 trigger:
 - master
 
-pool:
-  vmImage: 'ubuntu-latest'
-
 strategy:
   matrix:
     Java8:
+      imageName: 'ubuntu-latest'
       J_JAVA_MAJOR: '8'
       J_JDKS: '8 9'
     Java9:
+      imageName: 'ubuntu-latest'
       J_JAVA_MAJOR: '9'
       J_JDKS: '8 9'
     Java11:
+      imageName: 'ubuntu-latest'
       J_JAVA_MAJOR: '11'
       J_JDKS: '8 9 11'
     Java12:
+      imageName: 'ubuntu-latest'
       J_JAVA_MAJOR: '12'
       J_JDKS: '8 9 12'
     Java13:
+      imageName: 'ubuntu-latest'
       J_JAVA_MAJOR: '13'
       J_JDKS: '8 9 13'
     Java14:
+      imageName: 'ubuntu-latest'
       J_JAVA_MAJOR: '14'
       J_JDKS: '8 9 14'
     Java15:
+      imageName: 'ubuntu-latest'
       J_JAVA_MAJOR: '15'
       J_JDKS: '8 9 15'
     Java16:
+      imageName: 'ubuntu-latest'
       J_JAVA_MAJOR: '16'
       J_JDKS: '8 9 16'
+    Java11-win:
+      imageName: 'windows-latest'
+      J_JAVA_MAJOR: '11'
+pool:
+  vmImage: $(imageName)
+
 steps:
 - script: curl -L https://api.nest.saker.build/bundle/download/saker.build-v$(curl -s https://mirror.nest.saker.build/badges/saker.build/latest.txt) -o saker.build.jar
   displayName: 'Download saker.build'
+  condition: and(succeeded(), or( eq( variables['Agent.OS'], 'Linux' ), eq( variables['Agent.OS'], 'Darwin' ) ))
+- script: powershell $ProgressPreference='silentlyContinue';Invoke-WebRequest "https://api.nest.saker.build/bundle/download/saker.build-v$((Invoke-WebRequest "https://mirror.nest.saker.build/badges/saker.build/latest.txt" -UseBasicParsing).Content)" -OutFile saker.build.jar
+  displayName: 'Download saker.build'
+  condition: and(succeeded(), eq( variables['Agent.OS'], 'Windows_NT' ))
+
 - script: curl -s https://gist.githubusercontent.com/Sipkab/1505a8659af20003ae09295e99d3cba3/raw/azure_ubuntu_jdksetup_variables.sh -o /tmp/azure_ubuntu_jdksetup_variables.sh
   displayName: 'Download JDK setup script'
+  condition: and(succeeded(), or( eq( variables['Agent.OS'], 'Linux' ), eq( variables['Agent.OS'], 'Darwin' ) ))
 - script: bash /tmp/azure_ubuntu_jdksetup_variables.sh $(J_JDKS)
   displayName: 'Setup JDKs'
+  condition: and(succeeded(), or( eq( variables['Agent.OS'], 'Linux' ), eq( variables['Agent.OS'], 'Darwin' ) ))
+
 - script: |
     java -jar saker.build.jar -bd build -EUbuild.ci=true "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64);$(JAVA_HOME_15_X64);$(JAVA_HOME_16_X64)" -trace pwd://build/build_test.trace "testjava$(J_JAVA_MAJOR)"
     retVal=$?
@@ -56,6 +75,7 @@ steps:
   inputs:
     pathtoPublish: build/build_test.trace
     artifactName: 'test_trace_$(J_JAVA_MAJOR)'
+
 - script: java -jar saker.build.jar -bd build -EUbuild.ci=true "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64);$(JAVA_HOME_15_X64);$(JAVA_HOME_16_X64)" -trace pwd://build/build_exportall.trace exportall
   displayName: 'Export'
 - task: PublishBuildArtifacts@1
@@ -70,10 +90,24 @@ steps:
     pathtoPublish: build/std.file.place/release/
     artifactName: 'export_jars_$(J_JAVA_MAJOR)'
     parallel: true
+
+- script: java -jar saker.build.jar -bd build -EUbuild.ci=true "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64);$(JAVA_HOME_15_X64);$(JAVA_HOME_16_X64)" -trace pwd://build/build_compile_nativelib.trace compile native/win32/native.build
+  displayName: 'Build native lib'
+  condition: and(succeeded(), eq( variables['Agent.OS'], 'Windows_NT' ))
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish native libs'
+  condition: and(succeeded(), eq( variables['Agent.OS'], 'Windows_NT' ))
+  inputs:
+    pathtoPublish: build/saker.msvc.clink/nativelib/
+    artifactName: 'win_nativelib'
+    parallel: true
+
 - script: |
     cd test/cmdline-integration
     bash run-tests.sh ../../build/std.file.place/release/saker.build.jar
   displayName: 'Run command line integration tests'
+  condition: and(succeeded(), or( eq( variables['Agent.OS'], 'Linux' ), eq( variables['Agent.OS'], 'Darwin' ) ))
+
 - script: java -jar saker.build.jar -bd df_build -EUbuild.ci=true "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64);$(JAVA_HOME_15_X64);$(JAVA_HOME_16_X64)" exportall
   displayName: 'Dogfood export'
 - script: cmp build/saker.jar.create/saker.build.jar df_build/saker.jar.create/saker.build.jar
