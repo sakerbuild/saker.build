@@ -68,13 +68,17 @@ steps:
       exit $retVal
     fi
   displayName: 'Test'
+  condition: and(succeeded(), or( eq( variables['Agent.OS'], 'Linux' ), eq( variables['Agent.OS'], 'Darwin' ) ))
   # allow failure on Java 11 as the JVM occasionally crashes during testing
+- script: java -jar saker.build.jar -bd build -EUbuild.ci=true "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64);$(JAVA_HOME_15_X64);$(JAVA_HOME_16_X64)" -trace pwd://build/build_test.trace "testjava$(J_JAVA_MAJOR)"
+  displayName: 'Test'
+  condition: and(succeeded(), eq( variables['Agent.OS'], 'Windows_NT' ))
 - task: PublishBuildArtifacts@1
   condition: always()
   displayName: 'Publish test trace'
   inputs:
     pathtoPublish: build/build_test.trace
-    artifactName: 'test_trace_$(J_JAVA_MAJOR)'
+    artifactName: '$(Agent.OS)_test_trace_$(J_JAVA_MAJOR)'
 
 - script: java -jar saker.build.jar -bd build -EUbuild.ci=true "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64);$(JAVA_HOME_15_X64);$(JAVA_HOME_16_X64)" -trace pwd://build/build_exportall.trace exportall
   displayName: 'Export'
@@ -83,12 +87,12 @@ steps:
   displayName: 'Publish export trace'
   inputs:
     pathtoPublish: build/build_exportall.trace
-    artifactName: 'export_trace_$(J_JAVA_MAJOR)'
+    artifactName: '$(Agent.OS)_export_trace_$(J_JAVA_MAJOR)'
 - task: PublishBuildArtifacts@1
   displayName: 'Publish exported libraries'
   inputs:
     pathtoPublish: build/std.file.place/release/
-    artifactName: 'export_jars_$(J_JAVA_MAJOR)'
+    artifactName: '$(Agent.OS)_export_jars_$(J_JAVA_MAJOR)'
     parallel: true
 
 - script: java -jar saker.build.jar -bd build -EUbuild.ci=true "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64);$(JAVA_HOME_15_X64);$(JAVA_HOME_16_X64)" -trace pwd://build/build_compile_nativelib.trace compile native/win32/native.build
