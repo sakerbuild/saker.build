@@ -14,5 +14,6 @@ compile(
 		ClassPath: $CompileClassPath,
 		Identifier: "core-{$JDK}{ $buildconfig[testingid] }{ $buildconfig[apiid][$JDK] }",
 		CompilerOptions: $JavaCompileOptions,
+		GenerateNativeHeaders: true,
 	)
 }

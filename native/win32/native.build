@@ -1,0 +1,46 @@
+static(ARCH_MAP) = {
+	x86: x86
+	x64: amd64
+}
+compile(
+	in corecompile = include(Target: compile, Path: ../../saker.build)[compilebyjdkmajor][8][CorePass]
+) {
+	$preset = saker.msvc.coptions.preset(Preset: [dll, unicode, optimize-release])
+	
+	foreach $arch in [x64, x86] 
+		with $ccompile, $clink {
+		$ccompile = saker.msvc.ccompile(
+			watcher/*.cpp
+			Architecture: $arch
+			CompilerOptions: [
+				{
+					IncludeDirectories: [
+						sdk.path(Name: Java, Identifier: include)
+						sdk.path(Name: Java, Identifier: include.win32)
+						$corecompile[HeaderDirectory]
+					]
+					SDKs: {
+						Java: saker.java.sdk()
+					}
+					MacroDefinitions: {
+						_HAS_EXCEPTIONS: "0"	# don't use exceptions
+					}
+					SimpleCompilerParameters: [
+						/W4		# high warning level
+					]
+				}
+				$preset
+			]
+			Identifier: nativelib
+		)
+		
+		$clink = saker.msvc.clink(
+			$ccompile
+			LinkerOptions: [
+				$preset
+			]
+			Identifier: nativelib
+			BinaryName: "saker.osnative.watcher.NativeWatcherService.{ static(ARCH_MAP)[$arch] }"
+		)
+	}
+}

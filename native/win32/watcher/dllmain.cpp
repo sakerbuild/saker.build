@@ -21,8 +21,8 @@
 #include <string>
 #include <utility>
 
-#include <jni.h>
-#include "nativeh.h"
+#include <saker_osnative_watcher_NativeWatcherService.h>
+#include <saker_osnative_watcher_windows_SakerWindowsWatchService.h>
 
 //we could use FILE_NOTIFY_EXTENDED_INFORMATION if we are above the version "Minimum supported client Windows 10, version 1709[desktop apps only]"
 //    https://msdn.microsoft.com/en-us/library/windows/desktop/mt843499(v=vs.85).aspx
@@ -121,12 +121,14 @@ private:
 		}
 	};
 
-	static const DWORD COMMAND_KEY_EXIT = -1;
+	static const DWORD COMMAND_KEY_EXIT = 0xFFFFFFFF;
 	static const DWORD COMMAND_KEY_POLL = 1;
 	static const DWORD COMMAND_KEY_ADD_FILE = 2;
 	static const DWORD COMMAND_KEY_REMOVE_FILE = 3;
 	static const DWORD COMMAND_KEY_DELETE_FILE = 4;
 	static const DWORD COMMAND_KEY_POLL_DONE = 5;
+
+	static const DWORD THREAD_EXIT_ERROR = 0xFFFFFFFF;
 
 	void executeExitThread(DWORD exitcode) {
 		if (this->env != nullptr) {
@@ -139,7 +141,7 @@ private:
 		ExitThread(exitcode);
 	}
 
-	void handleCompletionEntries(ULONG entriesremoved, bool polling) {
+	void handleCompletionEntries(ULONG entriesremoved, bool /*polling*/) {
 		//iterate in reverse, as handling the result can pop the entry from the vector
 		//    i < entriesremoved condition suits as size_t is unsigned
 		bool exit = false;
@@ -248,7 +250,7 @@ private:
 		pollEventNotifies.clear();
 	}
 
-	void runThread() {
+	DWORD runThread() {
 		vm->AttachCurrentThreadAsDaemon((void**)&env, NULL);
 		while (true) {
 			ULONG entriesremoved;
@@ -267,14 +269,14 @@ private:
 					w->closeHandles();
 					postOverflowEvent(w);
 				}
-				executeExitThread(-1);
+				executeExitThread(THREAD_EXIT_ERROR);
 			}
 			handleCompletionEntries(entriesremoved, false);
 		}
 		//we never reach this
 	}
 
-	void handleNotifyInformations(DirectoryWatch* watch, DWORD bytestransferred, const BYTE* p, LPOVERLAPPED ol) {
+	void handleNotifyInformations(DirectoryWatch* watch, DWORD bytestransferred, const BYTE* p, LPOVERLAPPED /*ol*/) {
 		if (bytestransferred > 0) {
 			while (true) {
 				const FILE_NOTIFY_INFORMATION& info = *reinterpret_cast<const FILE_NOTIFY_INFORMATION*>(p);
@@ -372,8 +374,7 @@ public:
 
 	static DWORD WINAPI threadRunnable(_In_ LPVOID lpParameter) {
 		WatcherService* thiz = reinterpret_cast<WatcherService*>(lpParameter);
-		thiz->runThread();
-		return 0;
+		return thiz->runThread();
 	}
 
 	DirectoryWatch* addKey(std::wstring filename, int flags, jobject keyobject) {
@@ -393,6 +394,12 @@ public:
 			port,
 			(ULONG_PTR)watch,
 			1);
+		if (fileport != port) {
+			// in case of success, the return value should be the same as the input port
+			// we seems to have failed
+			delete watch;
+			return nullptr;
+		}
 		if (port == NULL) {
 			delete watch;
 			return nullptr;
@@ -478,7 +485,7 @@ JNIEXPORT jlong JNICALL Java_saker_osnative_watcher_windows_SakerWindowsWatchSer
 * Method:    CloseWatcher_native
 * Signature: (J)V
 */
-JNIEXPORT void JNICALL Java_saker_osnative_watcher_windows_SakerWindowsWatchService_CloseWatcher_1native(JNIEnv * env, jclass serviceclass, jlong service) {
+JNIEXPORT void JNICALL Java_saker_osnative_watcher_windows_SakerWindowsWatchService_CloseWatcher_1native(JNIEnv * env, jclass /*serviceclass*/, jlong service) {
 	WatcherService* realservice = reinterpret_cast<WatcherService*>(service);
 	jobject globalref = realservice->javaServiceClassRef;
 	delete realservice;
@@ -486,7 +493,7 @@ JNIEXPORT void JNICALL Java_saker_osnative_watcher_windows_SakerWindowsWatchServ
 }
 
 JNIEXPORT jlong JNICALL Java_saker_osnative_watcher_windows_SakerWindowsWatchService_CreateKeyObject_1native
-(JNIEnv * env, jclass serviceclass, jlong service, jstring path, jint flags, jobject keyobject) {
+(JNIEnv * env, jclass /*serviceclass*/, jlong service, jstring path, jint flags, jobject keyobject) {
 	WatcherService* realservice = reinterpret_cast<WatcherService*>(service);
 
 	const auto* pathchars = env->GetStringChars(path, nullptr);
@@ -507,7 +514,7 @@ JNIEXPORT jlong JNICALL Java_saker_osnative_watcher_windows_SakerWindowsWatchSer
 * Method:    CloseKey_native
 * Signature: (JJ)V
 */
-JNIEXPORT void JNICALL Java_saker_osnative_watcher_windows_SakerWindowsWatchService_CloseKey_1native(JNIEnv * env, jclass serviceclass, jlong service, jlong key) {
+JNIEXPORT void JNICALL Java_saker_osnative_watcher_windows_SakerWindowsWatchService_CloseKey_1native(JNIEnv * env, jclass /*serviceclass*/, jlong service, jlong key) {
 	WatcherService* realservice = reinterpret_cast<WatcherService*>(service);
 	WatcherService::DirectoryWatch* realkey = reinterpret_cast<WatcherService::DirectoryWatch*>(key);
 	jobject keyref = realkey->keyObject;
@@ -520,7 +527,7 @@ JNIEXPORT void JNICALL Java_saker_osnative_watcher_windows_SakerWindowsWatchServ
 * Method:    PollKey_native
 * Signature: (JJ)V
 */
-JNIEXPORT void JNICALL Java_saker_osnative_watcher_windows_SakerWindowsWatchService_PollKey_1native(JNIEnv * env, jclass serviceclass, jlong service, jlong key) {
+JNIEXPORT void JNICALL Java_saker_osnative_watcher_windows_SakerWindowsWatchService_PollKey_1native(JNIEnv * /*env*/, jclass /*serviceclass*/, jlong service, jlong key) {
 	WatcherService* realservice = reinterpret_cast<WatcherService*>(service);
 	WatcherService::DirectoryWatch* realkey = reinterpret_cast<WatcherService::DirectoryWatch*>(key);
 	realservice->poll(realkey);
@@ -531,20 +538,21 @@ JNIEXPORT void JNICALL Java_saker_osnative_watcher_windows_SakerWindowsWatchServ
 * Method:    KeyIsValid_native
 * Signature: (JJ)Z
 */
-JNIEXPORT jboolean JNICALL Java_saker_osnative_watcher_windows_SakerWindowsWatchService_KeyIsValid_1native(JNIEnv * env, jclass serviceclass, jlong service, jlong key) {
+JNIEXPORT jboolean JNICALL Java_saker_osnative_watcher_windows_SakerWindowsWatchService_KeyIsValid_1native(JNIEnv * /*env*/, jclass /*serviceclass*/, jlong /*service*/, jlong key) {
 	WatcherService::DirectoryWatch* realkey = reinterpret_cast<WatcherService::DirectoryWatch*>(key);
 	return realkey->anyErrorCode == ERROR_SUCCESS;
 }
 
 #define IMPLEMENTATION_JAVA_CLASS_NAME u"saker.osnative.watcher.windows.SakerWindowsWatchService"
 
-JNIEXPORT jstring JNICALL Java_saker_osnative_watcher_NativeWatcherService_getImplementationClassName_1native(JNIEnv * env, jclass clazz) {
+JNIEXPORT jstring JNICALL Java_saker_osnative_watcher_NativeWatcherService_getImplementationClassName_1native(JNIEnv * env, jclass /*clazz*/) {
 	return env->NewString((const jchar*)IMPLEMENTATION_JAVA_CLASS_NAME, (sizeof(IMPLEMENTATION_JAVA_CLASS_NAME)) / sizeof(char16_t) - 1);
 }
 
-BOOL APIENTRY DllMain(HMODULE hModule,
+BOOL APIENTRY DllMain(
+	HMODULE /*hModule*/,
 	DWORD  ul_reason_for_call,
-	LPVOID lpReserved
+	LPVOID /*lpReserved*/
 ) {
 	switch (ul_reason_for_call) {
 		case DLL_PROCESS_ATTACH:
