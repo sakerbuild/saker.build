@@ -256,6 +256,66 @@ public class TestExternalScriptInformationProvider implements ExternalScriptInfo
 
 			taskInfos.put(taskname, taskinfo);
 		}
+		{
+			TaskName taskname = TaskName.valueOf("operator.enum.paramed");
+			SimpleTaskInformation taskinfo = new SimpleTaskInformation(taskname);
+			String taskdoc = "doc_" + taskname;
+			taskinfo.setInformation(createPlainFormattedTextContent(taskdoc));
+
+			Collection<TaskParameterInformation> parameters = new ArrayList<>();
+			SimpleTaskParameterInformation enparam = new SimpleTaskParameterInformation(taskinfo, "Param1");
+
+			SimpleTypeInformation enumtype = new SimpleTypeInformation(TypeInformationKind.ENUM);
+			enumtype.setTypeSimpleName("entype");
+			enumtype.setInformation(createPlainFormattedTextContent(taskdoc + "_" + enumtype.getTypeSimpleName()));
+
+			Map<String, FieldInformation> enumvalues = new TreeMap<>();
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "/EN1"));
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "*EN2"));
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "%EN3"));
+			
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "+EN4"));
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "-EN5"));
+			
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "=EN6"));
+			
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "!=EN7"));
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "==EN8"));
+			
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "<<EN9"));
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), ">>EN10"));
+			
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), ">EN11"));
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), ">=EN12"));
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "<EN13"));
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "<=EN14"));
+			
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "||EN15"));
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "&&EN16"));
+			
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "|EN17"));
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "&EN18"));
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "^EN19"));
+			
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "!EN20"));
+			putField(enumvalues, createFieldWithInformation(getDoc(enumtype), "~EN21"));
+			
+			enumtype.setEnumValues(enumvalues);
+
+			enparam.setTypeInformation(enumtype);
+			enparam.setInformation(createPlainFormattedTextContent(taskdoc + "_" + enparam.getParameterName()));
+			parameters.add(enparam);
+
+			SimpleTaskParameterInformation listparam = new SimpleTaskParameterInformation(taskinfo, "ListParam1");
+			SimpleTypeInformation listtype = new SimpleTypeInformation(TypeInformationKind.COLLECTION);
+			listtype.setElementTypes(ImmutableUtils.asUnmodifiableArrayList(enumtype));
+			listparam.setTypeInformation(listtype);
+			parameters.add(listparam);
+
+			taskinfo.setParameters(parameters);
+
+			taskInfos.put(taskname, taskinfo);
+		}
 	}
 
 	private static final NavigableMap<String, LiteralInformation> literals = new TreeMap<>();

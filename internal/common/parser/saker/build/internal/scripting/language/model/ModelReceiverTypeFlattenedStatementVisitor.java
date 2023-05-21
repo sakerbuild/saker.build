@@ -254,7 +254,7 @@ public final class ModelReceiverTypeFlattenedStatementVisitor implements Flatten
 		if (!setAnalyzerReceiverTypes(token)) {
 			return null;
 		}
-		String op = stm.getValue();
+		String op = stm.firstValue("operator_value");
 		Set<TypedModelInformation> subreceivertypes;
 		switch (op) {
 			case "-": {

@@ -399,7 +399,7 @@ public abstract class ScriptModelTestCase extends SakerTestCase {
 					}
 				}
 				if (c != freq) {
-					throw fail(c + " - " + freq + " for " + dispstr);
+					throw fail(c + " - " + freq + " for " + dispstr + " in " + proposals);
 				}
 			}
 			return this;

@@ -550,6 +550,17 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		leafsset.add("target_parameter_name");
 		leafsset.add("target_parameter_name_content");
 
+		leafsset.add("equalityop");
+		leafsset.add("assignment");
+		leafsset.add("shiftop");
+		leafsset.add("comparison");
+		leafsset.add("addop");
+		leafsset.add("multop");
+		leafsset.add("boolop");
+		leafsset.add("bitop");
+
+		leafsset.add("unary");
+
 		PROPOSAL_LEAF_NAMES = ImmutableUtils.unmodifiableNavigableSet(leafsset);
 	}
 
@@ -3752,6 +3763,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		if (scriptpath == null) {
 			return;
 		}
+		if (base == null) {
+			base = "";
+		}
 		List<ScriptCompletionProposal> result = new ArrayList<>();
 		try {
 			SakerPath basepath = SakerPath.valueOf(base);
@@ -4319,6 +4333,13 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			return false;
 		}
 
+		public boolean hasEnumProposal(String name) {
+			if (enumProposalsInfos.containsKey(new FieldProposalKey(name))) {
+				return true;
+			}
+			return false;
+		}
+
 		public void complete() {
 			completeImpl(parameterProposalsInstances, parameterProposalsInfos);
 			completeImpl(fieldProposalsInstances, fieldProposalsInfos);
@@ -4486,7 +4507,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				NavigableSet<String> presentmapkeys = getMapElementKeyLiterals(mapparent);
 				addMapKeyFieldProposals(result, null, rectypes, presentmapkeys, proposalfactory, collector);
 				addGenericExpressionProposals(derived, result, statementstack, rectypes,
-						lit -> !presentmapkeys.contains(lit), proposalfactory, collector, analyzer);
+						lit -> !presentmapkeys.contains(lit), proposalfactory, collector, analyzer, null);
 				break;
 			}
 			case "list_element":
@@ -4755,6 +4776,10 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 						//don't add simple literal proposals if there's already a field proposal present
 						continue;
 					}
+					if (collector.hasEnumProposal(lit)) {
+						//don't add simple literal proposals if there's already an enum proposal present
+						continue;
+					}
 					if (KEYWORD_LITERALS.containsKey(lit)) {
 						//don't duplicate keyword literals
 						continue;
@@ -4767,7 +4792,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				}
 				for (Entry<String, SimpleTextPartition> entry : KEYWORD_LITERALS.entrySet()) {
 					String lit = entry.getKey();
-					if (lit.length() > base.length() && lit.startsWith(base)) {
+					if (isPhraseStartsWithProposal(lit, base)) {
 						SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_LITERAL, lit);
 						proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_LITERAL);
 						collector.add(new LiteralProposalKey(lit), proposal, entry.getValue());
@@ -4827,6 +4852,76 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				}
 				break;
 			}
+			case "equalityop":
+			case "assignment":
+			case "shiftop":
+			case "comparison":
+			case "addop":
+			case "multop":
+			case "boolop":
+			case "bitop": {
+				Statement opvalstm = stm.firstScope("operator_value");
+				if (opvalstm == null) {
+					//shouldn't happen, just in case
+					break;
+				}
+				if (offset >= opvalstm.getOffset() && offset <= opvalstm.getEndOffset()) {
+					//at any position in the operator value statement
+					if (isInScope(statementstack, "expression", "list_element")) {
+						//only display them if we are in a new line in a list element. 
+						//e.g.
+						//  [
+						//      /W4
+						//      /
+						//  ]    ^-here
+						//because otherwise there would be no valid continuations
+						int nlidx = stm.getRawValue().indexOf('\n');
+						if (nlidx < 0) {
+							nlidx = stm.getRawValue().indexOf('\r');
+						}
+						if (nlidx >= 0 && opvalstm.getOffset() - stm.getOffset() > nlidx) {
+							//a new line character is before the operator_value, which is necessary as stated above
+							ProposalFactory proposalfactory = proposalFactoryForPosition(opvalstm.getOffset(),
+									opvalstm.getEndOffset());
+
+							Statement listelemparent = findFirstParentToken(statementstack, "list_element");
+							ArrayDeque<Statement> mapparentcontexts = createParentContextsStartingFrom(listelemparent,
+									statementstack);
+							Collection<? extends TypedModelInformation> rectypes = analyzer
+									.getExpressionReceiverType(derived, listelemparent, mapparentcontexts);
+
+							String phrase = opvalstm.getValue().substring(0, offset - opvalstm.getOffset());
+
+							addGenericExpressionProposals(derived, result, statementstack, rectypes,
+									Functionals.alwaysPredicate(), proposalfactory, collector, analyzer, phrase);
+						}
+					}
+				}
+				break;
+			}
+			case "unary": {
+				Statement opvalstm = stm.firstScope("operator_value");
+				if (opvalstm == null) {
+					//shouldn't happen, just in case
+					break;
+				}
+				if (offset >= opvalstm.getOffset() && offset <= opvalstm.getEndOffset()) {
+					//at any position in the operator value statement
+					ProposalFactory proposalfactory = proposalFactoryForPosition(opvalstm.getOffset(),
+							opvalstm.getEndOffset());
+
+					Collection<? extends TypedModelInformation> rectypes = analyzer.getExpressionReceiverType(derived,
+							stm, statementstack);
+
+					String phrase = opvalstm.getValue().substring(0, offset - opvalstm.getOffset());
+					System.out.println("Phrase: " + phrase);
+
+					addGenericExpressionProposals(derived, result, statementstack, rectypes,
+							Functionals.alwaysPredicate(), proposalfactory, collector, analyzer, phrase);
+
+				}
+				break;
+			}
 			case "target_parameter_name_content": {
 				String base = stm.getRawValue().substring(0, offset - startpos);
 
@@ -4859,6 +4954,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 				break;
 			}
 		}
+
 	}
 
 	private static void addTaskNameLiteralProposalsIfAppropriate(ProposalCollector collector,
@@ -5488,35 +5584,42 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	private void addGenericExpressionProposals(DerivedData derived, Collection<? super ScriptCompletionProposal> result,
 			Deque<? extends Statement> statementstack, Collection<? extends TypedModelInformation> receivertypes,
 			Predicate<String> includeliteralpredicate, ProposalFactory proposalfactory, ProposalCollector collector,
-			ScriptModelInformationAnalyzer analyzer) {
+			ScriptModelInformationAnalyzer analyzer, String base) {
 
-		addTaskNameLiteralProposalsIfAppropriate(collector, analyzer, receivertypes, null, proposalfactory);
-		addBuildTargetProposalsIfAppropriate(derived, null, receivertypes, result, proposalfactory, collector);
+		addTaskNameLiteralProposalsIfAppropriate(collector, analyzer, receivertypes, base, proposalfactory);
+		addBuildTargetProposalsIfAppropriate(derived, base, receivertypes, result, proposalfactory, collector);
 
 		if (isInScope(statementstack, ImmutableUtils.asUnmodifiableArrayList("param_content", "first_parameter"))) {
 			Statement firstparamparent = findFirstParentToken(statementstack, "first_parameter");
 			if (firstparamparent.firstScope("param_name") == null && firstparamparent.firstScope("param_eq") == null) {
 				Statement taskparent = findFirstParentToken(statementstack, "task");
 				if (taskparent != null) {
-					addTaskParameterProposals(derived, taskparent, "", proposalfactory, collector, analyzer);
+					addTaskParameterProposals(derived, taskparent, base, proposalfactory, collector, analyzer);
 				}
 			}
 		}
 
 		addVariableProposals(derived, result, statementstack, proposalfactory);
 
-		addEnumProposals(collector, receivertypes, null, proposalfactory);
-		addExternalLiteralProposals(result, null, receivertypes, proposalfactory, collector, analyzer);
-		addTaskProposals(derived, null, proposalfactory, collector, analyzer);
-		collectPathProposals(result, "", getPathProposalSorterForReceiverTypes(receivertypes), proposalfactory);
-		addUserParameterProposals(result, null, receivertypes, proposalfactory, collector);
+		addEnumProposals(collector, receivertypes, base, proposalfactory);
+		addExternalLiteralProposals(result, base, receivertypes, proposalfactory, collector, analyzer);
+		addTaskProposals(derived, base, proposalfactory, collector, analyzer);
+		collectPathProposals(result, base, getPathProposalSorterForReceiverTypes(receivertypes), proposalfactory);
+		addUserParameterProposals(result, base, receivertypes, proposalfactory, collector);
 		for (String lit : derived.getSimpleLiteralContents()) {
 			if (collector.hasFieldProposal(lit)) {
 				//don't add simple literal proposals if there's already a field proposal present
 				continue;
 			}
+			if (collector.hasEnumProposal(lit)) {
+				//don't add simple literal proposals if there's already an enum proposal present
+				continue;
+			}
 			if (KEYWORD_LITERALS.containsKey(lit)) {
 				//don't duplicate keyword literals
+				continue;
+			}
+			if (base != null && !isPhraseStartsWithOrEqualsProposal(lit, base)) {
 				continue;
 			}
 			if (includeliteralpredicate.test(lit)) {
@@ -5527,6 +5630,9 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		}
 		for (Entry<String, SimpleTextPartition> entry : KEYWORD_LITERALS.entrySet()) {
 			String lit = entry.getKey();
+			if (base != null && !isPhraseStartsWithOrEqualsProposal(lit, base)) {
+				continue;
+			}
 			if (includeliteralpredicate.test(lit)) {
 				SimpleLiteralCompletionProposal proposal = proposalfactory.create(TYPE_LITERAL, lit);
 				proposal.setMetaData(PROPOSAL_META_DATA_TYPE, PROPOSAL_META_DATA_TYPE_LITERAL);
@@ -5567,7 +5673,7 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			Deque<? extends Statement> statementstack, Collection<? extends TypedModelInformation> receivertypes,
 			ProposalFactory proposalfactory, ProposalCollector collector, ScriptModelInformationAnalyzer analyzer) {
 		addGenericExpressionProposals(derived, result, statementstack, receivertypes, Functionals.alwaysPredicate(),
-				proposalfactory, collector, analyzer);
+				proposalfactory, collector, analyzer, null);
 	}
 
 //	private Collection<ExternalScriptInformationProvider> getExternalScriptInformationProviders() {

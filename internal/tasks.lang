@@ -57,6 +57,9 @@ language TasksLanguage {
 	value marker(regex pattern) {
 		skip pattern 1;
 	}
+	value marker_val(regex pattern) {
+		matches pattern 1;
+	}
 	
 	value parentheses {
 		include marker as paren_start("\(") 1;
@@ -171,7 +174,7 @@ language TasksLanguage {
 				}
 			}
 			value unary 1 {
-				matches "[!~\-]" 1;
+				include marker_val as operator_value("[!~\-]") 1;
 				value operator_subject ?{
 					include expression_proto(0) 1;
 				}
@@ -292,49 +295,49 @@ language TasksLanguage {
 			}
 			value equalityop 1{
 				include WHITESPACE +;
-				matches "[!=]=" 1;
+				include marker_val as operator_value("[!=]=") 1;
 				include SINGLE_WHITESPACE 1;
 				include expression_placeholder as expression_placeholder 1;
 			}
 			value assignment 1 {
 				include WHITESPACE +;
-				include marker as assign_operator_eq("=") 1;
+				include marker_val as operator_value("=") 1;
 				include SINGLE_WHITESPACE 1;
 				include expression_placeholder as expression_placeholder 1;
 			}
 			value shiftop 1{
 				include WHITESPACE +;
-				matches "<<|>>" 1;
+				include marker_val as operator_value("<<|>>") 1;
 				include SINGLE_WHITESPACE 1;
 				include expression_placeholder as expression_placeholder 1;
 			}
 			value comparison 1 {
 				include WHITESPACE +;
-				matches "[<>]=?" 1;
+				include marker_val as operator_value("[<>]=?") 1;
 				include SINGLE_WHITESPACE 1;
 				include expression_placeholder as expression_placeholder 1;
 			}
 			value addop 1 {
 				include WHITESPACE +;
-				matches "[\+\-]" 1;
+				include marker_val as operator_value("[\+\-]") 1;
 				include SINGLE_WHITESPACE 1;
 				include expression_placeholder as expression_placeholder 1;
 			}
 			value multop 1 {
 				include WHITESPACE +;
-				matches "[\*\/%]" 1;
+				include marker_val as operator_value("[\*\/%]") 1;
 				include SINGLE_WHITESPACE 1;
 				include expression_placeholder as expression_placeholder 1;
 			}
 			value boolop 1 {
 				include WHITESPACE +;
-				matches "\|\||&&" 1;
+				include marker_val as operator_value("\|\||&&") 1;
 				include SINGLE_WHITESPACE 1;
 				include expression_placeholder as expression_placeholder 1;
 			}
 			value bitop 1 {
 				include WHITESPACE +;
-				matches "[&\^|]" 1;
+				include marker_val as operator_value("[&\^|]") 1;
 				include SINGLE_WHITESPACE 1;
 				include expression_placeholder as expression_placeholder 1;
 			}

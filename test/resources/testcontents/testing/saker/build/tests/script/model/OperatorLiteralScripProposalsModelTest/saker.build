@@ -1,0 +1,127 @@
+operator.enum.paramed(Param1: /)
+operator.enum.paramed(Param1: "/")
+
+operator.enum.paramed(ListParam1: /)
+operator.enum.paramed(ListParam1: [/])
+
+operator.enum.paramed(ListParam1: [/EN1, /])
+
+operator.enum.paramed(ListParam1: [
+T1, 
+/
+])
+
+operator.enum.paramed(ListParam1: [
+T2 
+/
+OTHVAL
+])
+
+operator.enum.paramed(ListParam1: [
+TT 
+/
+])
+
+operator.enum.paramed(ListParam1: [
+TT 
+*
+])
+
+operator.enum.paramed(ListParam1: [
+TT 
+%
+])
+
+operator.enum.paramed(ListParam1: [
+TT 
++
+])
+
+operator.enum.paramed(ListParam1: [
+TT 
+-
+])
+
+
+operator.enum.paramed(ListParam1: [
+TT 
+=
+])
+
+operator.enum.paramed(ListParam1: [
+TT 
+!=
+])
+
+operator.enum.paramed(ListParam1: [
+TT 
+==
+])
+
+operator.enum.paramed(ListParam1: [
+TT 
+<<
+])
+
+operator.enum.paramed(ListParam1: [
+TT 
+>>
+])
+
+operator.enum.paramed(ListParam1: [
+TC 
+>
+])
+
+operator.enum.paramed(ListParam1: [
+TC 
+>=
+])
+
+operator.enum.paramed(ListParam1: [
+TC 
+<
+])
+
+operator.enum.paramed(ListParam1: [
+TC 
+<=
+])
+
+operator.enum.paramed(ListParam1: [
+TT 
+||
+])
+
+operator.enum.paramed(ListParam1: [
+TT 
+&&
+])
+
+operator.enum.paramed(ListParam1: [
+TB 
+|
+])
+
+operator.enum.paramed(ListParam1: [
+TB 
+&
+])
+
+operator.enum.paramed(ListParam1: [
+TB 
+^
+])
+
+operator.enum.paramed(ListParam1: [
+TU 
+!
+])
+
+operator.enum.paramed(ListParam1: [
+TU 
+~
+])
+
+operator.enum.paramed(ListParam1: !)
+operator.enum.paramed(ListParam1: ~)

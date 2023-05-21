@@ -724,7 +724,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				}
 				case "bitop": {
 					final int prec;
-					switch (scope.value.getValue()) {
+					String op = scope.value.firstValue("operator_value");
+					switch (op) {
 						case "&": {
 							prec = PRECEDENCE_LEVEL_8_BITAND;
 							break;
@@ -738,7 +739,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 							break;
 						}
 						default: {
-							throw new AssertionError("unknown operator: " + scope.value.getValue());
+							throw new AssertionError("unknown operator: " + op);
 						}
 					}
 					Statement exprplaceholder = scope.value.firstScope(STM_EXPRESSION_PLACEHOLDER);
@@ -753,7 +754,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				}
 				case "boolop": {
 					final int prec;
-					switch (scope.value.getValue()) {
+					String op = scope.value.firstValue("operator_value");
+					switch (op) {
 						case "&&": {
 							prec = PRECEDENCE_LEVEL_11_CONDAND;
 							break;
@@ -763,7 +765,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 							break;
 						}
 						default: {
-							throw new AssertionError("unknown operator: " + scope.value.getValue());
+							throw new AssertionError("unknown operator: " + op);
 						}
 					}
 					Statement exprplaceholder = scope.value.firstScope(STM_EXPRESSION_PLACEHOLDER);
@@ -1985,7 +1987,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			public SakerTaskFactory visitUnary(FlattenedToken token, List<? extends FlattenedToken> subject) {
 				Statement stm = token.getStatement();
 				SakerTaskFactory unarysubexp = evaluateFlattenedStatements(subject, this);
-				String op = stm.getValue();
+				String op = stm.firstValue("operator_value");
 				switch (op) {
 					case "-": {
 						if (unarysubexp instanceof SakerLiteralTaskFactory) {
@@ -2071,7 +2073,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				Statement stm = token.getStatement();
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
-				switch (stm.getValue()) {
+				String op = stm.firstValue("operator_value");
+				switch (op) {
 					case "+": {
 						return new AddTaskFactory(leftfac, rightfac);
 					}
@@ -2079,7 +2082,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 						return new SubtractTaskFactory(leftfac, rightfac);
 					}
 					default: {
-						throw new AssertionError("invalid add operator: " + stm.getValue());
+						throw new AssertionError("invalid add operator: " + op);
 					}
 				}
 			}
@@ -2090,7 +2093,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				Statement stm = token.getStatement();
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
-				switch (stm.getValue()) {
+				String op = stm.firstValue("operator_value");
+				switch (op) {
 					case "*": {
 						return new MultiplyTaskFactory(leftfac, rightfac);
 					}
@@ -2101,7 +2105,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 						return new ModulusTaskFactory(leftfac, rightfac);
 					}
 					default: {
-						throw new AssertionError("invalid mult operator: " + stm.getValue());
+						throw new AssertionError("invalid mult operator: " + op);
 					}
 				}
 			}
@@ -2112,7 +2116,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				Statement stm = token.getStatement();
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
-				switch (stm.getValue()) {
+				String op = stm.firstValue("operator_value");
+				switch (op) {
 					case "==": {
 						return new EqualsTaskFactory(leftfac, rightfac);
 					}
@@ -2120,7 +2125,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 						return new NotEqualsTaskFactory(leftfac, rightfac);
 					}
 					default: {
-						throw new AssertionError("invalid equality operator: " + stm.getValue());
+						throw new AssertionError("invalid equality operator: " + op);
 					}
 				}
 			}
@@ -2131,7 +2136,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				Statement stm = token.getStatement();
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
-				switch (stm.getValue()) {
+				String op = stm.firstValue("operator_value");
+				switch (op) {
 					case "<": {
 						return new LessThanTaskFactory(leftfac, rightfac);
 					}
@@ -2145,7 +2151,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 						return new GreaterThanEqualsTaskFactory(leftfac, rightfac);
 					}
 					default: {
-						throw new AssertionError("invalid comparison operator: " + stm.getValue());
+						throw new AssertionError("invalid comparison operator: " + op);
 					}
 				}
 			}
@@ -2156,7 +2162,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				Statement stm = token.getStatement();
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
-				switch (stm.getValue()) {
+				String op = stm.firstValue("operator_value");
+				switch (op) {
 					case "<<": {
 						return new ShiftLeftTaskFactory(leftfac, rightfac);
 					}
@@ -2164,7 +2171,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 						return new ShiftRightTaskFactory(leftfac, rightfac);
 					}
 					default: {
-						throw new AssertionError("invalid shift operator: " + stm.getValue());
+						throw new AssertionError("invalid shift operator: " + op);
 					}
 				}
 			}
@@ -2175,7 +2182,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				Statement stm = token.getStatement();
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
-				switch (stm.getValue()) {
+				String op = stm.firstValue("operator_value");
+				switch (op) {
 					case "&": {
 						return new BitAndTaskFactory(leftfac, rightfac);
 					}
@@ -2186,7 +2194,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 						return new BitXorTaskFactory(leftfac, rightfac);
 					}
 					default: {
-						throw new AssertionError("invalid bit operator: " + stm.getValue());
+						throw new AssertionError("invalid bit operator: " + op);
 					}
 				}
 			}
@@ -2197,7 +2205,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 				Statement stm = token.getStatement();
 				SakerTaskFactory leftfac = evaluateFlattenedStatements(left, this);
 				SakerTaskFactory rightfac = evaluateFlattenedStatements(right, this);
-				switch (stm.getValue()) {
+				String op = stm.firstValue("operator_value");
+				switch (op) {
 					case "&&": {
 						return new BooleanAndTaskFactory(leftfac, rightfac);
 					}
@@ -2205,7 +2214,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 						return new BooleanOrTaskFactory(leftfac, rightfac);
 					}
 					default: {
-						throw new AssertionError("invalid bool operator: " + stm.getValue());
+						throw new AssertionError("invalid bool operator: " + op);
 					}
 				}
 			}
