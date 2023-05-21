@@ -35,9 +35,9 @@ strategy:
       imageName: 'ubuntu-latest'
       J_JAVA_MAJOR: '16'
       J_JDKS: '8 9 16'
-    Java11-win:
+    Java8-win:
       imageName: 'windows-latest'
-      J_JAVA_MAJOR: '11'
+      J_JAVA_MAJOR: '8'
 pool:
   vmImage: $(imageName)
 
