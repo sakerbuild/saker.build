@@ -210,14 +210,15 @@ public final class BuildTargetBootstrapperTaskFactory
 		NavigableSet<String> targetparamnames = bttask.getTargetInputParameterNames();
 		NavigableMap<String, TaskIdentifier> paramscopy = ObjectUtils.newTreeMap(parameters);
 		if (targetparamnames != null) {
-			paramscopy.navigableKeySet().retainAll(targetparamnames);
-			final String ftargetname = targetname;
-			ObjectUtils.iterateOrderedIterables(targetparamnames, parameters.navigableKeySet(), (l, r) -> {
-				if (l == null) {
-					SakerLog.warning().println("Target " + ftargetname + " in file " + buildfile.getSakerPath()
-							+ " has no parameter named: " + r);
-				}
-			});
+			if (paramscopy.navigableKeySet().retainAll(targetparamnames)) {
+				final String ftargetname = targetname;
+				ObjectUtils.iterateOrderedIterables(targetparamnames, parameters.navigableKeySet(), (l, r) -> {
+					if (l == null) {
+						SakerLog.warning().println("Target " + ftargetname + " in file " + buildfile.getSakerPath()
+								+ " has no parameter named: " + r);
+					}
+				});
+			}
 		}
 
 		SakerPath taskworkingdir = taskcontext.getTaskWorkingDirectory().getSakerPath();

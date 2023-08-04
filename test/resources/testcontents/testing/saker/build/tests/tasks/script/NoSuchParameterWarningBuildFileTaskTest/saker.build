@@ -1,0 +1,8 @@
+build {
+	parameterized(input: changedSomething, nonexistent: nonex)
+}
+parameterized(
+	in input = something
+) {
+	print($input)
+}
