@@ -752,6 +752,9 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 	}
 
 	private static final long serialVersionUID = 1L;
+	private static final int CLASS_HASH_CODE = WildcardPath.class.hashCode();
+
+	private static final String[] ROOT_SLASH_STRING_ARRAY = new String[] { SakerPath.ROOT_SLASH };
 
 	private String[] splits;
 
@@ -770,6 +773,8 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 	 * <p>
 	 * The argument will be split up by <code>'/'</code> and <code>'\\'</code> characters. The path is considered to be
 	 * absolute with the same rules as {@link SakerPath}.
+	 * <p>
+	 * Trailing slash (<code>'/'</code> or <code>'\\'</code>) will be ignored by this function.
 	 * 
 	 * @param path
 	 *            The path.
@@ -788,7 +793,8 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 	 * Creates a new wildcard path for the specified path names.
 	 * <p>
 	 * The argument is not sanity checked in any way. If it includes slashes, or other semantically important
-	 * characters, they are not removed or split up.
+	 * characters, they are not removed or split up. Passing an array containing invalid path names is considered to be
+	 * undefined behaviour.
 	 * <p>
 	 * The array will be cloned, any modifications to it won't propagate to the created wildcard.
 	 * 
@@ -1256,7 +1262,30 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 
 	@Override
 	public String toString() {
-		return StringUtils.toStringJoin("/", splits);
+		String[] splits = this.splits;
+		int len = splits.length;
+		switch (len) {
+			case 0: {
+				return "";
+			}
+			case 1: {
+				return splits[0];
+			}
+			default: {
+				StringBuilder sb;
+				if (splits[0].equals("/")) {
+					//the wildcard starts with the slash root path, don't append the first path name
+					sb = new StringBuilder();
+				} else {
+					sb = new StringBuilder(splits[0]);
+				}
+				for (int i = 1; i < len; i++) {
+					sb.append('/');
+					sb.append(splits[i]);
+				}
+				return sb.toString();
+			}
+		}
 	}
 
 	@Override
@@ -1276,10 +1305,7 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 
 	@Override
 	public int hashCode() {
-		final int prime = 31;
-		int result = 1;
-		result = prime * result + Arrays.hashCode(splits);
-		return result;
+		return CLASS_HASH_CODE + Arrays.hashCode(splits);
 	}
 
 	@Override
@@ -1317,17 +1343,20 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 	}
 
 	private static String[] splitPath(String path) {
-		if ("".equals(path)) {
-			return new String[0];
+		if (path.isEmpty()) {
+			return ObjectUtils.EMPTY_STRING_ARRAY;
 		}
 		String[] splits = FileUtils.splitPath(path);
 		if (splits.length == 0) {
-			if ("/".equals(path) || "\\".equals(path)) {
-				return new String[] { SakerPath.ROOT_SLASH };
+			if (path.length() == 1) {
+				char c = path.charAt(0);
+				if (c == '/' || c == '\\') {
+					return ROOT_SLASH_STRING_ARRAY;
+				}
 			}
 			throw new InvalidPathFormatException("Failed to parse path: \"" + path + "\"");
 		}
-		if (path.startsWith("/")) {
+		if (path.charAt(0) == '/') {
 			// absolute, linux, mac
 			// String[] nsplit = new String[splits.length + 1];
 			// nsplit[0] = "/";
@@ -1350,7 +1379,7 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 	}
 
 	private static boolean isWildcardedPathPart(String part) {
-		if (part.contains("*")) {
+		if (part.indexOf('*') >= 0) {
 			return true;
 		}
 		return false;
@@ -1389,7 +1418,7 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 			return ImmutableUtils.singletonNavigableMap(splitspath, exactitem);
 		}
 		int startidx;
-		NavigableMap<SakerPath, T> currentdirs;
+		final NavigableMap<SakerPath, T> currentdirs;
 		if (isWildcardedPathPart(root)) {
 			if (root.endsWith(":")) {
 				startidx = 1;
@@ -1524,7 +1553,7 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 		while (pi < pathslen && wci < wildcard.length) {
 			String currentpath = paths.get(pi++);
 			String currentwildcard = wildcard[wci++];
-			if (currentwildcard.equals("**")) {
+			if ("**".equals(currentwildcard)) {
 				// recursive directory wildcard
 				if (wci >= wildcard.length) {
 					// ** is at the end of the path
@@ -1533,9 +1562,9 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 				String nextwildcard;
 				do {
 					nextwildcard = wildcard[wci++];
-				} while (nextwildcard.equals("**") && wci < wildcard.length);
+				} while ("**".equals(nextwildcard) && wci < wildcard.length);
 
-				if (nextwildcard.equals("**")) {
+				if ("**".equals(nextwildcard)) {
 					// ** is at the end of the path
 					return true;
 				}
@@ -1577,7 +1606,7 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 		while (pi < pathslen && wci < wildcard.length) {
 			String currentpath = paths.get(pi++);
 			String currentwildcard = wildcard[wci++];
-			if (currentwildcard.equals("**")) {
+			if ("**".equals(currentwildcard)) {
 				// recursive directory wildcard
 				// if theres a ** part, then the path is always finishable, as if the next parts doesn't match
 				//    then the ** can just ignore it

@@ -80,6 +80,8 @@ public class WildcardTest extends SakerTestCase {
 				setOf(bdroottxt, wdroottxt, wdfolderroottxt, wdsubfolderroottxt));
 		assertEquals(WildcardPath.valueOf("folder/**").getFiles(files, wd).keySet(),
 				setOf(wdfolder, wdfolderroottxt, wdsubfolder, wdsubfolderroottxt));
+		//trailing slash is ignored:
+		assertEquals(WildcardPath.valueOf("**/*folder/").getFiles(files, wd).keySet(), setOf(wdfolder, wdsubfolder));
 
 		assertEquals(WildcardPath.valueOf("").getFiles(files, wd).keySet(), setOf(wd));
 
@@ -97,6 +99,16 @@ public class WildcardTest extends SakerTestCase {
 		assertFalse(SakerPathFiles
 				.hasRelativePath(WildcardPath.valueOf("/**/file*.txt").getFiles(fp, SakerPath.PATH_SLASH)));
 
+		assertEquals(WildcardPath.valueOf("").toString(), "");
+		assertEquals(WildcardPath.valueOf("/").toString(), "/");
+		assertEquals(WildcardPath.valueOf("/test").toString(), "/test");
+		assertEquals(WildcardPath.valueOf("/*").toString(), "/*");
+		assertEquals(WildcardPath.valueOf("*:").toString(), "*:");
+		assertEquals(WildcardPath.valueOf("*d:").toString(), "*d:");
+		assertEquals(WildcardPath.valueOf("*x*:").toString(), "*x*:");
+		assertEquals(WildcardPath.valueOf("*/").toString(), "*");
+		assertEquals(WildcardPath.valueOf("*/").toString(), "*");
+		assertEquals(WildcardPath.valueOf("*d:/").toString(), "*d:");
 	}
 
 	private static void assertIncludes(String wildcard, String path) throws AssertionError {
