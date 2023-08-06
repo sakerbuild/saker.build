@@ -44,14 +44,14 @@ public class TestScriptModellingEnvironment implements ScriptModellingEnvironmen
 	public void init(ScriptModellingEngine engine, Set<SakerPath> files) {
 		System.out.println("TestScriptModellingEnvironment.init() " + files);
 		this.models = new TreeMap<>();
-		for (SakerPath scriptfile : files) {
-			SakerPathFiles.requireAbsolutePath(scriptfile);
-			ProviderHolderPathKey pathkey = configuration.getPathConfiguration().getPathKey(scriptfile);
+		for (SakerPath scriptfilepath : files) {
+			SakerPathFiles.requireAbsolutePath(scriptfilepath, "script file path");
+			ProviderHolderPathKey pathkey = configuration.getPathConfiguration().getPathKey(scriptfilepath);
 			IOSupplier<? extends ByteSource> inputsupplier = () -> pathkey.getFileProvider()
 					.openInput(pathkey.getPath());
 			ScriptSyntaxModel model = engine.createModel(
-					configuration.getScriptConfiguration().getScriptParsingOptions(scriptfile), inputsupplier);
-			models.put(scriptfile, model);
+					configuration.getScriptConfiguration().getScriptParsingOptions(scriptfilepath), inputsupplier);
+			models.put(scriptfilepath, model);
 		}
 	}
 

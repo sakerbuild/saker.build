@@ -66,7 +66,7 @@ public class RepositoryManager implements Closeable {
 
 	public RepositoryManager(Path storageDirectoryPath, ClassPathLoadManager classPathManager,
 			Path environmentJarPath) {
-		SakerPathFiles.requireAbsolutePath(storageDirectoryPath);
+		SakerPathFiles.requireAbsolutePath(storageDirectoryPath, "storage directory path");
 
 		this.storageDirectoryPath = storageDirectoryPath;
 		this.classPathManager = classPathManager;

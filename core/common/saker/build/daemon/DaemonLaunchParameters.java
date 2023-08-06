@@ -231,7 +231,7 @@ public final class DaemonLaunchParameters implements Externalizable, Cloneable {
 
 		public Builder setStorageDirectory(SakerPath storageDirectory) {
 			if (storageDirectory != null) {
-				SakerPathFiles.requireAbsolutePath(storageDirectory);
+				SakerPathFiles.requireAbsolutePath(storageDirectory, "storage directory");
 				result.storageDirectory = storageDirectory;
 			} else {
 				result.storageDirectory = null;
@@ -265,7 +265,7 @@ public final class DaemonLaunchParameters implements Externalizable, Cloneable {
 
 		public Builder setClusterMirrorDirectory(SakerPath clusterMirrorDirectory) {
 			if (clusterMirrorDirectory != null) {
-				SakerPathFiles.requireAbsolutePath(clusterMirrorDirectory);
+				SakerPathFiles.requireAbsolutePath(clusterMirrorDirectory, "cluster mirror directory");
 				result.clusterMirrorDirectory = clusterMirrorDirectory;
 			} else {
 				result.clusterMirrorDirectory = null;

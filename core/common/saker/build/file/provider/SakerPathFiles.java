@@ -2427,8 +2427,8 @@ public class SakerPathFiles {
 			throws NullPointerException, InvalidPathFormatException {
 		Objects.requireNonNull(firstprovider, "first file provider");
 		Objects.requireNonNull(secondprovider, "second file provider");
-		requireAbsolutePath(firstpath);
-		requireAbsolutePath(secondpath);
+		requireAbsolutePath(firstpath, "first path");
+		requireAbsolutePath(secondpath, "second path");
 		for (SakerFileProvider w; (w = firstprovider.getWrappedProvider()) != null;) {
 			firstpath = firstprovider.resolveWrappedPath(firstpath);
 			firstprovider = w;
@@ -2464,7 +2464,7 @@ public class SakerPathFiles {
 		Objects.requireNonNull(fileprovider, "file provider");
 		Objects.requireNonNull(localpath, "local path");
 		requireAbsolutePath(path);
-		requireAbsolutePath(localpath);
+		requireAbsolutePath(localpath, "local path");
 		for (SakerFileProvider w; (w = fileprovider.getWrappedProvider()) != null;) {
 			path = fileprovider.resolveWrappedPath(path);
 			fileprovider = w;
@@ -2504,7 +2504,7 @@ public class SakerPathFiles {
 	 *            The base path.
 	 * @param provider
 	 *            The test path file provider.
-	 * @param path
+	 * @param testpath
 	 *            The test path.
 	 * @return <code>true</code> if the second path is a subpath of the first.
 	 * @throws NullPointerException
@@ -2515,20 +2515,20 @@ public class SakerPathFiles {
 	 * @see FileProviderKey
 	 */
 	public static boolean isSubPath(SakerFileProvider baseprovider, SakerPath basepath, SakerFileProvider provider,
-			SakerPath path) throws NullPointerException, InvalidPathFormatException {
+			SakerPath testpath) throws NullPointerException, InvalidPathFormatException {
 		Objects.requireNonNull(baseprovider, "base provider");
 		Objects.requireNonNull(provider, "provider");
-		requireAbsolutePath(basepath);
-		requireAbsolutePath(path);
+		requireAbsolutePath(basepath, "base path");
+		requireAbsolutePath(testpath, "test path");
 		for (SakerFileProvider w; (w = baseprovider.getWrappedProvider()) != null;) {
 			basepath = baseprovider.resolveWrappedPath(basepath);
 			baseprovider = w;
 		}
 		for (SakerFileProvider w; (w = provider.getWrappedProvider()) != null;) {
-			path = provider.resolveWrappedPath(path);
+			testpath = provider.resolveWrappedPath(testpath);
 			provider = w;
 		}
-		return path.startsWith(basepath) && SakerPathFiles.isSameProvider(baseprovider, provider);
+		return testpath.startsWith(basepath) && SakerPathFiles.isSameProvider(baseprovider, provider);
 	}
 
 	/**

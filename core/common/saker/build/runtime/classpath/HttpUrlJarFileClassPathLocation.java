@@ -205,7 +205,7 @@ public final class HttpUrlJarFileClassPathLocation implements ClassPathLocation,
 		public HttpUrlJarFileClassPathLoader(URL url, SakerPath subDirectory) {
 			this.url = url;
 			this.subDirectory = subDirectory == null ? SakerPath.EMPTY
-					: SakerPathFiles.requireRelativePath(subDirectory);
+					: SakerPathFiles.requireRelativePath(subDirectory, "sub directory");
 		}
 
 		@Override

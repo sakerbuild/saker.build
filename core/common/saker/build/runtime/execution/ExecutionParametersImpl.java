@@ -296,7 +296,7 @@ public final class ExecutionParametersImpl implements ExecutionParameters {
 
 	public void setMirrorDirectory(SakerPath mirrorDirectory) {
 		if (mirrorDirectory != null) {
-			SakerPathFiles.requireAbsolutePath(mirrorDirectory);
+			SakerPathFiles.requireAbsolutePath(mirrorDirectory, "mirror directory");
 		}
 		this.mirrorDirectory = mirrorDirectory;
 	}

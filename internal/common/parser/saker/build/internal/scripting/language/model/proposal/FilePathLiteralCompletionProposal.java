@@ -56,7 +56,7 @@ public class FilePathLiteralCompletionProposal implements ScriptCompletionPropos
 	public FilePathLiteralCompletionProposal(SimpleLiteralCompletionProposal proposal,
 			ScriptModellingEnvironment modellingEnvironment, ProviderHolderPathKey pathKey, FileEntry attrs,
 			SakerPath executionPath) {
-		SakerPathFiles.requireAbsolutePath(executionPath);
+		SakerPathFiles.requireAbsolutePath(executionPath, "execution path");
 		this.proposal = proposal;
 		this.modellingEnvironment = modellingEnvironment;
 		this.pathKey = pathKey;

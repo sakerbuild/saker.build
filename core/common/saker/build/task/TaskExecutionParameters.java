@@ -115,7 +115,7 @@ public final class TaskExecutionParameters implements Externalizable {
 		if (buildDirectory == null) {
 			this.buildDirectory = null;
 		} else {
-			SakerPathFiles.requireRelativePath(buildDirectory);
+			SakerPathFiles.requireRelativePath(buildDirectory, "build directory");
 			if (!buildDirectory.isForwardRelative()) {
 				throw new InvalidPathFormatException("Path is not forward relative: " + buildDirectory);
 			}

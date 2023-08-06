@@ -98,9 +98,8 @@ public final class BuildFileTargetTaskIdentifier implements TaskIdentifier, Exte
 			NavigableMap<String, ? extends TaskIdentifier> parameters)
 			throws InvalidPathFormatException, NullPointerException {
 		Objects.requireNonNull(targetName, "target name");
-		Objects.requireNonNull(filePath, "file path");
-		SakerPathFiles.requireAbsolutePath(filePath);
-		SakerPathFiles.requireAbsolutePath(workingDirectory);
+		SakerPathFiles.requireAbsolutePath(filePath, "file path");
+		SakerPathFiles.requireAbsolutePath(workingDirectory, "working directory");
 
 		this.targetName = targetName;
 		this.filePath = filePath;

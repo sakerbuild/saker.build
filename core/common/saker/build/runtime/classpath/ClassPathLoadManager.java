@@ -184,7 +184,7 @@ public class ClassPathLoadManager implements Closeable {
 	 *            The storage directory for the manager to use.
 	 */
 	public ClassPathLoadManager(ThreadGroup threadgroup, Path storagedirectory) {
-		SakerPathFiles.requireAbsolutePath(storagedirectory);
+		SakerPathFiles.requireAbsolutePath(storagedirectory, "storage directory");
 
 		this.storageDirectoryPath = storagedirectory.normalize();
 
@@ -253,7 +253,7 @@ public class ClassPathLoadManager implements Closeable {
 	 * @see ClassPathLock#getClassPathLoadDirectory()
 	 */
 	public ClassPathLock loadDirectClassPath(Path classpathloaddirectory) throws IOException {
-		SakerPathFiles.requireAbsolutePath(classpathloaddirectory);
+		SakerPathFiles.requireAbsolutePath(classpathloaddirectory, "classpath load directory");
 		classpathloaddirectory = classpathloaddirectory.normalize();
 		Lock lock = getClassPathLoadDirectoryLoadStateLock(classpathloaddirectory);
 		IOUtils.lockIO(lock, "Acquiring class path load lock interrupted.");

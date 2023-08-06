@@ -110,13 +110,13 @@ public final class BuildTargetBootstrapperTaskFactory
 	}
 
 	private static SakerPath checkPaths(SakerPath buildFilePath, SakerPath workingDirectory, SakerPath buildDirectory) {
-		SakerPathFiles.requireAbsolutePath(buildFilePath);
-		SakerPathFiles.requireRelativePath(buildDirectory);
+		SakerPathFiles.requireAbsolutePath(buildFilePath, "build file path");
+		SakerPathFiles.requireRelativePath(buildDirectory, "build directory");
 		if (workingDirectory == null) {
-			workingDirectory = SakerPathFiles.requireParent(buildFilePath);
+			workingDirectory = SakerPathFiles.requireParent(buildFilePath, "build file path");
 		} else {
 			//we dont need to check if the path is absolute, as requiring a parent will result in an absolute path.
-			SakerPathFiles.requireAbsolutePath(workingDirectory);
+			SakerPathFiles.requireAbsolutePath(workingDirectory, "working directory");
 		}
 		return workingDirectory;
 	}
@@ -247,9 +247,9 @@ public final class BuildTargetBootstrapperTaskFactory
 		//we allow the build file path to be relative in the public bootstrapping method, 
 		//    as it will be then resolved against the current task working directory
 
-		SakerPathFiles.requireRelativePath(buildDirectory);
+		SakerPathFiles.requireRelativePath(buildDirectory, "build directory");
 		if (workingDirectory == null) {
-			workingDirectory = SakerPathFiles.requireParent(buildFilePath);
+			workingDirectory = SakerPathFiles.requireParent(buildFilePath, "build file path");
 		}
 
 		return runBootstrappingImpl(taskcontext, buildFilePath, buildTargetName, parameters, workingDirectory,

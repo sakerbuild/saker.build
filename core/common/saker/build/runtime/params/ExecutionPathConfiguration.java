@@ -73,12 +73,12 @@ public final class ExecutionPathConfiguration {
 		protected NavigableMap<String, SakerFileProvider> rootFileProviders = new TreeMap<>();
 
 		protected Builder(SakerPath workingDirectory) throws InvalidPathFormatException {
-			SakerPathFiles.requireAbsolutePath(workingDirectory);
+			SakerPathFiles.requireAbsolutePath(workingDirectory, "working directory");
 			this.workingDirectory = workingDirectory;
 		}
 
 		protected Builder(ExecutionPathConfiguration pathconfiguration, SakerPath workingDirectory) {
-			SakerPathFiles.requireAbsolutePath(workingDirectory);
+			SakerPathFiles.requireAbsolutePath(workingDirectory, "working directory");
 			this.workingDirectory = workingDirectory;
 			this.rootFileProviders.putAll(pathconfiguration.rootFileProviders);
 		}
@@ -273,7 +273,7 @@ public final class ExecutionPathConfiguration {
 	 */
 	public static ExecutionPathConfiguration copy(ExecutionPathConfiguration copyconfig, SakerPath workingdirectory)
 			throws InvalidPathFormatException {
-		SakerPathFiles.requireAbsolutePath(workingdirectory);
+		SakerPathFiles.requireAbsolutePath(workingdirectory, "working directory");
 
 		ExecutionPathConfiguration result = new ExecutionPathConfiguration(workingdirectory);
 		checkWorkingDirectoryInRoots(workingdirectory, copyconfig.rootFileProviders.keySet());
@@ -313,7 +313,7 @@ public final class ExecutionPathConfiguration {
 	 */
 	public static ExecutionPathConfiguration forProvider(SakerPath workingdirectory, SakerFileProvider fp)
 			throws IOException, InvalidPathFormatException {
-		SakerPathFiles.requireAbsolutePath(workingdirectory);
+		SakerPathFiles.requireAbsolutePath(workingdirectory, "working directory");
 		ExecutionPathConfiguration result = new ExecutionPathConfiguration(workingdirectory);
 		Set<String> roots = fp.getRoots();
 		checkWorkingDirectoryInRoots(workingdirectory, roots);

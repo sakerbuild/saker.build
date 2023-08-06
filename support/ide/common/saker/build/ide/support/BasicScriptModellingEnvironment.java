@@ -290,7 +290,7 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 
 	@Override
 	public ScriptSyntaxModel getModel(SakerPath scriptpath) {
-		SakerPathFiles.requireAbsolutePath(scriptpath);
+		SakerPathFiles.requireAbsolutePath(scriptpath, "script path");
 		synchronized (BasicScriptModellingEnvironment.this) {
 			if (closed) {
 				return null;

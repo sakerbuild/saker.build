@@ -5797,8 +5797,8 @@ public final class TaskExecutionManager {
 
 		public SimpleTaskDirectoryPathContext(TaskExecutionManager executionManager,
 				SakerPath absoluteTaskWorkingDirectoryPath, SakerPath relativeTaskBuildDirectoryPath) {
-			SakerPathFiles.requireAbsolutePath(absoluteTaskWorkingDirectoryPath);
-			SakerPathFiles.requireRelativePath(relativeTaskBuildDirectoryPath);
+			SakerPathFiles.requireAbsolutePath(absoluteTaskWorkingDirectoryPath, "task working directory path");
+			SakerPathFiles.requireRelativePath(relativeTaskBuildDirectoryPath, "task build directory path");
 
 			this.relativeTaskBuildDirectoryPath = relativeTaskBuildDirectoryPath;
 			this.absoluteTaskWorkingDirectoryPath = absoluteTaskWorkingDirectoryPath;

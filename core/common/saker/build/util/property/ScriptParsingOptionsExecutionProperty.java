@@ -64,7 +64,7 @@ public final class ScriptParsingOptionsExecutionProperty
 	 */
 	public ScriptParsingOptionsExecutionProperty(SakerPath scriptPath)
 			throws NullPointerException, InvalidPathFormatException {
-		SakerPathFiles.requireAbsolutePath(scriptPath);
+		SakerPathFiles.requireAbsolutePath(scriptPath, "script path");
 		this.scriptPath = scriptPath;
 	}
 
