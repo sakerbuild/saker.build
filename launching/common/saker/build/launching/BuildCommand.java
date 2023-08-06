@@ -297,7 +297,7 @@ public class BuildCommand {
 	@Parameter(PARAM_NAME_P)
 	public void buildTargetParameter(String key, String value) {
 		if (buildTargetParameters.containsKey(key)) {
-			throw new InvalidArgumentValueException("User parameter specified multiple times: " + key, PARAM_NAME_U);
+			throw new InvalidArgumentValueException("Build target parameter specified multiple times: " + key, PARAM_NAME_P);
 		}
 		buildTargetParameters.put(key, value);
 	}
