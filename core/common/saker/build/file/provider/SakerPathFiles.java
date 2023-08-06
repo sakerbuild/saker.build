@@ -443,8 +443,10 @@ public class SakerPathFiles {
 			if (SakerPath.isSlashCharacter(c) || c == ':' || c == ';') {
 				throw new InvalidPathFormatException("Invalid file name: " + name);
 			}
-			if (c == '.') {
-				throw new InvalidPathFormatException("Invalid file name: ..");
+			if (len == 2) {
+				if (c == '.') {
+					throw new InvalidPathFormatException("Invalid file name: ..");
+				}
 			}
 			i = 2;
 		}

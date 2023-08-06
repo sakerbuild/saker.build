@@ -44,6 +44,44 @@ public class SakerPathTest extends SakerTestCase {
 		testFileName();
 		testResolutions();
 		testHasNonForwardRelatives();
+
+		testMiscellaneous();
+	}
+
+	private static void testMiscellaneous() {
+		assertException(NullPointerException.class, () -> SakerPathFiles.requireValidFileName(null));
+
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName(""));
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName("."));
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName(".."));
+
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName("/"));
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName("x/"));
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName("/y"));
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName("x/y"));
+
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName("\\"));
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName("x\\"));
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName("\\y"));
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName("x\\y"));
+
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName(":"));
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName("x:"));
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName(":y"));
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName("x:y"));
+
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName(";"));
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName("x;"));
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName(";y"));
+		assertException(InvalidPathFormatException.class, () -> SakerPathFiles.requireValidFileName("x;y"));
+
+		SakerPathFiles.requireValidFileName("x.");
+		SakerPathFiles.requireValidFileName(".y");
+		SakerPathFiles.requireValidFileName("x.y");
+
+		SakerPathFiles.requireValidFileName("..xy");
+		SakerPathFiles.requireValidFileName("x..y");
+		SakerPathFiles.requireValidFileName("xy..");
 	}
 
 	private static void testHasNonForwardRelatives() {
