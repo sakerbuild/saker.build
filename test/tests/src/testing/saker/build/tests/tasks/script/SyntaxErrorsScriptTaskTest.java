@@ -30,13 +30,13 @@ public class SyntaxErrorsScriptTaskTest extends CollectingMetricEnvironmentTestC
 
 		SakerPath mainbuildfile = PATH_WORKING_DIRECTORY.resolve(DEFAULT_BUILD_FILE_NAME);
 
-		res = environment.run(mainbuildfile, "missingparen", parameters, project);
+		res = environment.runBuildTarget(mainbuildfile, "missingparen", parameters, project);
 		ScriptTestUtils.assertHasScriptTrace(res.getPositionedExceptionView(), mainbuildfile, 2, 1, 2);
 
-		res = environment.run(mainbuildfile, "missingsubsc", parameters, project);
+		res = environment.runBuildTarget(mainbuildfile, "missingsubsc", parameters, project);
 		ScriptTestUtils.assertHasScriptTrace(res.getPositionedExceptionView(), mainbuildfile, 6, 6, 0);
 
-		res = environment.run(mainbuildfile, "missingif", parameters, project);
+		res = environment.runBuildTarget(mainbuildfile, "missingif", parameters, project);
 		ScriptTestUtils.assertHasScriptTrace(res.getPositionedExceptionView(), mainbuildfile, 9, 4, 1);
 
 		runScriptTask("build", PATH_WORKING_DIRECTORY.resolve("semicolons.build"));

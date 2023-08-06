@@ -15,12 +15,22 @@
  */
 package saker.build.daemon;
 
+import java.util.NavigableMap;
+
 import saker.build.file.path.SakerPath;
 import saker.build.runtime.environment.BuildTaskExecutionResult;
 import saker.build.runtime.execution.ExecutionParametersImpl;
 import saker.build.runtime.project.ProjectCacheHandle;
+import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
+import saker.build.thirdparty.saker.util.rmi.wrap.RMITreeMapWrapper;
 
 public interface BuildExecutionInvoker {
-	public BuildTaskExecutionResult run(SakerPath buildfilepath, String targetname, ExecutionParametersImpl parameters,
-			ProjectCacheHandle projecthandle);
+	public default BuildTaskExecutionResult runBuildTarget(SakerPath buildfilepath, String targetname,
+			ExecutionParametersImpl parameters, ProjectCacheHandle projecthandle) {
+		return runBuildTargetWithLiteralParameters(buildfilepath, targetname, parameters, projecthandle, null);
+	}
+
+	public BuildTaskExecutionResult runBuildTargetWithLiteralParameters(SakerPath buildfilepath, String targetname,
+			ExecutionParametersImpl parameters, ProjectCacheHandle projecthandle,
+			@RMIWrap(RMITreeMapWrapper.class) NavigableMap<String, ?> buildtargetparameters);
 }

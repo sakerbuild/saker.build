@@ -21,12 +21,10 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Set;
-import java.util.TreeMap;
 
 import saker.apiextract.api.PublicApi;
 import saker.build.exception.BuildTargetNotFoundException;
@@ -38,6 +36,7 @@ import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.SakerLog;
 import saker.build.runtime.execution.TargetConfiguration;
 import saker.build.scripting.ScriptParsingFailedException;
+import saker.build.task.BuildTargetTask;
 import saker.build.task.BuildTargetTaskFactory;
 import saker.build.task.Task;
 import saker.build.task.TaskContext;
@@ -77,6 +76,8 @@ public final class BuildTargetBootstrapperTaskFactory
 	/**
 	 * Creates a new instance with the given parameters.
 	 * 
+	 * @deprecated Use {@link #create(SakerPath, String, NavigableMap, SakerPath, SakerPath) create} instead from
+	 *                 saker.build version 0.8.18.
 	 * @param buildFilePath
 	 *            An absolute path to the build script.
 	 * @param buildTargetName
@@ -94,9 +95,21 @@ public final class BuildTargetBootstrapperTaskFactory
 	 * @throws InvalidPathFormatException
 	 *             If path requirements are violated.
 	 */
+	@Deprecated
 	public BuildTargetBootstrapperTaskFactory(SakerPath buildFilePath, String buildTargetName,
 			NavigableMap<String, ? extends TaskIdentifier> parameters, SakerPath workingDirectory,
 			SakerPath buildDirectory) throws NullPointerException, InvalidPathFormatException {
+		workingDirectory = checkPaths(buildFilePath, workingDirectory, buildDirectory);
+
+		this.taskId = BuildTargetBootstrapperTaskIdentifier.create(buildFilePath, buildTargetName, parameters,
+				workingDirectory, buildDirectory);
+	}
+
+	private BuildTargetBootstrapperTaskFactory(BuildTargetBootstrapperTaskIdentifier taskId) {
+		this.taskId = taskId;
+	}
+
+	private static SakerPath checkPaths(SakerPath buildFilePath, SakerPath workingDirectory, SakerPath buildDirectory) {
 		SakerPathFiles.requireAbsolutePath(buildFilePath);
 		SakerPathFiles.requireRelativePath(buildDirectory);
 		if (workingDirectory == null) {
@@ -105,10 +118,74 @@ public final class BuildTargetBootstrapperTaskFactory
 			//we dont need to check if the path is absolute, as requiring a parent will result in an absolute path.
 			SakerPathFiles.requireAbsolutePath(workingDirectory);
 		}
+		return workingDirectory;
+	}
 
-		this.taskId = new BuildTargetBootstrapperTaskIdentifier(buildFilePath, buildTargetName,
-				ObjectUtils.isNullOrEmpty(parameters) ? Collections.emptyNavigableMap() : new TreeMap<>(parameters),
-				workingDirectory, buildDirectory);
+	/**
+	 * Creates a new instance with the given parameters.
+	 * 
+	 * @param buildFilePath
+	 *            An absolute path to the build script.
+	 * @param buildTargetName
+	 *            The build target name to invoke. May be <code>null</code> to
+	 *            {@linkplain TaskUtils#chooseDefaultTargetName(Collection) choose the default}.
+	 * @param parameters
+	 *            The task parameters to pass to the build target. May be <code>null</code> or empty.
+	 * @param workingDirectory
+	 *            The absolute working directory for the invoked task. If <code>null</code>, the parent path of the
+	 *            build file is used.
+	 * @param buildDirectory
+	 *            The relative build directory path.
+	 * @throws NullPointerException
+	 *             If argument nullability is violated.
+	 * @throws InvalidPathFormatException
+	 *             If path requirements are violated.
+	 * @since saker.build 0.8.18
+	 */
+	public static BuildTargetBootstrapperTaskFactory create(SakerPath buildFilePath, String buildTargetName,
+			NavigableMap<String, ? extends TaskIdentifier> parameters, SakerPath workingDirectory,
+			SakerPath buildDirectory) throws NullPointerException, InvalidPathFormatException {
+		workingDirectory = checkPaths(buildFilePath, workingDirectory, buildDirectory);
+
+		return new BuildTargetBootstrapperTaskFactory(BuildTargetBootstrapperTaskIdentifier.create(buildFilePath,
+				buildTargetName, parameters, workingDirectory, buildDirectory));
+	}
+
+	/**
+	 * Creates a new instance with the given literal parameters.
+	 * <p>
+	 * The object in the parameters map will be passed as parameters to the build target. In order to achieve this, the
+	 * bootstrapper will start new tasks for these literal object parameters to conform to the {@link BuildTargetTask}
+	 * interface.
+	 * <p>
+	 * The parameters literal objects should implement the {@link Object#equals(Object)} and {@link Object#hashCode()}
+	 * functions properly.
+	 * 
+	 * @param buildFilePath
+	 *            An absolute path to the build script.
+	 * @param buildTargetName
+	 *            The build target name to invoke. May be <code>null</code> to
+	 *            {@linkplain TaskUtils#chooseDefaultTargetName(Collection) choose the default}.
+	 * @param parameters
+	 *            The literal object parameters to pass to the build target. May be <code>null</code> or empty.
+	 * @param workingDirectory
+	 *            The absolute working directory for the invoked task. If <code>null</code>, the parent path of the
+	 *            build file is used.
+	 * @param buildDirectory
+	 *            The relative build directory path.
+	 * @throws NullPointerException
+	 *             If argument nullability is violated.
+	 * @throws InvalidPathFormatException
+	 *             If path requirements are violated.
+	 * @since saker.build 0.8.18
+	 */
+	public static BuildTargetBootstrapperTaskFactory createWithLiteralParameters(SakerPath buildFilePath,
+			String buildTargetName, NavigableMap<String, ?> parameters, SakerPath workingDirectory,
+			SakerPath buildDirectory) throws NullPointerException, InvalidPathFormatException {
+		workingDirectory = checkPaths(buildFilePath, workingDirectory, buildDirectory);
+
+		return new BuildTargetBootstrapperTaskFactory(BuildTargetBootstrapperTaskIdentifier.createWithLiteralParameters(
+				buildFilePath, buildTargetName, parameters, workingDirectory, buildDirectory));
 	}
 
 	/**
@@ -131,7 +208,7 @@ public final class BuildTargetBootstrapperTaskFactory
 	@Override
 	public StructuredObjectTaskResult run(TaskContext taskcontext) throws Exception {
 		TaskIdentifier runnertaskid = runBootstrappingImpl(taskcontext, this.taskId.buildFilePath,
-				this.taskId.buildTargetName, this.taskId.parameters, this.taskId.workingDirectory,
+				this.taskId.buildTargetName, this.taskId.getParameters(taskcontext), this.taskId.workingDirectory,
 				this.taskId.buildDirectory);
 		return new SimpleStructuredObjectTaskResult(runnertaskid);
 	}
@@ -208,17 +285,16 @@ public final class BuildTargetBootstrapperTaskFactory
 					+ buildFilePath + " Available targets: " + StringUtils.toStringJoin(", ", tc.getTargetNames()));
 		}
 		NavigableSet<String> targetparamnames = bttask.getTargetInputParameterNames();
-		NavigableMap<String, TaskIdentifier> paramscopy = ObjectUtils.newTreeMap(parameters);
 		if (targetparamnames != null) {
-			if (paramscopy.navigableKeySet().retainAll(targetparamnames)) {
-				final String ftargetname = targetname;
-				ObjectUtils.iterateOrderedIterables(targetparamnames, parameters.navigableKeySet(), (l, r) -> {
-					if (l == null) {
-						SakerLog.warning().println("Target " + ftargetname + " in file " + buildfile.getSakerPath()
-								+ " has no parameter named: " + r);
-					}
-				});
-			}
+			//note: do not remove parameters based on the TargetInputParameterNames, pass the additional ones too
+			//		to the BuildTargetTask
+			final String ftargetname = targetname;
+			ObjectUtils.iterateOrderedIterables(targetparamnames, parameters.navigableKeySet(), (l, r) -> {
+				if (l == null) {
+					SakerLog.warning().println("Target " + ftargetname + " in file " + buildfile.getSakerPath()
+							+ " has no parameter named: " + r);
+				}
+			});
 		}
 
 		SakerPath taskworkingdir = taskcontext.getTaskWorkingDirectory().getSakerPath();
@@ -237,8 +313,8 @@ public final class BuildTargetBootstrapperTaskFactory
 		}
 
 		BuildFileTargetTaskIdentifier runnertaskid = new BuildFileTargetTaskIdentifier(targetname, buildFilePath,
-				workingDirectory, paramscopy);
-		taskcontext.startTask(runnertaskid, new BuildTargetRunnerTaskFactory(bttask, paramscopy), execparams);
+				workingDirectory, parameters);
+		taskcontext.startTask(runnertaskid, new BuildTargetRunnerTaskFactory(bttask, parameters), execparams);
 		return runnertaskid;
 	}
 

@@ -15,6 +15,8 @@
  */
 package saker.build.daemon;
 
+import java.util.NavigableMap;
+
 import saker.build.file.path.SakerPath;
 import saker.build.runtime.environment.BuildTaskExecutionResult;
 import saker.build.runtime.environment.SakerEnvironmentImpl;
@@ -29,9 +31,17 @@ public class EnvironmentBuildExecutionInvoker implements BuildExecutionInvoker {
 	}
 
 	@Override
-	public BuildTaskExecutionResult run(SakerPath buildfilepath, String targetname, ExecutionParametersImpl parameters,
-			ProjectCacheHandle projecthandle) {
-		return environment.run(buildfilepath, targetname, parameters, projecthandle);
+	public BuildTaskExecutionResult runBuildTarget(SakerPath buildfilepath, String targetname,
+			ExecutionParametersImpl parameters, ProjectCacheHandle projecthandle) {
+		return environment.runBuildTarget(buildfilepath, targetname, parameters, projecthandle);
+	}
+
+	@Override
+	public BuildTaskExecutionResult runBuildTargetWithLiteralParameters(SakerPath buildfilepath, String targetname,
+			ExecutionParametersImpl parameters, ProjectCacheHandle projecthandle,
+			NavigableMap<String, ?> buildtargetparameters) {
+		return environment.runBuildTargetWithLiteralParameters(buildfilepath, targetname, parameters, projecthandle,
+				buildtargetparameters);
 	}
 
 }

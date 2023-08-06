@@ -1127,7 +1127,7 @@ public final class SakerIDEProject {
 			return BuildTaskExecutionResultImpl.createInitializationFailed(e);
 		}
 		BuildExecutionInvoker environment = daemonenv.getExecutionInvoker();
-		return environment.run(scriptfile, targetname, parameters, project);
+		return environment.runBuildTarget(scriptfile, targetname, parameters, project);
 	}
 
 	public final DaemonEnvironment getExecutionDaemonEnvironment(IDEProjectProperties projprops) throws IOException {

@@ -1,0 +1,7 @@
+build(
+	in mandatoryParam
+	in defaultedParam = defval
+	out outConcat = "{$mandatoryParam}+{$defaultedParam}"
+) {
+	
+}

@@ -97,7 +97,7 @@ public class ScriptExceptionLocationTest extends CollectingMetricEnvironmentTest
 		BuildTaskExecutionResult res;
 		ScriptPositionedExceptionView posexcview;
 
-		res = runTask(() -> environment.run(buildfilepath, "build", parameters, project));
+		res = runTask(() -> environment.runBuildTarget(buildfilepath, "build", parameters, project));
 		posexcview = res.getPositionedExceptionView();
 		SakerLog.printFormatException(posexcview, PATH_WORKING_DIRECTORY);
 
@@ -112,7 +112,7 @@ public class ScriptExceptionLocationTest extends CollectingMetricEnvironmentTest
 						new ScriptPositionStackTraceElement(buildfilepath, new ScriptPosition(0, 0, 45, 0)), });
 		assertEquals(found2.getCause().getMessage(), "fail2");
 
-		res = runTask(() -> environment.run(buildfilepath, "secbuild", parameters, project));
+		res = runTask(() -> environment.runBuildTarget(buildfilepath, "secbuild", parameters, project));
 		posexcview = res.getPositionedExceptionView();
 		SakerLog.printFormatException(posexcview, PATH_WORKING_DIRECTORY);
 
@@ -127,7 +127,7 @@ public class ScriptExceptionLocationTest extends CollectingMetricEnvironmentTest
 		SakerPath includedbuildfilepath = PATH_WORKING_DIRECTORY.resolve("included.build");
 		files.putFile(includedbuildfilepath, "build { test.excetask(33); }");
 
-		res = runTask(() -> environment.run(includingbuildfilepath, null, parameters, project));
+		res = runTask(() -> environment.runBuildTarget(includingbuildfilepath, null, parameters, project));
 		posexcview = res.getPositionedExceptionView();
 		SakerLog.printFormatException(posexcview, PATH_WORKING_DIRECTORY);
 

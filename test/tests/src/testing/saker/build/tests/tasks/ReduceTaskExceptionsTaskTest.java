@@ -112,7 +112,7 @@ public class ReduceTaskExceptionsTaskTest extends CollectingMetricEnvironmentTes
 		SakerPath buildfilepath = PATH_WORKING_DIRECTORY.resolve("saker.build");
 		System.out.println(buildfilepath);
 		String[] lines = getCleanedExceptionLines(
-				environment.run(buildfilepath, "build", parameters, project).getPositionedExceptionView());
+				environment.runBuildTarget(buildfilepath, "build", parameters, project).getPositionedExceptionView());
 
 		assertEquals(Collections.frequency(Arrays.asList(lines), "java.lang.UnsupportedOperationException"), 1);
 		assertEquals(lines[0], "java.lang.UnsupportedOperationException");
@@ -127,7 +127,7 @@ public class ReduceTaskExceptionsTaskTest extends CollectingMetricEnvironmentTes
 		SakerPath buildfilepath = PATH_WORKING_DIRECTORY.resolve("multi.build");
 		System.out.println(buildfilepath);
 		String[] lines = getCleanedExceptionLines(
-				environment.run(buildfilepath, "build", parameters, project).getPositionedExceptionView());
+				environment.runBuildTarget(buildfilepath, "build", parameters, project).getPositionedExceptionView());
 
 		assertEquals(lines.length, 8);
 		assertEquals(lines[0], "java.lang.UnsupportedOperationException");
@@ -147,7 +147,7 @@ public class ReduceTaskExceptionsTaskTest extends CollectingMetricEnvironmentTes
 		SakerPath buildfilepath = PATH_WORKING_DIRECTORY.resolve("transitive.build");
 		System.out.println(buildfilepath);
 		String[] lines = getCleanedExceptionLines(
-				environment.run(buildfilepath, "build", parameters, project).getPositionedExceptionView());
+				environment.runBuildTarget(buildfilepath, "build", parameters, project).getPositionedExceptionView());
 
 		//shouldn't display too many lines
 		assertEquals(lines.length, 5);

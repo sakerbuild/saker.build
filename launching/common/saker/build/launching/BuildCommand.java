@@ -832,7 +832,8 @@ public class BuildCommand {
 				}
 			}
 			long nanos = System.nanoTime();
-			BuildTaskExecutionResult execres = envcontroller.run(this.buildScriptFile, this.target, params, project);
+			BuildTaskExecutionResult execres = envcontroller.runBuildTarget(this.buildScriptFile, this.target, params,
+					project);
 			long endnanos = System.nanoTime();
 
 			ResultKind executionresultkind = execres.getResultKind();

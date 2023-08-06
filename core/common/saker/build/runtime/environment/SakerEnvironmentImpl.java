@@ -37,6 +37,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -189,13 +190,30 @@ public final class SakerEnvironmentImpl implements Closeable {
 		return run(taskid, task, parameters, projecthandle == null ? null : projecthandle.toProject());
 	}
 
+	@Deprecated
 	public BuildTaskExecutionResult run(SakerPath buildfilepath, String targetname, ExecutionParametersImpl parameters,
 			ProjectCacheHandle projecthandle) {
+		return runBuildTarget(buildfilepath, targetname, parameters, projecthandle);
+	}
+
+	public BuildTaskExecutionResult runBuildTarget(SakerPath buildfilepath, String targetname,
+			ExecutionParametersImpl parameters, ProjectCacheHandle projecthandle) {
 		if (buildfilepath.isRelative()) {
 			buildfilepath = parameters.getPathConfiguration().getWorkingDirectory().resolve(buildfilepath);
 		}
-		BuildTargetBootstrapperTaskFactory task = new BuildTargetBootstrapperTaskFactory(buildfilepath, targetname,
+		BuildTargetBootstrapperTaskFactory task = BuildTargetBootstrapperTaskFactory.create(buildfilepath, targetname,
 				Collections.emptyNavigableMap(), null, SakerPath.EMPTY);
+		return run(BuildTargetBootstrapperTaskFactory.getTaskIdentifier(task), task, parameters, projecthandle);
+	}
+
+	public BuildTaskExecutionResult runBuildTargetWithLiteralParameters(SakerPath buildfilepath, String targetname,
+			ExecutionParametersImpl parameters, ProjectCacheHandle projecthandle,
+			NavigableMap<String, ?> buildtargetparameters) {
+		if (buildfilepath.isRelative()) {
+			buildfilepath = parameters.getPathConfiguration().getWorkingDirectory().resolve(buildfilepath);
+		}
+		BuildTargetBootstrapperTaskFactory task = BuildTargetBootstrapperTaskFactory
+				.createWithLiteralParameters(buildfilepath, targetname, buildtargetparameters, null, SakerPath.EMPTY);
 		return run(BuildTargetBootstrapperTaskFactory.getTaskIdentifier(task), task, parameters, projecthandle);
 	}
 

@@ -32,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -74,6 +75,8 @@ import saker.build.task.exception.TaskException;
 import saker.build.task.exception.TaskExecutionFailedException;
 import saker.build.task.identifier.BuildFileTargetTaskIdentifier;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.task.utils.BuildTargetBootstrapperTaskFactory;
+import saker.build.task.utils.StructuredObjectTaskResult;
 import saker.build.task.utils.StructuredTaskResult;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -96,7 +99,7 @@ import testing.saker.build.flag.TestFlag;
 public abstract class EnvironmentTestCase extends SakerTestCase {
 	public static final String TEST_CLUSTER_NAME_ENV_PARAM = "test.cluster.name";
 	public static final String DEFAULT_BUILD_FILE_NAME = "saker.build";
-	private static final SakerPath DEFAULT_BUILD_FILEPATH = SakerPath.valueOf(DEFAULT_BUILD_FILE_NAME);
+	public static final SakerPath DEFAULT_BUILD_FILE_PATH = SakerPath.valueOf(DEFAULT_BUILD_FILE_NAME);
 
 	public static final String WORKING_DIRECTORY_ROOT = "wd:";
 	public static final String BUILD_DIRECTORY_ROOT = "bd:";
@@ -577,44 +580,66 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 
 	protected final TaskResultCollection runScriptTask(SakerPath buildfilepath) throws Throwable {
 		if (buildfilepath == null) {
-			buildfilepath = DEFAULT_BUILD_FILEPATH;
+			buildfilepath = DEFAULT_BUILD_FILE_PATH;
 		}
 		final SakerPath fbuildfilepath = buildfilepath;
 		TaskResultCollection results = getTaskResultCollectionThrow(
-				runTask(() -> runOnEnvironmentImpl(fbuildfilepath, null)));
+				runTask(() -> runBuildTargetOnEnvironmentImpl(fbuildfilepath, null)));
 		return results;
 	}
 
 	protected final CombinedTargetTaskResult runScriptTask(String targetname) throws Throwable {
-		SakerPath buildfilepath = DEFAULT_BUILD_FILEPATH;
-		return runScriptTask(targetname, buildfilepath);
+		return runScriptTask(targetname, DEFAULT_BUILD_FILE_PATH);
 	}
 
-	protected CombinedTargetTaskResult runScriptTask(String targetname, SakerPath buildfilepath) throws Throwable {
+	protected final CombinedTargetTaskResult runScriptTask(String targetname, SakerPath buildfilepath)
+			throws Throwable {
+		return runScriptTask(targetname, buildfilepath, null);
+	}
+
+	protected CombinedTargetTaskResult runScriptTask(String targetname, SakerPath buildfilepath,
+			NavigableMap<String, ?> buildtargetparameters) throws Throwable {
 		Objects.requireNonNull(targetname, "target name");
-		Objects.requireNonNull(buildfilepath, "build file path");
+		if (buildfilepath == null) {
+			buildfilepath = DEFAULT_BUILD_FILE_PATH;
+		}
 
 		final SakerPath fbuildfilepath = parameters.getPathConfiguration().getWorkingDirectory()
 				.tryResolve(buildfilepath);
 
-		BuildTaskExecutionResult taskrunresult = runTask(() -> runOnEnvironmentImpl(fbuildfilepath, targetname));
+		BuildTaskExecutionResult taskrunresult = runTask(
+				() -> runBuildTargetOnEnvironmentImpl(fbuildfilepath, targetname, buildtargetparameters));
 		TaskResultCollection results = getTaskResultCollectionThrow(taskrunresult);
-		TaskIdentifier taskid = new BuildFileTargetTaskIdentifier(targetname, fbuildfilepath);
-		return new CombinedTargetTaskResult(taskrunresult, results,
-				(BuildTargetTaskResult) results.getTaskResult(taskid));
+
+		//get the task id tha corresponds to the build target task execution
+		TaskIdentifier taskid = BuildTargetBootstrapperTaskFactory.getTaskIdentifier(BuildTargetBootstrapperTaskFactory
+				.createWithLiteralParameters(fbuildfilepath, targetname, buildtargetparameters, null, SakerPath.EMPTY));
+		Object taskresult = results.getTaskResult(taskid);
+		if (taskresult instanceof StructuredTaskResult) {
+			//resolve structured results, as the bootstrapper task factory returns such one
+			taskresult = ((StructuredTaskResult) taskresult).toResult(results);
+		}
+		return new CombinedTargetTaskResult(taskrunresult, results, (BuildTargetTaskResult) taskresult);
 	}
 
 	protected static synchronized void addCloseable(AutoCloseable c) {
 		SakerJavaTestingInvoker.addCloseable(c);
 	}
 
-	private BuildTaskExecutionResult runOnEnvironmentImpl(final SakerPath fbuildfilepath, String targetname) {
+	private BuildTaskExecutionResult runBuildTargetOnEnvironmentImpl(final SakerPath fbuildfilepath,
+			String targetname) {
+		return runBuildTargetOnEnvironmentImpl(fbuildfilepath, targetname, null);
+	}
+
+	private BuildTaskExecutionResult runBuildTargetOnEnvironmentImpl(final SakerPath fbuildfilepath, String targetname,
+			NavigableMap<String, ?> buildtargetparameters) {
 		try {
 			cacheRepositories();
 		} catch (IOException e) {
 			return BuildTaskExecutionResultImpl.createInitializationFailed(e);
 		}
-		return environment.run(fbuildfilepath, targetname, parameters, project);
+		return environment.runBuildTargetWithLiteralParameters(fbuildfilepath, targetname, parameters, project,
+				buildtargetparameters);
 	}
 
 	private void cacheRepositories() throws IOException {
