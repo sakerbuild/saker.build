@@ -169,26 +169,6 @@ public class SakerPathFiles {
 	}
 
 	/**
-	 * Validation method for ensuring that the specified path is absolute.
-	 * 
-	 * @param path
-	 *            The path.
-	 * @return The path argument.
-	 * @throws InvalidPathFormatException
-	 *             If the path is not absolute.
-	 * @throws NullPointerException
-	 *             If the argument is <code>null</code>.
-	 */
-	public static SakerPath requireAbsolutePath(SakerPath path)
-			throws InvalidPathFormatException, NullPointerException {
-		Objects.requireNonNull(path, "path");
-		if (!path.isAbsolute()) {
-			throw new InvalidPathFormatException("Path is not absolute: " + path);
-		}
-		return path;
-	}
-
-	/**
 	 * Validation method for ensuring that the specified path is relative.
 	 * 
 	 * @param path
@@ -198,31 +178,42 @@ public class SakerPathFiles {
 	 *             If the path is not relative.
 	 * @throws NullPointerException
 	 *             If the argument is <code>null</code>.
+	 * @see SakerPath#isRelative()
 	 */
 	public static SakerPath requireRelativePath(SakerPath path)
 			throws InvalidPathFormatException, NullPointerException {
-		Objects.requireNonNull(path, "path");
-		if (!path.isRelative()) {
-			throw new InvalidPathFormatException("Path is not relative: " + path);
-		}
-		return path;
+		return requireRelativePath(path, null);
 	}
 
 	/**
-	 * Validation method for ensuring that the specified path is absolute.
+	 * Validation method for ensuring that the specified path is relative.
 	 * 
 	 * @param path
 	 *            The path.
+	 * @param message
+	 *            Optional message to add to the exception message. (May be <code>null</code>.)
 	 * @return The path argument.
 	 * @throws InvalidPathFormatException
-	 *             If the path is not absolute.
+	 *             If the path is not relative.
 	 * @throws NullPointerException
 	 *             If the argument is <code>null</code>.
+	 * @see SakerPath#isRelative()
+	 * @since saker.build 0.8.18
 	 */
-	public static Path requireAbsolutePath(Path path) throws InvalidPathFormatException, NullPointerException {
-		Objects.requireNonNull(path, "path");
-		if (!path.isAbsolute()) {
-			throw new InvalidPathFormatException("Path is not absolute: " + path);
+	public static SakerPath requireRelativePath(SakerPath path, String message) {
+		if (path == null) {
+			throw new NullPointerException(message == null ? "path" : message);
+		}
+		if (!path.isRelative()) {
+			StringBuilder sb;
+			if (message != null) {
+				sb = new StringBuilder(message);
+				sb.append(": Path is not relative: ");
+			} else {
+				sb = new StringBuilder("Path is not relative: ");
+			}
+			sb.append(path);
+			throw new InvalidPathFormatException(sb.toString());
 		}
 		return path;
 	}
@@ -237,36 +228,41 @@ public class SakerPathFiles {
 	 *             If the path is not relative.
 	 * @throws NullPointerException
 	 *             If the argument is <code>null</code>.
+	 * @see Path#isAbsolute()
 	 */
 	public static Path requireRelativePath(Path path) throws InvalidPathFormatException, NullPointerException {
-		Objects.requireNonNull(path, "path");
-		if (path.isAbsolute()) {
-			throw new InvalidPathFormatException("Path is not relative: " + path);
-		}
-		return path;
+		return requireRelativePath(path, null);
 	}
 
 	/**
-	 * Validation method for ensuring that the specified file is available through an absolute path.
-	 * <p>
-	 * A file has an absolute path if and only if it has every parent until one of the root directories for the
-	 * execution, or is a root directory itself.
+	 * Validation method for ensuring that the specified path is relative.
 	 * 
-	 * @param file
-	 *            The file.
-	 * @return The absolute path of the file.
+	 * @param path
+	 *            The path.
+	 * @param message
+	 *            Optional message to add to the exception message. (May be <code>null</code>.)
+	 * @return The path argument.
 	 * @throws InvalidPathFormatException
-	 *             If the path for the file is not absolute.
+	 *             If the path is not relative.
 	 * @throws NullPointerException
 	 *             If the argument is <code>null</code>.
-	 * @see SakerFile#getSakerPath()
+	 * @see Path#isAbsolute()
+	 * @since saker.build 0.8.18
 	 */
-	public static SakerPath requireAbsolutePath(SakerFile file)
-			throws InvalidPathFormatException, NullPointerException {
-		Objects.requireNonNull(file, "file");
-		SakerPath path = file.getSakerPath();
-		if (!path.isAbsolute()) {
-			throw new InvalidPathFormatException("File path is not absolute: " + path);
+	public static Path requireRelativePath(Path path, String message) {
+		if (path == null) {
+			throw new NullPointerException(message == null ? "path" : message);
+		}
+		if (path.isAbsolute()) {
+			StringBuilder sb;
+			if (message != null) {
+				sb = new StringBuilder(message);
+				sb.append(": Path is not relative: ");
+			} else {
+				sb = new StringBuilder("Path is not relative: ");
+			}
+			sb.append(path);
+			throw new InvalidPathFormatException(sb.toString());
 		}
 		return path;
 	}
@@ -285,13 +281,205 @@ public class SakerPathFiles {
 	 * @throws NullPointerException
 	 *             If the argument is <code>null</code>.
 	 * @see SakerFile#getSakerPath()
+	 * @see SakerPath#isRelative()
 	 */
 	public static SakerPath requireRelativePath(SakerFile file)
 			throws InvalidPathFormatException, NullPointerException {
-		Objects.requireNonNull(file, "file");
+		return requireRelativePath(file, null);
+	}
+
+	/**
+	 * Validation method for ensuring that the specified file is available through a relative path.
+	 * <p>
+	 * A file has a relative path if and only if it has no parent, or none of its parents are a root directory of the
+	 * execution.
+	 * 
+	 * @param file
+	 *            The file.
+	 * @param message
+	 *            Optional message to add to the exception message. (May be <code>null</code>.)
+	 * @return The absolute path of the file.
+	 * @throws InvalidPathFormatException
+	 *             If the path for the file is not relative.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @see SakerFile#getSakerPath()
+	 * @see SakerPath#isRelative()
+	 * @since saker.build 0.8.18
+	 */
+	public static SakerPath requireRelativePath(SakerFile file, String message) {
+		if (file == null) {
+			throw new NullPointerException(message == null ? "file" : message);
+		}
 		SakerPath path = file.getSakerPath();
 		if (!path.isRelative()) {
-			throw new InvalidPathFormatException("File path is not relative: " + path);
+			StringBuilder sb;
+			if (message != null) {
+				sb = new StringBuilder(message);
+				sb.append(": File path is not relative: ");
+			} else {
+				sb = new StringBuilder("File path is not relative: ");
+			}
+			sb.append(path);
+			throw new InvalidPathFormatException(sb.toString());
+		}
+		return path;
+	}
+
+	/**
+	 * Validation method for ensuring that the specified path is absolute.
+	 * 
+	 * @param path
+	 *            The path.
+	 * @return The path argument.
+	 * @throws InvalidPathFormatException
+	 *             If the path is not absolute.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @see SakerPath#isAbsolute()
+	 */
+	public static SakerPath requireAbsolutePath(SakerPath path)
+			throws InvalidPathFormatException, NullPointerException {
+		return requireAbsolutePath(path, null);
+	}
+
+	/**
+	 * Validation method for ensuring that the specified path is absolute.
+	 * 
+	 * @param path
+	 *            The path.
+	 * @param message
+	 *            Optional message to add to the exception message. (May be <code>null</code>.)
+	 * @return The path argument.
+	 * @throws InvalidPathFormatException
+	 *             If the path is not absolute.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @see SakerPath#isAbsolute()
+	 * @since saker.build 0.8.18
+	 */
+	public static SakerPath requireAbsolutePath(SakerPath path, String message) {
+		if (path == null) {
+			throw new NullPointerException(message == null ? "path" : message);
+		}
+		if (!path.isAbsolute()) {
+			StringBuilder sb;
+			if (message != null) {
+				sb = new StringBuilder(message);
+				sb.append(": Path is not absolute: ");
+			} else {
+				sb = new StringBuilder("Path is not absolute: ");
+			}
+			sb.append(path);
+			throw new InvalidPathFormatException(sb.toString());
+		}
+		return path;
+	}
+
+	/**
+	 * Validation method for ensuring that the specified path is absolute.
+	 * 
+	 * @param path
+	 *            The path.
+	 * @return The path argument.
+	 * @throws InvalidPathFormatException
+	 *             If the path is not absolute.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @see Path#isAbsolute()
+	 */
+	public static Path requireAbsolutePath(Path path) throws InvalidPathFormatException, NullPointerException {
+		return requireAbsolutePath(path, null);
+	}
+
+	/**
+	 * Validation method for ensuring that the specified path is absolute.
+	 * 
+	 * @param path
+	 *            The path.
+	 * @param message
+	 *            Optional message to add to the exception message. (May be <code>null</code>.)
+	 * @return The path argument.
+	 * @throws InvalidPathFormatException
+	 *             If the path is not absolute.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @see Path#isAbsolute()
+	 * @since saker.build 0.8.18
+	 */
+	public static Path requireAbsolutePath(Path path, String message) {
+		if (path == null) {
+			throw new NullPointerException(message == null ? "path" : message);
+		}
+		if (!path.isAbsolute()) {
+			StringBuilder sb;
+			if (message != null) {
+				sb = new StringBuilder(message);
+				sb.append(": Path is not absolute: ");
+			} else {
+				sb = new StringBuilder("Path is not absolute: ");
+			}
+			sb.append(path);
+			throw new InvalidPathFormatException(sb.toString());
+		}
+		return path;
+	}
+
+	/**
+	 * Validation method for ensuring that the specified file is available through an absolute path.
+	 * <p>
+	 * A file has an absolute path if and only if it has every parent until one of the root directories for the
+	 * execution, or is a root directory itself.
+	 * 
+	 * @param file
+	 *            The file.
+	 * @return The absolute path of the file.
+	 * @throws InvalidPathFormatException
+	 *             If the path for the file is not absolute.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @see SakerFile#getSakerPath()
+	 * @see SakerPath#isAbsolute()
+	 */
+	public static SakerPath requireAbsolutePath(SakerFile file)
+			throws InvalidPathFormatException, NullPointerException {
+		return requireAbsolutePath(file, null);
+	}
+
+	/**
+	 * Validation method for ensuring that the specified file is available through an absolute path.
+	 * <p>
+	 * A file has an absolute path if and only if it has every parent until one of the root directories for the
+	 * execution, or is a root directory itself.
+	 * 
+	 * @param file
+	 *            The file.
+	 * @param message
+	 *            Optional message to add to the exception message. (May be <code>null</code>.)
+	 * @return The absolute path of the file.
+	 * @throws InvalidPathFormatException
+	 *             If the path for the file is not absolute.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @see SakerFile#getSakerPath()
+	 * @see SakerPath#isAbsolute()
+	 * @since saker.build 0.8.18
+	 */
+	public static SakerPath requireAbsolutePath(SakerFile file, String message) {
+		if (file == null) {
+			throw new NullPointerException(message == null ? "file" : message);
+		}
+		SakerPath path = file.getSakerPath();
+		if (!path.isAbsolute()) {
+			StringBuilder sb;
+			if (message != null) {
+				sb = new StringBuilder(message);
+				sb.append(": File path is not absolute: ");
+			} else {
+				sb = new StringBuilder("File path is not absolute: ");
+			}
+			sb.append(path);
+			throw new InvalidPathFormatException(sb.toString());
 		}
 		return path;
 	}
@@ -309,10 +497,39 @@ public class SakerPathFiles {
 	 * @see SakerPath#getFileName()
 	 */
 	public static String requireFileName(SakerPath path) throws InvalidPathFormatException, NullPointerException {
-		Objects.requireNonNull(path, "path");
+		return requireFileName(path, null);
+	}
+
+	/**
+	 * Validation method for ensuring that the specified path has a valid file name.
+	 * 
+	 * @param path
+	 *            The path.
+	 * @param message
+	 *            Optional message to add to the exception message. (May be <code>null</code>.)
+	 * @return The file name of the path.
+	 * @throws InvalidPathFormatException
+	 *             If the path has no valid file name.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @see SakerPath#getFileName()
+	 * @since saker.build 0.8.18
+	 */
+	public static String requireFileName(SakerPath path, String message) {
+		if (path == null) {
+			throw new NullPointerException(message == null ? "path" : message);
+		}
 		String fn = path.getFileName();
 		if (fn == null) {
-			throw new InvalidPathFormatException("Path contains no file name: " + path);
+			StringBuilder sb;
+			if (message != null) {
+				sb = new StringBuilder(message);
+				sb.append(": Path contains no file name: ");
+			} else {
+				sb = new StringBuilder("Path contains no file name: ");
+			}
+			sb.append(path);
+			throw new InvalidPathFormatException(sb.toString());
 		}
 		return fn;
 	}
@@ -328,14 +545,153 @@ public class SakerPathFiles {
 	 *             If the path has not parent.
 	 * @throws NullPointerException
 	 *             If path is <code>null</code>.
+	 * @see SakerPath#getParent()
 	 */
 	public static SakerPath requireParent(SakerPath path) throws InvalidPathFormatException, NullPointerException {
-		Objects.requireNonNull(path, "path");
+		return requireParent(path, null);
+	}
+
+	/**
+	 * Validation method for ensuring that a specified path has a non-<code>null</code>
+	 * {@linkplain SakerPath#getParent() parent}.
+	 * 
+	 * @param path
+	 *            The path.
+	 * @param message
+	 *            Optional message to add to the exception message. (May be <code>null</code>.)
+	 * @return The parent of the path.
+	 * @throws InvalidPathFormatException
+	 *             If the path has not parent.
+	 * @throws NullPointerException
+	 *             If path is <code>null</code>.
+	 * @see SakerPath#getParent()
+	 * @since saker.build 0.8.18
+	 */
+	public static SakerPath requireParent(SakerPath path, String message) {
+		if (path == null) {
+			throw new NullPointerException(message == null ? "path" : message);
+		}
 		SakerPath parent = path.getParent();
 		if (parent == null) {
-			throw new InvalidPathFormatException("Path has no parent: " + path);
+			StringBuilder sb;
+			if (message != null) {
+				sb = new StringBuilder(message);
+				sb.append(": Path has no parent: ");
+			} else {
+				sb = new StringBuilder("Path has no parent: ");
+			}
+			sb.append(path);
+			throw new InvalidPathFormatException(sb.toString());
 		}
 		return parent;
+	}
+
+	/**
+	 * Validation method for a file name according to the rules of {@link FileHandle#getName()}.
+	 * <p>
+	 * The name may not be <code>null</code>, empty, <code>"."</code> or <code>".."</code>, must not contain slash
+	 * characters (<code>'/'</code>, <code>'\\'</code>), and must not contain the colon (<code>':'</code>) and semicolon
+	 * (<code>';'</code>) characters.
+	 * 
+	 * @param name
+	 *            The file name.
+	 * @return The argument file name.
+	 * @throws InvalidPathFormatException
+	 *             If the file name is not valid.
+	 * @throws NullPointerException
+	 *             If the file name is <code>null</code>.
+	 * @see FileHandle#getName()
+	 */
+	public static String requireValidFileName(String name) throws InvalidPathFormatException, NullPointerException {
+		return requireValidFileName(name, null);
+	}
+
+	/**
+	 * Validation method for a file name according to the rules of {@link FileHandle#getName()}.
+	 * <p>
+	 * The name may not be <code>null</code>, empty, <code>"."</code> or <code>".."</code>, must not contain slash
+	 * characters (<code>'/'</code>, <code>'\\'</code>), and must not contain the colon (<code>':'</code>) and semicolon
+	 * (<code>';'</code>) characters.
+	 * 
+	 * @param name
+	 *            The file name.
+	 * @param message
+	 *            Optional message to add to the exception message. (May be <code>null</code>.)
+	 * @return The argument file name.
+	 * @throws InvalidPathFormatException
+	 *             If the file name is not valid.
+	 * @throws NullPointerException
+	 *             If the file name is <code>null</code>.
+	 * @see FileHandle#getName()
+	 * @since saker.build 0.8.18
+	 */
+	public static String requireValidFileName(String name, String message) {
+		if (name == null) {
+			throw new NullPointerException(message == null ? "file name" : message);
+		}
+		if (name.isEmpty()) {
+			throw new InvalidPathFormatException(
+					message == null ? "Empty file name." : (message + ": Empty file name."));
+		}
+		//len is at least 1, as the name is not empty
+
+		//probably unnecessary optimization of unrolling the first 2 loops, but there it is anyway
+		int len = name.length();
+		char c = name.charAt(0);
+		if (SakerPath.isSlashCharacter(c) || c == ':' || c == ';') {
+			StringBuilder sb;
+			if (message != null) {
+				sb = new StringBuilder(message);
+				sb.append(": Invalid file name: ");
+			} else {
+				sb = new StringBuilder("Invalid file name: ");
+			}
+			sb.append(name);
+			throw new InvalidPathFormatException(sb.toString());
+		}
+
+		int i = 1;
+		if (c == '.') {
+			if (len == 1) {
+				throw new InvalidPathFormatException(
+						message == null ? "Invalid file name: ." : (message + ": Invalid file name: ."));
+			}
+			//len is at least 2
+			c = name.charAt(1);
+			if (SakerPath.isSlashCharacter(c) || c == ':' || c == ';') {
+				StringBuilder sb;
+				if (message != null) {
+					sb = new StringBuilder(message);
+					sb.append(": Invalid file name: ");
+				} else {
+					sb = new StringBuilder("Invalid file name: ");
+				}
+				sb.append(name);
+				throw new InvalidPathFormatException(sb.toString());
+			}
+			if (len == 2) {
+				if (c == '.') {
+					throw new InvalidPathFormatException(
+							message == null ? "Invalid file name: .." : (message + ": Invalid file name: .."));
+				}
+			}
+			i = 2;
+		}
+		for (; i < len; i++) {
+			c = name.charAt(i);
+			if (SakerPath.isSlashCharacter(c) || c == ':' || c == ';') {
+				StringBuilder sb;
+				if (message != null) {
+					sb = new StringBuilder(message);
+					sb.append(": Invalid file name: ");
+				} else {
+					sb = new StringBuilder("Invalid file name: ");
+				}
+				sb.append(name);
+				throw new InvalidPathFormatException(sb.toString());
+			}
+		}
+		return name;
 	}
 
 	/**
@@ -401,62 +757,6 @@ public class SakerPathFiles {
 			throw new MissingConfigurationException("No execution build directory specified.");
 		}
 		return bdir;
-	}
-
-	/**
-	 * Validation method for a file name according to the rules of {@link FileHandle#getName()}.
-	 * <p>
-	 * The name may not be <code>null</code>, empty, <code>"."</code> or <code>".."</code>, must not contain slash
-	 * characters (<code>'/'</code>, <code>'\\'</code>), and must not contain the colon (<code>':'</code>) and semicolon
-	 * (<code>';'</code>) characters.
-	 * 
-	 * @param name
-	 *            The file name.
-	 * @return The argument file name.
-	 * @throws InvalidPathFormatException
-	 *             If the file name is not valid.
-	 * @throws NullPointerException
-	 *             If the file name is <code>null</code>.
-	 * @see FileHandle#getName()
-	 */
-	public static String requireValidFileName(String name) throws InvalidPathFormatException, NullPointerException {
-		Objects.requireNonNull(name, "file name");
-		if (name.isEmpty()) {
-			throw new InvalidPathFormatException("Empty file name.");
-		}
-		//len is at least 1, as the name is not empty
-
-		//probably unnecessary optimization of unrolling the first 2 loops, but there it is anyway
-		int len = name.length();
-		char c = name.charAt(0);
-		if (SakerPath.isSlashCharacter(c) || c == ':' || c == ';') {
-			throw new InvalidPathFormatException("Invalid file name: " + name);
-		}
-
-		int i = 1;
-		if (c == '.') {
-			if (len == 1) {
-				throw new InvalidPathFormatException("Invalid file name: .");
-			}
-			//len is at least 2
-			c = name.charAt(1);
-			if (SakerPath.isSlashCharacter(c) || c == ':' || c == ';') {
-				throw new InvalidPathFormatException("Invalid file name: " + name);
-			}
-			if (len == 2) {
-				if (c == '.') {
-					throw new InvalidPathFormatException("Invalid file name: ..");
-				}
-			}
-			i = 2;
-		}
-		for (; i < len; i++) {
-			c = name.charAt(i);
-			if (SakerPath.isSlashCharacter(c) || c == ':' || c == ';') {
-				throw new InvalidPathFormatException("Invalid file name: " + name);
-			}
-		}
-		return name;
 	}
 
 	/**
