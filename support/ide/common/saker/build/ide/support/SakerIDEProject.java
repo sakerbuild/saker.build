@@ -82,6 +82,7 @@ import saker.build.ide.support.properties.MountPathIDEProperty;
 import saker.build.ide.support.properties.NamedClassClassPathServiceEnumeratorIDEProperty;
 import saker.build.ide.support.properties.NestRepositoryClassPathLocationIDEProperty;
 import saker.build.ide.support.properties.NestRepositoryFactoryServiceEnumeratorIDEProperty;
+import saker.build.ide.support.properties.ParameterizedBuildTargetIDEProperty;
 import saker.build.ide.support.properties.PropertiesValidationErrorResult;
 import saker.build.ide.support.properties.PropertiesValidationException;
 import saker.build.ide.support.properties.ProviderMountIDEProperty;
@@ -182,7 +183,7 @@ public final class SakerIDEProject {
 	public static final RepositoryIDEProperty DEFAULT_REPOSITORY_IDE_PROPERTY = new RepositoryIDEProperty(
 			new NestRepositoryClassPathLocationIDEProperty(),
 			ExecutionRepositoryConfiguration.NEST_REPOSITORY_IDENTIFIER,
-			new NestRepositoryFactoryServiceEnumeratorIDEProperty());
+			NestRepositoryFactoryServiceEnumeratorIDEProperty.INSTANCE);
 
 	public static final String NS_DAEMON_CONNECTION = "daemon-connection.";
 	public static final String NS_PROVIDER_MOUNT = "provider-mount.";
@@ -638,13 +639,13 @@ public final class SakerIDEProject {
 	private static final Map<ClassPathServiceEnumeratorIDEProperty, ClassPathLocationIDEProperty> SERVICE_CLASSPATH_COMBINATIONS = new HashMap<>();
 	private static final Map<ClassPathLocationIDEProperty, ClassPathServiceEnumeratorIDEProperty> CLASSPATH_SERVICE_COMBINATIONS = new HashMap<>();
 	static {
-		SERVICE_CLASSPATH_COMBINATIONS.put(new NestRepositoryFactoryServiceEnumeratorIDEProperty(),
+		SERVICE_CLASSPATH_COMBINATIONS.put(NestRepositoryFactoryServiceEnumeratorIDEProperty.INSTANCE,
 				new NestRepositoryClassPathLocationIDEProperty());
 		SERVICE_CLASSPATH_COMBINATIONS.put(BuiltinScriptingLanguageServiceEnumeratorIDEProperty.INSTANCE,
 				BuiltinScriptingLanguageClassPathLocationIDEProperty.INSTANCE);
 
 		CLASSPATH_SERVICE_COMBINATIONS.put(new NestRepositoryClassPathLocationIDEProperty(),
-				new NestRepositoryFactoryServiceEnumeratorIDEProperty());
+				NestRepositoryFactoryServiceEnumeratorIDEProperty.INSTANCE);
 		CLASSPATH_SERVICE_COMBINATIONS.put(BuiltinScriptingLanguageClassPathLocationIDEProperty.INSTANCE,
 				BuiltinScriptingLanguageServiceEnumeratorIDEProperty.INSTANCE);
 	}
@@ -1114,7 +1115,7 @@ public final class SakerIDEProject {
 	}
 
 	public final BuildTaskExecutionResult build(SakerPath scriptfile, String targetname, DaemonEnvironment daemonenv,
-			ExecutionParametersImpl parameters) {
+			ExecutionParametersImpl parameters, NavigableMap<String, Object> buildtargetparameters) {
 		if (daemonenv == null) {
 			throw new NullPointerException("Daemon environment is not available.");
 		}
@@ -1127,7 +1128,13 @@ public final class SakerIDEProject {
 			return BuildTaskExecutionResultImpl.createInitializationFailed(e);
 		}
 		BuildExecutionInvoker environment = daemonenv.getExecutionInvoker();
-		return environment.runBuildTarget(scriptfile, targetname, parameters, project);
+		return environment.runBuildTargetWithLiteralParameters(scriptfile, targetname, parameters, project,
+				buildtargetparameters);
+	}
+
+	public final BuildTaskExecutionResult build(SakerPath scriptfile, String targetname, DaemonEnvironment daemonenv,
+			ExecutionParametersImpl parameters) {
+		return build(scriptfile, targetname, daemonenv, parameters, null);
 	}
 
 	public final DaemonEnvironment getExecutionDaemonEnvironment(IDEProjectProperties projprops) throws IOException {

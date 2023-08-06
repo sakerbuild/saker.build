@@ -39,6 +39,8 @@ public interface IDEProjectProperties {
 
 	public Set<String> getScriptModellingExclusions();
 
+	public Set<? extends ParameterizedBuildTargetIDEProperty> getParameterizedBuildTargets();
+
 	/**
 	 * Boolean as string value.
 	 */

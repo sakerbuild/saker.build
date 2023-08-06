@@ -47,6 +47,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 	protected Set<ProviderMountIDEProperty> mounts = Collections.emptySet();
 	protected Set<ScriptConfigurationIDEProperty> scriptConfigurations = Collections.emptySet();
 	protected Set<String> scriptModellingExclusions = Collections.emptySet();
+	protected Set<? extends ParameterizedBuildTargetIDEProperty> parameterizedBuildTargets = Collections.emptySet();
 
 	protected String workingDirectory;
 	protected String buildDirectory;
@@ -81,6 +82,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		this.mounts = ImmutableUtils.makeImmutableLinkedHashSet(copy.getMounts());
 		this.scriptConfigurations = ImmutableUtils.makeImmutableLinkedHashSet(copy.getScriptConfigurations());
 		this.scriptModellingExclusions = ImmutableUtils.makeImmutableNavigableSet(copy.getScriptModellingExclusions());
+		this.parameterizedBuildTargets = ImmutableUtils.makeImmutableHashSet(copy.getParameterizedBuildTargets());
 		this.useClientsAsClusters = copy.getUseClientsAsClusters();
 
 		this.workingDirectory = copy.getWorkingDirectory();
@@ -143,6 +145,11 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 	}
 
 	@Override
+	public Set<? extends ParameterizedBuildTargetIDEProperty> getParameterizedBuildTargets() {
+		return parameterizedBuildTargets;
+	}
+
+	@Override
 	public String getRequireTaskIDEConfiguration() {
 		return requireTaskIDEConfiguration;
 	}
@@ -178,6 +185,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		result = prime * result + ((requireTaskIDEConfiguration == null) ? 0 : requireTaskIDEConfiguration.hashCode());
 		result = prime * result + ((scriptConfigurations == null) ? 0 : scriptConfigurations.hashCode());
 		result = prime * result + ((scriptModellingExclusions == null) ? 0 : scriptModellingExclusions.hashCode());
+		result = prime * result + ((parameterizedBuildTargets == null) ? 0 : parameterizedBuildTargets.hashCode());
 		result = prime * result + ((useClientsAsClusters == null) ? 0 : useClientsAsClusters.hashCode());
 		result = prime * result + ((userParameters == null) ? 0 : userParameters.hashCode());
 		result = prime * result + ((workingDirectory == null) ? 0 : workingDirectory.hashCode());
@@ -247,6 +255,11 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 			if (other.scriptModellingExclusions != null)
 				return false;
 		} else if (!scriptModellingExclusions.equals(other.scriptModellingExclusions))
+			return false;
+		if (parameterizedBuildTargets == null) {
+			if (other.parameterizedBuildTargets != null)
+				return false;
+		} else if (!parameterizedBuildTargets.equals(other.parameterizedBuildTargets))
 			return false;
 		if (useClientsAsClusters == null) {
 			if (other.useClientsAsClusters != null)
@@ -338,6 +351,13 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		public Builder setScriptModellingExclusions(Set<String> scriptModellingExclusions) {
 			result.scriptModellingExclusions = scriptModellingExclusions == null ? Collections.emptySet()
 					: ImmutableUtils.makeImmutableNavigableSet(scriptModellingExclusions);
+			return this;
+		}
+
+		public Builder setParameterizedBuildTargets(
+				Set<? extends ParameterizedBuildTargetIDEProperty> parameterizedBuildTargets) {
+			result.parameterizedBuildTargets = parameterizedBuildTargets == null ? Collections.emptySet()
+					: ImmutableUtils.makeImmutableHashSet(parameterizedBuildTargets);
 			return this;
 		}
 

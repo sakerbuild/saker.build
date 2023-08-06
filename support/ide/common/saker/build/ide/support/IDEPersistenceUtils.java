@@ -50,6 +50,7 @@ import saker.build.ide.support.properties.MountPathIDEProperty;
 import saker.build.ide.support.properties.NamedClassClassPathServiceEnumeratorIDEProperty;
 import saker.build.ide.support.properties.NestRepositoryClassPathLocationIDEProperty;
 import saker.build.ide.support.properties.NestRepositoryFactoryServiceEnumeratorIDEProperty;
+import saker.build.ide.support.properties.ParameterizedBuildTargetIDEProperty;
 import saker.build.ide.support.properties.ProviderMountIDEProperty;
 import saker.build.ide.support.properties.RepositoryIDEProperty;
 import saker.build.ide.support.properties.ScriptConfigurationIDEProperty;
@@ -74,15 +75,19 @@ public class IDEPersistenceUtils {
 	private static final String F_URL = "url";
 	private static final String F_CONNECTION = "connection";
 	private static final String F_SCRIPT_MODELLING_EXCLUSIONS = "script_modelling_exclusions";
+	private static final String F_PARAMETERIZED_BUILD_TARGETS = "parameterized_build_targets";
 	private static final String F_OPTIONS = "options";
 	private static final String F_WILDCARD = "wildcard";
 	private static final String F_SCRIPT_CONFIGS = "script_configs";
 	private static final String F_PATH = "path";
+	private static final String F_SCRIPT_PATH = "script_path";
+	private static final String F_TARGET_NAME = "target_name";
 	private static final String F_CLIENT = "client";
 	private static final String F_ROOT = "root";
 	private static final String F_MOUNTS = "mounts";
 	private static final String F_USE_AS_CLUSTER = "use_as_cluster";
 	private static final String F_NAME = "name";
+	private static final String F_VALUE = "value";
 	private static final String F_ADDRESS = "address";
 	private static final String F_CONNECTIONS = "connections";
 	private static final String F_SERVICE = "service";
@@ -106,6 +111,7 @@ public class IDEPersistenceUtils {
 	private static final String F_PORT = "port";
 	private static final String F_EXCEPTION_FORMAT = "exception_format";
 	private static final String F_USER_PARAMETERS = "user_parameters";
+	private static final String F_PARAMETERS = "parameters";
 	private static final String F_STORAGE_DIRECTORY = "storage_directory";
 	private static final String F_USE_CLIENTS_AS_CLUSTERS = "use_clients_as_clusters";
 
@@ -204,9 +210,9 @@ public class IDEPersistenceUtils {
 		} else if (val instanceof Character) {
 			out.write("C" + ((Character) val).charValue());
 		} else if (val instanceof Byte || val instanceof Short || val instanceof Integer || val instanceof Long) {
-			out.write("I" + ((Integer) val).intValue());
+			out.write("I" + ((Number) val).longValue());
 		} else if (val instanceof Float || val instanceof Double) {
-			out.write("F" + ((Float) val).floatValue());
+			out.write("F" + ((Number) val).doubleValue());
 		} else {
 			//just write the string value
 			out.write("S" + val.toString());
@@ -235,9 +241,9 @@ public class IDEPersistenceUtils {
 		} else if (val instanceof Character) {
 			out.writeField("C" + fn, ((Character) val).charValue());
 		} else if (val instanceof Byte || val instanceof Short || val instanceof Integer || val instanceof Long) {
-			out.writeField("I" + fn, ((Integer) val).intValue());
+			out.writeField("I" + fn, ((Number) val).longValue());
 		} else if (val instanceof Float || val instanceof Double) {
-			out.writeField("F" + fn, ((Float) val).floatValue());
+			out.writeField("F" + fn, ((Number) val).doubleValue());
 		} else {
 			//just write the string value
 			out.writeField("S" + fn, val.toString());
@@ -402,7 +408,7 @@ public class IDEPersistenceUtils {
 		writeStringIfNotNull(objout, F_REQUIRE_IDE_CONFIG, props.getRequireTaskIDEConfiguration());
 		writeStringIfNotNull(objout, F_USE_CLIENTS_AS_CLUSTERS, props.getUseClientsAsClusters());
 		Set<? extends RepositoryIDEProperty> repositories = props.getRepositories();
-		if (repositories != null) {
+		if (!ObjectUtils.isNullOrEmpty(repositories)) {
 			try (StructuredArrayObjectOutput repoarray = objout.writeArray(F_REPOSITORIES)) {
 				for (RepositoryIDEProperty repo : repositories) {
 					try (StructuredObjectOutput repoobj = repoarray.writeObject()) {
@@ -419,51 +425,43 @@ public class IDEPersistenceUtils {
 			}
 		}
 		Set<? extends Entry<String, String>> userparams = props.getUserParameters();
-		writeStringMap(objout, userparams, F_USER_PARAMETERS);
+		if (!ObjectUtils.isNullOrEmpty(userparams)) {
+			writeStringMap(objout, userparams, F_USER_PARAMETERS);
+		}
 		Set<? extends DaemonConnectionIDEProperty> connections = props.getConnections();
-		if (connections != null) {
+		if (!ObjectUtils.isNullOrEmpty(connections)) {
 			try (StructuredArrayObjectOutput arraywriter = objout.writeArray(F_CONNECTIONS)) {
 				for (DaemonConnectionIDEProperty conn : connections) {
 					try (StructuredObjectOutput entryobj = arraywriter.writeObject()) {
 						String address = conn.getNetAddress();
 						String connectionname = conn.getConnectionName();
-						if (address != null) {
-							entryobj.writeField(F_ADDRESS, address);
-						}
-						if (connectionname != null) {
-							entryobj.writeField(F_NAME, connectionname);
-						}
+						writeStringIfNotNull(entryobj, F_ADDRESS, address);
+						writeStringIfNotNull(entryobj, F_NAME, connectionname);
 						entryobj.writeField(F_USE_AS_CLUSTER, conn.isUseAsCluster());
 					}
 				}
 			}
 		}
 		Set<? extends ProviderMountIDEProperty> mounts = props.getMounts();
-		if (mounts != null) {
+		if (!ObjectUtils.isNullOrEmpty(mounts)) {
 			try (StructuredArrayObjectOutput arraywriter = objout.writeArray(F_MOUNTS)) {
 				for (ProviderMountIDEProperty mount : mounts) {
 					try (StructuredObjectOutput entryobj = arraywriter.writeObject()) {
 						String root = mount.getRoot();
 						MountPathIDEProperty mountpath = mount.getMountPathProperty();
-						if (root != null) {
-							entryobj.writeField(F_ROOT, root);
-						}
+						writeStringIfNotNull(entryobj, F_ROOT, root);
 						if (mountpath != null) {
 							String clientname = mountpath.getMountClientName();
 							String mountpathstr = mountpath.getMountPath();
-							if (clientname != null) {
-								entryobj.writeField(F_CLIENT, clientname);
-							}
-							if (mountpathstr != null) {
-								entryobj.writeField(F_PATH, mountpathstr);
-							}
+							writeStringIfNotNull(entryobj, F_CLIENT, clientname);
+							writeStringIfNotNull(entryobj, F_PATH, mountpathstr);
 						}
 					}
 				}
 			}
 		}
 		Set<? extends ScriptConfigurationIDEProperty> scriptconfigs = props.getScriptConfigurations();
-		if (scriptconfigs != null) {
+		if (!ObjectUtils.isNullOrEmpty(scriptconfigs)) {
 			try (StructuredArrayObjectOutput arraywriter = objout.writeArray(F_SCRIPT_CONFIGS)) {
 				for (ScriptConfigurationIDEProperty sc : scriptconfigs) {
 					try (StructuredObjectOutput scobj = arraywriter.writeObject()) {
@@ -471,9 +469,7 @@ public class IDEPersistenceUtils {
 						Set<? extends Entry<String, String>> scriptoptions = sc.getScriptOptions();
 						String scriptwildcard = sc.getScriptsWildcard();
 						ClassPathServiceEnumeratorIDEProperty scriptserviceenumerator = sc.getServiceEnumerator();
-						if (scriptwildcard != null) {
-							scobj.writeField(F_WILDCARD, scriptwildcard);
-						}
+						writeStringIfNotNull(scobj, F_WILDCARD, scriptwildcard);
 						writeStringMap(scobj, scriptoptions, F_OPTIONS);
 						writeClassPathProperty(scobj, cplocation, F_CLASSPATH);
 						writeServiceEnumeratorProperty(scobj, scriptserviceenumerator, F_SERVICE);
@@ -482,10 +478,33 @@ public class IDEPersistenceUtils {
 			}
 		}
 		Set<String> scriptmodellingexclusions = props.getScriptModellingExclusions();
-		if (scriptmodellingexclusions != null) {
+		if (!ObjectUtils.isNullOrEmpty(scriptmodellingexclusions)) {
 			try (StructuredArrayObjectOutput arraywriter = objout.writeArray(F_SCRIPT_MODELLING_EXCLUSIONS)) {
 				for (String wildcard : scriptmodellingexclusions) {
 					arraywriter.write(wildcard);
+				}
+			}
+		}
+		Set<? extends ParameterizedBuildTargetIDEProperty> parambuildtargets = props.getParameterizedBuildTargets();
+		if (!ObjectUtils.isNullOrEmpty(parambuildtargets)) {
+			try (StructuredArrayObjectOutput arraywriter = objout.writeArray(F_PARAMETERIZED_BUILD_TARGETS)) {
+				for (ParameterizedBuildTargetIDEProperty parambuildtarget : parambuildtargets) {
+					try (StructuredObjectOutput buildtargetparamobj = arraywriter.writeObject()) {
+						writeStringIfNotNull(buildtargetparamobj, F_SCRIPT_PATH, parambuildtarget.getScriptPath());
+						writeStringIfNotNull(buildtargetparamobj, F_TARGET_NAME, parambuildtarget.getTargetName());
+						Map<String, String> paramentries = parambuildtarget.getBuildTargetParameters();
+						if (!ObjectUtils.isNullOrEmpty(paramentries)) {
+							try (StructuredArrayObjectOutput paramarrayobj = buildtargetparamobj
+									.writeArray(F_PARAMETERS)) {
+								for (Entry<String, String> entry : paramentries.entrySet()) {
+									try (StructuredObjectOutput entryobj = paramarrayobj.writeObject()) {
+										entryobj.writeField(F_NAME, entry.getKey());
+										entryobj.writeField(F_VALUE, entry.getValue());
+									}
+								}
+							}
+						}
+					}
 				}
 			}
 		}
@@ -617,6 +636,41 @@ public class IDEPersistenceUtils {
 				result.setScriptModellingExclusions(scriptmodellingexclusions);
 			}
 		}
+		try (StructuredArrayObjectInput array = input.readArray(F_PARAMETERIZED_BUILD_TARGETS)) {
+			if (array != null) {
+				Set<ParameterizedBuildTargetIDEProperty> parambuildtargets = new LinkedHashSet<>();
+				int len = array.length();
+				for (int i = 0; i < len; i++) {
+					try (StructuredObjectInput buildtargetobj = array.readObject()) {
+						if (buildtargetobj == null) {
+							continue;
+						}
+						String scriptpath = buildtargetobj.readString(F_SCRIPT_PATH);
+						String targetname = buildtargetobj.readString(F_TARGET_NAME);
+						NavigableMap<String, String> buildtargetparams = new TreeMap<>();
+						try (StructuredArrayObjectInput paramsarray = buildtargetobj.readArray(F_PARAMETERS)) {
+							if (paramsarray != null) {
+								int paramslen = paramsarray.length();
+								for (int j = 0; j < paramslen; j++) {
+									try (StructuredObjectInput entryobj = paramsarray.readObject()) {
+										if (entryobj == null) {
+											continue;
+										}
+										String paramname = entryobj.readString(F_NAME);
+										String paramvalue = entryobj.readString(F_VALUE);
+										buildtargetparams.put(paramname, paramvalue);
+									}
+								}
+							}
+						}
+						parambuildtargets.add(
+								new ParameterizedBuildTargetIDEProperty(scriptpath, targetname, buildtargetparams));
+					} catch (DataFormatException | IllegalArgumentException e) {
+					}
+				}
+				result.setParameterizedBuildTargets(parambuildtargets);
+			}
+		}
 		return result.build();
 	}
 
@@ -704,7 +758,7 @@ public class IDEPersistenceUtils {
 							return BuiltinScriptingLanguageServiceEnumeratorIDEProperty.INSTANCE;
 						}
 						case SP_NEST_REPOSITORY_SERVICE: {
-							return new NestRepositoryFactoryServiceEnumeratorIDEProperty();
+							return NestRepositoryFactoryServiceEnumeratorIDEProperty.INSTANCE;
 						}
 						default: {
 							break;

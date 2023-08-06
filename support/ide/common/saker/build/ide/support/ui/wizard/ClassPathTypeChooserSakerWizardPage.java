@@ -120,7 +120,7 @@ public class ClassPathTypeChooserSakerWizardPage extends AbstractSakerWizardPage
 				.getWizardPage(NestRepositoryVersionSakerWizardPage.class);
 		continuation = Optional.of(cont);
 		property = null;
-		serviceEnumerator = new NestRepositoryFactoryServiceEnumeratorIDEProperty();
+		serviceEnumerator = NestRepositoryFactoryServiceEnumeratorIDEProperty.INSTANCE;
 		selected = SELECTED_NEST_REPOSITORY;
 	}
 

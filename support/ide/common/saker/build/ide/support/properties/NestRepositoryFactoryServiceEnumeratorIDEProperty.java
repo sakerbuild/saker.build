@@ -18,6 +18,7 @@ package saker.build.ide.support.properties;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 
 public class NestRepositoryFactoryServiceEnumeratorIDEProperty implements ClassPathServiceEnumeratorIDEProperty {
+	public static final NestRepositoryFactoryServiceEnumeratorIDEProperty INSTANCE = new NestRepositoryFactoryServiceEnumeratorIDEProperty();
 
 	public NestRepositoryFactoryServiceEnumeratorIDEProperty() {
 	}
