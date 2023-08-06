@@ -150,6 +150,7 @@ public class BuildCommand {
 
 	private static final String PARAM_NAME_DAEMON_ADDRESS = "-daemon-address";
 	private static final String PARAM_NAME_U = "-U";
+	private static final String PARAM_NAME_P = "-P";
 	private static final String PARAM_NAME_DBCONFIG_PATH = "-dbconfig-path";
 	private static final String PARAM_NAME_TRACE = "-trace";
 	private static final String PARAM_NAME_MOUNT = "-mount";
@@ -260,7 +261,7 @@ public class BuildCommand {
 	@MultiParameter(DirectoryMountParam.class)
 	public Collection<DirectoryMountParam> mount = new LinkedHashSet<>();
 
-	private Map<String, String> userParameters = new TreeMap<>();
+	private NavigableMap<String, String> userParameters = new TreeMap<>();
 
 	/**
 	 * <pre>
@@ -279,6 +280,26 @@ public class BuildCommand {
 			throw new InvalidArgumentValueException("User parameter specified multiple times: " + key, PARAM_NAME_U);
 		}
 		userParameters.put(key, value);
+	}
+
+	private NavigableMap<String, String> buildTargetParameters = new TreeMap<>();
+
+	/**
+	 * <pre>
+	 * Sets a build target parameter.
+	 * 
+	 * Sets the value of a build target parameter that is directly passed to the 
+	 * invoked build target.
+	 * 
+	 * Can be used multiple times to set multiple different parameters.
+	 * </pre>
+	 */
+	@Parameter(PARAM_NAME_P)
+	public void buildTargetParameter(String key, String value) {
+		if (buildTargetParameters.containsKey(key)) {
+			throw new InvalidArgumentValueException("User parameter specified multiple times: " + key, PARAM_NAME_U);
+		}
+		buildTargetParameters.put(key, value);
 	}
 
 	@ParameterContext
@@ -832,8 +853,8 @@ public class BuildCommand {
 				}
 			}
 			long nanos = System.nanoTime();
-			BuildTaskExecutionResult execres = envcontroller.runBuildTarget(this.buildScriptFile, this.target, params,
-					project);
+			BuildTaskExecutionResult execres = envcontroller.runBuildTargetWithLiteralParameters(this.buildScriptFile,
+					this.target, params, project, buildTargetParameters);
 			long endnanos = System.nanoTime();
 
 			ResultKind executionresultkind = execres.getResultKind();

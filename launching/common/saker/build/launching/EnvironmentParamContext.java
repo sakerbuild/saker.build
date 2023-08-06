@@ -15,7 +15,7 @@
  */
 package saker.build.launching;
 
-import java.util.Map;
+import java.util.NavigableMap;
 import java.util.TreeMap;
 
 import saker.build.daemon.DaemonLaunchParameters;
@@ -26,7 +26,7 @@ class EnvironmentParamContext {
 	public static final String PARAM_NAME_EU = "-EU";
 	public static final String PARAM_NAME_THREAD_FACTOR = "-thread-factor";
 
-	private Map<String, String> environmentUserParameters = new TreeMap<>();
+	private NavigableMap<String, String> environmentUserParameters = new TreeMap<>();
 
 	/**
 	 * <pre>
@@ -64,7 +64,7 @@ class EnvironmentParamContext {
 	@Parameter(PARAM_NAME_THREAD_FACTOR)
 	public int threadFactor;
 
-	public Map<String, String> getEnvironmentUserParameters() {
+	public NavigableMap<String, String> getEnvironmentUserParameters() {
 		return environmentUserParameters;
 	}
 
