@@ -18,28 +18,44 @@ package saker.build.ide.support.properties;
 import java.util.Collections;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.UUID;
 
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 
 public class ParameterizedBuildTargetIDEProperty {
+	/**
+	 * An unique id (likely {@link UUID}) of this parameterized build target to uniquely identify it in the IDE
+	 * properties.
+	 */
+	private String uuid;
 	private String scriptPath;
 	private String targetName;
 
+	private String displayName;
+
 	private NavigableMap<String, String> buildTargetParameters;
 
-	public ParameterizedBuildTargetIDEProperty(String scriptPath, String targetName) {
+	public ParameterizedBuildTargetIDEProperty(String uuid, String scriptPath, String targetName, String displayName) {
+		this.uuid = uuid;
 		this.scriptPath = scriptPath;
 		this.targetName = targetName;
+		this.displayName = displayName;
 		this.buildTargetParameters = Collections.emptyNavigableMap();
 	}
 
-	public ParameterizedBuildTargetIDEProperty(String scriptPath, String targetName,
+	public ParameterizedBuildTargetIDEProperty(String uuid, String scriptPath, String targetName, String displayName,
 			Map<String, String> buildTargetParameters) {
+		this.uuid = uuid;
 		this.scriptPath = scriptPath;
 		this.targetName = targetName;
+		this.displayName = displayName;
 		this.buildTargetParameters = ObjectUtils.isNullOrEmpty(buildTargetParameters) ? Collections.emptyNavigableMap()
 				: ImmutableUtils.makeImmutableNavigableMap(buildTargetParameters);
+	}
+
+	public String getUuid() {
+		return uuid;
 	}
 
 	public String getScriptPath() {
@@ -50,7 +66,11 @@ public class ParameterizedBuildTargetIDEProperty {
 		return targetName;
 	}
 
-	public Map<String, String> getBuildTargetParameters() {
+	public String getDisplayName() {
+		return displayName;
+	}
+
+	public NavigableMap<String, String> getBuildTargetParameters() {
 		return buildTargetParameters;
 	}
 
@@ -58,9 +78,7 @@ public class ParameterizedBuildTargetIDEProperty {
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
-		result = prime * result + ((buildTargetParameters == null) ? 0 : buildTargetParameters.hashCode());
-		result = prime * result + ((scriptPath == null) ? 0 : scriptPath.hashCode());
-		result = prime * result + ((targetName == null) ? 0 : targetName.hashCode());
+		result = prime * result + ((uuid == null) ? 0 : uuid.hashCode());
 		return result;
 	}
 
@@ -78,6 +96,11 @@ public class ParameterizedBuildTargetIDEProperty {
 				return false;
 		} else if (!buildTargetParameters.equals(other.buildTargetParameters))
 			return false;
+		if (displayName == null) {
+			if (other.displayName != null)
+				return false;
+		} else if (!displayName.equals(other.displayName))
+			return false;
 		if (scriptPath == null) {
 			if (other.scriptPath != null)
 				return false;
@@ -88,6 +111,11 @@ public class ParameterizedBuildTargetIDEProperty {
 				return false;
 		} else if (!targetName.equals(other.targetName))
 			return false;
+		if (uuid == null) {
+			if (other.uuid != null)
+				return false;
+		} else if (!uuid.equals(other.uuid))
+			return false;
 		return true;
 	}
 
@@ -95,9 +123,22 @@ public class ParameterizedBuildTargetIDEProperty {
 	public String toString() {
 		StringBuilder builder = new StringBuilder(getClass().getSimpleName());
 		builder.append("[");
-		builder.append(targetName);
-		builder.append("@");
-		builder.append(scriptPath);
+		if (displayName != null) {
+			builder.append(displayName);
+			builder.append(" (");
+			builder.append(targetName);
+			builder.append("@");
+			builder.append(scriptPath);
+			builder.append(')');
+		} else {
+			builder.append(targetName);
+			builder.append("@");
+			builder.append(scriptPath);
+		}
+		if (uuid != null) {
+			builder.append(", uuid=");
+			builder.append(uuid);
+		}
 		if (!ObjectUtils.isNullOrEmpty(buildTargetParameters)) {
 			builder.append(", buildTargetParameters=");
 			builder.append(buildTargetParameters);

@@ -3,6 +3,7 @@ package testing.saker.idesupport;
 import java.io.IOException;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.UUID;
 
 import saker.build.ide.support.IDEPersistenceUtils;
 import saker.build.ide.support.persist.StructuredObjectInput;
@@ -111,11 +112,14 @@ public class IDESerializationTest extends SakerTestCase {
 		builder.setParameterizedBuildTargets(
 				ImmutableUtils.makeImmutableHashSet(new ParameterizedBuildTargetIDEProperty[] {
 
-						new ParameterizedBuildTargetIDEProperty("script/path.ext", "build"),
+						new ParameterizedBuildTargetIDEProperty(UUID.randomUUID().toString(), "script/path.ext",
+								"build", "displayname1"),
 
-						new ParameterizedBuildTargetIDEProperty("script/path.ext", "build2"),
+						new ParameterizedBuildTargetIDEProperty(UUID.randomUUID().toString(), "script/path.ext",
+								"build2", "displayname2"),
 
-						new ParameterizedBuildTargetIDEProperty("script/path.ext", "build3", userparamsmap),
+						new ParameterizedBuildTargetIDEProperty(UUID.randomUUID().toString(), "script/path.ext",
+								"build3", "displayname3", userparamsmap),
 
 				}));
 

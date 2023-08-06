@@ -1115,7 +1115,7 @@ public final class SakerIDEProject {
 	}
 
 	public final BuildTaskExecutionResult build(SakerPath scriptfile, String targetname, DaemonEnvironment daemonenv,
-			ExecutionParametersImpl parameters, NavigableMap<String, Object> buildtargetparameters) {
+			ExecutionParametersImpl parameters, NavigableMap<String, ?> buildtargetparameters) {
 		if (daemonenv == null) {
 			throw new NullPointerException("Daemon environment is not available.");
 		}

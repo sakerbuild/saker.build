@@ -34,6 +34,7 @@ import saker.build.ide.support.properties.MountPathIDEProperty;
 import saker.build.ide.support.properties.NamedClassClassPathServiceEnumeratorIDEProperty;
 import saker.build.ide.support.properties.NestRepositoryClassPathLocationIDEProperty;
 import saker.build.ide.support.properties.NestRepositoryFactoryServiceEnumeratorIDEProperty;
+import saker.build.ide.support.properties.ParameterizedBuildTargetIDEProperty;
 import saker.build.ide.support.properties.PropertiesValidationErrorResult;
 import saker.build.ide.support.properties.ProviderMountIDEProperty;
 import saker.build.ide.support.properties.RepositoryIDEProperty;
@@ -896,5 +897,14 @@ public class SakerIDESupportUtils {
 			return params;
 		}
 		return DaemonLaunchParameters.builder(params).setActsAsServer(false).setPort(null).build();
+	}
+
+	public static String getParameterizedBuildTargetDisplayString(
+			ParameterizedBuildTargetIDEProperty parambuildtarget) {
+		String displayname = parambuildtarget.getDisplayName();
+		if (ObjectUtils.isNullOrEmpty(displayname)) {
+			displayname = parambuildtarget.getTargetName() + " (parameterized)";
+		}
+		return displayname;
 	}
 }

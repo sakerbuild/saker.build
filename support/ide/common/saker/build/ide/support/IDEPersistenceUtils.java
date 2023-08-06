@@ -87,6 +87,7 @@ public class IDEPersistenceUtils {
 	private static final String F_MOUNTS = "mounts";
 	private static final String F_USE_AS_CLUSTER = "use_as_cluster";
 	private static final String F_NAME = "name";
+	private static final String F_DISPLAY_NAME = "display_name";
 	private static final String F_VALUE = "value";
 	private static final String F_ADDRESS = "address";
 	private static final String F_CONNECTIONS = "connections";
@@ -112,6 +113,7 @@ public class IDEPersistenceUtils {
 	private static final String F_EXCEPTION_FORMAT = "exception_format";
 	private static final String F_USER_PARAMETERS = "user_parameters";
 	private static final String F_PARAMETERS = "parameters";
+	private static final String F_UUID = "uuid";
 	private static final String F_STORAGE_DIRECTORY = "storage_directory";
 	private static final String F_USE_CLIENTS_AS_CLUSTERS = "use_clients_as_clusters";
 
@@ -490,8 +492,10 @@ public class IDEPersistenceUtils {
 			try (StructuredArrayObjectOutput arraywriter = objout.writeArray(F_PARAMETERIZED_BUILD_TARGETS)) {
 				for (ParameterizedBuildTargetIDEProperty parambuildtarget : parambuildtargets) {
 					try (StructuredObjectOutput buildtargetparamobj = arraywriter.writeObject()) {
+						writeStringIfNotNull(buildtargetparamobj, F_UUID, parambuildtarget.getUuid());
 						writeStringIfNotNull(buildtargetparamobj, F_SCRIPT_PATH, parambuildtarget.getScriptPath());
 						writeStringIfNotNull(buildtargetparamobj, F_TARGET_NAME, parambuildtarget.getTargetName());
+						writeStringIfNotNull(buildtargetparamobj, F_DISPLAY_NAME, parambuildtarget.getDisplayName());
 						Map<String, String> paramentries = parambuildtarget.getBuildTargetParameters();
 						if (!ObjectUtils.isNullOrEmpty(paramentries)) {
 							try (StructuredArrayObjectOutput paramarrayobj = buildtargetparamobj
@@ -645,8 +649,10 @@ public class IDEPersistenceUtils {
 						if (buildtargetobj == null) {
 							continue;
 						}
+						String uuid = buildtargetobj.readString(F_UUID);
 						String scriptpath = buildtargetobj.readString(F_SCRIPT_PATH);
 						String targetname = buildtargetobj.readString(F_TARGET_NAME);
+						String displayname = buildtargetobj.readString(F_DISPLAY_NAME);
 						NavigableMap<String, String> buildtargetparams = new TreeMap<>();
 						try (StructuredArrayObjectInput paramsarray = buildtargetobj.readArray(F_PARAMETERS)) {
 							if (paramsarray != null) {
@@ -663,8 +669,8 @@ public class IDEPersistenceUtils {
 								}
 							}
 						}
-						parambuildtargets.add(
-								new ParameterizedBuildTargetIDEProperty(scriptpath, targetname, buildtargetparams));
+						parambuildtargets.add(new ParameterizedBuildTargetIDEProperty(uuid, scriptpath, targetname,
+								displayname, buildtargetparams));
 					} catch (DataFormatException | IllegalArgumentException e) {
 					}
 				}
