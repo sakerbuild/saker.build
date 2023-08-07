@@ -58,6 +58,15 @@ public class ParameterizedBuildTargetIDEProperty {
 		return uuid;
 	}
 
+	/**
+	 * Gets the path of the build script.
+	 * <p>
+	 * The script path is relative to the project root directory. (This relativeness is required so that the
+	 * parameterized build target configuration is independent of the execution path configuration. Therefore the path
+	 * configuration can be freely changed without the need to change these path values.)
+	 * 
+	 * @return The path.
+	 */
 	public String getScriptPath() {
 		return scriptPath;
 	}
