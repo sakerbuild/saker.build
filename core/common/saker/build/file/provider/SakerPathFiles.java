@@ -2111,7 +2111,8 @@ public class SakerPathFiles {
 		//if the directory is remote to the current build environment, then use a higher number of threads
 		//as the network communication needs to be taken into account as well.
 		//XXX maybe this can be improved with virtual threads?
-		try (ThreadWorkPool pool = RMIConnection.isRemoteObject(dir)
+		try (@SuppressWarnings("deprecation") // suppress getDefaultThreadFactor deprecation
+		ThreadWorkPool pool = RMIConnection.isRemoteObject(dir)
 				? ThreadUtils.newFixedWorkPool(ThreadUtils.getDefaultThreadFactor() * 4, "fsync-")
 				: ThreadUtils.newFixedWorkPool("fsync-")) {
 			synchronizeDirectoryImpl(dir, pathkey, synchpredicate, pool, db);
