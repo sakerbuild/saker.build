@@ -42,6 +42,7 @@ import saker.build.runtime.execution.ScriptAccessorClassPathResource;
 import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.runtime.params.ExecutionScriptConfiguration;
 import saker.build.runtime.params.ExecutionScriptConfiguration.ScriptProviderLocation;
+import saker.build.scripting.ScriptParsingFailedException;
 import saker.build.scripting.model.CompletionProposalEdit;
 import saker.build.scripting.model.FormattedTextContent;
 import saker.build.scripting.model.InsertCompletionProposalEdit;
@@ -451,9 +452,13 @@ public abstract class ScriptModelTestCase extends SakerTestCase {
 		return new ProposalAssertion(proposals);
 	}
 
-	protected static void exhaustiveScriptAnalysis(ScriptSyntaxModel model, String data) {
+	@SuppressWarnings("deprecation") // suppress getTargetNames deprecation call
+	protected static void exhaustiveScriptAnalysis(ScriptSyntaxModel model, String data)
+			throws IOException, ScriptParsingFailedException {
 		exhaustiveTokenInformationRetrieve(model);
 		exhaustiveProposalRetrieve(model, data);
+		model.getBuildTargets();
+		model.getTargetNames();
 	}
 
 	protected static void exhaustiveTokenInformationRetrieve(ScriptSyntaxModel model) {

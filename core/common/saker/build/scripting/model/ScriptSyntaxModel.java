@@ -16,14 +16,17 @@
 package saker.build.scripting.model;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import saker.build.scripting.ScriptParsingFailedException;
 import saker.build.scripting.ScriptParsingOptions;
+import saker.build.scripting.model.info.BuildTargetInformation;
 import saker.build.scripting.model.info.ExternalScriptInformationProvider;
 import saker.build.thirdparty.saker.util.io.ByteSource;
 import saker.build.thirdparty.saker.util.io.function.IOSupplier;
@@ -155,15 +158,45 @@ public interface ScriptSyntaxModel {
 	 * <p>
 	 * If the model is in an invalid state, it should attempt to parse it using the base input.
 	 * 
+	 * @deprecated Use {@link #getBuildTargets()} instead.
 	 * @return An unmodifiable set of target names.
 	 * @throws ScriptParsingFailedException
 	 *             If the parsing of the script failed.
 	 * @throws IOException
 	 *             In case of I/O error.
 	 */
+	@Deprecated
 	public default Set<String> getTargetNames() throws ScriptParsingFailedException, IOException {
-		//TODO this method should not return the target names, but some general target information about in and out parameters too
-		return Collections.emptySet();
+		Collection<? extends BuildTargetInformation> buildtargets = getBuildTargets();
+		if (buildtargets == null) {
+			return null;
+		}
+		LinkedHashSet<String> result = new LinkedHashSet<>();
+		for (BuildTargetInformation bt : buildtargets) {
+			result.add(bt.getTargetName());
+		}
+		return result;
+	}
+
+	/**
+	 * Gets information about the build targets in the script file.
+	 * <p>
+	 * Note that in some cases, the returned collection is allowed to contain multiple different build targets with the
+	 * same name, as the script can be in an inconsistent state during editing.
+	 * <p>
+	 * Implementations are recommended to return the build targets in order of their declarations if possible. Clients
+	 * may sort them in any way they see fit if needed.
+	 * 
+	 * @return The collection of build targets.
+	 * @throws ScriptParsingFailedException
+	 *             If the parsing of the script failed.
+	 * @throws IOException
+	 *             In case of I/O error.
+	 * @since saker.build 0.8.18
+	 */
+	public default Collection<? extends BuildTargetInformation> getBuildTargets()
+			throws ScriptParsingFailedException, IOException {
+		return null;
 	}
 
 	/**

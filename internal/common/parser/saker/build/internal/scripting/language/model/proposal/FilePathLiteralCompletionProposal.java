@@ -188,6 +188,7 @@ public class FilePathLiteralCompletionProposal implements ScriptCompletionPropos
 						outinfometadata[0] = SakerParsedModel.INFORMATION_META_DATA_FILE_TYPE_BUILD_SCRIPT;
 					}
 					try {
+						@SuppressWarnings("deprecation")
 						Set<String> tnames = model.getTargetNames();
 						if (tnames != null) {
 							writer.paragraph("Build targets: " + StringUtils.toStringJoin(", ", tnames));

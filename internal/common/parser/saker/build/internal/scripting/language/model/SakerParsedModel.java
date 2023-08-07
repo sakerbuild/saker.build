@@ -78,6 +78,8 @@ import saker.build.scripting.model.StructureOutlineEntry;
 import saker.build.scripting.model.TextPartition;
 import saker.build.scripting.model.TextRegionChange;
 import saker.build.scripting.model.TokenStyle;
+import saker.build.scripting.model.info.BuildTargetInformation;
+import saker.build.scripting.model.info.BuildTargetParameterInformation;
 import saker.build.scripting.model.info.ExternalScriptInformationProvider;
 import saker.build.scripting.model.info.FieldInformation;
 import saker.build.scripting.model.info.InformationHolder;
@@ -646,12 +648,30 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 	}
 
 	@Override
+	@SuppressWarnings("deprecation") // this method is deprecated, superseded by other
 	public Set<String> getTargetNames() throws ScriptParsingFailedException, IOException {
 		DerivedData derived = getUpToDateDerivedData();
 		Set<String> result = derived.getTargetNames();
 		if (ObjectUtils.isNullOrEmpty(result)) {
 			//if there are no targets defined, put in the default build target
 			return Collections.singleton(SakerScriptTargetConfigurationReader.DEFAULT_BUILD_TARGET_NAME);
+		}
+		return result;
+	}
+
+	@Override
+	public Collection<? extends BuildTargetInformation> getBuildTargets()
+			throws ScriptParsingFailedException, IOException {
+		DerivedData derived = getUpToDateDerivedData();
+		Collection<BuildTargetInformation> result = new ArrayList<>();
+		for (Entry<String, Statement> entry : derived.getTargetNameEntries()) {
+			String name = entry.getKey();
+			Statement stm = entry.getValue();
+			result.add(new StatementBuildTargetInformation(derived, name, stm));
+		}
+		if (result.isEmpty()) {
+			//if there are no targets defined, put in the default build target
+			result.add(DefaultBuildTargetInformation.INSTANCE);
 		}
 		return result;
 	}
@@ -2770,10 +2790,14 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		return createCommentBasedFormattedTextContent(getBuildTargetPreComments(derived, tasktargetstm));
 	}
 
+	private static FormattedTextContent getTargetParameterScriptDoc(Statement paramstm, Statement tasktargetstm) {
+		return createCommentBasedFormattedTextContent(getPreWhiteSpaceCommentsInScope(paramstm, tasktargetstm));
+	}
+
 	public static FormattedTextContent getTargetParameterScriptDoc(Iterable<? extends Statement> parentstatements,
 			Statement paramstm) {
-		List<Statement> comments = getTargetParameterPreComments(parentstatements, paramstm);
-		return createCommentBasedFormattedTextContent(comments);
+		Statement targetstm = findFirstParentToken(parentstatements, "task_target");
+		return getTargetParameterScriptDoc(paramstm, targetstm);
 	}
 
 	private static boolean isSimpleLiteral(String str) {
@@ -5729,5 +5753,92 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		public VisitorBreakException() {
 			super(null, null, false, false);
 		}
+	}
+
+	private static final class DefaultBuildTargetInformation implements BuildTargetInformation {
+		public static final DefaultBuildTargetInformation INSTANCE = new DefaultBuildTargetInformation();
+
+		@Override
+		public String getTargetName() {
+			return SakerScriptTargetConfigurationReader.DEFAULT_BUILD_TARGET_NAME;
+		}
+
+		@Override
+		public Collection<? extends BuildTargetParameterInformation> getParameters() {
+			//no parameters for the default build target
+			return Collections.emptyList();
+		}
+
+	}
+
+	private static final class StatementBuildTargetInformation implements BuildTargetInformation {
+		private final DerivedData derived;
+		private final String name;
+		/**
+		 * The task_target statement.
+		 */
+		private final Statement stm;
+
+		private StatementBuildTargetInformation(DerivedData derived, String name, Statement stm) {
+			this.derived = derived;
+			this.stm = stm;
+			this.name = name;
+		}
+
+		@Override
+		public String getTargetName() {
+			return name;
+		}
+
+		@Override
+		public Collection<? extends BuildTargetParameterInformation> getParameters() {
+			Collection<BuildTargetParameterInformation> result = new ArrayList<>();
+			for (Statement paramstm : stm.scopeTo("in_parameter")) {
+				result.add(new StatementBuildTargetParameterInformation(stm, paramstm));
+			}
+			for (Statement paramstm : stm.scopeTo("out_parameter")) {
+				result.add(new StatementBuildTargetParameterInformation(stm, paramstm));
+
+			}
+			return result;
+		}
+
+		@Override
+		public FormattedTextContent getInformation() {
+			return getTargetStatementScriptDoc(derived, stm);
+		}
+	}
+
+	private static final class StatementBuildTargetParameterInformation implements BuildTargetParameterInformation {
+		private final Statement targetStm;
+		private final Statement paramStm;
+
+		public StatementBuildTargetParameterInformation(Statement targetStm, Statement paramStm) {
+			this.targetStm = targetStm;
+			this.paramStm = paramStm;
+		}
+
+		@Override
+		public String getParameterName() {
+			return SakerScriptTargetConfigurationReader.getTargetParameterStatementVariableName(paramStm);
+		}
+
+		@Override
+		public String getType() {
+			switch (paramStm.getName()) {
+				case "in_parameter":
+					return TYPE_INPUT;
+				case "out_parameter":
+					return TYPE_OUTPUT;
+				default:
+					return null;
+			}
+		}
+
+		@Override
+		public FormattedTextContent getInformation() {
+			return getTargetParameterScriptDoc(paramStm, targetStm);
+		}
+
 	}
 }

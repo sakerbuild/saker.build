@@ -82,7 +82,6 @@ import saker.build.ide.support.properties.MountPathIDEProperty;
 import saker.build.ide.support.properties.NamedClassClassPathServiceEnumeratorIDEProperty;
 import saker.build.ide.support.properties.NestRepositoryClassPathLocationIDEProperty;
 import saker.build.ide.support.properties.NestRepositoryFactoryServiceEnumeratorIDEProperty;
-import saker.build.ide.support.properties.ParameterizedBuildTargetIDEProperty;
 import saker.build.ide.support.properties.PropertiesValidationErrorResult;
 import saker.build.ide.support.properties.PropertiesValidationException;
 import saker.build.ide.support.properties.ProviderMountIDEProperty;
@@ -126,6 +125,7 @@ import saker.build.scripting.ScriptParsingFailedException;
 import saker.build.scripting.model.ScriptModellingEnvironment;
 import saker.build.scripting.model.ScriptSyntaxModel;
 import saker.build.scripting.model.SimpleScriptModellingEnvironmentConfiguration;
+import saker.build.scripting.model.info.BuildTargetInformation;
 import saker.build.scripting.model.info.ExternalScriptInformationProvider;
 import saker.build.task.cluster.TaskInvoker;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
@@ -931,7 +931,7 @@ public final class SakerIDEProject {
 		}
 	}
 
-	private void persistIDEConfigsFile() throws IOException {
+	private void persistIDEConfigsFile(ProjectIDEConfigurationCollection configurationCollection) throws IOException {
 		Path propfilepath = projectPath.resolve(IDE_CONFIG_FILE_NAME);
 		Path tempfilepath = propfilepath.resolveSibling(propfilepath.getFileName() + "." + UUID.randomUUID() + ".temp");
 		try (OutputStream os = Files.newOutputStream(tempfilepath);
@@ -948,14 +948,14 @@ public final class SakerIDEProject {
 		Files.move(tempfilepath, propfilepath, StandardCopyOption.REPLACE_EXISTING);
 	}
 
-	private void persistIDEProjectPropertiesFile() throws IOException {
+	private void persistIDEProjectPropertiesFile(IDEProjectProperties properties) throws IOException {
 		Path propfilepath = projectPath.resolve(PROPERTIES_FILE_NAME);
 		Path tempfilepath = propfilepath.resolveSibling(propfilepath.getFileName() + "." + UUID.randomUUID() + ".temp");
 		try (OutputStream os = Files.newOutputStream(tempfilepath);
 				XMLStructuredWriter writer = new XMLStructuredWriter(os);
 				StructuredObjectOutput objwriter = writer.writeObject(CONFIG_FILE_ROOT_OBJECT_NAME)) {
 			try (StructuredObjectOutput propertieswriter = objwriter.writeObject("project-properties")) {
-				IDEPersistenceUtils.writeIDEProjectProperties(propertieswriter, ideProjectProperties.properties);
+				IDEPersistenceUtils.writeIDEProjectProperties(propertieswriter, properties);
 			}
 		}
 		Files.move(tempfilepath, propfilepath, StandardCopyOption.REPLACE_EXISTING);
@@ -975,6 +975,7 @@ public final class SakerIDEProject {
 	}
 
 	//doc: returns null if script is not part of the script configuration
+	@Deprecated // use getScriptBuildTargetInfos instead
 	public final Set<String> getScriptTargets(SakerPath scriptpath) throws ScriptParsingFailedException, IOException {
 		ScriptModellingEnvironment scriptenv = getScriptingEnvironment();
 		if (scriptenv == null) {
@@ -983,6 +984,20 @@ public final class SakerIDEProject {
 		ScriptSyntaxModel model = scriptenv.getModel(scriptpath);
 		if (model != null) {
 			return model.getTargetNames();
+		}
+		return null;
+	}
+
+	//doc: returns null if script is not part of the script configuration
+	public final Collection<? extends BuildTargetInformation> getScriptBuildTargetInfos(SakerPath scriptpath)
+			throws ScriptParsingFailedException, IOException {
+		ScriptModellingEnvironment scriptenv = getScriptingEnvironment();
+		if (scriptenv == null) {
+			return null;
+		}
+		ScriptSyntaxModel model = scriptenv.getModel(scriptpath);
+		if (model != null) {
+			return model.getBuildTargets();
 		}
 		return null;
 	}
@@ -1186,7 +1201,7 @@ public final class SakerIDEProject {
 			if (configurationCollection.equals(this.configurationCollection)) {
 				return;
 			}
-			persistIDEConfigsFile();
+			persistIDEConfigsFile(configurationCollection);
 			this.configurationCollection = configurationCollection;
 		} finally {
 			configurationChangeLock.unlock();
@@ -1336,7 +1351,7 @@ public final class SakerIDEProject {
 			if (properties.equals(this.ideProjectProperties.properties)) {
 				return false;
 			}
-			persistIDEProjectPropertiesFile();
+			persistIDEProjectPropertiesFile(properties);
 			this.ideProjectProperties = createValidatedProjectProperties(properties);
 			return true;
 		} finally {

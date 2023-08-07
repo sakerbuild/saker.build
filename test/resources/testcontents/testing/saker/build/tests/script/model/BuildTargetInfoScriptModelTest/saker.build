@@ -1,0 +1,51 @@
+###
+target 1 doc
+###
+target1(
+###
+input parameter 1
+###
+	in inparam1
+	
+###
+input parameter 2
+###
+	in inparam2
+	
+###
+output parameter 1
+###
+	out outparam1
+	
+###
+output parameter 2
+###
+	out outparam2
+) {
+}
+
+###
+target 2 doc
+###
+target2(
+###
+input parameter 1
+###
+	in inparam1
+	
+###
+input parameter 2
+###
+	in inparam2
+	
+###
+output parameter 1
+###
+	out outparam1
+	
+###
+output parameter 2
+###
+	out outparam2
+) {
+}

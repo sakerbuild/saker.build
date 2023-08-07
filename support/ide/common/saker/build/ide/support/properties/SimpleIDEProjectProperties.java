@@ -82,14 +82,14 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		this.mounts = ImmutableUtils.makeImmutableLinkedHashSet(copy.getMounts());
 		this.scriptConfigurations = ImmutableUtils.makeImmutableLinkedHashSet(copy.getScriptConfigurations());
 		this.scriptModellingExclusions = ImmutableUtils.makeImmutableNavigableSet(copy.getScriptModellingExclusions());
-		this.parameterizedBuildTargets = ImmutableUtils.makeImmutableHashSet(copy.getParameterizedBuildTargets());
-		this.useClientsAsClusters = copy.getUseClientsAsClusters();
+		this.parameterizedBuildTargets = ImmutableUtils.makeImmutableLinkedHashSet(copy.getParameterizedBuildTargets());
 
 		this.workingDirectory = copy.getWorkingDirectory();
 		this.buildDirectory = copy.getBuildDirectory();
 		this.mirrorDirectory = copy.getMirrorDirectory();
 		this.executionDaemonConnectionName = copy.getExecutionDaemonConnectionName();
 		this.requireTaskIDEConfiguration = copy.getRequireTaskIDEConfiguration();
+		this.useClientsAsClusters = copy.getUseClientsAsClusters();
 		this.buildTraceOutput = copy.getBuildTraceOutput();
 		this.buildTraceEmbedArtifacts = copy.getBuildTraceEmbedArtifacts();
 	}
@@ -357,7 +357,7 @@ public final class SimpleIDEProjectProperties implements IDEProjectProperties {
 		public Builder setParameterizedBuildTargets(
 				Set<? extends ParameterizedBuildTargetIDEProperty> parameterizedBuildTargets) {
 			result.parameterizedBuildTargets = parameterizedBuildTargets == null ? Collections.emptySet()
-					: ImmutableUtils.makeImmutableHashSet(parameterizedBuildTargets);
+					: ImmutableUtils.makeImmutableLinkedHashSet(parameterizedBuildTargets);
 			return this;
 		}
 
