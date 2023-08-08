@@ -28,9 +28,9 @@ public class NoSuchParameterWarningBuildFileTaskTest extends CollectingMetricEnv
 	protected void runTestImpl() throws Throwable {
 		runScriptTask("build");
 
-		assertEquals(getMetric().getAllPrintedTaskLines(), setOf(
-				"[include]Warning: Target parameterized in file wd:/saker.build has no parameter named: nonexistent",
-				"[print]changedSomething"));
+		assertEquals(getMetric().getAllPrintedTaskLines(),
+				setOf("[include]saker.build: Warning: Target parameterized has no parameter named: nonexistent",
+						"[print]changedSomething"));
 
 		runScriptTask("build");
 		assertEquals(getMetric().getRunTaskIdFactories().keySet(), setOf());

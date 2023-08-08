@@ -289,10 +289,11 @@ public final class BuildTargetBootstrapperTaskFactory
 			//note: do not remove parameters based on the TargetInputParameterNames, pass the additional ones too
 			//		to the BuildTargetTask
 			final String ftargetname = targetname;
+			final SakerPath fbuildfilepath = buildFilePath;
 			ObjectUtils.iterateOrderedIterables(targetparamnames, parameters.navigableKeySet(), (l, r) -> {
 				if (l == null) {
-					SakerLog.warning().println("Target " + ftargetname + " in file " + buildfile.getSakerPath()
-							+ " has no parameter named: " + r);
+					SakerLog.warning().path(fbuildfilepath)
+							.println("Target " + ftargetname + " has no parameter named: " + r);
 				}
 			});
 		}
