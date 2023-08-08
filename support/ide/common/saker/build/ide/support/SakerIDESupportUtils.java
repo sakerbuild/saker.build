@@ -150,9 +150,26 @@ public class SakerIDESupportUtils {
 		return false;
 	}
 
+	/**
+	 * Converts a path under a given project directory to an execution path.
+	 * 
+	 * @param ideprops
+	 *            The IDE project properties.
+	 * @param projectlocalpath
+	 *            The absolute local path of the project.
+	 * @param path
+	 *            The (possibly relative) path under the project to convert.
+	 * @return The execution path or <code>null</code> if it doesn't exist.
+	 */
 	public static SakerPath projectPathToExecutionPath(IDEProjectProperties ideprops, SakerPath projectlocalpath,
 			SakerPath path) {
+		if (path == null) {
+			return null;
+		}
 		if (path.isRelative()) {
+			if (projectlocalpath == null) {
+				return null;
+			}
 			try {
 				path = projectlocalpath.resolve(path);
 			} catch (IllegalArgumentException e) {
@@ -183,8 +200,16 @@ public class SakerIDESupportUtils {
 			}
 			if (SakerIDEProject.MOUNT_ENDPOINT_PROJECT_RELATIVE.equals(clientname)) {
 				//the mount path is resolved against the project directory
+				if (projectlocalpath == null) {
+					//no project local path is available, cannot proceed with this
+					continue;
+				}
 				clientname = SakerIDEProject.MOUNT_ENDPOINT_LOCAL_FILESYSTEM;
 				mountpath = projectlocalpath.resolve(mountpath.replaceRoot(null));
+				if (!path.startsWith(mountpath)) {
+					//only possible if the path is under the local mount tree
+					continue;
+				}
 				//continue with testing local 
 			}
 			if (SakerIDEProject.MOUNT_ENDPOINT_LOCAL_FILESYSTEM.equals(clientname)) {
@@ -197,8 +222,19 @@ public class SakerIDESupportUtils {
 		return null;
 	}
 
+	/**
+	 * Converts an execution path back to a project relative path.
+	 * 
+	 * @param properties
+	 *            The IDE project properties.
+	 * @param projectlocalpath
+	 *            The absolute local path of the project.
+	 * @param executionsakerpath
+	 *            The (possibly relative) execution path to convert.
+	 * @return The project relative path or <code>null</code> it it doesn't exist.
+	 */
 	public static SakerPath executionPathToProjectRelativePath(IDEProjectProperties properties,
-			SakerPath projectsakerpath, SakerPath executionsakerpath) {
+			SakerPath projectlocalpath, SakerPath executionsakerpath) {
 		if (executionsakerpath == null) {
 			return null;
 		}
@@ -224,11 +260,11 @@ public class SakerIDESupportUtils {
 			if (mountedpath == null) {
 				return null;
 			}
-			if (projectsakerpath != null) {
-				SakerPath mountedfullpath = projectsakerpath.resolve(mountedpath.replaceRoot(null));
+			if (projectlocalpath != null) {
+				SakerPath mountedfullpath = projectlocalpath.resolve(mountedpath.replaceRoot(null));
 				executionsakerpath = mountedfullpath.resolve(executionsakerpath.replaceRoot(null));
-				if (executionsakerpath.startsWith(projectsakerpath)) {
-					return projectsakerpath.relativize(executionsakerpath);
+				if (executionsakerpath.startsWith(projectlocalpath)) {
+					return projectlocalpath.relativize(executionsakerpath);
 				}
 			}
 			return null;
@@ -239,10 +275,10 @@ public class SakerIDESupportUtils {
 			if (mountedpath == null) {
 				return null;
 			}
-			if (projectsakerpath != null) {
+			if (projectlocalpath != null) {
 				executionsakerpath = mountedpath.resolve(executionsakerpath.replaceRoot(null));
-				if (executionsakerpath.startsWith(projectsakerpath)) {
-					return projectsakerpath.relativize(executionsakerpath);
+				if (executionsakerpath.startsWith(projectlocalpath)) {
+					return projectlocalpath.relativize(executionsakerpath);
 				}
 			}
 			return null;
