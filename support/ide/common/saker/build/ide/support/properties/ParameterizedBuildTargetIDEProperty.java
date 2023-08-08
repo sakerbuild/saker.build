@@ -61,9 +61,9 @@ public class ParameterizedBuildTargetIDEProperty {
 	/**
 	 * Gets the path of the build script.
 	 * <p>
-	 * The script path is relative to the project root directory. (This relativeness is required so that the
-	 * parameterized build target configuration is independent of the execution path configuration. Therefore the path
-	 * configuration can be freely changed without the need to change these path values.)
+	 * The script path can be relative or absolute. In case it is relative, then it is relative against the project root
+	 * directory. <br>
+	 * If it is absolute, then it is an absolute execution path.
 	 * 
 	 * @return The path.
 	 */
@@ -81,6 +81,15 @@ public class ParameterizedBuildTargetIDEProperty {
 
 	public NavigableMap<String, String> getBuildTargetParameters() {
 		return buildTargetParameters;
+	}
+
+	/**
+	 * Gets if any additional parameters were defined for the build target.
+	 * 
+	 * @return <code>true</code> if the build target is parameterized.
+	 */
+	public boolean isParameterized() {
+		return !ObjectUtils.isNullOrEmpty(buildTargetParameters);
 	}
 
 	@Override
