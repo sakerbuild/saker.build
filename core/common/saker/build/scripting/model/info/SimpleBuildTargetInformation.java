@@ -21,6 +21,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Collection;
 
+import saker.apiextract.api.PublicApi;
 import saker.build.scripting.model.FormattedTextContent;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 
@@ -29,6 +30,7 @@ import saker.build.thirdparty.saker.util.io.SerialUtils;
  * 
  * @since saker.build 0.8.18
  */
+@PublicApi
 public class SimpleBuildTargetInformation implements BuildTargetInformation, Externalizable {
 	private static final long serialVersionUID = 1L;
 
