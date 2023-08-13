@@ -379,16 +379,6 @@ install() {
 	$exportall = include(exportall)
 	nest.local.install($exportall[bundlepaths])
 }
-upload(){
-	$export = include(exportall, Path: saker.build)
-	include(Path: secret/secrets.build)
-	nest.server.upload(
-		Bundles: $export[bundlepaths],
-		APIKey: global(saker.build.UPLOAD_API_KEY),
-		APISecret: global(saker.build.UPLOAD_API_SECRET),
-		Overwrite: true,
-	)
-}
 test(
 	in buildconfig = include(Target: _configure, testing: true, apidocumenting: false)[buildconfig],
 	in testclasses = [
