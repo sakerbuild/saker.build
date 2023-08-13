@@ -241,10 +241,16 @@ public class BasicScriptModellingEnvironment implements ScriptModellingEnvironme
 				}
 			}
 		} catch (IOException | RMIRuntimeException e) {
-			//file not found
-			SpawnedModel gotmodel = models.remove(path);
-			if (gotmodel != null) {
-				gotmodel.close();
+			//file (or directory) not found or failed to access it
+			//clear all models that are under this path (or equals to it)
+			NavigableMap<SakerPath, SpawnedModel> entries = SakerPathFiles.getPathSubMapDirectoryChildren(models, path,
+					true);
+			while (true) {
+				Entry<SakerPath, SpawnedModel> entry = entries.pollFirstEntry();
+				if (entry == null) {
+					break;
+				}
+				entry.getValue().close();
 			}
 		}
 	}
