@@ -29,7 +29,7 @@ import testing.saker.build.tests.EnvironmentTestCaseConfiguration;
 import testing.saker.build.tests.tasks.SelfStatelessTaskFactory;
 
 @SakerTest
-public class JdkClassSerializationTest extends CollectingMetricEnvironmentTestCase {
+public class JdkClassSerializationTaskTest extends CollectingMetricEnvironmentTestCase {
 
 	private static class TestTaskResult implements Externalizable {
 		private static final long serialVersionUID = 1L;
