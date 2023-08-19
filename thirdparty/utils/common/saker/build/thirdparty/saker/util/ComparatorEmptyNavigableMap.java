@@ -19,12 +19,15 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.NavigableMap;
+import java.util.NavigableSet;
 
 class ComparatorEmptyNavigableMap<K, V> extends EmptyNavigableMap<K, V> {
 	private static final long serialVersionUID = 1L;
 
-	private Comparator<? super K> comparator;
+	protected Comparator<? super K> comparator;
 
 	/**
 	 * For {@link Externalizable}.
@@ -42,6 +45,11 @@ class ComparatorEmptyNavigableMap<K, V> extends EmptyNavigableMap<K, V> {
 	}
 
 	@Override
+	public NavigableMap<K, V> descendingMap() {
+		return new DescendingComparatorEmptyNavigableMap<>(this);
+	}
+
+	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
 		super.writeExternal(out);
 		out.writeObject(comparator);
@@ -52,5 +60,57 @@ class ComparatorEmptyNavigableMap<K, V> extends EmptyNavigableMap<K, V> {
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 		super.readExternal(in);
 		comparator = (Comparator<? super K>) in.readObject();
+	}
+
+	private static final class DescendingComparatorEmptyNavigableMap<K, V> extends EmptyNavigableMap<K, V> {
+		private static final long serialVersionUID = 1L;
+
+		private ComparatorEmptyNavigableMap<K, V> outer;
+
+		//cache field
+		private transient Comparator<? super K> reverseComparator;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public DescendingComparatorEmptyNavigableMap() {
+		}
+
+		private DescendingComparatorEmptyNavigableMap(ComparatorEmptyNavigableMap<K, V> outer) {
+			this.outer = outer;
+		}
+
+		@Override
+		public Comparator<? super K> comparator() {
+			Comparator<? super K> res = reverseComparator;
+			if (res == null) {
+				res = Collections.reverseOrder(outer.comparator);
+				reverseComparator = res;
+			}
+			return res;
+		}
+
+		@Override
+		public NavigableSet<K> navigableKeySet() {
+			return outer.descendingKeySet();
+		}
+
+		@Override
+		public NavigableMap<K, V> descendingMap() {
+			return outer;
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			super.writeExternal(out);
+			out.writeObject(outer);
+		}
+
+		@SuppressWarnings("unchecked")
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			super.readExternal(in);
+			this.outer = (ComparatorEmptyNavigableMap<K, V>) in.readObject();
+		}
 	}
 }

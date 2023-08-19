@@ -29,7 +29,7 @@ import java.util.function.Consumer;
 class ImmutableListNavigableSet<E> extends ImmutableNavigableSetBase<E> implements Externalizable {
 	private static final long serialVersionUID = 1L;
 
-	private List<? extends E> items;
+	protected List<? extends E> items;
 
 	/**
 	 * For {@link Externalizable}.
@@ -89,7 +89,7 @@ class ImmutableListNavigableSet<E> extends ImmutableNavigableSetBase<E> implemen
 
 	@Override
 	public NavigableSet<E> descendingSet() {
-		return create(Collections.reverseOrder(comparator()), ObjectUtils.reversedList(items));
+		return new ReverseNavigableSetView<>(this);
 	}
 
 	@Override

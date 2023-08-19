@@ -19,12 +19,15 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.NavigableSet;
 
 class ComparatorEmptyNavigableSet<E> extends EmptyNavigableSet<E> {
+
 	private static final long serialVersionUID = 1L;
 
-	private Comparator<? super E> comparator;
+	protected Comparator<? super E> comparator;
 
 	/**
 	 * For {@link Externalizable}.
@@ -42,6 +45,11 @@ class ComparatorEmptyNavigableSet<E> extends EmptyNavigableSet<E> {
 	}
 
 	@Override
+	public NavigableSet<E> descendingSet() {
+		return new DescendingComparatorEmptyNavigableSet<>(this);
+	}
+
+	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
 		super.writeExternal(out);
 		out.writeObject(comparator);
@@ -52,5 +60,52 @@ class ComparatorEmptyNavigableSet<E> extends EmptyNavigableSet<E> {
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 		super.readExternal(in);
 		comparator = (Comparator<? super E>) in.readObject();
+	}
+
+	private static final class DescendingComparatorEmptyNavigableSet<E> extends EmptyNavigableSet<E> {
+		private static final long serialVersionUID = 1L;
+
+		private ComparatorEmptyNavigableSet<E> outer;
+
+		//cache field
+		private transient Comparator<? super E> reverseComparator;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public DescendingComparatorEmptyNavigableSet() {
+		}
+
+		private DescendingComparatorEmptyNavigableSet(ComparatorEmptyNavigableSet<E> outer) {
+			this.outer = outer;
+		}
+
+		@Override
+		public Comparator<? super E> comparator() {
+			Comparator<? super E> res = reverseComparator;
+			if (res == null) {
+				res = Collections.reverseOrder(outer.comparator);
+				reverseComparator = res;
+			}
+			return res;
+		}
+
+		@Override
+		public NavigableSet<E> descendingSet() {
+			return outer;
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			super.writeExternal(out);
+			out.writeObject(outer);
+		}
+
+		@SuppressWarnings("unchecked")
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			super.readExternal(in);
+			this.outer = (ComparatorEmptyNavigableSet<E>) in.readObject();
+		}
 	}
 }

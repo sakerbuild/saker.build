@@ -18,18 +18,20 @@ package saker.build.thirdparty.saker.util.io;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Iterator;
+import java.util.Objects;
 
-import saker.build.thirdparty.saker.util.ImmutableUtils;
+import saker.build.thirdparty.saker.util.ArrayIterator;
 
 /**
  * Input stream class for concatenating the data of multiple input streams into one stream.
  * <p>
- * <b>Important: </b>This class doesn't close the streams that were passed to it.
+ * <b>Important:</b> This class doesn't close the streams that were passed to it. Each stream should be closed by the
+ * caller after the {@link ConcatInputStream} instance is closed.
  * <p>
  * This stream takes multiple {@link InputStream InputStreams} during its construction, and it will iterate over them
  * when read operations are performed.
  * <p>
- * When a reding operation is performed, the class will try to read from the first input stream. When a stream returns
+ * When a reading operation is performed, the class will try to read from the first input stream. When a stream returns
  * zero bytes from a read operation, the class will move to the next stream and try reading from that. This repeats
  * until no more streams are available, in which case the class will return end of stream for the reading operations.
  * <p>
@@ -54,7 +56,7 @@ public class ConcatInputStream extends InputStream {
 	 * <p>
 	 * Modifying the argument array externally may result in incorrect operation.
 	 * <p>
-	 * If any input stream in the argument is <code>null</code>, the streams after that will not be used.
+	 * <code>null</code> {@link InputStream InputStreams} in the argument array will be skipped.
 	 * 
 	 * @param inputstreams
 	 *            The input streams.
@@ -62,13 +64,13 @@ public class ConcatInputStream extends InputStream {
 	 *             If the argument array is <code>null</code>.
 	 */
 	public ConcatInputStream(InputStream... inputstreams) throws NullPointerException {
-		this(ImmutableUtils.asUnmodifiableArrayList(inputstreams).iterator());
+		this(new ArrayIterator<>(inputstreams));
 	}
 
 	/**
 	 * Creates a new instance for the given input streams.
 	 * <p>
-	 * If any input stream in the argument is <code>null</code>, the streams after that will not be used.
+	 * <code>null</code> {@link InputStream InputStreams} in the argument iterable will be skipped.
 	 * 
 	 * @param inputstreams
 	 *            An iterable of input streams.
@@ -82,16 +84,17 @@ public class ConcatInputStream extends InputStream {
 	/**
 	 * Creates a new instance for the given input streams specified by an iterator.
 	 * <p>
-	 * If any input stream in the argument is <code>null</code>, the streams after that will not be used.
+	 * <code>null</code> {@link InputStream InputStreams} in the argument iterator will be skipped.
 	 * 
-	 * @param isiterator
+	 * @param streamiterator
 	 *            An iterator for input streams.
 	 * @throws NullPointerException
 	 *             If the iterator is <code>null</code>.
 	 */
-	public ConcatInputStream(Iterator<? extends InputStream> isiterator) throws NullPointerException {
-		this.iterator = isiterator;
-		this.currentInputStream = nextStream(isiterator);
+	public ConcatInputStream(Iterator<? extends InputStream> streamiterator) throws NullPointerException {
+		Objects.requireNonNull(streamiterator, "stream iterator");
+		this.iterator = streamiterator;
+		this.currentInputStream = nextStream(streamiterator);
 	}
 
 	@Override

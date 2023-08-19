@@ -15,6 +15,7 @@
  */
 package saker.build.thirdparty.saker.util;
 
+import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
@@ -98,18 +99,18 @@ class EmptyNavigableMap<K, V> extends EmptySortedMap<K, V> implements NavigableM
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public final NavigableMap<K, V> descendingMap() {
-		return ImmutableUtils.emptyNavigableMap(Collections.reverseOrder(comparator()));
+	public NavigableMap<K, V> descendingMap() {
+		return (NavigableMap<K, V>) ReverseEmptyNavigableMap.INSTANCE;
 	}
 
 	@Override
-	public final NavigableSet<K> navigableKeySet() {
+	public NavigableSet<K> navigableKeySet() {
 		return ImmutableUtils.emptyNavigableSet(comparator());
 	}
 
 	@Override
 	public final NavigableSet<K> descendingKeySet() {
-		return ImmutableUtils.emptyNavigableSet(Collections.reverseOrder(comparator()));
+		return navigableKeySet().descendingSet();
 	}
 
 	@Override
@@ -137,5 +138,38 @@ class EmptyNavigableMap<K, V> extends EmptySortedMap<K, V> implements NavigableM
 
 	private Object readResolve() {
 		return EMPTY_NAVIGABLE_MAP;
+	}
+
+	static class ReverseEmptyNavigableMap<K, V> extends EmptyNavigableMap<K, V> {
+		private static final long serialVersionUID = 1L;
+
+		static final NavigableMap<?, ?> INSTANCE = new ReverseEmptyNavigableMap<>();
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public ReverseEmptyNavigableMap() {
+		}
+
+		@Override
+		public Comparator<? super K> comparator() {
+			return Collections.reverseOrder();
+		}
+
+		@SuppressWarnings("unchecked")
+		@Override
+		public NavigableSet<K> navigableKeySet() {
+			return (NavigableSet<K>) EmptyNavigableMap.EMPTY_NAVIGABLE_MAP.descendingKeySet();
+		}
+
+		@SuppressWarnings("unchecked")
+		@Override
+		public NavigableMap<K, V> descendingMap() {
+			return (NavigableMap<K, V>) EmptyNavigableMap.EMPTY_NAVIGABLE_MAP;
+		}
+
+		private Object readResolve() {
+			return INSTANCE;
+		}
 	}
 }

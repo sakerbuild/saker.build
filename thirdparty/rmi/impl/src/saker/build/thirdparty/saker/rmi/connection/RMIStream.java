@@ -199,39 +199,40 @@ final class RMIStream implements Closeable {
 		throw new RMICallFailedException("Unknown object type.");
 	};
 	static {
-		OBJECT_READERS[OBJECT_NULL] = (s, vars, in) -> null;
-		OBJECT_READERS[OBJECT_BOOLEAN] = (s, vars, in) -> in.readBoolean();
-		OBJECT_READERS[OBJECT_BYTE] = (s, vars, in) -> in.readByte();
-		OBJECT_READERS[OBJECT_SHORT] = (s, vars, in) -> in.readShort();
-		OBJECT_READERS[OBJECT_INT] = (s, vars, in) -> in.readInt();
-		OBJECT_READERS[OBJECT_LONG] = (s, vars, in) -> in.readLong();
-		OBJECT_READERS[OBJECT_FLOAT] = (s, vars, in) -> in.readFloat();
-		OBJECT_READERS[OBJECT_DOUBLE] = (s, vars, in) -> in.readDouble();
-		OBJECT_READERS[OBJECT_CHAR] = (s, vars, in) -> in.readChar();
-		OBJECT_READERS[OBJECT_STRING] = (s, vars, in) -> readString(in);
-		OBJECT_READERS[OBJECT_ARRAY] = RMIStream::readObjectArray;
-		OBJECT_READERS[OBJECT_ENUM] = (s, vars, in) -> s.readEnum(in);
-		OBJECT_READERS[OBJECT_REMOTE] = (s, vars, in) -> readRemoteObject(vars, in);
-		OBJECT_READERS[OBJECT_NEW_REMOTE] = RMIStream::readNewRemoteObject;
-		OBJECT_READERS[OBJECT_EXTERNALIZABLE] = RMIStream::readExternalizableObject;
-		OBJECT_READERS[OBJECT_CLASS] = (s, vars, in) -> s.readClass(in).get(vars.getConnection());
-		OBJECT_READERS[OBJECT_METHOD] = (s, vars, in) -> s.readMethod(in, null);
-		OBJECT_READERS[OBJECT_CONSTRUCTOR] = (s, vars, in) -> s.readConstructor(in);
-		OBJECT_READERS[OBJECT_SERIALIZED] = (s, vars, in) -> s.readSerializedObject(in);
-		OBJECT_READERS[OBJECT_WRAPPER] = RMIStream::readWrappedObject;
-		OBJECT_READERS[OBJECT_WRAPPER2] = RMIStream::readWrapped2Object;
-		OBJECT_READERS[OBJECT_SERIALIZED2] = (s, vars, in) -> s.readSerialized2Object(in);
+		final RMIObjectReaderFunction<?>[] readers = OBJECT_READERS;
+		readers[OBJECT_NULL] = (s, vars, in) -> null;
+		readers[OBJECT_BOOLEAN] = (s, vars, in) -> in.readBoolean();
+		readers[OBJECT_BYTE] = (s, vars, in) -> in.readByte();
+		readers[OBJECT_SHORT] = (s, vars, in) -> in.readShort();
+		readers[OBJECT_INT] = (s, vars, in) -> in.readInt();
+		readers[OBJECT_LONG] = (s, vars, in) -> in.readLong();
+		readers[OBJECT_FLOAT] = (s, vars, in) -> in.readFloat();
+		readers[OBJECT_DOUBLE] = (s, vars, in) -> in.readDouble();
+		readers[OBJECT_CHAR] = (s, vars, in) -> in.readChar();
+		readers[OBJECT_STRING] = (s, vars, in) -> readString(in);
+		readers[OBJECT_ARRAY] = RMIStream::readObjectArray;
+		readers[OBJECT_ENUM] = (s, vars, in) -> s.readEnum(in);
+		readers[OBJECT_REMOTE] = (s, vars, in) -> readRemoteObject(vars, in);
+		readers[OBJECT_NEW_REMOTE] = RMIStream::readNewRemoteObject;
+		readers[OBJECT_EXTERNALIZABLE] = RMIStream::readExternalizableObject;
+		readers[OBJECT_CLASS] = (s, vars, in) -> s.readClass(in).get(vars.getConnection());
+		readers[OBJECT_METHOD] = (s, vars, in) -> s.readMethod(in, null);
+		readers[OBJECT_CONSTRUCTOR] = (s, vars, in) -> s.readConstructor(in);
+		readers[OBJECT_SERIALIZED] = (s, vars, in) -> s.readSerializedObject(in);
+		readers[OBJECT_WRAPPER] = RMIStream::readWrappedObject;
+		readers[OBJECT_WRAPPER2] = RMIStream::readWrapped2Object;
+		readers[OBJECT_SERIALIZED2] = (s, vars, in) -> s.readSerialized2Object(in);
 
-		OBJECT_READERS[OBJECT_BYTE_ARRAY] = (s, vars, in) -> readObjectByteArray(in);
-		OBJECT_READERS[OBJECT_SHORT_ARRAY] = (s, vars, in) -> readObjectShortArray(in);
-		OBJECT_READERS[OBJECT_INT_ARRAY] = (s, vars, in) -> readObjectIntArray(in);
-		OBJECT_READERS[OBJECT_LONG_ARRAY] = (s, vars, in) -> readObjectLongArray(in);
-		OBJECT_READERS[OBJECT_FLOAT_ARRAY] = (s, vars, in) -> readObjectFloatArray(in);
-		OBJECT_READERS[OBJECT_DOUBLE_ARRAY] = (s, vars, in) -> readObjectDoubleArray(in);
-		OBJECT_READERS[OBJECT_BOOLEAN_ARRAY] = (s, vars, in) -> readObjectBooleanArray(in);
-		OBJECT_READERS[OBJECT_CHAR_ARRAY] = (s, vars, in) -> readObjectCharArray(in);
-		OBJECT_READERS[OBJECT_CLASSLOADER] = (s, vars, in) -> s.readClassLoader(in).get(vars.getConnection());
-		OBJECT_READERS[OBJECT_FIELD] = (s, vars, in) -> s.readField(in, null);
+		readers[OBJECT_BYTE_ARRAY] = (s, vars, in) -> readObjectByteArray(in);
+		readers[OBJECT_SHORT_ARRAY] = (s, vars, in) -> readObjectShortArray(in);
+		readers[OBJECT_INT_ARRAY] = (s, vars, in) -> readObjectIntArray(in);
+		readers[OBJECT_LONG_ARRAY] = (s, vars, in) -> readObjectLongArray(in);
+		readers[OBJECT_FLOAT_ARRAY] = (s, vars, in) -> readObjectFloatArray(in);
+		readers[OBJECT_DOUBLE_ARRAY] = (s, vars, in) -> readObjectDoubleArray(in);
+		readers[OBJECT_BOOLEAN_ARRAY] = (s, vars, in) -> readObjectBooleanArray(in);
+		readers[OBJECT_CHAR_ARRAY] = (s, vars, in) -> readObjectCharArray(in);
+		readers[OBJECT_CLASSLOADER] = (s, vars, in) -> s.readClassLoader(in).get(vars.getConnection());
+		readers[OBJECT_FIELD] = (s, vars, in) -> s.readField(in, null);
 	}
 
 	@FunctionalInterface
@@ -309,40 +310,41 @@ final class RMIStream implements Closeable {
 	//package private so testcases can access and override it if necessary
 	static final CommandHandler[] COMMAND_HANDLERS = new CommandHandler[COMMAND_END_VALUE];
 	static {
-		COMMAND_HANDLERS[COMMAND_NEWINSTANCE] = (CommandHandler) RMIStream::handleCommandNewInstance;
-		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstanceRedispatch;
-		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_UNKNOWNCLASS] = (CommandHandler) RMIStream::handleCommandNewInstanceUnknownClass;
-		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_UNKNOWNCLASS_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstanceUnknownClassRedispatch;
-		COMMAND_HANDLERS[COMMAND_METHODCALL] = (CommandHandler) RMIStream::handleCommandMethodCall;
-		COMMAND_HANDLERS[COMMAND_METHODCALL_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandMethodCallRedispatch;
-		COMMAND_HANDLERS[COMMAND_METHODRESULT] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandMethodResult;
+		final CommandHandler[] handlers = COMMAND_HANDLERS;
+		handlers[COMMAND_NEWINSTANCE] = (CommandHandler) RMIStream::handleCommandNewInstance;
+		handlers[COMMAND_NEWINSTANCE_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstanceRedispatch;
+		handlers[COMMAND_NEWINSTANCE_UNKNOWNCLASS] = (CommandHandler) RMIStream::handleCommandNewInstanceUnknownClass;
+		handlers[COMMAND_NEWINSTANCE_UNKNOWNCLASS_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandNewInstanceUnknownClassRedispatch;
+		handlers[COMMAND_METHODCALL] = (CommandHandler) RMIStream::handleCommandMethodCall;
+		handlers[COMMAND_METHODCALL_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandMethodCallRedispatch;
+		handlers[COMMAND_METHODRESULT] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandMethodResult;
 		//new instance result doesn't prevent garbage collection, as it only reads a remote index
-		COMMAND_HANDLERS[COMMAND_UNKNOWN_NEWINSTANCE_RESULT] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandNewInstanceUnknownClassResult;
-		COMMAND_HANDLERS[COMMAND_METHODRESULT_FAIL] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandMethodResultFailure;
-		COMMAND_HANDLERS[COMMAND_NEWINSTANCERESULT_FAIL] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandNewInstanceResultFailure;
-		COMMAND_HANDLERS[COMMAND_NEW_VARIABLES] = (SimpleCommandHandler) RMIStream::handleCommandNewVariables;
-		COMMAND_HANDLERS[COMMAND_GET_CONTEXT_VAR] = (SimpleCommandHandler) RMIStream::handleCommandGetContextVariable;
-		COMMAND_HANDLERS[COMMAND_GET_CONTEXT_VAR_RESPONSE] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandGetContextVariableResult;
-		COMMAND_HANDLERS[COMMAND_NEWINSTANCE_RESULT] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandNewInstanceResult;
-		COMMAND_HANDLERS[COMMAND_NEW_VARIABLES_RESULT] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandNewVariablesResult;
-		COMMAND_HANDLERS[COMMAND_CLOSE_VARIABLES] = (SimpleCommandHandler) RMIStream::handleCommandCloseVariables;
-		COMMAND_HANDLERS[COMMAND_PING] = (SimpleCommandHandler) RMIStream::handleCommandPing;
-		COMMAND_HANDLERS[COMMAND_PONG] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandPong;
-		COMMAND_HANDLERS[COMMAND_CACHED_CLASS] = (SimpleCommandHandler) RMIStream::handleCommandCachedClass;
-		COMMAND_HANDLERS[COMMAND_CACHED_CONSTRUCTOR] = (SimpleCommandHandler) RMIStream::handleCommandCachedConstructor;
-		COMMAND_HANDLERS[COMMAND_CACHED_CLASSLOADER] = (SimpleCommandHandler) RMIStream::handleCommandCachedClassLoader;
-		COMMAND_HANDLERS[COMMAND_CACHED_METHOD] = (SimpleCommandHandler) RMIStream::handleCommandCachedMethod;
-		COMMAND_HANDLERS[COMMAND_CACHED_FIELD] = (SimpleCommandHandler) RMIStream::handleCommandCachedField;
-		COMMAND_HANDLERS[COMMAND_INTERRUPT_REQUEST] = (SimpleCommandHandler) RMIStream::handleCommandInterruptRequest;
-		COMMAND_HANDLERS[COMMAND_DIRECT_REQUEST_FORBIDDEN] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandDirectRequestForbidden;
-		COMMAND_HANDLERS[COMMAND_METHODCALL_ASYNC] = (CommandHandler) RMIStream::handleCommandMethodCallAsync;
+		handlers[COMMAND_UNKNOWN_NEWINSTANCE_RESULT] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandNewInstanceUnknownClassResult;
+		handlers[COMMAND_METHODRESULT_FAIL] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandMethodResultFailure;
+		handlers[COMMAND_NEWINSTANCERESULT_FAIL] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandNewInstanceResultFailure;
+		handlers[COMMAND_NEW_VARIABLES] = (SimpleCommandHandler) RMIStream::handleCommandNewVariables;
+		handlers[COMMAND_GET_CONTEXT_VAR] = (SimpleCommandHandler) RMIStream::handleCommandGetContextVariable;
+		handlers[COMMAND_GET_CONTEXT_VAR_RESPONSE] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandGetContextVariableResult;
+		handlers[COMMAND_NEWINSTANCE_RESULT] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandNewInstanceResult;
+		handlers[COMMAND_NEW_VARIABLES_RESULT] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandNewVariablesResult;
+		handlers[COMMAND_CLOSE_VARIABLES] = (SimpleCommandHandler) RMIStream::handleCommandCloseVariables;
+		handlers[COMMAND_PING] = (SimpleCommandHandler) RMIStream::handleCommandPing;
+		handlers[COMMAND_PONG] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandPong;
+		handlers[COMMAND_CACHED_CLASS] = (SimpleCommandHandler) RMIStream::handleCommandCachedClass;
+		handlers[COMMAND_CACHED_CONSTRUCTOR] = (SimpleCommandHandler) RMIStream::handleCommandCachedConstructor;
+		handlers[COMMAND_CACHED_CLASSLOADER] = (SimpleCommandHandler) RMIStream::handleCommandCachedClassLoader;
+		handlers[COMMAND_CACHED_METHOD] = (SimpleCommandHandler) RMIStream::handleCommandCachedMethod;
+		handlers[COMMAND_CACHED_FIELD] = (SimpleCommandHandler) RMIStream::handleCommandCachedField;
+		handlers[COMMAND_INTERRUPT_REQUEST] = (SimpleCommandHandler) RMIStream::handleCommandInterruptRequest;
+		handlers[COMMAND_DIRECT_REQUEST_FORBIDDEN] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandDirectRequestForbidden;
+		handlers[COMMAND_METHODCALL_ASYNC] = (CommandHandler) RMIStream::handleCommandMethodCallAsync;
 
 		//protocol 2
-		COMMAND_HANDLERS[COMMAND_METHODCALL_CONTEXTVAR] = (CommandHandler) RMIStream::handleCommandContextVariableMethodCall;
-		COMMAND_HANDLERS[COMMAND_METHODCALL_CONTEXTVAR_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandContextVariableMethodCallRedispatch;
-		COMMAND_HANDLERS[COMMAND_METHODCALL_CONTEXTVAR_NOT_FOUND] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandContextVariableMethodCallVariableNotFound;
-		COMMAND_HANDLERS[COMMAND_ASYNC_RESPONSE] = (SimpleCommandHandler) RMIStream::handleCommandAsyncResponse;
-		COMMAND_HANDLERS[COMMAND_METHODCALL_ASYNC_WITH_RESPONSE] = (CommandHandler) RMIStream::handleCommandMethodCallAsyncWithResponse;
+		handlers[COMMAND_METHODCALL_CONTEXTVAR] = (CommandHandler) RMIStream::handleCommandContextVariableMethodCall;
+		handlers[COMMAND_METHODCALL_CONTEXTVAR_REDISPATCH] = (PendingResponseGarbageCollectionPreventingCommandHandler) RMIStream::handleCommandContextVariableMethodCallRedispatch;
+		handlers[COMMAND_METHODCALL_CONTEXTVAR_NOT_FOUND] = (PendingResponseSimpleCommandHandler) RMIStream::handleCommandContextVariableMethodCallVariableNotFound;
+		handlers[COMMAND_ASYNC_RESPONSE] = (SimpleCommandHandler) RMIStream::handleCommandAsyncResponse;
+		handlers[COMMAND_METHODCALL_ASYNC_WITH_RESPONSE] = (CommandHandler) RMIStream::handleCommandMethodCallAsyncWithResponse;
 	}
 
 	interface RequestScopeHandler {
@@ -356,15 +358,16 @@ final class RMIStream implements Closeable {
 
 		@Override
 		public <T> T run(int reqid, Callable<? extends T> runnable) throws Exception {
-			int[] reqidint = currentThreadPreviousMethodCallRequestIdThreadLocal.get();
+			final ThreadLocal<int[]> threadlocal = currentThreadPreviousMethodCallRequestIdThreadLocal;
+			int[] reqidint = threadlocal.get();
 			if (reqidint == null) {
 				reqidint = new int[] { reqid };
-				currentThreadPreviousMethodCallRequestIdThreadLocal.set(reqidint);
+				threadlocal.set(reqidint);
 				try {
 					return runnable.call();
 				} finally {
 					//clear the thread local to avoid leaks
-					currentThreadPreviousMethodCallRequestIdThreadLocal.remove();
+					threadlocal.remove();
 				}
 			} else {
 				int currentid = reqidint[0];
@@ -991,18 +994,19 @@ final class RMIStream implements Closeable {
 			return;
 		}
 		IOException writeexc = null;
+		BlockOutputStream out = this.blockOut;
 		try {
 			byte[] buf = { (COMMAND_STREAM_CLOSED >>> 8), COMMAND_STREAM_CLOSED };
-			blockOut.write(buf);
-			blockOut.nextBlock();
-			blockOut.flush();
+			out.write(buf);
+			out.nextBlock();
+			out.flush();
 		} catch (IOException e) {
 			//dont care, it might be closed already
 			//store the write exception to add later to the close exception if any, else it can be ignored
 			writeexc = e;
 		}
 		try {
-			IOUtils.close(blockOut);
+			IOUtils.close(out);
 		} catch (IOException e) {
 			throw IOUtils.addExc(e, writeexc);
 		}
@@ -1104,25 +1108,27 @@ final class RMIStream implements Closeable {
 	protected void flushCommand(StrongSoftReference<DataOutputUnsyncByteArrayOutputStream> bufferref)
 			throws RMIIOFailureException {
 		try {
-			outLock.lock();
+			final Lock lock = outLock;
+			lock.lock();
 			//check closed in the lock
 			//the exception from the checkClosed() doesn't need to be passed to streamError()
 			if (streamCloseWritten != 0) {
-				outLock.unlock();
+				lock.unlock();
 				throw new RMIResourceUnavailableException("Stream already closed.");
 			}
 			try {
 				//XXX we might remove checkClosed calls from the command writers
 				try {
-					bufferref.get().writeTo(blockOut);
-					blockOut.nextBlock();
+					BlockOutputStream out = this.blockOut;
+					bufferref.get().writeTo(out);
+					out.nextBlock();
 					//need to flush, as the underlying output stream might be buffered, or anything
-					blockOut.flush();
+					out.flush();
 				} finally {
 					//we need to release the lock before handling the possible IOException
 					//as that might recursively call other writer functions to the stream
 					//(like close writing)
-					outLock.unlock();
+					lock.unlock();
 				}
 			} catch (IOException e) {
 				try {
@@ -4013,24 +4019,20 @@ final class RMIStream implements Closeable {
 		return exc;
 	}
 
-	private static final Map<String, Class<? extends RMIRuntimeException>> EXCEPTION_SERIALIZE_FALLBACK_CLASSES = new TreeMap<>();
-	static {
-		EXCEPTION_SERIALIZE_FALLBACK_CLASSES.put(RMIRuntimeException.class.getName(), RMIRuntimeException.class);
-		EXCEPTION_SERIALIZE_FALLBACK_CLASSES.put(RMIObjectTransferFailureException.class.getName(),
-				RMIObjectTransferFailureException.class);
-		EXCEPTION_SERIALIZE_FALLBACK_CLASSES.put(RMICallFailedException.class.getName(), RMICallFailedException.class);
-		EXCEPTION_SERIALIZE_FALLBACK_CLASSES.put(RMIStackTracedException.class.getName(),
-				RMIStackTracedException.class);
-		EXCEPTION_SERIALIZE_FALLBACK_CLASSES.put(RMICallForbiddenException.class.getName(),
-				RMICallForbiddenException.class);
-		EXCEPTION_SERIALIZE_FALLBACK_CLASSES.put(RMIInvalidConfigurationException.class.getName(),
-				RMIInvalidConfigurationException.class);
-		EXCEPTION_SERIALIZE_FALLBACK_CLASSES.put(RMIIOFailureException.class.getName(), RMIIOFailureException.class);
-		EXCEPTION_SERIALIZE_FALLBACK_CLASSES.put(RMIProxyCreationFailedException.class.getName(),
-				RMIProxyCreationFailedException.class);
-	}
-
 	private static final class ExceptionResolvingRMISerializeObjectInputStream extends RMISerializeObjectInputStream {
+		private static final Map<String, Class<? extends RMIRuntimeException>> EXCEPTION_SERIALIZE_FALLBACK_CLASSES = new TreeMap<>();
+		static {
+			final Map<String, Class<? extends RMIRuntimeException>> classmap = EXCEPTION_SERIALIZE_FALLBACK_CLASSES;
+			classmap.put(RMIRuntimeException.class.getName(), RMIRuntimeException.class);
+			classmap.put(RMIObjectTransferFailureException.class.getName(), RMIObjectTransferFailureException.class);
+			classmap.put(RMICallFailedException.class.getName(), RMICallFailedException.class);
+			classmap.put(RMIStackTracedException.class.getName(), RMIStackTracedException.class);
+			classmap.put(RMICallForbiddenException.class.getName(), RMICallForbiddenException.class);
+			classmap.put(RMIInvalidConfigurationException.class.getName(), RMIInvalidConfigurationException.class);
+			classmap.put(RMIIOFailureException.class.getName(), RMIIOFailureException.class);
+			classmap.put(RMIProxyCreationFailedException.class.getName(), RMIProxyCreationFailedException.class);
+		}
+
 		private ExceptionResolvingRMISerializeObjectInputStream(InputStream in, RMIConnection connection)
 				throws IOException {
 			super(in, connection);

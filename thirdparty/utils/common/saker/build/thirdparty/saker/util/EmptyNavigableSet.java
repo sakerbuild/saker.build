@@ -15,6 +15,7 @@
  */
 package saker.build.thirdparty.saker.util;
 
+import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
@@ -68,8 +69,8 @@ class EmptyNavigableSet<E> extends EmptySortedSet<E> implements NavigableSet<E> 
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public final NavigableSet<E> descendingSet() {
-		return ImmutableUtils.emptyNavigableSet(Collections.reverseOrder(comparator()));
+	public NavigableSet<E> descendingSet() {
+		return (NavigableSet<E>) ReverseEmptyNavigableSet.INSTANCE;
 	}
 
 	@Override
@@ -102,5 +103,32 @@ class EmptyNavigableSet<E> extends EmptySortedSet<E> implements NavigableSet<E> 
 
 	private Object readResolve() {
 		return EMPTY_NAVIGABLE_SET;
+	}
+
+	static class ReverseEmptyNavigableSet<E> extends EmptyNavigableSet<E> {
+		private static final long serialVersionUID = 1L;
+
+		static final NavigableSet<?> INSTANCE = new ReverseEmptyNavigableSet<>();
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public ReverseEmptyNavigableSet() {
+		}
+
+		@Override
+		public Comparator<? super E> comparator() {
+			return Collections.reverseOrder();
+		}
+
+		@SuppressWarnings("unchecked")
+		@Override
+		public NavigableSet<E> descendingSet() {
+			return (NavigableSet<E>) EmptyNavigableSet.EMPTY_NAVIGABLE_SET;
+		}
+
+		private Object readResolve() {
+			return INSTANCE;
+		}
 	}
 }

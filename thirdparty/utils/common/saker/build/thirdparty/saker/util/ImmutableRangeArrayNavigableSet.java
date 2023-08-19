@@ -31,6 +31,7 @@ import java.util.function.Consumer;
 
 @SuppressWarnings("unchecked")
 class ImmutableRangeArrayNavigableSet<E> extends ImmutableNavigableSetBase<E> implements Externalizable {
+
 	private static final long serialVersionUID = 1L;
 
 	private Object[] items;
@@ -106,14 +107,13 @@ class ImmutableRangeArrayNavigableSet<E> extends ImmutableNavigableSetBase<E> im
 
 	@Override
 	public NavigableSet<E> descendingSet() {
-		return ImmutableListNavigableSet.create(Collections.reverseOrder(comparator()),
-				(List<? extends E>) ObjectUtils.reversedList(ImmutableUtils.unmodifiableArrayList(items, start, end)));
+		return new ReverseNavigableSetView<>(this);
 	}
 
 	@Override
 	public Iterator<E> descendingIterator() {
 		//XXX implement a direct reverse iterator?
-		return new ImmutableReverseIterator<>(iterator());
+		return new ImmutableReverseIterator<>(new ArrayIterator<>((E[]) items, start, end, end));
 	}
 
 	@Override
@@ -172,5 +172,4 @@ class ImmutableRangeArrayNavigableSet<E> extends ImmutableNavigableSetBase<E> im
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 		items = (Object[]) in.readObject();
 	}
-
 }

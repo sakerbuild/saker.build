@@ -29,6 +29,10 @@ class ImmutableReverseIterator<T> implements ListIterator<T> {
 		this.it = list.listIterator(list.size());
 	}
 
+	public ImmutableReverseIterator(T[] array) {
+		this.it = new ArrayIterator<>(array, 0, array.length, array.length);
+	}
+
 	@Override
 	public boolean hasNext() {
 		return it.hasPrevious();

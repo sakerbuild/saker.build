@@ -39,10 +39,10 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import saker.build.thirdparty.saker.rmi.connection.RMIStream.RequestScopeHandler;
 import saker.build.thirdparty.saker.rmi.connection.RMIStream.ThreadLocalRequestScopeHandler;
-import saker.build.thirdparty.saker.rmi.exception.RMIResourceUnavailableException;
 import saker.build.thirdparty.saker.rmi.exception.RMICallFailedException;
 import saker.build.thirdparty.saker.rmi.exception.RMIIOFailureException;
 import saker.build.thirdparty.saker.rmi.exception.RMIListenerException;
+import saker.build.thirdparty.saker.rmi.exception.RMIResourceUnavailableException;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.util.ArrayUtils;
 import saker.build.thirdparty.saker.util.ConcurrentPrependAccumulator;

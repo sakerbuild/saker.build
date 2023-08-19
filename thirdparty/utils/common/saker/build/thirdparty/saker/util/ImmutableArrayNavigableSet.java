@@ -120,14 +120,13 @@ class ImmutableArrayNavigableSet<E> extends ImmutableNavigableSetBase<E> impleme
 
 	@Override
 	public NavigableSet<E> descendingSet() {
-		return ImmutableListNavigableSet.create(Collections.reverseOrder(comparator()),
-				(List<? extends E>) ObjectUtils.reversedList(ImmutableUtils.unmodifiableArrayList(items)));
+		return new ReverseNavigableSetView<>(this);
 	}
 
 	@Override
 	public Iterator<E> descendingIterator() {
 		//XXX implement a direct reverse iterator?
-		return new ImmutableReverseIterator<>(iterator());
+		return new ImmutableReverseIterator<>((E[]) items);
 	}
 
 	@Override
@@ -161,11 +160,11 @@ class ImmutableArrayNavigableSet<E> extends ImmutableNavigableSetBase<E> impleme
 		if (idx < 0) {
 			return ImmutableUtils.emptyNavigableSet(comparator());
 		}
-		return ImmutableArrayNavigableSet.create(comparator(), items,  idx, size());
+		return ImmutableArrayNavigableSet.create(comparator(), items, idx, size());
 	}
 
 	@Override
-	public ListIterator<E> iterator() {
+	public final ListIterator<E> iterator() {
 		//safe cast
 		return new ArrayIterator<>((E[]) items);
 	}

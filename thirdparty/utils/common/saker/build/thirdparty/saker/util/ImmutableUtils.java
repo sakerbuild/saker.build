@@ -2126,11 +2126,11 @@ public class ImmutableUtils {
 			int fromcmp = c.compare(key, fromKey);
 			if (fromcmp < 0) {
 				//our key is less than fromkey
-				return emptySortedMap();
+				return emptySortedMap(this.comparator());
 			}
 			int tocmp = c.compare(key, toKey);
 			if (tocmp >= 0) {
-				return emptySortedMap();
+				return emptySortedMap(this.comparator());
 			}
 			return this;
 		}
@@ -2141,7 +2141,7 @@ public class ImmutableUtils {
 			if (c.compare(key, toKey) < 0) {
 				return this;
 			}
-			return emptySortedMap();
+			return emptySortedMap(this.comparator());
 		}
 
 		@Override
@@ -2150,7 +2150,7 @@ public class ImmutableUtils {
 			if (c.compare(key, fromKey) >= 0) {
 				return this;
 			}
-			return emptySortedMap();
+			return emptySortedMap(this.comparator());
 		}
 
 		@Override
@@ -2303,11 +2303,6 @@ public class ImmutableUtils {
 		}
 
 		@Override
-		public final NavigableMap<K, V> descendingMap() {
-			return this;
-		}
-
-		@Override
 		public final NavigableMap<K, V> subMap(K fromKey, boolean fromInclusive, K toKey, boolean toInclusive) {
 			Comparator<? super K> c = getComparator();
 			int fromcmp = c.compare(key, fromKey);
@@ -2365,9 +2360,37 @@ public class ImmutableUtils {
 
 		@Override
 		public NavigableSet<K> descendingKeySet() {
-			return new SingletonNavigableSet<>(key);
+			return navigableKeySet().descendingSet();
 		}
 
+		@Override
+		public final NavigableMap<K, V> descendingMap() {
+			return new SingletonNavigableMapDescendingView<>(this);
+		}
+
+		private static final class SingletonNavigableMapDescendingView<K, V> extends ReverseNavigableMapView<K, V> {
+			private static final long serialVersionUID = 1L;
+
+			/**
+			 * For {@link Externalizable}.
+			 */
+			public SingletonNavigableMapDescendingView() {
+			}
+
+			private SingletonNavigableMapDescendingView(NavigableMap<K, V> map) {
+				super(map);
+			}
+
+			@Override
+			public Set<Entry<K, V>> entrySet() {
+				return map.entrySet();
+			}
+
+			@Override
+			public Collection<V> values() {
+				return map.values();
+			}
+		}
 	}
 
 	private static class ComparatorSingletonNavigableMap<K, V> extends SingletonNavigableMap<K, V> {
@@ -2398,11 +2421,6 @@ public class ImmutableUtils {
 
 		@Override
 		public final NavigableSet<K> navigableKeySet() {
-			return new ComparatorSingletonNavigableSet<>(key, comparator);
-		}
-
-		@Override
-		public final NavigableSet<K> descendingKeySet() {
 			return new ComparatorSingletonNavigableSet<>(key, comparator);
 		}
 
@@ -2455,11 +2473,11 @@ public class ImmutableUtils {
 			int fromcmp = c.compare(elem, fromElement);
 			if (fromcmp < 0) {
 				//our key is less than fromkey
-				return emptySortedSet();
+				return emptySortedSet(this.comparator());
 			}
 			int tocmp = c.compare(elem, toElement);
 			if (tocmp >= 0) {
-				return emptySortedSet();
+				return emptySortedSet(this.comparator());
 			}
 			return this;
 		}
@@ -2470,7 +2488,7 @@ public class ImmutableUtils {
 			if (c.compare(elem, toElement) < 0) {
 				return this;
 			}
-			return emptySortedSet();
+			return emptySortedSet(this.comparator());
 		}
 
 		@Override
@@ -2479,7 +2497,7 @@ public class ImmutableUtils {
 			if (c.compare(elem, fromElement) >= 0) {
 				return this;
 			}
-			return emptySortedSet();
+			return emptySortedSet(this.comparator());
 		}
 
 		@Override
@@ -2590,8 +2608,8 @@ public class ImmutableUtils {
 		}
 
 		@Override
-		public final NavigableSet<E> descendingSet() {
-			return this;
+		public NavigableSet<E> descendingSet() {
+			return new ReverseNavigableSetView<>(this);
 		}
 
 		@Override

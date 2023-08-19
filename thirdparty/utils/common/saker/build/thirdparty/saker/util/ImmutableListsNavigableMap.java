@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
@@ -34,8 +35,8 @@ import java.util.function.BiConsumer;
 class ImmutableListsNavigableMap<K, V> extends ImmutableNavigableMapBase<K, V> implements Externalizable {
 	private static final long serialVersionUID = 1L;
 
-	private List<K> keys;
-	private List<V> values;
+	protected List<K> keys;
+	protected List<V> values;
 
 	/**
 	 * For {@link Externalizable}.
@@ -83,8 +84,7 @@ class ImmutableListsNavigableMap<K, V> extends ImmutableNavigableMapBase<K, V> i
 
 	@Override
 	public NavigableMap<K, V> descendingMap() {
-		return create(Collections.reverseOrder(comparator()), ObjectUtils.reversedList(keys),
-				ObjectUtils.reversedList(values));
+		return new ImmutableListsNavigableMapDescendingView<>(this);
 	}
 
 	@Override
@@ -94,8 +94,7 @@ class ImmutableListsNavigableMap<K, V> extends ImmutableNavigableMapBase<K, V> i
 
 	@Override
 	public NavigableSet<K> descendingKeySet() {
-		return ImmutableListNavigableSet.create(Collections.reverseOrder(comparator()),
-				ObjectUtils.reversedList(keys));
+		return navigableKeySet().descendingSet();
 	}
 
 	@Override
@@ -167,6 +166,30 @@ class ImmutableListsNavigableMap<K, V> extends ImmutableNavigableMapBase<K, V> i
 		return values.contains(value);
 	}
 
+	private static final class ImmutableListsNavigableMapDescendingView<K, V> extends ReverseNavigableMapView<K, V> {
+		private static final long serialVersionUID = 1L;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public ImmutableListsNavigableMapDescendingView() {
+		}
+
+		private ImmutableListsNavigableMapDescendingView(ImmutableListsNavigableMap<K, V> map) {
+			super(map);
+		}
+
+		@Override
+		public Set<Entry<K, V>> entrySet() {
+			return ((ImmutableListsNavigableMap<K, V>) map).new ReverseEntrySet();
+		}
+
+		@Override
+		public Collection<V> values() {
+			return ObjectUtils.reversedList(((ImmutableListsNavigableMap<K, V>) map).values);
+		}
+	}
+
 	private final class EntrySet extends AbstractSet<Map.Entry<K, V>> {
 		@Override
 		public Iterator<Entry<K, V>> iterator() {
@@ -188,7 +211,33 @@ class ImmutableListsNavigableMap<K, V> extends ImmutableNavigableMapBase<K, V> i
 
 		@Override
 		public int size() {
-			return ImmutableListsNavigableMap.this.size();
+			return keys.size();
+		}
+	}
+
+	private final class ReverseEntrySet extends AbstractSet<Map.Entry<K, V>> {
+		@Override
+		public Iterator<Entry<K, V>> iterator() {
+			int size = size();
+			ListIterator<? extends K> kit = keys.listIterator(size);
+			ListIterator<? extends V> vit = values.listIterator(size);
+			return new Iterator<Map.Entry<K, V>>() {
+
+				@Override
+				public boolean hasNext() {
+					return kit.hasPrevious();
+				}
+
+				@Override
+				public Entry<K, V> next() {
+					return ImmutableUtils.makeImmutableMapEntry(kit.previous(), vit.previous());
+				}
+			};
+		}
+
+		@Override
+		public int size() {
+			return keys.size();
 		}
 	}
 

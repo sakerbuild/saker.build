@@ -826,10 +826,10 @@ public class RMIServer implements AutoCloseable {
 
 	private static final byte[] NEW_CONNECTION_HELLO_BYTES;
 	static {
-		NEW_CONNECTION_HELLO_BYTES = new byte[3 * 2];
+		NEW_CONNECTION_HELLO_BYTES = new byte[3 * Short.BYTES];
 		SerialUtils.writeShortToBuffer(RMIServer.CONNECTION_MAGIC_NUMBER, NEW_CONNECTION_HELLO_BYTES, 0);
-		SerialUtils.writeShortToBuffer(RMIConnection.PROTOCOL_VERSION_LATEST, NEW_CONNECTION_HELLO_BYTES, 2);
-		SerialUtils.writeShortToBuffer(RMIServer.COMMAND_NEW_CONNECTION, NEW_CONNECTION_HELLO_BYTES, 4);
+		SerialUtils.writeShortToBuffer(RMIConnection.PROTOCOL_VERSION_LATEST, NEW_CONNECTION_HELLO_BYTES, Short.BYTES);
+		SerialUtils.writeShortToBuffer(RMIServer.COMMAND_NEW_CONNECTION, NEW_CONNECTION_HELLO_BYTES, Short.BYTES * 2);
 	}
 
 	static RMIConnection newConnection(RMIOptions options, SocketFactory socketfactory, SocketAddress address)

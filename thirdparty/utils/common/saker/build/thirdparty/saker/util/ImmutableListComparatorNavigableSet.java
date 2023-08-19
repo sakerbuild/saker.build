@@ -25,7 +25,7 @@ import java.util.List;
 class ImmutableListComparatorNavigableSet<E> extends ImmutableListNavigableSet<E> {
 	private static final long serialVersionUID = 1L;
 
-	private Comparator<? super E> comparator;
+	protected Comparator<? super E> comparator;
 
 	/**
 	 * For {@link Externalizable}.
