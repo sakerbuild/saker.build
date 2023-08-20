@@ -40,8 +40,11 @@ public interface FileEventListener {
 		/**
 		 * Removes the associated listener to this token.
 		 * <p>
-		 * The file listeners might still receive some events after this call, as the events can occur out of order.
-		 * Listeners should handle that scenario gracefully.
+		 * The file listeners might still receive some events after this call (or during this call, on the same thread),
+		 * as the events can occur out of order. Listeners should handle that scenario gracefully.
+		 * <p>
+		 * Calling this function subsequently has no further effect, meaning that once the listener is removed,
+		 * attemting to remove it again is a no-op.
 		 */
 		public void removeListener();
 	}

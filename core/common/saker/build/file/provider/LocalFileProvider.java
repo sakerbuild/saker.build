@@ -77,6 +77,7 @@ import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
 import java.util.Objects;
+import java.util.ServiceConfigurationError;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -563,7 +564,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 		}
 	}
 
-	private static class DirectoryWatchEntry {
+	private static final class DirectoryWatchEntry {
 		protected static final Consumer<FileEventListener> LISTENER_ABANDONER = FileEventListener::listenerAbandoned;
 		@SuppressWarnings("unchecked")
 		protected static final AtomicReferenceFieldUpdater<LocalFileProvider.DirectoryWatchEntry, WeakReference<FileEventListener>[]> ARFU_listeners = (AtomicReferenceFieldUpdater<LocalFileProvider.DirectoryWatchEntry, WeakReference<FileEventListener>[]>) (AtomicReferenceFieldUpdater<?, ?>) AtomicReferenceFieldUpdater
@@ -575,7 +576,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 
 		protected volatile WeakReference<FileEventListener>[] listeners;
 
-		protected final PendingEvents<ConcurrentPrependAccumulator<Consumer<FileEventListener>>> pendingListenerCalls;
+		protected final PendingEvents<ConcurrentPrependAccumulator<Consumer<? super FileEventListener>>> pendingListenerCalls;
 
 		@SuppressWarnings("unchecked")
 		public DirectoryWatchEntry(WatchKey pollWatchKey, WatcherThread watchthread, boolean subTreeWatching,
@@ -585,9 +586,9 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 			this.taskPool = watchthread.taskPool;
 			Objects.requireNonNull(taskPool, "taskpool");
 			this.listeners = (WeakReference<FileEventListener>[]) new WeakReference<?>[] { firstlistener };
-			pendingListenerCalls = new PendingEvents<>(new ConcurrentPrependAccumulator<>(), pe -> {
-				ConcurrentPrependAccumulator<Consumer<FileEventListener>> events = pe.events;
-				for (Consumer<FileEventListener> r; (r = events.take()) != null;) {
+			this.pendingListenerCalls = new PendingEvents<>(new ConcurrentPrependAccumulator<>(), pe -> {
+				ConcurrentPrependAccumulator<Consumer<? super FileEventListener>> events = pe.events;
+				for (Consumer<? super FileEventListener> r; (r = events.take()) != null;) {
 					callListenersOnlyImpl(r);
 				}
 			});
@@ -597,7 +598,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 			pendingListenerCalls.deliverAll();
 		}
 
-		private void postCallListeners(Consumer<FileEventListener> function) {
+		protected void postCallListeners(Consumer<? super FileEventListener> function) {
 			if (listeners.length == 0) {
 				return;
 			}
@@ -605,7 +606,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 			pendingListenerCalls.dispatch(taskPool);
 		}
 
-		private void postCallListenersAbandoned() {
+		protected void postCallListenersAbandoned() {
 			if (listeners.length == 0) {
 				return;
 			}
@@ -613,24 +614,32 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 			pendingListenerCalls.dispatch(taskPool);
 		}
 
-		private void callListenersOnlyImpl(Consumer<FileEventListener> function) {
+		protected void callListenersOnlyImpl(Consumer<? super FileEventListener> function) {
+			WeakReference<FileEventListener>[] listeners;
 			if (function == LISTENER_ABANDONER) {
 				//when the abandon listener call is posted, the caller will cancel the watch key automatically
-				WeakReference<FileEventListener>[] listeners = ARFU_listeners.getAndSet(this,
-						EMPTY_WEAK_REFERENCES_ARRAY);
-				for (int i = 0; i < listeners.length; i++) {
-					FileEventListener l = listeners[i].get();
-					if (l != null) {
-						l.listenerAbandoned();
-					}
-				}
+				listeners = ARFU_listeners.getAndSet(this, EMPTY_WEAK_REFERENCES_ARRAY);
 			} else {
-				WeakReference<FileEventListener>[] listeners = this.listeners;
-				for (int i = 0; i < listeners.length; i++) {
-					FileEventListener l = listeners[i].get();
-					if (l != null) {
-						function.accept(l);
-					}
+				listeners = this.listeners;
+			}
+			callListenerFunctions(listeners, function);
+		}
+
+		private static void callListenerFunctions(WeakReference<FileEventListener>[] listeners,
+				Consumer<? super FileEventListener> function) {
+			for (WeakReference<FileEventListener> ref : listeners) {
+				FileEventListener l = ref.get();
+				if (l == null) {
+					continue;
+				}
+				try {
+					function.accept(l);
+				} catch (Exception | LinkageError | StackOverflowError | OutOfMemoryError | AssertionError
+						| ServiceConfigurationError e) {
+					//catch common/recoverable errors
+					//don't propagate the exception up the callstack, the listener just failed execution for some reason
+					// TODO: what else can we do with this exception?
+					e.printStackTrace();
 				}
 			}
 		}
@@ -660,7 +669,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 		}
 	}
 
-	private static class PendingEvents<CollType> {
+	private static final class PendingEvents<CollType> {
 		@SuppressWarnings("rawtypes")
 		private static final AtomicIntegerFieldUpdater<PendingEvents> AIFU_dispatchPosted = AtomicIntegerFieldUpdater
 				.newUpdater(PendingEvents.class, "dispatchPosted");
@@ -696,7 +705,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 		}
 	}
 
-	private static class SubTreeFailedWatchKey implements WatchKey {
+	private static final class SubTreeFailedWatchKey implements WatchKey {
 		static final SubTreeFailedWatchKey INSTANCE = new SubTreeFailedWatchKey();
 
 		@Override
@@ -729,7 +738,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 		}
 	}
 
-	private static class SubTreeWatchKeyState {
+	private static final class SubTreeWatchKeyState {
 		public static final SubTreeWatchKeyState INSTANCE_SUBTREE_WATCHING_FAILED = new SubTreeWatchKeyState(
 				SubTreeFailedWatchKey.INSTANCE, EMPTY_DIRECTORY_WATCH_ENTRIES_ARRAY);
 		protected static final AtomicReferenceFieldUpdater<LocalFileProvider.SubTreeWatchKeyState, DirectoryWatchEntry[]> ARFU_dirWatchEntries = AtomicReferenceFieldUpdater
@@ -795,7 +804,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 		}
 	}
 
-	private static class WatcherThread extends Thread {
+	private static final class WatcherThread extends Thread {
 		private final WatchService watcher;
 		private final WatchRegisterer registerer;
 
@@ -1255,7 +1264,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 			}
 		}
 
-		private static Closeable getListenerTokenCloser(DirectoryWatchEntry watchEntry,
+		protected static Closeable getListenerTokenCloser(DirectoryWatchEntry watchEntry,
 				WeakReference<FileEventListener> listenerWeakReference, WatcherThread wthread) {
 			return new Closeable() {
 				@Override
@@ -1270,7 +1279,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 			};
 		}
 
-		private void removeListenerImpl(DirectoryWatchEntry wentry,
+		protected void removeListenerImpl(DirectoryWatchEntry wentry,
 				WeakReference<? extends FileEventListener> objectWeakRef) {
 			flushEvents(wentry);
 			wentry.deliverListenerCalls();
@@ -1278,7 +1287,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 		}
 
 		@SuppressWarnings("unchecked")
-		private void removeListenerFromWatchEntryImpl(DirectoryWatchEntry wentry,
+		protected void removeListenerFromWatchEntryImpl(DirectoryWatchEntry wentry,
 				WeakReference<? extends FileEventListener> objectWeakRef) {
 			while (true) {
 				WeakReference<FileEventListener>[] listeners = wentry.listeners;
@@ -1381,7 +1390,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 		}
 	}
 
-	private static class GarbageCollectingThread extends Thread {
+	private static final class GarbageCollectingThread extends Thread {
 		private GarbageCollectingThread() {
 			//XXX common thread group with the watcher thread
 			super(ThreadUtils.getTopLevelThreadGroup(), "LocalFileProvider-GC");

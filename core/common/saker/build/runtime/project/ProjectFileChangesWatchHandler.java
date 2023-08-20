@@ -575,16 +575,19 @@ public class ProjectFileChangesWatchHandler implements Closeable {
 		public void eventsMissed() {
 			super.eventsMissed();
 
+			ListenerToken lt;
 			final Lock lock = this.lock;
 			lock.lock();
 			try {
-				ListenerToken lt = listenerToken;
-				if (lt != null) {
-					lt.removeListener();
-				}
+				lt = listenerToken;
 				error();
 			} finally {
 				lock.unlock();
+			}
+			//call remove listener outside of the lock, as that may cause additional events to be delivered
+			//and we don't want to be recursively locking
+			if (lt != null) {
+				lt.removeListener();
 			}
 		}
 
