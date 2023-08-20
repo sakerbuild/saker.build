@@ -30,7 +30,7 @@ public class SimpleBuildTargetParameterInformation implements BuildTargetParamet
 	/**
 	 * Creates a new instance with the specified parameter name.
 	 * 
-	 * @param name
+	 * @param parameterName
 	 *            The parameter name.
 	 */
 	public SimpleBuildTargetParameterInformation(String parameterName) {

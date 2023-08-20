@@ -136,6 +136,7 @@ public final class BuildTargetBootstrapperTaskFactory
 	 *            build file is used.
 	 * @param buildDirectory
 	 *            The relative build directory path.
+	 * @return The created task factory.
 	 * @throws NullPointerException
 	 *             If argument nullability is violated.
 	 * @throws InvalidPathFormatException
@@ -173,6 +174,7 @@ public final class BuildTargetBootstrapperTaskFactory
 	 *            build file is used.
 	 * @param buildDirectory
 	 *            The relative build directory path.
+	 * @return The created task factory.
 	 * @throws NullPointerException
 	 *             If argument nullability is violated.
 	 * @throws InvalidPathFormatException
