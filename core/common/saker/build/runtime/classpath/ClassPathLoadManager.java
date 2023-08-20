@@ -973,11 +973,15 @@ public class ClassPathLoadManager implements Closeable {
 			}
 
 			public State decreaseReference() {
+				if (userCount > 1) {
+					//(in case of 1, the state should be cleared, not decreased)
+					throw new IllegalStateException("Can't release reference, userCount: " + userCount);
+				}
 				return new State(lockFile, userCount - 1);
 			}
 
 			public State increaseReference() {
-				return new State(lockFile, userCount - 1);
+				return new State(lockFile, userCount + 1);
 			}
 		}
 	}
