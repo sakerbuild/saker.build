@@ -94,6 +94,12 @@ steps:
     pathtoPublish: build/std.file.place/release/
     artifactName: '$(Agent.OS)_export_jars_$(J_JAVA_MAJOR)'
     parallel: true
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish exported cmdline info'
+  inputs:
+    pathtoPublish: build/saker.java.compile/launching-jdk8/res/HELP_REFERENCE_OUTPUT/
+    artifactName: '$(Agent.OS)_cmdline_help_ref_$(J_JAVA_MAJOR)'
+    parallel: true
 
 - script: java -jar saker.build.jar -bd build -EUbuild.ci=true "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64);$(JAVA_HOME_15_X64);$(JAVA_HOME_16_X64)" -trace pwd://build/build_compile_nativelib.trace compile native/win32/native.build
   displayName: 'Build native lib'
