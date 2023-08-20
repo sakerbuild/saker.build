@@ -1163,19 +1163,45 @@ public final class SakerIDEProject {
 	}
 
 	public final void clean() throws IOException, InterruptedException {
-		IDEProjectProperties properties = this.ideProjectProperties.properties;
-		String builddir = properties.getBuildDirectory();
-		if (!ObjectUtils.isNullOrEmpty(builddir)) {
-			//TODO do not create full path configuration, but only locate the build directory
-			ExecutionPathConfiguration pathconfig = createPathConfiguration(properties);
-			ProviderHolderPathKey buildpathkey = pathconfig.getPathKey(SakerPath.valueOf(builddir));
-			buildpathkey.getFileProvider().clearDirectoryRecursively(buildpathkey.getPath());
-			ProviderHolderPathKey pathkey = pathconfig.getPathKey(pathconfig.getWorkingDirectory());
-			ProjectCacheHandle projecthandle = getProjectHandle(pathkey, getExecutionDaemonEnvironment(properties));
-			projecthandle.clean();
+		IOException exc = null;
+		try {
+			IDEProjectProperties properties = this.ideProjectProperties.properties;
+			String builddir = properties.getBuildDirectory();
+			if (!ObjectUtils.isNullOrEmpty(builddir)) {
+				//TODO do not create full path configuration, but only locate the build directory
+				ExecutionPathConfiguration pathconfig = createPathConfiguration(properties);
+
+				try {
+					ProviderHolderPathKey workingdirpathkey = pathconfig.getPathKey(pathconfig.getWorkingDirectory());
+					ProjectCacheHandle projecthandle = getProjectHandle(workingdirpathkey,
+							getExecutionDaemonEnvironment(properties));
+					projecthandle.clean();
+				} catch (IOException e) {
+					exc = IOUtils.addExc(exc, e);
+				}
+
+				try {
+					//clear the build directory after the project cache is cleaned
+					//as some processes may keep files open under the build directory, but the cache cleaning
+					//should get rid of them
+					ProviderHolderPathKey buildpathkey = pathconfig.getPathKey(SakerPath.valueOf(builddir));
+					buildpathkey.getFileProvider().clearDirectoryRecursively(buildpathkey.getPath());
+				} catch (IOException e) {
+					exc = IOUtils.addExc(exc, e);
+				}
+			}
+			try {
+				//clear IDE configurations
+				setProjectIDEConfigurationCollection(new ProjectIDEConfigurationCollection());
+			} catch (IOException e) {
+				exc = IOUtils.addExc(exc, e);
+			}
+		} catch (Throwable e) {
+			// add pending exception as suppressed iof any
+			IOUtils.addExc(e, exc);
+			throw e;
 		}
-		//clear IDE configurations
-		setProjectIDEConfigurationCollection(new ProjectIDEConfigurationCollection());
+		IOUtils.throwExc(exc);
 	}
 
 	private ProjectCacheHandle getProjectHandle(PathKey pathkey, DaemonEnvironment daemonenv) throws IOException {
