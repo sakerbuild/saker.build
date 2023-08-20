@@ -16,7 +16,7 @@ static(TargetJDKVersions) = [
 ]
 
 compile(
-	in buildconfig = include(Target: _configure, testing: false, apidocumenting: false)[buildconfig],
+	in buildconfig = _configure(testing: false, apidocumenting: false)[buildconfig],
 	
 	out versionedcompile,
 	out compilebyjdkmajor,
@@ -73,15 +73,12 @@ compile(
 	)
 }
 export(
-	in buildconfig = include(Target: _configure, testing: false, apidocumenting: false)[buildconfig],
+	in buildconfig = _configure(testing: false, apidocumenting: false)[buildconfig],
 	
 	out compile,
 	out Path,
 ) {
-	$compile = include(
-		Target: compile,
-		buildconfig: $buildconfig,
-	)
+	$compile = compile(buildconfig: $buildconfig)
 	
 	$multireleasecontents = foreach $jdksplit in $compile[versionedcompile] : {
 		$jdksplit[JDK][Major] : {
@@ -157,10 +154,10 @@ export(
 	$Path = saker.jar.multi_release.optimize($jar)[Path]
 }
 exportide(
-	in buildconfig = include(Target: _configure, testing: false, apidocumenting: false)[buildconfig],
+	in buildconfig = _configure(testing: false, apidocumenting: false)[buildconfig],
 
 	out idesupportjar,
-	out export = include(export, buildconfig: $buildconfig),
+	out export = export(buildconfig: $buildconfig),
 ){
 	$idesupportjar = saker.jar.create(
 		Output: $buildconfig[testing] ? saker.build-ide-test.jar : saker.build-ide.jar,
@@ -184,18 +181,18 @@ exportide(
 	)
 }
 apicompile(
-	in buildconfig = include(Target: _configure, testing: false, apidocumenting: true)[buildconfig],
+	in buildconfig = _configure(testing: false, apidocumenting: true)[buildconfig],
 	
 	out compile,
 ) {
-	$compile = include(compile, buildconfig: $buildconfig)
+	$compile = compile(buildconfig: $buildconfig)
 }
 apiexport(
-	in buildconfig = include(Target: _configure, testing: false, apidocumenting: true)[buildconfig],
+	in buildconfig = _configure(testing: false, apidocumenting: true)[buildconfig],
 	
 	out jar,
 ){
-	$compile = include(apicompile, buildconfig: $buildconfig)[compile]
+	$compile = apicompile(buildconfig: $buildconfig)[compile]
 	$jar = saker.jar.create(
 		Output: saker.build-api.jar,
 		Resources: [
@@ -222,7 +219,7 @@ apiexport(
 	)
 }
 testexport(
-	in buildconfig = include(Target: _configure, testing: true, apidocumenting: false)[buildconfig],
+	in buildconfig = _configure(testing: true, apidocumenting: false)[buildconfig],
 	
 	out export,
 	out exportide,
@@ -233,14 +230,8 @@ testexport(
 	out testutilsjar,
 	out testscompile,
 ){
-	$export = include(
-		Target: export,
-		buildconfig: $buildconfig,
-	)
-	$exportide = include(
-		Target: exportide,
-		buildconfig: $buildconfig
-	)
+	$export = export(buildconfig: $buildconfig)
+	$exportide = exportide(buildconfig: $buildconfig)
 	$runnercompile = include(
 		Target: compile,
 		Path: test/runner/runner.build,
@@ -361,11 +352,11 @@ exportall(
 		$exportsources[sourcejar][Path],
 	],
 ) {
-	$export = include(export)
-	$apiexport = include(apiexport)
-	$testexport = include(testexport)
-	$exportide = include(exportide)
-	$exportsources = include(exportsources, export: $export)
+	$export = export()
+	$apiexport = apiexport()
+	$testexport = testexport()
+	$exportide = exportide()
+	$exportsources = exportsources(export: $export)
 	
 	foreach $path in $bundlepaths {
 		std.file.copy(
@@ -376,22 +367,20 @@ exportall(
 	
 }
 install() {
-	$exportall = include(exportall)
+	$exportall = exportall()
 	nest.local.install($exportall[bundlepaths])
 }
 test(
-	in buildconfig = include(Target: _configure, testing: true, apidocumenting: false)[buildconfig],
+	in buildconfig = _configure(testing: true, apidocumenting: false)[buildconfig],
 	in testclasses = [
 		testing.saker.build.tests.**.*Test
 	],
-	in jre = saker.java.sdk(8),
+	in javaversion = 8,
+	in jre = saker.java.sdk($javaversion),
 	
 	out export,
 ) {
-	$testexport = include(
-		Target: testexport,
-		buildconfig: $buildconfig,
-	)
+	$testexport = testexport(buildconfig: $buildconfig)
 	$export = $testexport[export]
 
 	$runnercompile = $testexport[runnercompile]
@@ -442,51 +431,18 @@ test(
 		Verbose: true,
 	)
 }
-testjava8(){
-	test(jre: saker.java.sdk(8))
-}
-testjava9(){
-	test(jre: saker.java.sdk(9))
-}
-testjava10(){
-	test(jre: saker.java.sdk(10))
-}
-testjava11(){
-	test(jre: saker.java.sdk(11))
-}
-testjava12(){
-	test(jre: saker.java.sdk(12))
-}
-testjava13(){
-	test(jre: saker.java.sdk(13))
-}
-testjava14(){
-	test(jre: saker.java.sdk(14))
-}
-testjava15(){
-	test(jre: saker.java.sdk(15))
-}
-testjava16(){
-	test(jre: saker.java.sdk(16))
-}
-testwatcher(
-) {
-	include(
-		test, 
-		testclasses: [
+testwatcher() {
+	test(testclasses: [
 			**.watcher.**.*Test
-		],
-	)
+		])
 }
 testidesupport(
-	in buildconfig = include(Target: _configure, testing: true, apidocumenting: false)[buildconfig],
+	in buildconfig = _configure(testing: true, apidocumenting: false)[buildconfig],
 	
-	in jre = saker.java.sdk(8),
+	in javaversion = 8,
+	in jre = saker.java.sdk($javaversion),
 ) {
-	$testexport = include(
-		Target: testexport,
-		buildconfig: $buildconfig,
-	)
+	$testexport = testexport(buildconfig: $buildconfig)
 	
 	$export = $testexport[export]
 	$exportide = $testexport[exportide]
@@ -620,9 +576,9 @@ _configure(
 				TargetVersion: RELEASE_8,
 				AllowTargetReleaseMismatch: true,
 			},
-			include(_getdocprocessoroptions, apidocumenting: $apidocumenting, identifier: core-jdk8, basepackages: "saker.build", excludepackages: "saker.build.thirdparty")[options],
-			include(_getdocprocessoroptions, apidocumenting: $apidocumenting, identifier: thirdparty-jdk8, basepackages: "saker.build.thirdparty", warndoc: false)[options],
-			include(_getdocprocessoroptions, apidocumenting: $apidocumenting, identifier: launching-jdk8, basepackages: "saker.build")[options],
+			_getdocprocessoroptions(apidocumenting: $apidocumenting, identifier: core-jdk8, basepackages: "saker.build", excludepackages: "saker.build.thirdparty")[options],
+			_getdocprocessoroptions(apidocumenting: $apidocumenting, identifier: thirdparty-jdk8, basepackages: "saker.build.thirdparty", warndoc: false)[options],
+			_getdocprocessoroptions(apidocumenting: $apidocumenting, identifier: launching-jdk8, basepackages: "saker.build")[options],
 		],
 	}
 }
