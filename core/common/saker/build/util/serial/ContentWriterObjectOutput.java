@@ -1277,10 +1277,11 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 		int slen = ensureCharWriteBuffer(s);
 		int idx = internalizer.size();
-		InternedValue<?> prev = internalizer.put(s, new InternedValue<>(s, idx));
+		InternedValue<?> prev = internalizer.putIfAbsent(s, new InternedValue<>(s, idx));
 		if (prev != null) {
 			//sanity check
-			throw new SerializationProtocolException("Internal Error: String is already present: " + s);
+			throw new SerializationProtocolException("Internal Error: String is already present: " + s + " with index: "
+					+ prev.index + " for new index: " + idx);
 		}
 
 		if (slen > UTF_PREFIX_MIN_LEN) {
@@ -1403,12 +1404,12 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		}
 	}
 
-	private class ValueInternalizeWriter<V> implements Function<Object, InternedValue<V>> {
+	private static final class InternedValueComputer<V> implements Function<Object, InternedValue<V>> {
 		protected final V obj;
 
 		protected boolean computed;
 
-		public ValueInternalizeWriter(V obj) {
+		public InternedValueComputer(V obj) {
 			this.obj = obj;
 		}
 
@@ -1417,7 +1418,6 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			computed = true;
 			return new InternedValue<>(obj, -1);
 		}
-
 	}
 
 	@Override
@@ -1440,12 +1440,19 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		IOBiConsumer<Object, ContentWriterObjectOutput> objwriter = (IOBiConsumer<Object, ContentWriterObjectOutput>) VALUE_CLASS_WRITERS
 				.get(objclass);
 		if (objwriter != null) {
-			ValueInternalizeWriter<Object> writer = new ValueInternalizeWriter<>(obj);
+			InternedValueComputer<Object> writer = new InternedValueComputer<>(obj);
 			InternedValue<Object> internvalue = valueInternalizer.computeIfAbsent(obj, writer);
 			if (writer.computed) {
 				//a newly added serialized object
-				out.writeByte(C_OBJECT_VALUE);
-				writeTypeWithCommandOrIdx(objclass);
+				try {
+					out.writeByte(C_OBJECT_VALUE);
+					writeTypeWithCommandOrIdx(objclass);
+				} catch (Exception e) {
+					// remove the object from the internalized map, as we failed to proceed with writing the value
+					// (although this shouldn't fail, as we only write strings and primitives in this try-catch block.)
+					valueInternalizer.remove(obj, internvalue);
+					throw e;
+				}
 				internvalue.index = addSerializedObject(obj);
 				objwriter.accept(obj, ContentWriterObjectOutput.this);
 				return;
@@ -1577,7 +1584,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		int idx = indices.size();
 		Integer prev = indices.putIfAbsent(obj, idx);
 		if (prev != null) {
-			throw new SerializationProtocolException("Internal Error: Object is already present: " + obj);
+			throw new SerializationProtocolException("Internal Error: Object is already present: " + obj
+					+ " with index: " + prev + " for new index: " + idx);
 		}
 		return idx;
 	}
