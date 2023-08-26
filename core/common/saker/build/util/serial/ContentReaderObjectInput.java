@@ -1201,12 +1201,12 @@ public class ContentReaderObjectInput implements ObjectInput {
 	}
 
 	private Object readValueObjectImpl() throws IOException, ClassNotFoundException {
-		Class<?> type = readTypeWithCommand();
+		String typename = readUTF();
 		ObjectReaderFunction<ContentReaderObjectInput, ?> reader = ContentWriterObjectOutput.VALUE_CLASS_READERS
-				.get(type);
+				.get(typename);
 		if (reader == null) {
 			//fatal error. we cannot preread the remaining, as we don't know whats there
-			throw new SerializationProtocolException("No value object reader found for class: " + type);
+			throw new SerializationProtocolException("No value object reader found for class: " + typename);
 		}
 		return reader.apply(this);
 	}

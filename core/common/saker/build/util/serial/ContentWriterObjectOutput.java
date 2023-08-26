@@ -280,11 +280,10 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	static final Map<Class<?>, IOBiConsumer<?, ContentWriterObjectOutput>> SERIALIZABLE_CLASS_WRITERS = new HashMap<>();
 	static {
 		//XXX read the sorted collection in a sorted way
-		SERIALIZABLE_CLASS_WRITERS.put(TreeSet.class,
-				(IOBiConsumer<TreeSet<?>, ContentWriterObjectOutput>) (v, writer) -> {
-					writer.writeObject(v.comparator());
-					SerialUtils.writeExternalCollection(writer, v);
-				});
+		SERIALIZABLE_CLASS_WRITERS.put(TreeSet.class, (TreeSet<?> v, ContentWriterObjectOutput writer) -> {
+			writer.writeObject(v.comparator());
+			SerialUtils.writeExternalCollection(writer, v);
+		});
 		SERIALIZABLE_CLASS_READERS.put(TreeSet.class, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
 			SerializedObject<TreeSet<Object>> serialobj;
@@ -302,7 +301,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(ConcurrentSkipListSet.class,
-				(IOBiConsumer<ConcurrentSkipListSet<?>, ContentWriterObjectOutput>) (v, writer) -> {
+				(ConcurrentSkipListSet<?> v, ContentWriterObjectOutput writer) -> {
 					writer.writeObject(v.comparator());
 					SerialUtils.writeExternalCollection(writer, v);
 				});
@@ -323,11 +322,10 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			}
 			return serialobj.get();
 		});
-		SERIALIZABLE_CLASS_WRITERS.put(TreeMap.class,
-				(IOBiConsumer<TreeMap<?, ?>, ContentWriterObjectOutput>) (v, writer) -> {
-					writer.writeObject(v.comparator());
-					SerialUtils.writeExternalMap(writer, v);
-				});
+		SERIALIZABLE_CLASS_WRITERS.put(TreeMap.class, (TreeMap<?, ?> v, ContentWriterObjectOutput writer) -> {
+			writer.writeObject(v.comparator());
+			SerialUtils.writeExternalMap(writer, v);
+		});
 		SERIALIZABLE_CLASS_READERS.put(TreeMap.class, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
 			SerializedObject<TreeMap<Object, Object>> serialobj;
@@ -345,7 +343,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(ConcurrentSkipListMap.class,
-				(IOBiConsumer<ConcurrentSkipListMap<?, ?>, ContentWriterObjectOutput>) (v, writer) -> {
+				(ConcurrentSkipListMap<?, ?> v, ContentWriterObjectOutput writer) -> {
 					writer.writeObject(v.comparator());
 					SerialUtils.writeExternalMap(writer, v);
 				});
@@ -366,10 +364,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			}
 			return serialobj.get();
 		});
-		SERIALIZABLE_CLASS_WRITERS.put(HashMap.class,
-				(IOBiConsumer<HashMap<?, ?>, ContentWriterObjectOutput>) (v, writer) -> {
-					SerialUtils.writeExternalMap(writer, v);
-				});
+		SERIALIZABLE_CLASS_WRITERS.put(HashMap.class, (HashMap<?, ?> v, ContentWriterObjectOutput writer) -> {
+			SerialUtils.writeExternalMap(writer, v);
+		});
 		SERIALIZABLE_CLASS_READERS.put(HashMap.class, reader -> {
 			HashMap<Object, Object> resset = new HashMap<>();
 			SerializedObject<HashMap<Object, Object>> serialobj = new PresentSerializedObject<>(resset);
@@ -384,7 +381,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		});
 		//identity hash map is not supported, due to the value internalization
 		SERIALIZABLE_CLASS_WRITERS.put(LinkedHashMap.class,
-				(IOBiConsumer<LinkedHashMap<?, ?>, ContentWriterObjectOutput>) (v, writer) -> {
+				(LinkedHashMap<?, ?> v, ContentWriterObjectOutput writer) -> {
 					SerialUtils.writeExternalMap(writer, v);
 				});
 		SERIALIZABLE_CLASS_READERS.put(LinkedHashMap.class, reader -> {
@@ -401,7 +398,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(ConcurrentHashMap.class,
-				(IOBiConsumer<ConcurrentHashMap<?, ?>, ContentWriterObjectOutput>) (v, writer) -> {
+				(ConcurrentHashMap<?, ?> v, ContentWriterObjectOutput writer) -> {
 					SerialUtils.writeExternalMap(writer, v);
 				});
 		SERIALIZABLE_CLASS_READERS.put(ConcurrentHashMap.class, reader -> {
@@ -417,10 +414,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			}
 			return serialobj.get();
 		});
-		SERIALIZABLE_CLASS_WRITERS.put(HashSet.class,
-				(IOBiConsumer<HashSet<?>, ContentWriterObjectOutput>) (v, writer) -> {
-					SerialUtils.writeExternalCollection(writer, v);
-				});
+		SERIALIZABLE_CLASS_WRITERS.put(HashSet.class, (HashSet<?> v, ContentWriterObjectOutput writer) -> {
+			SerialUtils.writeExternalCollection(writer, v);
+		});
 		SERIALIZABLE_CLASS_READERS.put(HashSet.class, reader -> {
 			HashSet<Object> resset = new HashSet<>();
 			SerializedObject<HashSet<Object>> serialobj = new PresentSerializedObject<>(resset);
@@ -433,10 +429,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			}
 			return serialobj.get();
 		});
-		SERIALIZABLE_CLASS_WRITERS.put(LinkedHashSet.class,
-				(IOBiConsumer<LinkedHashSet<?>, ContentWriterObjectOutput>) (v, writer) -> {
-					SerialUtils.writeExternalCollection(writer, v);
-				});
+		SERIALIZABLE_CLASS_WRITERS.put(LinkedHashSet.class, (LinkedHashSet<?> v, ContentWriterObjectOutput writer) -> {
+			SerialUtils.writeExternalCollection(writer, v);
+		});
 		SERIALIZABLE_CLASS_READERS.put(LinkedHashSet.class, reader -> {
 			LinkedHashSet<Object> resset = new LinkedHashSet<>();
 			SerializedObject<LinkedHashSet<Object>> serialobj = new PresentSerializedObject<>(resset);
@@ -451,10 +446,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 		Class<?> concurrenthashkeysetviewclass = ConcurrentHashMap.newKeySet().getClass();
-		SERIALIZABLE_CLASS_WRITERS.put(concurrenthashkeysetviewclass,
-				(IOBiConsumer<Set<?>, ContentWriterObjectOutput>) (v, writer) -> {
-					SerialUtils.writeExternalCollection(writer, v);
-				});
+		SERIALIZABLE_CLASS_WRITERS.put(concurrenthashkeysetviewclass, (Set<?> v, ContentWriterObjectOutput writer) -> {
+			SerialUtils.writeExternalCollection(writer, v);
+		});
 		SERIALIZABLE_CLASS_READERS.put(concurrenthashkeysetviewclass, reader -> {
 			Set<Object> resset = ConcurrentHashMap.newKeySet();
 			SerializedObject<Set<Object>> serialobj = new PresentSerializedObject<>(resset);
@@ -468,10 +462,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			}
 			return serialobj.get();
 		});
-		SERIALIZABLE_CLASS_WRITERS.put(ArrayList.class,
-				(IOBiConsumer<ArrayList<?>, ContentWriterObjectOutput>) (v, writer) -> {
-					SerialUtils.writeExternalCollection(writer, v);
-				});
+		SERIALIZABLE_CLASS_WRITERS.put(ArrayList.class, (ArrayList<?> v, ContentWriterObjectOutput writer) -> {
+			SerialUtils.writeExternalCollection(writer, v);
+		});
 		SERIALIZABLE_CLASS_READERS.put(ArrayList.class, reader -> {
 			ArrayList<Object> reslist = new ArrayList<>();
 			SerializedObject<ArrayList<Object>> serialobj = new PresentSerializedObject<>(reslist);
@@ -484,10 +477,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			}
 			return serialobj.get();
 		});
-		SERIALIZABLE_CLASS_WRITERS.put(LinkedList.class,
-				(IOBiConsumer<LinkedList<?>, ContentWriterObjectOutput>) (v, writer) -> {
-					SerialUtils.writeExternalCollection(writer, v);
-				});
+		SERIALIZABLE_CLASS_WRITERS.put(LinkedList.class, (LinkedList<?> v, ContentWriterObjectOutput writer) -> {
+			SerialUtils.writeExternalCollection(writer, v);
+		});
 		SERIALIZABLE_CLASS_READERS.put(LinkedList.class, reader -> {
 			LinkedList<Object> reslist = new LinkedList<>();
 			SerializedObject<LinkedList<Object>> serialobj = new PresentSerializedObject<>(reslist);
@@ -502,7 +494,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(CopyOnWriteArrayList.class,
-				(IOBiConsumer<CopyOnWriteArrayList<?>, ContentWriterObjectOutput>) (v, writer) -> {
+				(CopyOnWriteArrayList<?> v, ContentWriterObjectOutput writer) -> {
 					SerialUtils.writeExternalCollection(writer, v);
 				});
 		SERIALIZABLE_CLASS_READERS.put(CopyOnWriteArrayList.class, reader -> {
@@ -522,12 +514,11 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 		//EnumSet handling is omitted, as it only contains enums
 		//    and can be serialized with the default mechanism
-		SERIALIZABLE_CLASS_WRITERS.put(EnumMap.class,
-				((IOBiConsumer<EnumMap<?, ?>, ContentWriterObjectOutput>) (v, writer) -> {
-					Class<? extends Enum<?>> enumtype = ObjectUtils.getEnumMapEnumType(v);
-					writer.writeObject(enumtype);
-					SerialUtils.writeExternalMap(writer, v);
-				}));
+		SERIALIZABLE_CLASS_WRITERS.put(EnumMap.class, (EnumMap<?, ?> v, ContentWriterObjectOutput writer) -> {
+			Class<? extends Enum<?>> enumtype = ObjectUtils.getEnumMapEnumType(v);
+			writer.writeObject(enumtype);
+			SerialUtils.writeExternalMap(writer, v);
+		});
 		SERIALIZABLE_CLASS_READERS.put(EnumMap.class, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
 			SerializedObject<?> serialobj;
@@ -558,10 +549,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		Object singletontestelement = new Object();
 		Set<Object> singletonset = Collections.singleton(singletontestelement);
 		Class<?> singletonsetclass = singletonset.getClass();
-		SERIALIZABLE_CLASS_WRITERS.put(singletonsetclass,
-				(IOBiConsumer<Set<?>, ContentWriterObjectOutput>) (v, writer) -> {
-					writer.writeObject(v.iterator().next());
-				});
+		SERIALIZABLE_CLASS_WRITERS.put(singletonsetclass, (Set<?> v, ContentWriterObjectOutput writer) -> {
+			writer.writeObject(v.iterator().next());
+		});
 		SERIALIZABLE_CLASS_READERS.put(singletonsetclass, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
 			SerializedObject<Set<Object>> serialobj;
@@ -580,10 +570,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 		List<Object> singletonlist = Collections.singletonList(singletontestelement);
 		Class<?> singletonlistclass = singletonlist.getClass();
-		SERIALIZABLE_CLASS_WRITERS.put(singletonlistclass,
-				(IOBiConsumer<List<?>, ContentWriterObjectOutput>) (v, writer) -> {
-					writer.writeObject(v.get(0));
-				});
+		SERIALIZABLE_CLASS_WRITERS.put(singletonlistclass, (List<?> v, ContentWriterObjectOutput writer) -> {
+			writer.writeObject(v.get(0));
+		});
 		SERIALIZABLE_CLASS_READERS.put(singletonlistclass, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
 			SerializedObject<List<Object>> serialobj;
@@ -602,12 +591,11 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 		Map<Object, Object> singletonmap = Collections.singletonMap(singletontestelement, singletontestelement);
 		Class<?> singletonmapclass = singletonmap.getClass();
-		SERIALIZABLE_CLASS_WRITERS.put(singletonmapclass,
-				(IOBiConsumer<Map<?, ?>, ContentWriterObjectOutput>) (v, writer) -> {
-					Entry<?, ?> entry = v.entrySet().iterator().next();
-					writer.writeObject(entry.getKey());
-					writer.writeObject(entry.getValue());
-				});
+		SERIALIZABLE_CLASS_WRITERS.put(singletonmapclass, (Map<?, ?> v, ContentWriterObjectOutput writer) -> {
+			Entry<?, ?> entry = v.entrySet().iterator().next();
+			writer.writeObject(entry.getKey());
+			writer.writeObject(entry.getValue());
+		});
 		SERIALIZABLE_CLASS_READERS.put(singletonmapclass, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
 			SerializedObject<Map<Object, Object>> serialobj;
@@ -627,7 +615,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 		List<Object> aslist = Arrays.asList(singletontestelement, singletontestelement, singletontestelement);
 		Class<?> astlistclass = aslist.getClass();
-		SERIALIZABLE_CLASS_WRITERS.put(astlistclass, (IOBiConsumer<List<?>, ContentWriterObjectOutput>) (v, writer) -> {
+		SERIALIZABLE_CLASS_WRITERS.put(astlistclass, (List<?> v, ContentWriterObjectOutput writer) -> {
 			int size = v.size();
 			writer.writeInt(size);
 			for (int i = 0; i < size; i++) {
@@ -665,14 +653,14 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		Class<? extends Comparator> reverseorderclass = reverseordercomparator.getClass();
 		PresentSerializedObject<Comparator<Object>> reverseorderserializedobject = new PresentSerializedObject<>(
 				reverseordercomparator);
-		SERIALIZABLE_CLASS_WRITERS.put(reverseorderclass, (IOBiConsumer<?, ContentWriterObjectOutput>) (v, writer) -> {
+		SERIALIZABLE_CLASS_WRITERS.put(reverseorderclass, (v, writer) -> {
 		});
 		SERIALIZABLE_CLASS_READERS.put(reverseorderclass, reader -> {
 			reader.addSerializedObject(reverseorderserializedobject);
 			return reverseordercomparator;
 		});
 
-		SERIALIZABLE_CLASS_WRITERS.put(Method.class, (IOBiConsumer<Method, ContentWriterObjectOutput>) (v, writer) -> {
+		SERIALIZABLE_CLASS_WRITERS.put(Method.class, (Method v, ContentWriterObjectOutput writer) -> {
 			writer.writeObject(v.getDeclaringClass());
 			writer.writeUTF(v.getName());
 			Class<?>[] paramtypes = v.getParameterTypes();
@@ -701,15 +689,14 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			reader.setSerializedObject(idx, serialobj);
 			return serialobj.get();
 		});
-		SERIALIZABLE_CLASS_WRITERS.put(Constructor.class,
-				(IOBiConsumer<Constructor<?>, ContentWriterObjectOutput>) (v, writer) -> {
-					writer.writeObject(v.getDeclaringClass());
-					Class<?>[] paramtypes = v.getParameterTypes();
-					writer.writeInt(paramtypes.length);
-					for (int i = 0; i < paramtypes.length; i++) {
-						writer.writeObject(paramtypes[i]);
-					}
-				});
+		SERIALIZABLE_CLASS_WRITERS.put(Constructor.class, (Constructor<?> v, ContentWriterObjectOutput writer) -> {
+			writer.writeObject(v.getDeclaringClass());
+			Class<?>[] paramtypes = v.getParameterTypes();
+			writer.writeInt(paramtypes.length);
+			for (int i = 0; i < paramtypes.length; i++) {
+				writer.writeObject(paramtypes[i]);
+			}
+		});
 		SERIALIZABLE_CLASS_READERS.put(Constructor.class, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
 			SerializedObject<Constructor<?>> serialobj;
@@ -729,7 +716,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			reader.setSerializedObject(idx, serialobj);
 			return serialobj.get();
 		});
-		SERIALIZABLE_CLASS_WRITERS.put(Field.class, (IOBiConsumer<Field, ContentWriterObjectOutput>) (v, writer) -> {
+		SERIALIZABLE_CLASS_WRITERS.put(Field.class, (Field v, ContentWriterObjectOutput writer) -> {
 			writer.writeObject(v.getDeclaringClass());
 			writer.writeUTF(v.getName());
 		});
@@ -749,10 +736,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 
-		SERIALIZABLE_CLASS_WRITERS.put(Optional.class,
-				(IOBiConsumer<Optional<?>, ContentWriterObjectOutput>) (v, writer) -> {
-					writer.writeObject(v.orElse(null));
-				});
+		SERIALIZABLE_CLASS_WRITERS.put(Optional.class, (Optional<?> v, ContentWriterObjectOutput writer) -> {
+			writer.writeObject(v.orElse(null));
+		});
 		SERIALIZABLE_CLASS_READERS.put(Optional.class, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
 			SerializedObject<Optional<?>> serialobj;
@@ -781,11 +767,11 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	}
 
 	static final Map<Class<?>, IOBiConsumer<?, ContentWriterObjectOutput>> VALUE_CLASS_WRITERS = new HashMap<>();
-	static final Map<Class<?>, ObjectReaderFunction<ContentReaderObjectInput, ?>> VALUE_CLASS_READERS = new HashMap<>();
+	static final Map<String, ObjectReaderFunction<ContentReaderObjectInput, ?>> VALUE_CLASS_READERS = new TreeMap<>();
 	static {
 		VALUE_CLASS_WRITERS.put(UUID.class,
-				(IOBiConsumer<UUID, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeUTF(v.toString()));
-		VALUE_CLASS_READERS.put(UUID.class, reader -> {
+				(UUID v, ContentWriterObjectOutput writer) -> writer.out.writeUTF(v.toString()));
+		VALUE_CLASS_READERS.put(UUID.class.getName(), reader -> {
 			SerializedObject<UUID> serialobj;
 			try {
 				UUID res = UUID.fromString(reader.state.in.readUTF());
@@ -798,8 +784,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 		VALUE_CLASS_WRITERS.put(Date.class,
-				(IOBiConsumer<Date, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeLong(v.getTime()));
-		VALUE_CLASS_READERS.put(Date.class, reader -> {
+				(Date v, ContentWriterObjectOutput writer) -> writer.out.writeLong(v.getTime()));
+		VALUE_CLASS_READERS.put(Date.class.getName(), reader -> {
 			SerializedObject<Date> serialobj;
 			try {
 				long time = reader.state.in.readLong();
@@ -812,9 +798,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 
-		VALUE_CLASS_WRITERS.put(Byte.class,
-				(IOBiConsumer<Byte, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeByte(v));
-		VALUE_CLASS_READERS.put(Byte.class, reader -> {
+		VALUE_CLASS_WRITERS.put(Byte.class, (Byte v, ContentWriterObjectOutput writer) -> writer.out.writeByte(v));
+		VALUE_CLASS_READERS.put(Byte.class.getName(), reader -> {
 			SerializedObject<Byte> serialobj;
 			try {
 				Byte res = reader.state.in.readByte();
@@ -826,9 +811,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			reader.addSerializedObject(serialobj);
 			return serialobj.get();
 		});
-		VALUE_CLASS_WRITERS.put(Short.class,
-				(IOBiConsumer<Short, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeShort(v));
-		VALUE_CLASS_READERS.put(Short.class, reader -> {
+		VALUE_CLASS_WRITERS.put(Short.class, (Short v, ContentWriterObjectOutput writer) -> writer.out.writeShort(v));
+		VALUE_CLASS_READERS.put(Short.class.getName(), reader -> {
 			SerializedObject<Short> serialobj;
 			try {
 				Short res = reader.state.in.readShort();
@@ -841,8 +825,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 		VALUE_CLASS_WRITERS.put(Integer.class,
-				(IOBiConsumer<Integer, ContentWriterObjectOutput>) (v, writer) -> writer.writeRawVarInt(v));
-		VALUE_CLASS_READERS.put(Integer.class, reader -> {
+				(Integer v, ContentWriterObjectOutput writer) -> writer.writeRawVarInt(v));
+		VALUE_CLASS_READERS.put(Integer.class.getName(), reader -> {
 			SerializedObject<Integer> serialobj;
 			try {
 				Integer res = reader.readRawVarInt();
@@ -854,9 +838,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			reader.addSerializedObject(serialobj);
 			return serialobj.get();
 		});
-		VALUE_CLASS_WRITERS.put(Long.class,
-				(IOBiConsumer<Long, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeLong(v));
-		VALUE_CLASS_READERS.put(Long.class, reader -> {
+		VALUE_CLASS_WRITERS.put(Long.class, (Long v, ContentWriterObjectOutput writer) -> writer.out.writeLong(v));
+		VALUE_CLASS_READERS.put(Long.class.getName(), reader -> {
 			SerializedObject<Long> serialobj;
 			try {
 				Long res = reader.state.in.readLong();
@@ -868,9 +851,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			reader.addSerializedObject(serialobj);
 			return serialobj.get();
 		});
-		VALUE_CLASS_WRITERS.put(Float.class,
-				(IOBiConsumer<Float, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeFloat(v));
-		VALUE_CLASS_READERS.put(Float.class, reader -> {
+		VALUE_CLASS_WRITERS.put(Float.class, (Float v, ContentWriterObjectOutput writer) -> writer.out.writeFloat(v));
+		VALUE_CLASS_READERS.put(Float.class.getName(), reader -> {
 			SerializedObject<Float> serialobj;
 			try {
 				Float res = reader.state.in.readFloat();
@@ -883,8 +865,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 		VALUE_CLASS_WRITERS.put(Double.class,
-				(IOBiConsumer<Double, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeDouble(v));
-		VALUE_CLASS_READERS.put(Double.class, reader -> {
+				(Double v, ContentWriterObjectOutput writer) -> writer.out.writeDouble(v));
+		VALUE_CLASS_READERS.put(Double.class.getName(), reader -> {
 			SerializedObject<Double> serialobj;
 			try {
 				Double res = reader.state.in.readDouble();
@@ -897,8 +879,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 		VALUE_CLASS_WRITERS.put(Character.class,
-				(IOBiConsumer<Character, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeChar(v));
-		VALUE_CLASS_READERS.put(Character.class, reader -> {
+				(Character v, ContentWriterObjectOutput writer) -> writer.out.writeChar(v));
+		VALUE_CLASS_READERS.put(Character.class.getName(), reader -> {
 			SerializedObject<Character> serialobj;
 			try {
 				Character res = reader.state.in.readChar();
@@ -911,8 +893,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 		VALUE_CLASS_WRITERS.put(Boolean.class,
-				(IOBiConsumer<Boolean, ContentWriterObjectOutput>) (v, writer) -> writer.out.writeBoolean(v));
-		VALUE_CLASS_READERS.put(Boolean.class, reader -> {
+				(Boolean v, ContentWriterObjectOutput writer) -> writer.out.writeBoolean(v));
+		VALUE_CLASS_READERS.put(Boolean.class.getName(), reader -> {
 			SerializedObject<Boolean> serialobj;
 			try {
 				Boolean res = reader.state.in.readBoolean();
@@ -926,8 +908,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		});
 
 		VALUE_CLASS_WRITERS.put(SakerPath.class,
-				(IOBiConsumer<SakerPath, ContentWriterObjectOutput>) (v, writer) -> writer.writeUTF(v.toString()));
-		VALUE_CLASS_READERS.put(SakerPath.class, reader -> {
+				(SakerPath v, ContentWriterObjectOutput writer) -> writer.writeUTF(v.toString()));
+		VALUE_CLASS_READERS.put(SakerPath.class.getName(), reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
 			SerializedObject<SakerPath> serialobj;
 			try {
@@ -941,9 +923,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return serialobj.get();
 		});
 
-		VALUE_CLASS_WRITERS.put(URI.class,
-				(IOBiConsumer<URI, ContentWriterObjectOutput>) (v, writer) -> writer.writeUTF(v.toString()));
-		VALUE_CLASS_READERS.put(URI.class, reader -> {
+		VALUE_CLASS_WRITERS.put(URI.class, (URI v, ContentWriterObjectOutput writer) -> writer.writeUTF(v.toString()));
+		VALUE_CLASS_READERS.put(URI.class.getName(), reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
 			SerializedObject<URI> serialobj;
 			try {
@@ -1476,7 +1457,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				//a newly added serialized object
 				try {
 					out.writeByte(C_OBJECT_VALUE);
-					writeTypeWithCommandOrIdx(objclass);
+					writeUTF(objclass.getName());
 				} catch (Exception e) {
 					// remove the object from the internalized map, as we failed to proceed with writing the value
 					// (although this shouldn't fail, as we only write strings and primitives in this try-catch block.)
