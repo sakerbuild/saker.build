@@ -259,8 +259,12 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 	ReadState state;
 
-	private final List<SerializedObject<?>> serializedObjects = new ArrayList<>();
-	private final List<SerializedObject<String>> serializedStrings = new ArrayList<>();
+	//Elements of serializedObject and serializedStrings are either
+	// SerializedObject<?> instances
+	//   or 
+	// the result objects 
+	private final List<Object> serializedObjects = new ArrayList<>();
+	private final List<Object> serializedStrings = new ArrayList<>();
 	private final Map<Class<?>, Constructor<? extends Externalizable>> externalizableConstructors = new HashMap<>();
 
 	private final ClassLoaderResolver registry;
@@ -557,14 +561,28 @@ public class ContentReaderObjectInput implements ObjectInput {
 	}
 
 	private String getUtfWithIndex(int idx) throws SerializationProtocolException, IOException {
+		Object serobj;
 		try {
-			if (idx >= serializedStrings.size()) {
-				throw new SerializationProtocolException(
-						"Invalid serialized string index: " + idx + " for size: " + serializedStrings.size());
+			serobj = serializedStrings.get(idx);
+		} catch (IndexOutOfBoundsException e) {
+			throw new SerializationProtocolException(
+					"Invalid serialized string index: " + idx + " for size: " + serializedStrings.size(), e);
+		}
+		Object result;
+		if (serobj instanceof SerializedObject<?>) {
+			try {
+				result = ((SerializedObject<?>) serobj).get();
+			} catch (ClassNotFoundException e) {
+				throw new SerializationProtocolException("Unexpected type failure.", e);
 			}
-			return serializedStrings.get(idx).get();
-		} catch (ClassNotFoundException e) {
-			throw new SerializationProtocolException("Unexpected type failure.", e);
+		} else {
+			result = serobj;
+		}
+
+		try {
+			return (String) result;
+		} catch (ClassCastException e) {
+			throw new SerializationProtocolException("Unexpected type cast failure.", e);
 		}
 	}
 
@@ -583,14 +601,11 @@ public class ContentReaderObjectInput implements ObjectInput {
 			}
 
 			String utf = new String(charReadBuffer, 0, slen);
-			addSerializedString(new PresentSerializedObject<>(utf));
+			addSerializedString(utf);
 			return utf;
 		} catch (IOException e) {
-			FailedSerializedObject<String> serializedobj = new FailedSerializedObject<>(() -> {
-				IOException eofe = new SerializationProtocolException("Failed to fully read UTF.");
-				eofe.initCause(e);
-				return eofe;
-			});
+			SerializedObject<String> serializedobj = new SerializationProtocolFailedSerializedObject<>(
+					"Failed to fully read UTF.", e);
 			addSerializedString(serializedobj);
 			throw e;
 		}
@@ -612,14 +627,11 @@ public class ContentReaderObjectInput implements ObjectInput {
 			}
 
 			String utf = new String(charReadBuffer, 0, slen);
-			addSerializedString(new PresentSerializedObject<>(utf));
+			addSerializedString(utf);
 			return utf;
 		} catch (IOException e) {
-			FailedSerializedObject<String> serializedobj = new FailedSerializedObject<>(() -> {
-				IOException eofe = new SerializationProtocolException("Failed to fully read UTF.");
-				eofe.initCause(e);
-				return eofe;
-			});
+			SerializedObject<String> serializedobj = new SerializationProtocolFailedSerializedObject<>(
+					"Failed to fully read UTF.", e);
 			addSerializedString(serializedobj);
 			throw e;
 		}
@@ -650,14 +662,11 @@ public class ContentReaderObjectInput implements ObjectInput {
 			sb.append(prefix, 0, common);
 			sb.append(charReadBuffer, 0, slen);
 			String utf = sb.toString();
-			addSerializedString(new PresentSerializedObject<>(utf));
+			addSerializedString(utf);
 			return utf;
 		} catch (IOException e) {
-			FailedSerializedObject<String> serializedobj = new FailedSerializedObject<>(() -> {
-				IOException eofe = new SerializationProtocolException("Failed to fully read UTF.");
-				eofe.initCause(e);
-				return eofe;
-			});
+			SerializedObject<String> serializedobj = new SerializationProtocolFailedSerializedObject<>(
+					"Failed to fully read UTF.", e);
 			addSerializedString(serializedobj);
 			throw e;
 		}
@@ -686,14 +695,11 @@ public class ContentReaderObjectInput implements ObjectInput {
 			sb.append(prefix, 0, common);
 			sb.append(charReadBuffer, 0, slen);
 			String utf = sb.toString();
-			addSerializedString(new PresentSerializedObject<>(utf));
+			addSerializedString(utf);
 			return utf;
 		} catch (IOException e) {
-			FailedSerializedObject<String> serializedobj = new FailedSerializedObject<>(() -> {
-				IOException eofe = new SerializationProtocolException("Failed to fully read UTF.");
-				eofe.initCause(e);
-				return eofe;
-			});
+			SerializedObject<String> serializedobj = new SerializationProtocolFailedSerializedObject<>(
+					"Failed to fully read UTF.", e);
 			addSerializedString(serializedobj);
 			throw e;
 		}
@@ -891,22 +897,23 @@ public class ContentReaderObjectInput implements ObjectInput {
 	public void close() throws IOException {
 	}
 
-	int addSerializedObject(SerializedObject<?> obj) {
-		List<SerializedObject<?>> objlist = this.serializedObjects;
+	int addSerializedObject(Object obj) {
+		List<Object> objlist = this.serializedObjects;
 		int idx = objlist.size();
 		objlist.add(obj);
 		return idx;
 	}
 
-	int addSerializedString(SerializedObject<String> obj) {
-		List<SerializedObject<String>> objlist = this.serializedStrings;
-		int idx = objlist.size();
-		objlist.add(obj);
-		return idx;
-	}
-
-	void setSerializedObject(int idx, SerializedObject<?> obj) {
+	void setSerializedObject(int idx, Object obj) {
 		serializedObjects.set(idx, obj);
+	}
+
+	void addSerializedString(String str) {
+		this.serializedStrings.add(str);
+	}
+
+	void addSerializedString(SerializedObject<String> obj) {
+		this.serializedStrings.add(obj);
 	}
 
 	Class<?> readTypeWithCommand() throws IOException, ClassNotFoundException {
@@ -993,26 +1000,34 @@ public class ContentReaderObjectInput implements ObjectInput {
 		}
 		if (failexc.length > 0) {
 			Exception[] ffailexc = failexc;
-			setSerializedObject(idx, new FailedSerializedObject<>(() -> {
+			FailedSerializedObject<Object> serialobj = new FailedSerializedObject<>(() -> {
 				ObjectReadException e = new ObjectReadException("Failed to read proxy object.", ffailexc[0]);
 				for (int i = 1; i < ffailexc.length; i++) {
 					e.addSuppressed(ffailexc[i]);
 				}
 				return e;
-			}));
+			});
+			setSerializedObject(idx, serialobj);
+			return serialobj.get();
 		}
 		if (!(ih instanceof InvocationHandler)) {
-			throw new ObjectTypeException("Proxy invocation handler doesn't implement " + InvocationHandler.class
-					+ " in class: " + ih.getClass().getName());
+			FailedSerializedObject<Object> serialobj = new FailedSerializedObject<>(
+					() -> new ObjectTypeException("Proxy invocation handler doesn't implement "
+							+ InvocationHandler.class + " in class: " + ih.getClass().getName()));
+			setSerializedObject(idx, serialobj);
+			return serialobj.get();
 		}
 
 		try {
 			Object result = Proxy.newProxyInstance(cl, interfaces, (InvocationHandler) ih);
-			setSerializedObject(idx, new PresentSerializedObject<>(result));
+			setSerializedObject(idx, result);
 			return result;
 		} catch (Exception e) {
-			throw new SerializationReflectionException(
-					"Failed to instantiate proxy object. (" + Arrays.toString(interfaces) + ")", e);
+			FailedSerializedObject<Object> serialobj = new FailedSerializedObject<>(
+					() -> new SerializationReflectionException(
+							"Failed to instantiate proxy object. (" + Arrays.toString(interfaces) + ")", e));
+			setSerializedObject(idx, serialobj);
+			return serialobj.get();
 		}
 	}
 
@@ -1027,7 +1042,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 	private Class<?> readTypeImpl() throws ClassNotFoundException, IOException {
 		try {
 			Class<?> result = readExternalClass();
-			addSerializedObject(new PresentSerializedObject<>(result));
+			addSerializedObject(result);
 			return result;
 		} catch (ClassNotFoundException e) {
 			FailedSerializedObject<?> serializedobj = new FailedSerializedObject<>(
@@ -1038,7 +1053,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 	}
 
 	private Class<?> getTypeIdxImpl(int idx) throws IOException, ClassNotFoundException {
-		return (Class<?>) serializedObjects.get(idx).get();
+		return (Class<?>) getObjectIdxImpl(idx);
 	}
 
 	private Object readArrayImpl(int cmd) throws IOException, ClassNotFoundException {
@@ -1070,7 +1085,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 		Class<?> componenttype = arrayclass.getComponentType();
 		Object array = Array.newInstance(componenttype, len);
-		int serobjidx = addSerializedObject(new PresentSerializedObject<>(array));
+		int serobjidx = addSerializedObject(array);
 		@SuppressWarnings("unchecked")
 		IOBiConsumer<? super DataInput, Object> reader = (IOBiConsumer<? super DataInput, Object>) PRIVMITIVE_ARRAY_READERS
 				.get(componenttype);
@@ -1113,7 +1128,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 		String name = DataInputUnsyncByteArrayInputStream.readStringLengthChars(state.in);
 		try {
 			Enum<?> result = Enum.valueOf(type, name);
-			addSerializedObject(new PresentSerializedObject<>(result));
+			addSerializedObject(result);
 			return result;
 		} catch (IllegalArgumentException e) {
 			FailedSerializedObject<Enum<?>> serializedobj = new FailedSerializedObject<>(
@@ -1143,8 +1158,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 			ObjectReaderFunction<ContentReaderObjectInput, Object> reader = ContentWriterObjectOutput.SERIALIZABLE_CLASS_READERS
 					.get(type);
 			if (reader == null) {
-				FailedSerializedObject<Object> serializedobj = new FailedSerializedObject<>(
-						() -> new SerializationProtocolException("No object reader found for class: " + type));
+				SerializedObject<Object> serializedobj = new SerializationProtocolFailedSerializedObject<>(
+						"No object reader found for class: " + type);
 				addSerializedObject(serializedobj);
 				return serializedobj.get();
 			}
@@ -1196,7 +1211,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 			InternalBuildTraceImpl.serializationWarningMessage(
 					"Serializable object failed to read all data. (" + ObjectUtils.classOf(result) + ")");
 		}
-		addSerializedObject(new PresentSerializedObject<>(result));
+		addSerializedObject(result);
 		return result;
 	}
 
@@ -1229,12 +1244,17 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 	private Object getObjectIdxImpl(int idx)
 			throws SerializationProtocolException, IOException, ClassNotFoundException {
-		int size = serializedObjects.size();
-		if (idx >= size) {
-			throw new SerializationProtocolException(
-					"Referenced object not found at index: " + idx + " (current size: " + size + ")");
+		Object serobj;
+		try {
+			serobj = serializedObjects.get(idx);
+		} catch (IndexOutOfBoundsException e) {
+			throw new SerializationProtocolException("Referenced object not found at index: " + idx + " (current size: "
+					+ serializedObjects.size() + ")", e);
 		}
-		return serializedObjects.get(idx).get();
+		if (serobj instanceof SerializedObject<?>) {
+			return ((SerializedObject<?>) serobj).get();
+		}
+		return serobj;
 	}
 
 	private int readExternalizableLength(int cmd) throws IOException {
@@ -1292,7 +1312,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 			throw new SerializationReflectionException("Failed to instantiate Externalizable: " + type.getName(), e);
 		}
 
-		int serobjidx = addSerializedObject(new PresentSerializedObject<>(instance));
+		int serobjidx = addSerializedObject(instance);
 
 		LimitInputStream limitis = new LimitInputStream(this.state.actualInput, len);
 		ReadState nstate = new ReadState(limitis);

@@ -286,19 +286,19 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		});
 		SERIALIZABLE_CLASS_READERS.put(TreeSet.class, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
-			SerializedObject<TreeSet<Object>> serialobj;
 			try {
 				@SuppressWarnings("unchecked")
 				Comparator<Object> comparator = (Comparator<Object>) reader.readObject();
-				TreeSet<Object> resset = new TreeSet<>(comparator);
-				serialobj = new PresentSerializedObject<>(resset);
-				reader.setSerializedObject(idx, serialobj);
-				SerialUtils.readExternalCollection(resset, reader);
+				TreeSet<Object> res = new TreeSet<>(comparator);
+				reader.setSerializedObject(idx, res);
+				SerialUtils.readExternalCollection(res, reader);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(() -> new ObjectReadException("Failed to read TreeSet.", e));
+				SerializedObject<TreeSet<Object>> serialobj = new FailedSerializedObject<>(
+						() -> new ObjectReadException("Failed to read TreeSet.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(ConcurrentSkipListSet.class,
 				(ConcurrentSkipListSet<?> v, ContentWriterObjectOutput writer) -> {
@@ -307,20 +307,19 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				});
 		SERIALIZABLE_CLASS_READERS.put(ConcurrentSkipListSet.class, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
-			SerializedObject<ConcurrentSkipListSet<Object>> serialobj;
 			try {
 				@SuppressWarnings("unchecked")
 				Comparator<Object> comparator = (Comparator<Object>) reader.readObject();
-				ConcurrentSkipListSet<Object> resset = new ConcurrentSkipListSet<>(comparator);
-				serialobj = new PresentSerializedObject<>(resset);
-				reader.setSerializedObject(idx, serialobj);
-				SerialUtils.readExternalCollection(resset, reader);
+				ConcurrentSkipListSet<Object> res = new ConcurrentSkipListSet<>(comparator);
+				reader.setSerializedObject(idx, res);
+				SerialUtils.readExternalCollection(res, reader);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<ConcurrentSkipListSet<Object>> serialobj = new FailedSerializedObject<>(
 						() -> new ObjectReadException("Failed to read ConcurrentSkipListSet.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(TreeMap.class, (TreeMap<?, ?> v, ContentWriterObjectOutput writer) -> {
 			writer.writeObject(v.comparator());
@@ -328,19 +327,19 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		});
 		SERIALIZABLE_CLASS_READERS.put(TreeMap.class, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
-			SerializedObject<TreeMap<Object, Object>> serialobj;
 			try {
 				@SuppressWarnings("unchecked")
 				Comparator<Object> comparator = (Comparator<Object>) reader.readObject();
-				TreeMap<Object, Object> resmap = new TreeMap<>(comparator);
-				serialobj = new PresentSerializedObject<>(resmap);
-				reader.setSerializedObject(idx, serialobj);
-				SerialUtils.readExternalMap(resmap, reader);
+				TreeMap<Object, Object> res = new TreeMap<>(comparator);
+				reader.setSerializedObject(idx, res);
+				SerialUtils.readExternalMap(res, reader);
+				return res;
 			} catch (Exception e) {
+				SerializedObject<TreeMap<Object, Object>> serialobj;
 				serialobj = new FailedSerializedObject<>(() -> new ObjectReadException("Failed to read TreeMap.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(ConcurrentSkipListMap.class,
 				(ConcurrentSkipListMap<?, ?> v, ContentWriterObjectOutput writer) -> {
@@ -349,35 +348,35 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				});
 		SERIALIZABLE_CLASS_READERS.put(ConcurrentSkipListMap.class, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
-			SerializedObject<ConcurrentSkipListMap<Object, Object>> serialobj;
 			try {
 				@SuppressWarnings("unchecked")
 				Comparator<Object> comparator = (Comparator<Object>) reader.readObject();
-				ConcurrentSkipListMap<Object, Object> resmap = new ConcurrentSkipListMap<>(comparator);
-				serialobj = new PresentSerializedObject<>(resmap);
-				reader.setSerializedObject(idx, serialobj);
-				SerialUtils.readExternalMap(resmap, reader);
+				ConcurrentSkipListMap<Object, Object> res = new ConcurrentSkipListMap<>(comparator);
+				reader.setSerializedObject(idx, res);
+				SerialUtils.readExternalMap(res, reader);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<ConcurrentSkipListMap<Object, Object>> serialobj = new FailedSerializedObject<>(
 						() -> new ObjectReadException("Failed to read ConcurrentSkipListMap.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(HashMap.class, (HashMap<?, ?> v, ContentWriterObjectOutput writer) -> {
 			SerialUtils.writeExternalMap(writer, v);
 		});
 		SERIALIZABLE_CLASS_READERS.put(HashMap.class, reader -> {
-			HashMap<Object, Object> resset = new HashMap<>();
-			SerializedObject<HashMap<Object, Object>> serialobj = new PresentSerializedObject<>(resset);
-			int idx = reader.addSerializedObject(serialobj);
+			HashMap<Object, Object> res = new HashMap<>();
+			int idx = reader.addSerializedObject(res);
 			try {
-				SerialUtils.readExternalMap(resset, reader);
+				SerialUtils.readExternalMap(res, reader);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(() -> new ObjectReadException("Failed to read HashMap.", e));
+				SerializedObject<HashMap<Object, Object>> serialobj = new FailedSerializedObject<>(
+						() -> new ObjectReadException("Failed to read HashMap.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 		//identity hash map is not supported, due to the value internalization
 		SERIALIZABLE_CLASS_WRITERS.put(LinkedHashMap.class,
@@ -385,131 +384,133 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 					SerialUtils.writeExternalMap(writer, v);
 				});
 		SERIALIZABLE_CLASS_READERS.put(LinkedHashMap.class, reader -> {
-			LinkedHashMap<Object, Object> resset = new LinkedHashMap<>();
-			SerializedObject<LinkedHashMap<Object, Object>> serialobj = new PresentSerializedObject<>(resset);
-			int idx = reader.addSerializedObject(serialobj);
+			LinkedHashMap<Object, Object> res = new LinkedHashMap<>();
+			int idx = reader.addSerializedObject(res);
 			try {
-				SerialUtils.readExternalMap(resset, reader);
+				SerialUtils.readExternalMap(res, reader);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<LinkedHashMap<Object, Object>> serialobj = new FailedSerializedObject<>(
 						() -> new ObjectReadException("Failed to read LinkedHashMap.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(ConcurrentHashMap.class,
 				(ConcurrentHashMap<?, ?> v, ContentWriterObjectOutput writer) -> {
 					SerialUtils.writeExternalMap(writer, v);
 				});
 		SERIALIZABLE_CLASS_READERS.put(ConcurrentHashMap.class, reader -> {
-			ConcurrentHashMap<Object, Object> resset = new ConcurrentHashMap<>();
-			SerializedObject<ConcurrentHashMap<Object, Object>> serialobj = new PresentSerializedObject<>(resset);
-			int idx = reader.addSerializedObject(serialobj);
+			ConcurrentHashMap<Object, Object> res = new ConcurrentHashMap<>();
+			int idx = reader.addSerializedObject(res);
 			try {
-				SerialUtils.readExternalMap(resset, reader);
+				SerialUtils.readExternalMap(res, reader);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<ConcurrentHashMap<Object, Object>> serialobj = new FailedSerializedObject<>(
 						() -> new ObjectReadException("Failed to read ConcurrentHashMap.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(HashSet.class, (HashSet<?> v, ContentWriterObjectOutput writer) -> {
 			SerialUtils.writeExternalCollection(writer, v);
 		});
 		SERIALIZABLE_CLASS_READERS.put(HashSet.class, reader -> {
-			HashSet<Object> resset = new HashSet<>();
-			SerializedObject<HashSet<Object>> serialobj = new PresentSerializedObject<>(resset);
-			int idx = reader.addSerializedObject(serialobj);
+			HashSet<Object> res = new HashSet<>();
+			int idx = reader.addSerializedObject(res);
 			try {
-				SerialUtils.readExternalCollection(resset, reader);
+				SerialUtils.readExternalCollection(res, reader);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(() -> new ObjectReadException("Failed to read HashSet.", e));
+				SerializedObject<HashSet<Object>> serialobj = new FailedSerializedObject<>(
+						() -> new ObjectReadException("Failed to read HashSet.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(LinkedHashSet.class, (LinkedHashSet<?> v, ContentWriterObjectOutput writer) -> {
 			SerialUtils.writeExternalCollection(writer, v);
 		});
 		SERIALIZABLE_CLASS_READERS.put(LinkedHashSet.class, reader -> {
-			LinkedHashSet<Object> resset = new LinkedHashSet<>();
-			SerializedObject<LinkedHashSet<Object>> serialobj = new PresentSerializedObject<>(resset);
-			int idx = reader.addSerializedObject(serialobj);
+			LinkedHashSet<Object> res = new LinkedHashSet<>();
+			int idx = reader.addSerializedObject(res);
 			try {
-				SerialUtils.readExternalCollection(resset, reader);
+				SerialUtils.readExternalCollection(res, reader);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<LinkedHashSet<Object>> serialobj = new FailedSerializedObject<>(
 						() -> new ObjectReadException("Failed to read LinkedHashSet.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 		Class<?> concurrenthashkeysetviewclass = ConcurrentHashMap.newKeySet().getClass();
 		SERIALIZABLE_CLASS_WRITERS.put(concurrenthashkeysetviewclass, (Set<?> v, ContentWriterObjectOutput writer) -> {
 			SerialUtils.writeExternalCollection(writer, v);
 		});
 		SERIALIZABLE_CLASS_READERS.put(concurrenthashkeysetviewclass, reader -> {
-			Set<Object> resset = ConcurrentHashMap.newKeySet();
-			SerializedObject<Set<Object>> serialobj = new PresentSerializedObject<>(resset);
-			int idx = reader.addSerializedObject(serialobj);
+			Set<Object> res = ConcurrentHashMap.newKeySet();
+			int idx = reader.addSerializedObject(res);
 			try {
-				SerialUtils.readExternalCollection(resset, reader);
+				SerialUtils.readExternalCollection(res, reader);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<Set<Object>> serialobj = new FailedSerializedObject<>(
 						() -> new ObjectReadException("Failed to read ConcurrentHashMap.KeySetView.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(ArrayList.class, (ArrayList<?> v, ContentWriterObjectOutput writer) -> {
 			SerialUtils.writeExternalCollection(writer, v);
 		});
 		SERIALIZABLE_CLASS_READERS.put(ArrayList.class, reader -> {
-			ArrayList<Object> reslist = new ArrayList<>();
-			SerializedObject<ArrayList<Object>> serialobj = new PresentSerializedObject<>(reslist);
-			int idx = reader.addSerializedObject(serialobj);
+			ArrayList<Object> res = new ArrayList<>();
+			int idx = reader.addSerializedObject(res);
 			try {
-				SerialUtils.readExternalCollection(reslist, reader);
+				SerialUtils.readExternalCollection(res, reader);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(() -> new ObjectReadException("Failed to read ArrayList.", e));
+				SerializedObject<ArrayList<Object>> serialobj = new FailedSerializedObject<>(
+						() -> new ObjectReadException("Failed to read ArrayList.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(LinkedList.class, (LinkedList<?> v, ContentWriterObjectOutput writer) -> {
 			SerialUtils.writeExternalCollection(writer, v);
 		});
 		SERIALIZABLE_CLASS_READERS.put(LinkedList.class, reader -> {
-			LinkedList<Object> reslist = new LinkedList<>();
-			SerializedObject<LinkedList<Object>> serialobj = new PresentSerializedObject<>(reslist);
-			int idx = reader.addSerializedObject(serialobj);
+			LinkedList<Object> res = new LinkedList<>();
+			int idx = reader.addSerializedObject(res);
 			try {
-				SerialUtils.readExternalCollection(reslist, reader);
+				SerialUtils.readExternalCollection(res, reader);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<LinkedList<Object>> serialobj = new FailedSerializedObject<>(
 						() -> new ObjectReadException("Failed to read LinkedList.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(CopyOnWriteArrayList.class,
 				(CopyOnWriteArrayList<?> v, ContentWriterObjectOutput writer) -> {
 					SerialUtils.writeExternalCollection(writer, v);
 				});
 		SERIALIZABLE_CLASS_READERS.put(CopyOnWriteArrayList.class, reader -> {
-			CopyOnWriteArrayList<Object> reslist = new CopyOnWriteArrayList<>();
-			SerializedObject<CopyOnWriteArrayList<Object>> serialobj = new PresentSerializedObject<>(reslist);
-			int idx = reader.addSerializedObject(serialobj);
+			CopyOnWriteArrayList<Object> res = new CopyOnWriteArrayList<>();
+			int idx = reader.addSerializedObject(res);
 			try {
 				Object[] readobjects = SerialUtils.readExternalArray(reader, Object[]::new);
-				ObjectUtils.addAll(reslist, readobjects);
+				ObjectUtils.addAll(res, readobjects);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<CopyOnWriteArrayList<Object>> serialobj = new FailedSerializedObject<>(
 						() -> new ObjectReadException("Failed to read CopyOnWriteArrayList.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 
 		//EnumSet handling is omitted, as it only contains enums
@@ -521,20 +522,20 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		});
 		SERIALIZABLE_CLASS_READERS.put(EnumMap.class, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
-			SerializedObject<?> serialobj;
 			try {
 				@SuppressWarnings("unchecked")
 				Class<? extends Enum<?>> entype = (Class<? extends Enum<?>>) reader.readObject();
 				@SuppressWarnings({ "rawtypes", "unchecked" })
-				EnumMap<?, ?> result = new EnumMap(entype);
-				serialobj = new PresentSerializedObject<>(result);
-				reader.setSerializedObject(idx, serialobj);
-				SerialUtils.readExternalMap(result, reader);
+				EnumMap<?, ?> res = new EnumMap(entype);
+				reader.setSerializedObject(idx, res);
+				SerialUtils.readExternalMap(res, reader);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(() -> new ObjectReadException("Failed to read EnumMap.", e));
+				SerializedObject<?> serialobj = new FailedSerializedObject<>(
+						() -> new ObjectReadException("Failed to read EnumMap.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 
 		addEmptyCollectionReaderWriter(Collections.emptyList());
@@ -554,18 +555,17 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		});
 		SERIALIZABLE_CLASS_READERS.put(singletonsetclass, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
-			SerializedObject<Set<Object>> serialobj;
 			try {
 				Object obj = reader.readObject();
-				Set<Object> result = Collections.singleton(obj);
-				serialobj = new PresentSerializedObject<>(result);
-				reader.setSerializedObject(idx, serialobj);
+				Set<Object> res = Collections.singleton(obj);
+				reader.setSerializedObject(idx, res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<Set<Object>> serialobj = new FailedSerializedObject<>(
 						() -> new ObjectReadException("Failed to read singleton set.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 
 		List<Object> singletonlist = Collections.singletonList(singletontestelement);
@@ -575,18 +575,17 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		});
 		SERIALIZABLE_CLASS_READERS.put(singletonlistclass, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
-			SerializedObject<List<Object>> serialobj;
 			try {
 				Object obj = reader.readObject();
-				List<Object> result = Collections.singletonList(obj);
-				serialobj = new PresentSerializedObject<>(result);
-				reader.setSerializedObject(idx, serialobj);
+				List<Object> res = Collections.singletonList(obj);
+				reader.setSerializedObject(idx, res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<List<Object>> serialobj = new FailedSerializedObject<>(
 						() -> new ObjectReadException("Failed to read singleton list.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 
 		Map<Object, Object> singletonmap = Collections.singletonMap(singletontestelement, singletontestelement);
@@ -598,19 +597,18 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		});
 		SERIALIZABLE_CLASS_READERS.put(singletonmapclass, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
-			SerializedObject<Map<Object, Object>> serialobj;
 			try {
 				Object key = reader.readObject();
 				Object value = reader.readObject();
-				Map<Object, Object> result = Collections.singletonMap(key, value);
-				serialobj = new PresentSerializedObject<>(result);
-				reader.setSerializedObject(idx, serialobj);
+				Map<Object, Object> res = Collections.singletonMap(key, value);
+				reader.setSerializedObject(idx, res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<Map<Object, Object>> serialobj = new FailedSerializedObject<>(
 						() -> new ObjectReadException("Failed to read singleton map.", e));
 				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 
 		List<Object> aslist = Arrays.asList(singletontestelement, singletontestelement, singletontestelement);
@@ -623,36 +621,36 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			}
 		});
 		SERIALIZABLE_CLASS_READERS.put(astlistclass, reader -> {
-			SerializedObject<List<Object>> serialobj;
 			int size;
 			try {
 				size = reader.readInt();
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(() -> new ObjectReadException("Failed to read elements.", e));
+				SerializedObject<List<Object>> serialobj = new FailedSerializedObject<>(
+						() -> new ObjectReadException("Failed to read elements.", e));
 				reader.addSerializedObject(serialobj);
 				return serialobj.get();
 			}
 			Object[] array = new Object[size];
-			List<Object> result = Arrays.asList(array);
-			serialobj = new PresentSerializedObject<>(result);
-			int serialidx = reader.addSerializedObject(serialobj);
+			List<Object> res = Arrays.asList(array);
+			int serialidx = reader.addSerializedObject(res);
 			try {
 				for (int i = 0; i < size; i++) {
 					array[i] = reader.readObject();
 				}
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(() -> new ObjectReadException("Failed to read elements.", e));
+				SerializedObject<List<Object>> serialobj = new FailedSerializedObject<>(
+						() -> new ObjectReadException("Failed to read elements.", e));
 				reader.setSerializedObject(serialidx, serialobj);
+				return serialobj.get();
 			}
-			return serialobj.get();
 		});
 
 		//need custom serialization for the reverseorder comparator as it is not backed by enum
 		Comparator<Object> reverseordercomparator = Collections.reverseOrder();
 		@SuppressWarnings("rawtypes")
 		Class<? extends Comparator> reverseorderclass = reverseordercomparator.getClass();
-		PresentSerializedObject<Comparator<Object>> reverseorderserializedobject = new PresentSerializedObject<>(
-				reverseordercomparator);
+		Comparator<Object> reverseorderserializedobject = reverseordercomparator;
 		SERIALIZABLE_CLASS_WRITERS.put(reverseorderclass, (v, writer) -> {
 		});
 		SERIALIZABLE_CLASS_READERS.put(reverseorderclass, reader -> {
@@ -671,7 +669,6 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		});
 		SERIALIZABLE_CLASS_READERS.put(Method.class, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
-			SerializedObject<Method> serialobj;
 			try {
 				Class<?> declaringclass = (Class<?>) reader.readObject();
 				String name = reader.readUTF();
@@ -680,14 +677,15 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				for (int i = 0; i < paramtypes.length; i++) {
 					paramtypes[i] = (Class<?>) reader.readObject();
 				}
-				Method result = declaringclass.getDeclaredMethod(name, paramtypes);
-				serialobj = new PresentSerializedObject<>(result);
+				Method res = declaringclass.getDeclaredMethod(name, paramtypes);
+				reader.setSerializedObject(idx, res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<Method> serialobj = new FailedSerializedObject<>(
 						() -> new SerializationReflectionException("Failed to read Method.", e));
+				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			reader.setSerializedObject(idx, serialobj);
-			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(Constructor.class, (Constructor<?> v, ContentWriterObjectOutput writer) -> {
 			writer.writeObject(v.getDeclaringClass());
@@ -699,7 +697,6 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		});
 		SERIALIZABLE_CLASS_READERS.put(Constructor.class, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
-			SerializedObject<Constructor<?>> serialobj;
 			try {
 				Class<?> declaringclass = (Class<?>) reader.readObject();
 				int ptlen = reader.readInt();
@@ -707,14 +704,15 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				for (int i = 0; i < paramtypes.length; i++) {
 					paramtypes[i] = (Class<?>) reader.readObject();
 				}
-				Constructor<?> result = declaringclass.getDeclaredConstructor(paramtypes);
-				serialobj = new PresentSerializedObject<>(result);
+				Constructor<?> res = declaringclass.getDeclaredConstructor(paramtypes);
+				reader.setSerializedObject(idx, res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<Constructor<?>> serialobj = new FailedSerializedObject<>(
 						() -> new SerializationReflectionException("Failed to read Constructor.", e));
+				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			reader.setSerializedObject(idx, serialobj);
-			return serialobj.get();
 		});
 		SERIALIZABLE_CLASS_WRITERS.put(Field.class, (Field v, ContentWriterObjectOutput writer) -> {
 			writer.writeObject(v.getDeclaringClass());
@@ -722,18 +720,18 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		});
 		SERIALIZABLE_CLASS_READERS.put(Field.class, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
-			SerializedObject<Field> serialobj;
 			try {
 				Class<?> declaringclass = (Class<?>) reader.readObject();
 				String name = reader.readUTF();
-				Field result = declaringclass.getDeclaredField(name);
-				serialobj = new PresentSerializedObject<>(result);
+				Field res = declaringclass.getDeclaredField(name);
+				reader.setSerializedObject(idx, res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<Field> serialobj = new FailedSerializedObject<>(
 						() -> new SerializationReflectionException("Failed to read Field.", e));
+				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			reader.setSerializedObject(idx, serialobj);
-			return serialobj.get();
 		});
 
 		SERIALIZABLE_CLASS_WRITERS.put(Optional.class, (Optional<?> v, ContentWriterObjectOutput writer) -> {
@@ -741,27 +739,26 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		});
 		SERIALIZABLE_CLASS_READERS.put(Optional.class, reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
-			SerializedObject<Optional<?>> serialobj;
 			try {
-				Object obj = reader.readObject();
-				serialobj = new PresentSerializedObject<>(Optional.ofNullable(obj));
+				Optional<Object> res = Optional.ofNullable(reader.readObject());
+				reader.setSerializedObject(idx, res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
+				SerializedObject<Optional<?>> serialobj = new FailedSerializedObject<>(
 						() -> new SerializationReflectionException("Failed to read Optional.", e));
+				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			reader.setSerializedObject(idx, serialobj);
-			return serialobj.get();
 		});
 	}
 
 	private static void addEmptyCollectionReaderWriter(Object emptycoll) {
 		Class<?> emptycollclass = emptycoll.getClass();
 		//instantiate this outside of the lambdas, so they are reused
-		PresentSerializedObject<Object> collpresentobject = new PresentSerializedObject<>(emptycoll);
 		SERIALIZABLE_CLASS_WRITERS.put(emptycollclass, (v, writer) -> {
 		});
 		SERIALIZABLE_CLASS_READERS.put(emptycollclass, reader -> {
-			reader.addSerializedObject(collpresentobject);
+			reader.addSerializedObject(emptycoll);
 			return emptycoll;
 		});
 	}
@@ -772,170 +769,172 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		VALUE_CLASS_WRITERS.put(UUID.class,
 				(UUID v, ContentWriterObjectOutput writer) -> writer.out.writeUTF(v.toString()));
 		VALUE_CLASS_READERS.put(UUID.class.getName(), reader -> {
-			SerializedObject<UUID> serialobj;
 			try {
 				UUID res = UUID.fromString(reader.state.in.readUTF());
-				serialobj = new PresentSerializedObject<>(res);
+				reader.addSerializedObject(res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
-						() -> new SerializationProtocolException("Failed to read UUID.", e));
+				SerializedObject<UUID> serialobj = new SerializationProtocolFailedSerializedObject<>(
+						"Failed to read UUID.", e);
+				reader.addSerializedObject(serialobj);
+				return serialobj.get();
 			}
-			reader.addSerializedObject(serialobj);
-			return serialobj.get();
 		});
 		VALUE_CLASS_WRITERS.put(Date.class,
 				(Date v, ContentWriterObjectOutput writer) -> writer.out.writeLong(v.getTime()));
 		VALUE_CLASS_READERS.put(Date.class.getName(), reader -> {
-			SerializedObject<Date> serialobj;
 			try {
 				long time = reader.state.in.readLong();
-				serialobj = new PresentSerializedObject<>(new Date(time));
+				Date res = new Date(time);
+
+				reader.addSerializedObject(res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
-						() -> new SerializationProtocolException("Failed to read Date.", e));
+				SerializedObject<Date> serialobj = new SerializationProtocolFailedSerializedObject<>(
+						"Failed to read Date.", e);
+				reader.addSerializedObject(serialobj);
+				return serialobj.get();
 			}
-			reader.addSerializedObject(serialobj);
-			return serialobj.get();
 		});
 
 		VALUE_CLASS_WRITERS.put(Byte.class, (Byte v, ContentWriterObjectOutput writer) -> writer.out.writeByte(v));
 		VALUE_CLASS_READERS.put(Byte.class.getName(), reader -> {
-			SerializedObject<Byte> serialobj;
 			try {
 				Byte res = reader.state.in.readByte();
-				serialobj = new PresentSerializedObject<>(res);
+				reader.addSerializedObject(res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
-						() -> new SerializationProtocolException("Failed to read Byte.", e));
+				SerializedObject<Byte> serialobj = new SerializationProtocolFailedSerializedObject<>(
+						"Failed to read Byte.", e);
+				reader.addSerializedObject(serialobj);
+				return serialobj.get();
 			}
-			reader.addSerializedObject(serialobj);
-			return serialobj.get();
 		});
 		VALUE_CLASS_WRITERS.put(Short.class, (Short v, ContentWriterObjectOutput writer) -> writer.out.writeShort(v));
 		VALUE_CLASS_READERS.put(Short.class.getName(), reader -> {
-			SerializedObject<Short> serialobj;
 			try {
 				Short res = reader.state.in.readShort();
-				serialobj = new PresentSerializedObject<>(res);
+				reader.addSerializedObject(res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
-						() -> new SerializationProtocolException("Failed to read Short.", e));
+				SerializedObject<Short> serialobj = new SerializationProtocolFailedSerializedObject<>(
+						"Failed to read Short.", e);
+				reader.addSerializedObject(serialobj);
+				return serialobj.get();
 			}
-			reader.addSerializedObject(serialobj);
-			return serialobj.get();
 		});
 		VALUE_CLASS_WRITERS.put(Integer.class,
 				(Integer v, ContentWriterObjectOutput writer) -> writer.writeRawVarInt(v));
 		VALUE_CLASS_READERS.put(Integer.class.getName(), reader -> {
-			SerializedObject<Integer> serialobj;
 			try {
 				Integer res = reader.readRawVarInt();
-				serialobj = new PresentSerializedObject<>(res);
+				reader.addSerializedObject(res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
-						() -> new SerializationProtocolException("Failed to read Integer.", e));
+				SerializedObject<Integer> serialobj = new SerializationProtocolFailedSerializedObject<>(
+						"Failed to read Integer.", e);
+				reader.addSerializedObject(serialobj);
+				return serialobj.get();
 			}
-			reader.addSerializedObject(serialobj);
-			return serialobj.get();
 		});
 		VALUE_CLASS_WRITERS.put(Long.class, (Long v, ContentWriterObjectOutput writer) -> writer.out.writeLong(v));
 		VALUE_CLASS_READERS.put(Long.class.getName(), reader -> {
-			SerializedObject<Long> serialobj;
 			try {
 				Long res = reader.state.in.readLong();
-				serialobj = new PresentSerializedObject<>(res);
+				reader.addSerializedObject(res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
-						() -> new SerializationProtocolException("Failed to read Long.", e));
+				SerializedObject<Long> serialobj = new SerializationProtocolFailedSerializedObject<>(
+						"Failed to read Long.", e);
+				reader.addSerializedObject(serialobj);
+				return serialobj.get();
 			}
-			reader.addSerializedObject(serialobj);
-			return serialobj.get();
 		});
 		VALUE_CLASS_WRITERS.put(Float.class, (Float v, ContentWriterObjectOutput writer) -> writer.out.writeFloat(v));
 		VALUE_CLASS_READERS.put(Float.class.getName(), reader -> {
-			SerializedObject<Float> serialobj;
 			try {
 				Float res = reader.state.in.readFloat();
-				serialobj = new PresentSerializedObject<>(res);
+				reader.addSerializedObject(res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
-						() -> new SerializationProtocolException("Failed to read Float.", e));
+				SerializedObject<Float> serialobj = new SerializationProtocolFailedSerializedObject<>(
+						"Failed to read Float.", e);
+				reader.addSerializedObject(serialobj);
+				return serialobj.get();
 			}
-			reader.addSerializedObject(serialobj);
-			return serialobj.get();
 		});
 		VALUE_CLASS_WRITERS.put(Double.class,
 				(Double v, ContentWriterObjectOutput writer) -> writer.out.writeDouble(v));
 		VALUE_CLASS_READERS.put(Double.class.getName(), reader -> {
-			SerializedObject<Double> serialobj;
 			try {
 				Double res = reader.state.in.readDouble();
-				serialobj = new PresentSerializedObject<>(res);
+				reader.addSerializedObject(res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
-						() -> new SerializationProtocolException("Failed to read Double.", e));
+				SerializedObject<Double> serialobj = new SerializationProtocolFailedSerializedObject<>(
+						"Failed to read Double.", e);
+				reader.addSerializedObject(serialobj);
+				return serialobj.get();
 			}
-			reader.addSerializedObject(serialobj);
-			return serialobj.get();
 		});
 		VALUE_CLASS_WRITERS.put(Character.class,
 				(Character v, ContentWriterObjectOutput writer) -> writer.out.writeChar(v));
 		VALUE_CLASS_READERS.put(Character.class.getName(), reader -> {
-			SerializedObject<Character> serialobj;
 			try {
 				Character res = reader.state.in.readChar();
-				serialobj = new PresentSerializedObject<>(res);
+				reader.addSerializedObject(res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
-						() -> new SerializationProtocolException("Failed to read Character.", e));
+				SerializedObject<Character> serialobj = new SerializationProtocolFailedSerializedObject<>(
+						"Failed to read Character.", e);
+				reader.addSerializedObject(serialobj);
+				return serialobj.get();
 			}
-			reader.addSerializedObject(serialobj);
-			return serialobj.get();
 		});
 		VALUE_CLASS_WRITERS.put(Boolean.class,
 				(Boolean v, ContentWriterObjectOutput writer) -> writer.out.writeBoolean(v));
 		VALUE_CLASS_READERS.put(Boolean.class.getName(), reader -> {
-			SerializedObject<Boolean> serialobj;
 			try {
 				Boolean res = reader.state.in.readBoolean();
-				serialobj = new PresentSerializedObject<>(res);
+				reader.addSerializedObject(res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
-						() -> new SerializationProtocolException("Failed to read Boolean.", e));
+				SerializedObject<Boolean> serialobj = new SerializationProtocolFailedSerializedObject<>(
+						"Failed to read Boolean.", e);
+				reader.addSerializedObject(serialobj);
+				return serialobj.get();
 			}
-			reader.addSerializedObject(serialobj);
-			return serialobj.get();
 		});
 
 		VALUE_CLASS_WRITERS.put(SakerPath.class,
 				(SakerPath v, ContentWriterObjectOutput writer) -> writer.writeUTF(v.toString()));
 		VALUE_CLASS_READERS.put(SakerPath.class.getName(), reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
-			SerializedObject<SakerPath> serialobj;
 			try {
 				SakerPath res = SakerPath.valueOf(reader.readUTF());
-				serialobj = new PresentSerializedObject<>(res);
+				reader.setSerializedObject(idx, res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
-						() -> new SerializationProtocolException("Failed to read SakerPath.", e));
+				SerializedObject<SakerPath> serialobj = new SerializationProtocolFailedSerializedObject<>(
+						"Failed to read SakerPath.", e);
+				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			reader.setSerializedObject(idx, serialobj);
-			return serialobj.get();
 		});
 
 		VALUE_CLASS_WRITERS.put(URI.class, (URI v, ContentWriterObjectOutput writer) -> writer.writeUTF(v.toString()));
 		VALUE_CLASS_READERS.put(URI.class.getName(), reader -> {
 			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
-			SerializedObject<URI> serialobj;
 			try {
 				URI res = new URI(reader.readUTF());
-				serialobj = new PresentSerializedObject<>(res);
+				reader.setSerializedObject(idx, res);
+				return res;
 			} catch (Exception e) {
-				serialobj = new FailedSerializedObject<>(
-						() -> new SerializationProtocolException("Failed to read URI.", e));
+				SerializedObject<URI> serialobj = new SerializationProtocolFailedSerializedObject<>(
+						"Failed to read URI.", e);
+				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
 			}
-			reader.setSerializedObject(idx, serialobj);
-			return serialobj.get();
 		});
 	}
 

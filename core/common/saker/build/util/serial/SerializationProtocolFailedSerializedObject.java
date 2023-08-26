@@ -15,15 +15,23 @@
  */
 package saker.build.util.serial;
 
-class PresentSerializedObject<T> implements SerializedObject<T> {
-	private T object;
+import java.io.IOException;
 
-	public PresentSerializedObject(T object) {
-		this.object = object;
+class SerializationProtocolFailedSerializedObject<E> implements SerializedObject<E> {
+	private String message;
+	private Throwable cause;
+
+	public SerializationProtocolFailedSerializedObject(String message, Throwable cause) {
+		this.message = message;
+		this.cause = cause;
+	}
+
+	public SerializationProtocolFailedSerializedObject(String message) {
+		this.message = message;
 	}
 
 	@Override
-	public T get() {
-		return object;
+	public E get() throws IOException, ClassNotFoundException {
+		throw new SerializationProtocolException(message, cause);
 	}
 }
