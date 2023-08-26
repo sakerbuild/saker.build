@@ -59,6 +59,9 @@ public abstract class SakerTestCase {
 			}
 			return Arrays.deepToString((Object[]) o);
 		}
+		if (o instanceof Long || o instanceof Integer || o instanceof Short || o instanceof Byte) {
+			return o.toString() + "(0x" + Long.toHexString(((Number) o).longValue()) + ")";
+		}
 		return o.toString();
 	}
 
