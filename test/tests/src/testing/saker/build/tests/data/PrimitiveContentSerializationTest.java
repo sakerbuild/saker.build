@@ -45,9 +45,10 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 		long[] longs = new long[] { 0, 1, 2, -1, -10, 0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF, 0xFFFFFFFFFFL,
 				0xFFFFFFFFFFFFL, 0xFFFFFFFFFFFFFFL, 0xFFFFFFFFFFFFFFFFL, 0xFFFFFF00, 0xFFFFFF12, 0xFFFF1234, 0xFFFF0000,
 				0xFF000000, 0xFF123456, 0xFFFFFFFFFFFFFF00L, 0xFFFFFFFFFFFFFF12L, 0xFFFFFFFFFFFF1234L,
-				0xFFFFFFFFFFFF0000L, 0xFFFFFFFFFF000000L, 0xFFFFFFFFFF123456L, };
+				0xFFFFFFFFFFFF0000L, 0xFFFFFFFFFF000000L, 0xFFFFFFFFFF123456L, 0xffff2ae4f142bbceL };
 
-		int[] randints = new int[200_000];
+		int[] randints = new int[400_000];
+		long[] randlongs = new long[400_000];
 
 		long seed = System.currentTimeMillis();
 		System.out.println("Seed is: " + seed);
@@ -55,6 +56,9 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 
 		for (int i = 0; i < randints.length; i++) {
 			randints[i] = random.nextInt();
+		}
+		for (int i = 0; i < randlongs.length; i++) {
+			randlongs[i] = random.nextLong();
 		}
 
 		Object[] arrays = new Object[] { new byte[] { 1, 2, 3 }, new short[] { 1, 2, 3 }, new int[] { 1, 2, 3 },
@@ -71,6 +75,7 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 				out.writeShort(v);
 				out.writeObject(v);
 			}
+
 			for (int v : ints) {
 				out.writeInt(v);
 				out.writeObject(v);
@@ -79,7 +84,12 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 				out.writeInt(v);
 				out.writeObject(v);
 			}
+
 			for (long v : longs) {
+				out.writeLong(v);
+				out.writeObject(v);
+			}
+			for (long v : randlongs) {
 				out.writeLong(v);
 				out.writeObject(v);
 			}
@@ -102,6 +112,7 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 				assertEquals(v, in.readShort());
 				assertEquals(v, in.readObject());
 			}
+
 			for (int v : ints) {
 				assertEquals(v, in.readInt());
 				assertEquals(v, in.readObject());
@@ -110,7 +121,12 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 				assertEquals(v, in.readInt());
 				assertEquals(v, in.readObject());
 			}
+
 			for (long v : longs) {
+				assertEquals(v, in.readLong());
+				assertEquals(v, in.readObject());
+			}
+			for (long v : randlongs) {
 				assertEquals(v, in.readLong());
 				assertEquals(v, in.readObject());
 			}

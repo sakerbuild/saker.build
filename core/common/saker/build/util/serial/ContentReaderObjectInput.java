@@ -452,7 +452,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 				return readLongImplNegative4();
 			}
 			case ContentWriterObjectOutput.C_LONG_F_6: {
-				return readLongImplNegative6();
+				return readLongImpl6() | 0xFFFF0000_00000000L;
 			}
 			case ContentWriterObjectOutput.C_LONG_ZERO: {
 				return 0L;
@@ -472,7 +472,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 	}
 
 	private int readIntImpl3() throws IOException {
-		return ((state.in.readUnsignedByte() << 16) | state.in.readUnsignedShort());
+		final DataInputStream in = state.in;
+		return ((in.readUnsignedByte() << 16) | in.readUnsignedShort());
 	}
 
 	private int readIntImpl2() throws IOException {
@@ -496,15 +497,12 @@ public class ContentReaderObjectInput implements ObjectInput {
 	}
 
 	private long readLongImpl6() throws IOException {
-		return (((long) state.in.readUnsignedShort()) << 32) | (((long) state.in.readInt()) & 0xFFFFFFFFL);
+		final DataInputStream in = state.in;
+		return (((long) in.readUnsignedShort()) << 32) | (((long) in.readInt()) & 0xFFFFFFFFL);
 	}
 
 	private long readLongImplNegative4() throws IOException {
 		return ((long) state.in.readInt()) | 0xFFFFFFFF_00000000L;
-	}
-
-	private long readLongImplNegative6() throws IOException {
-		return ((((long) state.in.readUnsignedShort()) << 32) | ((long) state.in.readInt())) | 0xFFFF0000_00000000L;
 	}
 
 	@Override

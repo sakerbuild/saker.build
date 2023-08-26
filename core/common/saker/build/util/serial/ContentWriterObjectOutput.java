@@ -978,7 +978,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				(BiConsumer<DataOutputUnsyncByteArrayOutputStream, boolean[]>) DataOutputUnsyncByteArrayOutputStream::write);
 	}
 
-	private final DataOutputUnsyncByteArrayOutputStream out = new DataOutputUnsyncByteArrayOutputStream();
+	private final DirectWritableDataOutputUnsyncByteArrayOutputStream out = new DirectWritableDataOutputUnsyncByteArrayOutputStream(
+			1024 * 8);
 
 	private final IdentityHashMap<Object, Integer> objectIndices = new IdentityHashMap<>();
 	private final Map<Object, InternedValue<Object>> valueInternalizer = new HashMap<>();
@@ -1005,44 +1006,112 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	@Override
 	public void writeByte(int v) throws IOException {
-		final DataOutputUnsyncByteArrayOutputStream out = this.out;
-		out.writeByte(C_BYTE);
-		out.writeByte(v);
+		writeMultiBytes((byte) C_BYTE, (byte) v);
+	}
+
+	private void writeMultiBytes(byte b1, byte b2) {
+		final DirectWritableDataOutputUnsyncByteArrayOutputStream out = this.out;
+		int offset = out.ensureSpace(2);
+		final byte[] buf = out.getBuffer();
+
+		buf[offset++] = b1;
+		buf[offset++] = b2;
+
+		out.setCount(offset);
+	}
+
+	private void writeMultiBytes(byte b1, byte b2, byte b3) {
+		final DirectWritableDataOutputUnsyncByteArrayOutputStream out = this.out;
+		int offset = out.ensureSpace(3);
+		final byte[] buf = out.getBuffer();
+
+		buf[offset++] = b1;
+		buf[offset++] = b2;
+		buf[offset++] = b3;
+
+		out.setCount(offset);
+	}
+
+	private void writeMultiBytes(byte b1, byte b2, byte b3, byte b4) {
+		final DirectWritableDataOutputUnsyncByteArrayOutputStream out = this.out;
+		int offset = out.ensureSpace(4);
+		final byte[] buf = out.getBuffer();
+
+		buf[offset++] = b1;
+		buf[offset++] = b2;
+		buf[offset++] = b3;
+		buf[offset++] = b4;
+
+		out.setCount(offset);
+	}
+
+	private void writeMultiBytes(byte b1, byte b2, byte b3, byte b4, byte b5) {
+		final DirectWritableDataOutputUnsyncByteArrayOutputStream out = this.out;
+		int offset = out.ensureSpace(5);
+		final byte[] buf = out.getBuffer();
+
+		buf[offset++] = b1;
+		buf[offset++] = b2;
+		buf[offset++] = b3;
+		buf[offset++] = b4;
+		buf[offset++] = b5;
+
+		out.setCount(offset);
+	}
+
+	private void writeByteShort(byte b, int v) {
+		writeMultiBytes(b, (byte) ((v >>> 8)), (byte) ((v)));
+	}
+
+	private void writeByteShort(byte b, long v) {
+		writeMultiBytes(b, (byte) ((v >>> 8)), (byte) ((v)));
+	}
+
+	private void writeByteShort(byte b, short v) {
+		writeMultiBytes(b, (byte) ((v >>> 8)), (byte) ((v)));
+	}
+
+	private void writeByteTriInt(byte b, int v) {
+		writeMultiBytes(b, (byte) ((v >>> 16)), (byte) ((v >>> 8)), (byte) ((v)));
+	}
+
+	private void writeByteInt(byte b, int v) {
+		writeMultiBytes(b, (byte) ((v >>> 24)), (byte) ((v >>> 16)), (byte) ((v >>> 8)), (byte) ((v)));
 	}
 
 	@Override
 	public void writeShort(int v) throws IOException {
-		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		if ((v & 0xFF00) == 0x0000) {
-			out.writeByte(C_SHORT_1);
-			out.writeByte(v);
+			writeMultiBytes((byte) C_SHORT_1, (byte) v);
 		} else {
-			out.writeByte(C_SHORT_2);
-			out.writeShort(v);
+			writeByteShort((byte) C_SHORT_2, v);
 		}
 	}
 
 	@Override
 	public void writeChar(int v) throws IOException {
-		final DataOutputUnsyncByteArrayOutputStream out = this.out;
-		out.writeByte(C_CHAR);
-		out.writeChar(v);
+		writeByteShort((byte) C_CHAR, v);
 	}
 
 	void writeRawVarInt(int v) throws IOException {
-		final DataOutputUnsyncByteArrayOutputStream out = this.out;
+		final DirectWritableDataOutputUnsyncByteArrayOutputStream out = this.out;
+		int offset = out.ensureSpace(5);
+		final byte[] buf = out.getBuffer();
+
 		while (true) {
 			int wb = v & 0x7F;
 			v = v >>> 7;
 			if (v != 0) {
 				//still more bytes, add the continue flag
-				out.writeByte(wb | 0x80);
+				buf[offset++] = (byte) (wb | 0x80);
 				continue;
 			}
 			//last byte to be written
-			out.writeByte(wb);
+			buf[offset++] = (byte) wb;
 			break;
 		}
+
+		out.setCount(offset);
 	}
 
 	@Override
@@ -1064,16 +1133,14 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 								break;
 							}
 							default: {
-								out.writeByte(C_INT_1);
-								out.writeByte(v);
+								writeMultiBytes((byte) C_INT_1, (byte) v);
 								break;
 							}
 						}
 						break;
 					}
 					default: {
-						out.writeByte(C_INT_4);
-						out.writeInt(v);
+						writeByteInt((byte) C_INT_4, v);
 						break;
 					}
 				}
@@ -1087,14 +1154,12 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 						if (v == -1) {
 							out.writeByte(C_INT_NEGATIVE_ONE);
 						} else {
-							out.writeByte(C_INT_F_1);
-							out.writeByte(v);
+							writeMultiBytes((byte) C_INT_F_1, (byte) v);
 						}
 						break;
 					}
 					default: {
-						out.writeByte(C_INT_F_2);
-						out.writeShort(v);
+						writeByteShort((byte) C_INT_F_2, v);
 						break;
 					}
 				}
@@ -1104,22 +1169,17 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				switch (v & 0xFF00_0000) {
 					case 0xFF00_0000: {
 						//starts with 0xFFxx_xxxx
-						out.writeByte(C_INT_F_3);
-						out.writeByte(v >>> 16);
-						out.writeShort(v);
+						writeByteTriInt((byte) C_INT_F_3, v);
 						break;
 					}
 					case 0x0000_0000: {
 						//starts with 0x00xx_xxxx
-						out.writeByte(C_INT_3);
-						out.writeByte(v >>> 16);
-						out.writeShort(v);
+						writeByteTriInt((byte) C_INT_3, v);
 						break;
 					}
 					default: {
 						//full int
-						out.writeByte(C_INT_4);
-						out.writeInt(v);
+						writeByteInt((byte) C_INT_4, v);
 						break;
 					}
 				}
@@ -1140,8 +1200,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				if (v == 0) {
 					out.writeByte(C_LONG_ZERO);
 				} else {
-					out.writeByte(C_LONG_2);
-					out.writeShort((short) v);
+					writeByteShort((byte) C_LONG_2, v);
 				}
 			} else {
 				out.writeByte(C_LONG_8);
@@ -1155,24 +1214,22 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				if (v == -1) {
 					out.writeByte(C_LONG_NEGATIVE_ONE);
 				} else {
-					out.writeByte(C_LONG_F_2);
-					out.writeShort((short) v);
+					writeByteShort((byte) C_LONG_F_2, v);
 				}
 			} else {
-				out.writeByte(C_LONG_F_4);
-				out.writeInt((int) v);
+				writeByteInt((byte) C_LONG_F_4, (int) v);
 			}
 		} else {
 			long toptop2 = v & 0xFFFF0000_00000000L;
 			if (toptop2 == 0xFFFF0000_00000000L) {
 				//starts with 0xFFFFxxxx_xxxxxxxx
 				out.writeByte(C_LONG_F_6);
-				out.writeShort((int) (v >>> 32));
+				out.writeShort((short) (v >>> 32));
 				out.writeInt((int) v);
 			} else if (toptop2 == 0x00000000_00000000L) {
 				//starts with 0x0000xxxx_xxxxxxxx
 				out.writeByte(C_LONG_6);
-				out.writeShort((int) (v >>> 32));
+				out.writeShort((short) (v >>> 32));
 				out.writeInt((int) v);
 			} else {
 				//full long
@@ -1271,7 +1328,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 		Entry<String, InternedValue<String>> floorentry = internalizer.floorEntry(s);
 		if (floorentry != null && floorentry.getKey().equals(s)) {
-			writeUtfWithIndexCommand(floorentry.getValue().index, objwrite ? C_OBJECT_UTF_IDX_BASE : C_UTF_IDX_BASE);
+			writeIndexObjectCommandWithCommandBase(floorentry.getValue().index,
+					objwrite ? C_OBJECT_UTF_IDX_BASE : C_UTF_IDX_BASE);
 			return;
 		}
 
@@ -1360,46 +1418,18 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		}
 	}
 
-	private void writeUtfWithIndexCommand(int oidx, int idxcommandbase) {
-		final DataOutputUnsyncByteArrayOutputStream out = this.out;
+	private void writeIndexObjectCommandWithCommandBase(int oidx, int idxcommandbase) {
 		if ((oidx & 0xFFFF0000) != 0) {
 			if ((oidx & 0xFF000000) != 0) {
-				out.writeByte(idxcommandbase + 4);
-				out.writeInt(oidx);
+				writeByteInt((byte) (idxcommandbase + 4), oidx);
 			} else {
-				out.writeByte(idxcommandbase + 3);
-				out.writeByte(oidx >>> 16);
-				out.writeShort(oidx);
+				writeByteTriInt((byte) (idxcommandbase + 3), oidx);
 			}
 		} else {
 			if ((oidx & 0x0000FF00) != 0) {
-				out.writeByte(idxcommandbase + 2);
-				out.writeShort(oidx);
+				writeByteShort((byte) (idxcommandbase + 2), oidx);
 			} else {
-				out.writeByte(idxcommandbase + 1);
-				out.writeByte(oidx);
-			}
-		}
-	}
-
-	private void writeObjectIdxWithCommandImpl(int oidx) {
-		final DataOutputUnsyncByteArrayOutputStream out = this.out;
-		if ((oidx & 0xFFFF0000) != 0) {
-			if ((oidx & 0xFF000000) != 0) {
-				out.writeByte(C_OBJECT_IDX_4);
-				out.writeInt(oidx);
-			} else {
-				out.writeByte(C_OBJECT_IDX_3);
-				out.writeByte(oidx >>> 16);
-				out.writeShort(oidx);
-			}
-		} else {
-			if ((oidx & 0x0000FF00) != 0) {
-				out.writeByte(C_OBJECT_IDX_2);
-				out.writeShort(oidx);
-			} else {
-				out.writeByte(C_OBJECT_IDX_1);
-				out.writeByte(oidx);
+				writeMultiBytes((byte) (idxcommandbase + 1), (byte) oidx);
 			}
 		}
 	}
@@ -1432,7 +1462,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		}
 		Integer oidx = objectIndices.get(obj);
 		if (oidx != null) {
-			writeObjectIdxWithCommandImpl(oidx);
+			writeIndexObjectCommandWithCommandBase(oidx, C_OBJECT_IDX_BASE);
 			return;
 		}
 		Class<? extends Object> objclass = obj.getClass();
@@ -1458,7 +1488,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				return;
 			}
 			//the value was already interned
-			writeObjectIdxWithCommandImpl(internvalue.index);
+			writeIndexObjectCommandWithCommandBase(internvalue.index, C_OBJECT_IDX_BASE);
 			return;
 		}
 		if (objclass.isArray()) {
@@ -1511,9 +1541,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	@Override
 	public void write(int b) throws IOException {
-		final DataOutputUnsyncByteArrayOutputStream out = this.out;
-		out.writeByte(C_BYTE);
-		out.write(b);
+		writeMultiBytes((byte) C_BYTE, (byte) b);
 	}
 
 	@Override
@@ -1693,7 +1721,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		if (typeidx == null) {
 			writeTypeWithCommandImpl(objclass);
 		} else {
-			writeObjectIdxWithCommandImpl(typeidx);
+			writeIndexObjectCommandWithCommandBase(typeidx, C_OBJECT_IDX_BASE);
 		}
 		return typeidx;
 	}
@@ -1798,6 +1826,36 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		public UTFPrefixInfo(InternedValue<String> prefix, int common) {
 			this.prefix = prefix;
 			this.common = common;
+		}
+	}
+
+	private static final class DirectWritableDataOutputUnsyncByteArrayOutputStream
+			extends DataOutputUnsyncByteArrayOutputStream {
+		public DirectWritableDataOutputUnsyncByteArrayOutputStream() {
+			super();
+		}
+
+		public DirectWritableDataOutputUnsyncByteArrayOutputStream(int size) throws NegativeArraySizeException {
+			super(size);
+		}
+
+		public void increaseCount(int count) {
+			this.count += count;
+		}
+
+		public void setCount(int count) {
+			this.count = count;
+		}
+
+		/**
+		 * @param bytecount
+		 *            The additional bytes needed.
+		 * @return The current count in the buffer.
+		 */
+		public int ensureSpace(int bytecount) {
+			int cnt = this.count;
+			ensureCapacity(cnt + bytecount);
+			return cnt;
 		}
 	}
 
