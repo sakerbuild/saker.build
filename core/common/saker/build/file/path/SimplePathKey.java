@@ -54,7 +54,9 @@ public final class SimplePathKey extends BasicPathKey implements Externalizable 
 	 *            The path key to base this instance on.
 	 * @throws NullPointerException
 	 *             If the argument is <code>null</code>.
+	 * @deprecated Use {@link #valueOf(PathKey)} instead to avoid creating many instances.
 	 */
+	@Deprecated
 	public SimplePathKey(PathKey pathkey) throws NullPointerException {
 		this(pathkey.getPath(), pathkey.getFileProviderKey());
 	}
@@ -101,6 +103,30 @@ public final class SimplePathKey extends BasicPathKey implements Externalizable 
 
 		this.path = path;
 		this.providerKey = providerKey;
+	}
+
+	/**
+	 * Gets a new path key instance by copying the members from the argument.
+	 * <p>
+	 * The method only creates a new instance if the argument is not already a {@link SimplePathKey}. If it is, then
+	 * it's simply returned.
+	 * <p>
+	 * The path and provider key will be initialized from the argument.
+	 * 
+	 * @param pathkey
+	 *            The path key to base this instance on.
+	 * @return The path key that is either copied from the argument, or is the same.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @since saker.build 0.8.19
+	 */
+	public static SimplePathKey valueOf(PathKey pathkey) throws NullPointerException {
+		Objects.requireNonNull(pathkey, "path key");
+		if (pathkey instanceof SimplePathKey) {
+			//no need for new instance
+			return (SimplePathKey) pathkey;
+		}
+		return new SimplePathKey(pathkey.getPath(), pathkey.getFileProviderKey());
 	}
 
 	@Override

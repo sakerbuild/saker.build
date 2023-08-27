@@ -589,7 +589,7 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		this.executionBuildDirectory = executionBuildDirectory;
 		this.executionWorkingDirectory = executionWorkingDirectory;
 		this.executionBuildDirectoryPathKey = executionBuildDirectoryPathKey == null ? null
-				: new SimplePathKey(executionBuildDirectoryPathKey);
+				: SimplePathKey.valueOf(executionBuildDirectoryPathKey);
 	}
 
 	public SakerPath getExecutionBuildDirectory() {
