@@ -58,6 +58,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 import saker.build.file.path.SakerPath;
+import saker.build.file.path.WildcardPath;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.ReflectUtils;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolver;
@@ -923,6 +924,22 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			} catch (Exception e) {
 				SerializedObject<SakerPath> serialobj = new SerializationProtocolFailedSerializedObject<>(
 						"Failed to read SakerPath.", e);
+				reader.setSerializedObject(idx, serialobj);
+				return serialobj.get();
+			}
+		});
+
+		VALUE_CLASS_WRITERS.put(WildcardPath.class,
+				(WildcardPath v, ContentWriterObjectOutput writer) -> writer.writeUTF(v.toString()));
+		VALUE_CLASS_READERS.put(WildcardPath.class.getName(), reader -> {
+			int idx = reader.addSerializedObject(UnavailableSerializedObject.instance());
+			try {
+				WildcardPath res = WildcardPath.valueOf(reader.readUTF());
+				reader.setSerializedObject(idx, res);
+				return res;
+			} catch (Exception e) {
+				SerializedObject<SakerPath> serialobj = new SerializationProtocolFailedSerializedObject<>(
+						"Failed to read WildcardPath.", e);
 				reader.setSerializedObject(idx, serialobj);
 				return serialobj.get();
 			}
