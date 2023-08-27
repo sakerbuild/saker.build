@@ -77,7 +77,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 			new Integer[] { ContentWriterObjectOutput.C_CHAR, ContentWriterObjectOutput.C_CHARS });
 
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_OBJECT = ImmutableUtils
-			.makeImmutableNavigableSet(new Integer[] { ContentWriterObjectOutput.C_OBJECT_IDX_4,
+			.makeImmutableNavigableSet(new Integer[] { ContentWriterObjectOutput.C_OBJECT_REL_2,
+					ContentWriterObjectOutput.C_OBJECT_REL_1, ContentWriterObjectOutput.C_OBJECT_IDX_4,
 					ContentWriterObjectOutput.C_OBJECT_IDX_3, ContentWriterObjectOutput.C_OBJECT_IDX_2,
 					ContentWriterObjectOutput.C_OBJECT_IDX_1, ContentWriterObjectOutput.C_OBJECT_ARRAY,
 					ContentWriterObjectOutput.C_OBJECT_ARRAY_ERROR, ContentWriterObjectOutput.C_OBJECT_CLASSLOADER,
@@ -96,6 +97,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 					ContentWriterObjectOutput.C_OBJECT_UTF_PREFIXED_LOWBYTES, });
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_TYPE = ImmutableUtils
 			.makeImmutableNavigableSet(new Integer[] { ContentWriterObjectOutput.C_OBJECT_TYPE,
+					ContentWriterObjectOutput.C_OBJECT_REL_2, ContentWriterObjectOutput.C_OBJECT_REL_1,
 					ContentWriterObjectOutput.C_OBJECT_IDX_4, ContentWriterObjectOutput.C_OBJECT_IDX_3,
 					ContentWriterObjectOutput.C_OBJECT_IDX_2, ContentWriterObjectOutput.C_OBJECT_IDX_1 });
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_BOOLEAN = ImmutableUtils.makeImmutableNavigableSet(
@@ -164,7 +166,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 			}
 		}
 
-		private int expectCommands(Set<Integer> expectedcommands) throws IOException {
+		int expectCommands(Set<Integer> expectedcommands) throws IOException {
 			readCommandInternal();
 			int readcmd = this.readCommand;
 			if (expectedcommands.contains(readcmd)) {
@@ -175,7 +177,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 					+ ContentWriterObjectOutput.getCommandTypeInfo(readcmd) + ")");
 		}
 
-		private void expectCommand(int expectedcmd) throws IOException {
+		void expectCommand(int expectedcmd) throws IOException {
 			readCommandInternal();
 			if (this.readCommand == expectedcmd) {
 				this.readCommand = 0;
@@ -185,7 +187,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 					+ ContentWriterObjectOutput.getCommandTypeInfo(this.readCommand) + ")");
 		}
 
-		private int takeCommandIfAny() {
+		int takeCommandIfAny() {
 			if (this.readCommand < 0) {
 				return -1;
 			}
@@ -792,6 +794,12 @@ public class ContentReaderObjectInput implements ObjectInput {
 	public Object readObject() throws ClassNotFoundException, IOException {
 		int cmd = state.expectCommands(EXPECTED_COMMANDS_OBJECT);
 		switch (cmd) {
+			case ContentWriterObjectOutput.C_OBJECT_REL_2: {
+				return readRelativeObjectIdxImpl2();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_REL_1: {
+				return readRelativeObjectIdxImpl1();
+			}
 			case ContentWriterObjectOutput.C_OBJECT_IDX_4: {
 				return readObjectIdxImpl();
 			}
@@ -921,6 +929,12 @@ public class ContentReaderObjectInput implements ObjectInput {
 		switch (cmd) {
 			case ContentWriterObjectOutput.C_OBJECT_TYPE: {
 				return readTypeImpl();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_REL_2: {
+				return getRelativeTypeIdxImpl(readIntImpl2());
+			}
+			case ContentWriterObjectOutput.C_OBJECT_REL_1: {
+				return getRelativeTypeIdxImpl(readIntImpl1());
 			}
 			case ContentWriterObjectOutput.C_OBJECT_IDX_4: {
 				return getTypeIdxImpl(readIntImpl());
@@ -1054,6 +1068,10 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 	private Class<?> getTypeIdxImpl(int idx) throws IOException, ClassNotFoundException {
 		return (Class<?>) getObjectIdxImpl(idx);
+	}
+
+	private Class<?> getRelativeTypeIdxImpl(int relidx) throws IOException, ClassNotFoundException {
+		return (Class<?>) getRelativeObjectIdxImpl(relidx);
 	}
 
 	private Object readArrayImpl(int cmd) throws IOException, ClassNotFoundException {
@@ -1242,6 +1260,14 @@ public class ContentReaderObjectInput implements ObjectInput {
 		return getObjectIdxImpl(readIntImpl1());
 	}
 
+	private Object readRelativeObjectIdxImpl2() throws IOException, ClassNotFoundException {
+		return getRelativeObjectIdxImpl(readIntImpl2());
+	}
+
+	private Object readRelativeObjectIdxImpl1() throws IOException, ClassNotFoundException {
+		return getRelativeObjectIdxImpl(readIntImpl1());
+	}
+
 	private Object getObjectIdxImpl(int idx)
 			throws SerializationProtocolException, IOException, ClassNotFoundException {
 		Object serobj;
@@ -1250,6 +1276,21 @@ public class ContentReaderObjectInput implements ObjectInput {
 		} catch (IndexOutOfBoundsException e) {
 			throw new SerializationProtocolException("Referenced object not found at index: " + idx + " (current size: "
 					+ serializedObjects.size() + ")", e);
+		}
+		if (serobj instanceof SerializedObject<?>) {
+			return ((SerializedObject<?>) serobj).get();
+		}
+		return serobj;
+	}
+
+	private Object getRelativeObjectIdxImpl(int relidx)
+			throws SerializationProtocolException, IOException, ClassNotFoundException {
+		Object serobj;
+		try {
+			serobj = serializedObjects.get(serializedObjects.size() - relidx);
+		} catch (IndexOutOfBoundsException e) {
+			throw new SerializationProtocolException("Referenced object not found at relative index: " + relidx
+					+ " (current size: " + serializedObjects.size() + ")", e);
 		}
 		if (serobj instanceof SerializedObject<?>) {
 			return ((SerializedObject<?>) serobj).get();
@@ -1458,6 +1499,14 @@ public class ContentReaderObjectInput implements ObjectInput {
 					break;
 				}
 				case ContentWriterObjectOutput.C_OBJECT_NULL: {
+					break;
+				}
+				case ContentWriterObjectOutput.C_OBJECT_REL_2: {
+					readIntImpl2();
+					break;
+				}
+				case ContentWriterObjectOutput.C_OBJECT_REL_1: {
+					readIntImpl1();
 					break;
 				}
 				case ContentWriterObjectOutput.C_OBJECT_IDX_4: {

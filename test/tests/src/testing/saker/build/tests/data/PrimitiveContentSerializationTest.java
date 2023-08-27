@@ -47,18 +47,21 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 				0xFF000000, 0xFF123456, 0xFFFFFFFFFFFFFF00L, 0xFFFFFFFFFFFFFF12L, 0xFFFFFFFFFFFF1234L,
 				0xFFFFFFFFFFFF0000L, 0xFFFFFFFFFF000000L, 0xFFFFFFFFFF123456L, 0xffff2ae4f142bbceL };
 
-		int[] randints = new int[400_000];
-		long[] randlongs = new long[400_000];
+		int[] randints = new int[200_000 * 2];
+		long[] randlongs = new long[200_000 * 2];
 
 		long seed = System.currentTimeMillis();
 		System.out.println("Seed is: " + seed);
 		Random random = new Random(seed);
 
-		for (int i = 0; i < randints.length; i++) {
+		//add lower numbers to the randomed values as well, to have object relative backreferences
+		for (int i = 0; i < randints.length; i += 2) {
 			randints[i] = random.nextInt();
+			randints[i + 1] = random.nextInt() & 0xFF;
 		}
-		for (int i = 0; i < randlongs.length; i++) {
+		for (int i = 0; i < randlongs.length; i += 2) {
 			randlongs[i] = random.nextLong();
+			randlongs[i + 1] = random.nextLong() & 0xFF;
 		}
 
 		Object[] arrays = new Object[] { new byte[] { 1, 2, 3 }, new short[] { 1, 2, 3 }, new int[] { 1, 2, 3 },

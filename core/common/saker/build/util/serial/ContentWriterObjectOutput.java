@@ -146,8 +146,10 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	static final int C_OBJECT_IDX_2 = C_OBJECT_IDX_BASE + 2;
 	static final int C_OBJECT_IDX_3 = C_OBJECT_IDX_BASE + 3;
 	static final int C_OBJECT_IDX_4 = C_OBJECT_IDX_BASE + 4;
+	static final int C_OBJECT_REL_1 = C_OBJECT_IDX_BASE + 5;
+	static final int C_OBJECT_REL_2 = C_OBJECT_IDX_BASE + 6;
 
-	static final int C_OBJECT_NULL = C_OBJECT_IDX_4 + 1;
+	static final int C_OBJECT_NULL = C_OBJECT_REL_2 + 1;
 	static final int C_OBJECT_SERIALIZABLE = C_OBJECT_NULL + 1;
 	static final int C_OBJECT_TYPE = C_OBJECT_SERIALIZABLE + 1;
 	static final int C_OBJECT_VALUE = C_OBJECT_TYPE + 1;
@@ -172,7 +174,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	static final int C_OBJECT_PROXY = C_OBJECT_UTF_PREFIXED_LOWBYTES + 1;
 
-	static final int C_MAX_COMMAND_VALUE = 64;
+	static final int C_MAX_COMMAND_VALUE = 66;
 	static {
 		if (TestFlag.ENABLED) {
 			//check that the last command value equals to the max command value constants
@@ -234,6 +236,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				return "UTF";
 			case C_CHARS:
 				return "char";
+			case C_OBJECT_REL_2:
+			case C_OBJECT_REL_1:
 			case C_OBJECT_IDX_4:
 			case C_OBJECT_IDX_3:
 			case C_OBJECT_IDX_2:
@@ -1448,6 +1452,40 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		}
 	}
 
+	private void writeIndexObjectCommandWithCommandBaseAndRelative(int oidx, int idxcommandbase, int relativeindex) {
+		if ((oidx & 0xFFFF0000) != 0) {
+			if ((oidx & 0xFF000000) != 0) {
+				writeByteInt((byte) (idxcommandbase + 4), oidx);
+			} else {
+				int relidx = relativeindex - oidx;
+				if (relidx <= 0xFFFF) {
+					//relative value fits in at most two bytes, write that instead
+					if (relidx <= 0xFF) {
+						//single byte relative
+						writeMultiBytes((byte) (idxcommandbase + 5), (byte) relidx);
+					} else {
+						//two byte relative
+						writeByteShort((byte) (idxcommandbase + 6), relidx);
+					}
+				} else {
+					writeByteTriInt((byte) (idxcommandbase + 3), oidx);
+				}
+			}
+		} else {
+			if ((oidx & 0x0000FF00) != 0) {
+				int relidx = relativeindex - oidx;
+				if (relidx <= 0xFF) {
+					//relative value fits in a single byte, write that instead
+					writeMultiBytes((byte) (idxcommandbase + 5), (byte) relidx);
+				} else {
+					writeByteShort((byte) (idxcommandbase + 2), oidx);
+				}
+			} else {
+				writeMultiBytes((byte) (idxcommandbase + 1), (byte) oidx);
+			}
+		}
+	}
+
 	private static final class InternedValueComputer<V> implements Function<Object, InternedValue<V>> {
 		protected final V obj;
 
@@ -1476,7 +1514,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		}
 		Integer oidx = objectIndices.get(obj);
 		if (oidx != null) {
-			writeIndexObjectCommandWithCommandBase(oidx, C_OBJECT_IDX_BASE);
+			writeIndexObjectCommandWithCommandBaseAndRelative(oidx, C_OBJECT_IDX_BASE, objectIndices.size());
 			return;
 		}
 		Class<? extends Object> objclass = obj.getClass();
@@ -1502,7 +1540,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				return;
 			}
 			//the value was already interned
-			writeIndexObjectCommandWithCommandBase(internvalue.index, C_OBJECT_IDX_BASE);
+			writeIndexObjectCommandWithCommandBaseAndRelative(internvalue.index, C_OBJECT_IDX_BASE,
+					objectIndices.size());
 			return;
 		}
 		if (objclass.isArray()) {
@@ -1735,7 +1774,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		if (typeidx == null) {
 			writeTypeWithCommandImpl(objclass);
 		} else {
-			writeIndexObjectCommandWithCommandBase(typeidx, C_OBJECT_IDX_BASE);
+			writeIndexObjectCommandWithCommandBaseAndRelative(typeidx, C_OBJECT_IDX_BASE, objectIndices.size());
 		}
 		return typeidx;
 	}
