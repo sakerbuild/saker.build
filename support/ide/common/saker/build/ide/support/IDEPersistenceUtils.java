@@ -128,7 +128,9 @@ public class IDEPersistenceUtils {
 		writeStringIfNotNull(out, F_STORAGE_DIRECTORY, props.getStorageDirectory());
 
 		Set<? extends Entry<String, String>> userparams = props.getUserParameters();
-		writeStringMap(out, userparams, F_USER_PARAMETERS);
+		if (!ObjectUtils.isNullOrEmpty(userparams)) {
+			writeStringMap(out, userparams, F_USER_PARAMETERS);
+		}
 
 		writeStringIfNotNull(out, F_EXCEPTION_FORMAT, props.getExceptionFormat());
 		writeStringIfNotNull(out, F_PORT, props.getPort());
@@ -472,7 +474,9 @@ public class IDEPersistenceUtils {
 						String scriptwildcard = sc.getScriptsWildcard();
 						ClassPathServiceEnumeratorIDEProperty scriptserviceenumerator = sc.getServiceEnumerator();
 						writeStringIfNotNull(scobj, F_WILDCARD, scriptwildcard);
-						writeStringMap(scobj, scriptoptions, F_OPTIONS);
+						if (!ObjectUtils.isNullOrEmpty(scriptoptions)) {
+							writeStringMap(scobj, scriptoptions, F_OPTIONS);
+						}
 						writeClassPathProperty(scobj, cplocation, F_CLASSPATH);
 						writeServiceEnumeratorProperty(scobj, scriptserviceenumerator, F_SERVICE);
 					}
