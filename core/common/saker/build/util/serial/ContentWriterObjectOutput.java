@@ -183,6 +183,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	}
 
 	private static final int UTF_PREFIX_MIN_LEN = 8;
+	private static final int MAX_RAWVARINT_SIZE = 5;
 
 	static String getCommandTypeInfo(int cmd) {
 		switch (cmd) {
@@ -1075,9 +1076,15 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	void writeRawVarInt(int v) throws IOException {
 		final DirectWritableDataOutputUnsyncByteArrayOutputStream out = this.out;
-		int offset = out.ensureSpace(5);
+		int offset = out.ensureSpace(MAX_RAWVARINT_SIZE);
 		final byte[] buf = out.getBuffer();
 
+		offset = writeRawIntToBuf(v, offset, buf);
+
+		out.setCount(offset);
+	}
+
+	private static int writeRawIntToBuf(int v, int offset, final byte[] buf) {
 		while (true) {
 			int wb = v & 0x7F;
 			v = v >>> 7;
@@ -1090,8 +1097,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			buf[offset++] = (byte) wb;
 			break;
 		}
-
-		out.setCount(offset);
+		return offset;
 	}
 
 	@Override
@@ -1328,27 +1334,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 			if (prefixinfo != null) {
 				//both strings have a common starting characters
-				final int common = prefixinfo.common;
-
-				final int writecount = slen - common;
-				final DataOutputUnsyncByteArrayOutputStream out = this.out;
-				if (isLowBytesChars(charWriteBuffer, common, writecount)) {
-					out.ensureCapacity(out.size() + (1 + 5 + 5 + 5) + writecount);
-					out.writeByte(objwrite ? C_OBJECT_UTF_PREFIXED_LOWBYTES : C_UTF_PREFIXED_LOWBYTES);
-					writeRawVarInt(prefixinfo.prefix.index);
-					writeRawVarInt(common);
-					writeRawVarInt(writecount);
-					for (int i = 0; i < writecount; i++) {
-						out.writeByte(charWriteBuffer[common + i]);
-					}
-				} else {
-					out.ensureCapacity(out.size() + (1 + 5 + 5 + 5) + writecount * 2);
-					out.writeByte(objwrite ? C_OBJECT_UTF_PREFIXED : C_UTF_PREFIXED);
-					writeRawVarInt(prefixinfo.prefix.index);
-					writeRawVarInt(common);
-					writeRawVarInt(writecount);
-					out.write(charWriteBuffer, common, writecount);
-				}
+				writePrefixedUtfData(prefixinfo, slen, objwrite);
 				return;
 			}
 		}
@@ -1357,9 +1343,10 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	}
 
 	private int getPrefixCommonCharCountWithBuffer(int slen, String otherstr, int olen, int startidx) {
+		final char[] charbuffer = charWriteBuffer;
 		int common = startidx;
 		for (int minlen = Math.min(slen, olen); common < minlen; common++) {
-			if (charWriteBuffer[common] != otherstr.charAt(common)) {
+			if (charbuffer[common] != otherstr.charAt(common)) {
 				//found the first different char
 				break;
 			}
@@ -1381,21 +1368,68 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	}
 
 	private void writeUtfData(int slen, boolean objwrite) throws IOException {
-		final char[] buffer = charWriteBuffer;
-		final DataOutputUnsyncByteArrayOutputStream out = this.out;
+		final char[] charbuffer = charWriteBuffer;
+		final DirectWritableDataOutputUnsyncByteArrayOutputStream out = this.out;
 
-		if (isLowBytesChars(buffer, 0, slen)) {
-			out.ensureCapacity(out.size() + (1 + 5) + slen);
-			out.writeByte(objwrite ? C_OBJECT_UTF_LOWBYTES : C_UTF_LOWBYTES);
-			writeRawVarInt(slen);
+		int offset;
+		if (isLowBytesChars(charbuffer, 0, slen)) {
+			offset = out.ensureSpace((1 + MAX_RAWVARINT_SIZE) + slen);
+			final byte[] buf = out.getBuffer();
+
+			buf[offset++] = (byte) (objwrite ? C_OBJECT_UTF_LOWBYTES : C_UTF_LOWBYTES);
+			offset = writeRawIntToBuf(slen, offset, buf);
 			for (int i = 0; i < slen; i++) {
-				out.writeByte(buffer[i]);
+				buf[offset++] = (byte) charbuffer[i];
+			}
+
+		} else {
+			offset = out.ensureSpace((1 + MAX_RAWVARINT_SIZE) + slen * 2);
+			final byte[] buf = out.getBuffer();
+
+			buf[offset++] = (byte) (objwrite ? C_OBJECT_UTF : C_UTF);
+			offset = writeRawIntToBuf(slen, offset, buf);
+			for (int i = 0; i < slen; i++) {
+				char c = charbuffer[i];
+				buf[offset++] = (byte) ((c >>> 8));
+				buf[offset++] = (byte) (c);
+			}
+		}
+		out.setCount(offset);
+	}
+
+	private void writePrefixedUtfData(UTFPrefixInfo prefixinfo, int slen, boolean objwrite) throws IOException {
+		final int common = prefixinfo.common;
+
+		final int writecount = slen - common;
+		final DirectWritableDataOutputUnsyncByteArrayOutputStream out = this.out;
+		char[] charbuffer = charWriteBuffer;
+		int offset;
+		if (isLowBytesChars(charbuffer, common, writecount)) {
+			offset = out.ensureSpace((1 + MAX_RAWVARINT_SIZE * 3) + writecount);
+			final byte[] buf = out.getBuffer();
+
+			buf[offset++] = (byte) (objwrite ? C_OBJECT_UTF_PREFIXED_LOWBYTES : C_UTF_PREFIXED_LOWBYTES);
+			offset = writeRawIntToBuf(prefixinfo.prefix.index, offset, buf);
+			offset = writeRawIntToBuf(common, offset, buf);
+			offset = writeRawIntToBuf(writecount, offset, buf);
+			for (int i = 0; i < writecount; i++) {
+				buf[offset++] = (byte) charbuffer[common + i];
 			}
 		} else {
-			out.writeByte(objwrite ? C_OBJECT_UTF : C_UTF);
-			writeRawVarInt(slen);
-			out.write(buffer, 0, slen);
+			offset = out.ensureSpace((1 + MAX_RAWVARINT_SIZE * 3) + writecount * 2);
+			final byte[] buf = out.getBuffer();
+
+			buf[offset++] = (byte) (objwrite ? C_OBJECT_UTF_PREFIXED : C_UTF_PREFIXED);
+			offset = writeRawIntToBuf(prefixinfo.prefix.index, offset, buf);
+			offset = writeRawIntToBuf(common, offset, buf);
+			offset = writeRawIntToBuf(writecount, offset, buf);
+			for (int i = 0; i < writecount; i++) {
+				char c = charbuffer[common + i];
+				buf[offset++] = (byte) ((c >>> 8));
+				buf[offset++] = (byte) (c);
+			}
 		}
+		out.setCount(offset);
 	}
 
 	private void writeIndexObjectCommandWithCommandBase(int oidx, int idxcommandbase) {
