@@ -68,6 +68,7 @@ import saker.build.thirdparty.saker.util.io.SerialUtils;
 import saker.build.thirdparty.saker.util.io.function.IOBiConsumer;
 import saker.build.thirdparty.saker.util.io.function.ObjectReaderFunction;
 import saker.build.trace.InternalBuildTraceImpl;
+import saker.build.util.data.annotation.ValueType;
 import testing.saker.build.flag.TestFlag;
 
 public class ContentWriterObjectOutput implements ObjectOutput {
@@ -970,6 +971,11 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	private final Map<Object, InternedValue<Object>> valueInternalizer = new HashMap<>();
 	private final NavigableMap<String, InternedValue<String>> stringInternalizer = new TreeMap<>();
 
+	/**
+	 * Maps to a {@link Map} that contains the interned value mapping if the given type is a value type.
+	 */
+	private final Map<Class<?>, Optional<Map<Object, Integer>>> valueTypeInternMaps = new HashMap<>();
+
 	private final ClassLoaderResolver registry;
 
 	private final Set<Class<?>> warnedClasses = new HashSet<>();
@@ -1687,11 +1693,24 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	private void writeExternalizableWithCommandImpl(Externalizable obj, Class<? extends Object> objclass)
 			throws IOException {
 		final DataOutputUnsyncByteArrayOutputStream out = this.out;
+		Optional<Map<Object, Integer>> valtype = valueTypeInternMaps.computeIfAbsent(objclass,
+				objc -> objc.isAnnotationPresent(ValueType.class) ? Optional.of(new HashMap<>()) : Optional.empty());
+		Map<Object, Integer> valinternmap = valtype.orElse(null);
+
+		if (valinternmap != null) {
+			//if this is a value type, check if it's interned, and write the index instead
+			Integer internindex = valinternmap.get(obj);
+			if (internindex != null) {
+				writeIndexObjectCommandWithCommandBaseAndRelative(internindex, C_OBJECT_IDX_BASE, objectIndices.size());
+				return;
+			}
+		}
+
 		int startsize = out.size();
 		out.writeByte(C_OBJECT_EXTERNALIZABLE_4);
 		writeTypeWithCommandOrIdx(objclass);
 
-		addSerializedObject(obj);
+		int objidx = addSerializedObject(obj);
 
 		int sizeintpos = out.size();
 		//length written later
@@ -1732,6 +1751,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			out.reduceSize(out.size() - 3);
 		} else {
 			out.replaceInt(c, sizeintpos);
+		}
+		if (valinternmap != null) {
+			valinternmap.putIfAbsent(obj, objidx);
 		}
 	}
 
