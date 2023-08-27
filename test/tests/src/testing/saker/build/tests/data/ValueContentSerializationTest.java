@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import saker.build.file.path.SakerPath;
+import saker.build.file.path.WildcardPath;
 import saker.build.thirdparty.saker.util.classloader.ClassLoaderResolverRegistry;
 import saker.build.thirdparty.saker.util.classloader.SingleClassLoaderResolver;
 import saker.build.thirdparty.saker.util.io.ByteSink;
@@ -83,12 +84,18 @@ public class ValueContentSerializationTest extends SakerTestCase {
 		serials.add(SakerPath.valueOf("/home/user"));
 		serials.add(SakerPath.valueOf("/home/user/folder"));
 
+		serials.add(WildcardPath.valueOf("/*"));
+		serials.add(WildcardPath.valueOf("/path/*/*.java"));
+		serials.add(WildcardPath.valueOf("/home/*/folder/*"));
+		serials.add(WildcardPath.valueOf("/home/user/folder"));
+
 		serials.add(new URI("https://saker.build"));
 		serials.add(new URI("https://saker.build/"));
 		serials.add(new URI("https://saker.build/index.html"));
 
 		try (ContentWriterObjectOutput out = new ContentWriterObjectOutput(registry)) {
 			for (Object o : serials) {
+				out.writeObject(o);
 				out.writeObject(o);
 			}
 
@@ -98,7 +105,9 @@ public class ValueContentSerializationTest extends SakerTestCase {
 		try (ContentReaderObjectInput in = new ContentReaderObjectInput(registry,
 				new UnsyncByteArrayInputStream(baos.toByteArray()))) {
 			for (Object o : serials) {
-				assertEquals(o, in.readObject());
+				Object read = in.readObject();
+				assertEquals(o, read);
+				assertIdentityEquals(read, in.readObject());
 			}
 		}
 	}

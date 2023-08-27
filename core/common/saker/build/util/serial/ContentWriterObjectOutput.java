@@ -985,7 +985,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			1024 * 8);
 
 	private final IdentityHashMap<Object, Integer> objectIndices = new IdentityHashMap<>();
-	private final Map<Object, InternedValue<Object>> valueInternalizer = new HashMap<>();
+	private final Map<Class<?>, BuiltinValueWriterCache> builtinValueWriters = new HashMap<>();
 	private final NavigableMap<String, InternedValue<String>> stringInternalizer = new TreeMap<>();
 
 	/**
@@ -998,6 +998,15 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	private final Set<Class<?>> warnedClasses = new HashSet<>();
 
 	private char[] charWriteBuffer = ObjectUtils.EMPTY_CHAR_ARRAY;
+
+	{
+		for (Entry<Class<?>, IOBiConsumer<?, ContentWriterObjectOutput>> entry : VALUE_CLASS_WRITERS.entrySet()) {
+			@SuppressWarnings("unchecked")
+			IOBiConsumer<Object, ContentWriterObjectOutput> writer = (IOBiConsumer<Object, ContentWriterObjectOutput>) entry
+					.getValue();
+			builtinValueWriters.put(entry.getKey(), new BuiltinValueWriterCache(writer));
+		}
+	}
 
 	public ContentWriterObjectOutput(ClassLoaderResolver registry) {
 		this.registry = registry;
@@ -1541,12 +1550,10 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return;
 		}
 		Class<? extends Object> objclass = obj.getClass();
-		@SuppressWarnings("unchecked")
-		IOBiConsumer<Object, ContentWriterObjectOutput> objwriter = (IOBiConsumer<Object, ContentWriterObjectOutput>) VALUE_CLASS_WRITERS
-				.get(objclass);
-		if (objwriter != null) {
+		BuiltinValueWriterCache objwritercache = builtinValueWriters.get(objclass);
+		if (objwritercache != null) {
 			InternedValueComputer<Object> writer = new InternedValueComputer<>(obj);
-			InternedValue<Object> internvalue = valueInternalizer.computeIfAbsent(obj, writer);
+			InternedValue<Object> internvalue = objwritercache.cache.computeIfAbsent(obj, writer);
 			if (writer.computed) {
 				//a newly added serialized object
 				try {
@@ -1555,11 +1562,11 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				} catch (Exception e) {
 					// remove the object from the internalized map, as we failed to proceed with writing the value
 					// (although this shouldn't fail, as we only write strings and primitives in this try-catch block.)
-					valueInternalizer.remove(obj, internvalue);
+					objwritercache.cache.remove(obj, internvalue);
 					throw e;
 				}
 				internvalue.index = addSerializedObject(obj);
-				objwriter.accept(obj, ContentWriterObjectOutput.this);
+				objwritercache.writer.accept(obj, ContentWriterObjectOutput.this);
 				return;
 			}
 			//the value was already interned
@@ -1948,6 +1955,15 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			int cnt = this.count;
 			ensureCapacity(cnt + bytecount);
 			return cnt;
+		}
+	}
+
+	private static final class BuiltinValueWriterCache {
+		IOBiConsumer<Object, ContentWriterObjectOutput> writer;
+		Map<Object, InternedValue<Object>> cache = new HashMap<>();
+
+		public BuiltinValueWriterCache(IOBiConsumer<Object, ContentWriterObjectOutput> writer) {
+			this.writer = writer;
 		}
 	}
 
