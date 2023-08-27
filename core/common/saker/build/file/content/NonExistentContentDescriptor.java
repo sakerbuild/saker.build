@@ -22,6 +22,7 @@ import java.io.ObjectOutput;
 
 import saker.apiextract.api.PublicApi;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * Content descriptor representing non-existent data.
@@ -30,6 +31,7 @@ import saker.build.thirdparty.saker.util.ObjectUtils;
  * <code>null</code>, or equals {@link #INSTANCE}.
  */
 @PublicApi
+@ValueType
 public final class NonExistentContentDescriptor implements ContentDescriptor, Externalizable {
 	private static final long serialVersionUID = 1L;
 

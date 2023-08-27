@@ -13,6 +13,7 @@ import saker.apiextract.api.PublicApi;
 import saker.build.file.SakerFile;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * Delegate {@link ContentDescriptor} that also holds associated posix file permissions.
@@ -27,6 +28,7 @@ import saker.build.thirdparty.saker.util.io.SerialUtils;
  * @since saker.build 0.8.13
  */
 @PublicApi
+@ValueType
 public class PosixFilePermissionsDelegateContentDescriptor implements ContentDescriptor, Externalizable {
 	private static final long serialVersionUID = 1L;
 

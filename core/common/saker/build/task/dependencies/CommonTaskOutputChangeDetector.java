@@ -26,6 +26,7 @@ import saker.build.task.TaskDependencyFuture;
 import saker.build.task.TaskFuture;
 import saker.build.task.TaskResultDependencyHandle;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * Utility class providing access to common {@link TaskOutputChangeDetector} implementations.
@@ -64,7 +65,7 @@ public class CommonTaskOutputChangeDetector {
 	 * If the task output is <code>null</code>, a change is <b>not</b> detected.
 	 */
 	public static final TaskOutputChangeDetector IS_NOT_ARRAY = new ArrayTypeTaskOutputChangeDetector(false);
-	
+
 	/**
 	 * Expects the task output to be <code>null</code>.
 	 * 
@@ -153,6 +154,7 @@ public class CommonTaskOutputChangeDetector {
 		throw new UnsupportedOperationException();
 	}
 
+	@ValueType
 	private static final class ArrayTypeTaskOutputChangeDetector implements TaskOutputChangeDetector, Externalizable {
 		private static final long serialVersionUID = 1L;
 
@@ -214,6 +216,7 @@ public class CommonTaskOutputChangeDetector {
 		}
 	}
 
+	@ValueType
 	private static final class InstanceOfTaskOutputChangeDetector implements TaskOutputChangeDetector, Externalizable {
 		private static final long serialVersionUID = 1L;
 
@@ -283,6 +286,7 @@ public class CommonTaskOutputChangeDetector {
 		}
 	}
 
+	@ValueType
 	private static final class SameClassTaskOutputChangeDetector implements TaskOutputChangeDetector, Externalizable {
 		private static final long serialVersionUID = 1L;
 
@@ -347,6 +351,7 @@ public class CommonTaskOutputChangeDetector {
 		}
 	}
 
+	@ValueType
 	private static final class StaticTaskOutputChangeDetector implements TaskOutputChangeDetector, Externalizable {
 		private static final long serialVersionUID = 1L;
 

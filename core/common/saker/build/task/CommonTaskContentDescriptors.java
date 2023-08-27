@@ -27,6 +27,7 @@ import saker.build.file.content.NonExistentContentDescriptor;
 import saker.build.file.path.SakerPath;
 import saker.build.task.delta.DeltaType;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * Utility class containing common content descriptors which can be used for reporting file dependencies.
@@ -104,6 +105,7 @@ public final class CommonTaskContentDescriptors {
 		throw new UnsupportedOperationException();
 	}
 
+	@ValueType
 	private static final class FilePresentContentDescriptor implements ContentDescriptor, Externalizable {
 		private static final long serialVersionUID = 1L;
 
@@ -144,9 +146,9 @@ public final class CommonTaskContentDescriptors {
 		public String toString() {
 			return "FilePresentContentDescriptor";
 		}
-
 	}
 
+	@ValueType
 	private static final class IsNotFileContentDescriptor implements ContentDescriptor, Externalizable {
 		private static final long serialVersionUID = 1L;
 
@@ -197,9 +199,9 @@ public final class CommonTaskContentDescriptors {
 		public String toString() {
 			return "IsNotFileContentDescriptor";
 		}
-
 	}
 
+	@ValueType
 	private static final class IsFileContentDescriptor implements ContentDescriptor, Externalizable {
 		private static final long serialVersionUID = 1L;
 
@@ -248,9 +250,9 @@ public final class CommonTaskContentDescriptors {
 		public String toString() {
 			return "IsFileContentDescriptor";
 		}
-
 	}
 
+	@ValueType
 	private static final class IsNotDirectoryContentDescriptor implements ContentDescriptor, Externalizable {
 		private static final long serialVersionUID = 1L;
 
@@ -294,9 +296,9 @@ public final class CommonTaskContentDescriptors {
 		public String toString() {
 			return "IsNotDirectoryContentDescriptor";
 		}
-
 	}
 
+	@ValueType
 	private static final class DontCareContentDescriptor implements ContentDescriptor, Externalizable {
 		private static final long serialVersionUID = 1L;
 

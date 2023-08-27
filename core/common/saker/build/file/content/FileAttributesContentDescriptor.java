@@ -27,6 +27,7 @@ import saker.build.file.path.PathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.FileEntry;
 import saker.build.file.provider.RootFileProviderKey;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * {@link ContentDescriptor} implementation that is based on the attributes of a file at a given location.
@@ -44,6 +45,7 @@ import saker.build.file.provider.RootFileProviderKey;
  * the contents.
  */
 @PublicApi
+@ValueType
 public final class FileAttributesContentDescriptor implements ContentDescriptor, Externalizable {
 	private static final long serialVersionUID = 1L;
 

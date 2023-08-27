@@ -21,6 +21,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
 import saker.apiextract.api.PublicApi;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * {@link TaskIdentifier} implementation for identifying a task that is globally accessible regardless of scripting
@@ -32,6 +33,7 @@ import saker.apiextract.api.PublicApi;
  * The built-in scripting language provides this feature using the <code>global(VariableName)</code> task.
  */
 @PublicApi
+@ValueType
 public final class GlobalValueTaskIdentifier implements TaskIdentifier, Externalizable {
 	private static final long serialVersionUID = 1L;
 

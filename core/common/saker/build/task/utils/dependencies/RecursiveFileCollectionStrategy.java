@@ -30,6 +30,7 @@ import saker.build.file.provider.SakerPathFiles;
 import saker.build.runtime.execution.ExecutionDirectoryContext;
 import saker.build.task.TaskDirectoryContext;
 import saker.build.task.dependencies.FileCollectionStrategy;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * File collection strategy for collecting all files (and directories) recursively for a given directory.
@@ -38,6 +39,7 @@ import saker.build.task.dependencies.FileCollectionStrategy;
  * 
  * @see #create
  */
+@ValueType
 public class RecursiveFileCollectionStrategy implements FileCollectionStrategy, Externalizable {
 	private static final long serialVersionUID = 1L;
 

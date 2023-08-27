@@ -29,6 +29,7 @@ import saker.build.file.provider.SakerPathFiles;
 import saker.build.runtime.execution.ExecutionDirectoryContext;
 import saker.build.task.TaskDirectoryContext;
 import saker.build.task.dependencies.FileCollectionStrategy;
+import saker.build.util.data.annotation.ValueType;
 import saker.build.util.file.IgnoreCaseExtensionDirectoryVisitPredicate;
 
 /**
@@ -42,6 +43,7 @@ import saker.build.util.file.IgnoreCaseExtensionDirectoryVisitPredicate;
  * @see #create
  * @see IgnoreCaseExtensionDirectoryVisitPredicate
  */
+@ValueType
 public class RecursiveIgnoreCaseExtensionFileCollectionStrategy implements FileCollectionStrategy, Externalizable {
 	private static final long serialVersionUID = 1L;
 

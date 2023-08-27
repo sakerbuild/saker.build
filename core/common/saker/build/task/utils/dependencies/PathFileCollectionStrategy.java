@@ -31,12 +31,14 @@ import saker.build.runtime.execution.ExecutionDirectoryContext;
 import saker.build.task.TaskDirectoryContext;
 import saker.build.task.dependencies.FileCollectionStrategy;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * File collection strategy for collecting a single file (or directory) at a given path.
  * 
  * @see #create
  */
+@ValueType
 public class PathFileCollectionStrategy implements FileCollectionStrategy, Externalizable {
 	private static final long serialVersionUID = 1L;
 

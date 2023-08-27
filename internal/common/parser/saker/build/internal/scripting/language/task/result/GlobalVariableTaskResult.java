@@ -34,7 +34,9 @@ import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.StructuredObjectTaskResult;
 import saker.build.task.utils.StructuredTaskResult;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
+import saker.build.util.data.annotation.ValueType;
 
+@ValueType
 public class GlobalVariableTaskResult implements SakerTaskResult, AssignableTaskResult, StructuredObjectTaskResult {
 	private static final long serialVersionUID = 1L;
 

@@ -22,6 +22,7 @@ import java.io.ObjectOutput;
 
 import saker.apiextract.api.PublicApi;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * Content descriptor class which represents missing contents.
@@ -33,6 +34,7 @@ import saker.build.thirdparty.saker.util.ObjectUtils;
  * @see #getInstance()
  */
 @PublicApi
+@ValueType
 public final class NullContentDescriptor implements ContentDescriptor, Externalizable {
 	private static final long serialVersionUID = 1L;
 

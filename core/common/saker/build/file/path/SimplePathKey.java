@@ -27,12 +27,14 @@ import saker.build.file.provider.SakerFileProvider;
 import saker.build.file.provider.SakerPathFiles;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWriter;
 import saker.build.thirdparty.saker.rmi.io.writer.SerializeRMIObjectWriteHandler;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * Simple {@link PathKey} implementation only holding the necessary attributes.
  */
 @RMIWriter(SerializeRMIObjectWriteHandler.class)
 @PublicApi
+@ValueType
 public final class SimplePathKey extends BasicPathKey implements Externalizable {
 	private static final long serialVersionUID = 1L;
 

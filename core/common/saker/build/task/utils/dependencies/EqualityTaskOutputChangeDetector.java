@@ -22,11 +22,13 @@ import java.io.ObjectOutput;
 import java.util.Objects;
 
 import saker.build.task.dependencies.TaskOutputChangeDetector;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * {@link TaskOutputChangeDetector} implementation that compares the expected result by
  * {@linkplain Objects#equals(Object, Object) equality}.
  */
+@ValueType
 public class EqualityTaskOutputChangeDetector implements TaskOutputChangeDetector, Externalizable {
 	private static final long serialVersionUID = 1L;
 

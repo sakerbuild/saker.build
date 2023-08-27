@@ -52,6 +52,7 @@ import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 import saker.build.trace.InternalBuildTraceImpl;
+import saker.build.util.data.annotation.ValueType;
 import testing.saker.build.flag.TestFlag;
 
 public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizable {
@@ -185,6 +186,7 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		}
 	}
 
+	@ValueType
 	private static final class DependencyMultiTaskOutputChangeDetector
 			implements TaskOutputChangeDetector, Externalizable {
 		private static final long serialVersionUID = 1L;
@@ -197,9 +199,10 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		public DependencyMultiTaskOutputChangeDetector() {
 		}
 
-		public DependencyMultiTaskOutputChangeDetector(TaskOutputChangeDetector item) {
+		public DependencyMultiTaskOutputChangeDetector(TaskOutputChangeDetector item, TaskOutputChangeDetector second) {
 			detectors = ConcurrentHashMap.newKeySet();
 			detectors.add(item);
+			detectors.add(second);
 		}
 
 		public boolean add(TaskOutputChangeDetector detector) {
@@ -224,6 +227,31 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		@Override
 		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 			detectors = SerialUtils.readExternalImmutableHashSet(in);
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((detectors == null) ? 0 : detectors.hashCode());
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			DependencyMultiTaskOutputChangeDetector other = (DependencyMultiTaskOutputChangeDetector) obj;
+			if (detectors == null) {
+				if (other.detectors != null)
+					return false;
+			} else if (!detectors.equals(other.detectors))
+				return false;
+			return true;
 		}
 
 		@Override
@@ -294,8 +322,8 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 						//the detectors are the same
 						return;
 					}
-					DependencyMultiTaskOutputChangeDetector nval = new DependencyMultiTaskOutputChangeDetector(val);
-					nval.add(outputChangeDetector);
+					DependencyMultiTaskOutputChangeDetector nval = new DependencyMultiTaskOutputChangeDetector(val,
+							outputChangeDetector);
 					if (ARFU_outputChangeDetector.compareAndSet(this, val, nval)) {
 						return;
 					}

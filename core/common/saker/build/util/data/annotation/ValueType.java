@@ -11,7 +11,7 @@ import java.lang.annotation.Target;
  * <p>
  * Types marked with this annotation have the following properties:
  * <ul>
- * <li>They are immutable data holders, and their identity are not used.</li>
+ * <li>After their construction is done, they are immutable data holders, and their identity are not used.</li>
  * <li>The type properly implements the {@link Object#hashCode()} and {@link Object#equals(Object)} contract.</li>
  * <li>Instances of the type may be deduplicated if they equal. This means that if two instances equal, then they can be
  * replaced with a single instance without affecting the code in any way.</li>

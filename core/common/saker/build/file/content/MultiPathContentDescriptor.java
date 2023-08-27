@@ -29,6 +29,7 @@ import saker.build.file.path.SakerPath;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * {@link ContentDescriptor} implementation that contains child content descriptors mapped to their associated paths.
@@ -38,6 +39,7 @@ import saker.build.thirdparty.saker.util.io.SerialUtils;
  * the argument descriptor with the same associated path.
  */
 @PublicApi
+@ValueType
 public class MultiPathContentDescriptor implements ContentDescriptor, Externalizable {
 	private static final long serialVersionUID = 1L;
 

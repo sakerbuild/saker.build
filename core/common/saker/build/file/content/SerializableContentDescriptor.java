@@ -21,6 +21,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
 import saker.apiextract.api.PublicApi;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * Content descriptor that is compared by equality and is backed by a custom serializable object.
@@ -29,6 +30,7 @@ import saker.apiextract.api.PublicApi;
  * to be {@link Externalizable} as well.
  */
 @PublicApi
+@ValueType
 public class SerializableContentDescriptor implements ContentDescriptor, Externalizable {
 	private static final long serialVersionUID = 1L;
 

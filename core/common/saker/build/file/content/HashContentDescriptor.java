@@ -35,6 +35,7 @@ import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.FileUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * {@link ContentDescriptor} implementation that is backed by a hash result.
@@ -47,6 +48,7 @@ import saker.build.thirdparty.saker.util.io.StreamUtils;
  * A new instance can be created by calling one of the static {@linkplain #hash(byte[]) factory methods}.
  */
 @PublicApi
+@ValueType
 public final class HashContentDescriptor implements ContentDescriptor, Externalizable {
 	private static final long serialVersionUID = 1L;
 
@@ -375,9 +377,16 @@ public final class HashContentDescriptor implements ContentDescriptor, Externali
 
 	@Override
 	public int hashCode() {
-		final int prime = 31;
-		int result = 1;
-		result = prime * result + Arrays.hashCode(hash);
+		final byte[] hash = this.hash;
+		if (hash == null) {
+			return 0;
+		}
+		int result = 0;
+		//using only the first 4 bytes for the hash is sufficient, as the hashes themselves should be random enough
+		final int c = Math.min(4, hash.length);
+		for (int i = 0; i < c; i++) {
+			result = (result << 8) | (hash[i] & 0xFF);
+		}
 		return result;
 	}
 

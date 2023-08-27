@@ -131,6 +131,7 @@ import saker.build.thirdparty.saker.util.thread.ThreadUtils;
 import saker.build.thirdparty.saker.util.thread.ThreadUtils.ThreadWorkPool;
 import saker.build.trace.InternalBuildTraceImpl;
 import saker.build.util.config.ReferencePolicy;
+import saker.build.util.data.annotation.ValueType;
 import saker.osnative.watcher.NativeWatcherService;
 import saker.osnative.watcher.RegisteringWatchService;
 import saker.osnative.watcher.WatchRegisterer;
@@ -411,6 +412,7 @@ public abstract class LocalFileProvider implements SakerFileProvider {
 	 */
 	@ExcludeApi
 	@RMIWriter(SerializeRMIObjectWriteHandler.class)
+	@ValueType
 	public static final class LocalFilesKey implements RootFileProviderKey, Externalizable {
 		private static final long serialVersionUID = 1L;
 

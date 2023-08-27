@@ -21,6 +21,9 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Date;
 
+import saker.build.util.data.annotation.ValueType;
+
+@ValueType
 public class ModificationTimeContentDescriptor implements ContentDescriptor, Externalizable {
 	private static final long serialVersionUID = 1L;
 
@@ -74,7 +77,7 @@ public class ModificationTimeContentDescriptor implements ContentDescriptor, Ext
 
 	@Override
 	public String toString() {
-		return getClass().getSimpleName() + "[millis=" + millis + ", " + new Date(millis) + "]";
+		return getClass().getSimpleName() + "[millis=" + millis + " (" + new Date(millis) + ")]";
 	}
 
 }

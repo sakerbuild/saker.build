@@ -27,6 +27,7 @@ import saker.apiextract.api.PublicApi;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * {@link ContentDescriptor} implementation that aggregates multiple child content descriptors.
@@ -41,6 +42,7 @@ import saker.build.thirdparty.saker.util.io.SerialUtils;
  * Use the static factory methods to create a new instance.
  */
 @PublicApi
+@ValueType
 public final class MultiContentDescriptor implements ContentDescriptor, Externalizable {
 	private static final long serialVersionUID = 1L;
 

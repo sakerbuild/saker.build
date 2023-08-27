@@ -22,6 +22,7 @@ import java.io.ObjectOutput;
 import java.util.UUID;
 
 import saker.apiextract.api.PublicApi;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * Content descriptor backed by an unique identifier.
@@ -29,6 +30,7 @@ import saker.apiextract.api.PublicApi;
  * The implementation is backed by {@link UUID}.
  */
 @PublicApi
+@ValueType
 public final class UUIDContentDescriptor implements ContentDescriptor, Externalizable {
 	private static final long serialVersionUID = 1L;
 

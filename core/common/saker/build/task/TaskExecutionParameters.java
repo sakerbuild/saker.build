@@ -25,12 +25,14 @@ import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * Specifies exeucution parameters for newly started tasks.
  * 
  * @see TaskContext#startTask(TaskIdentifier, TaskFactory, TaskExecutionParameters)
  */
+@ValueType
 public final class TaskExecutionParameters implements Externalizable {
 	private static final long serialVersionUID = 1L;
 
