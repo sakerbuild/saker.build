@@ -742,21 +742,24 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 				SerialUtils.writeIntToBuffer(version, header, Integer.BYTES * 2);
 				descos.write(header);
 			}
-			try (ContentWriterObjectOutput descobjout = new ContentWriterObjectOutput(classLoaderResolver)) {
+			try (ContentWriterObjectOutput descobjout = new FlushingContentWriterObjectOutput(classLoaderResolver,
+					descos)) {
 				for (Entry<RootFileProviderKey, ConcurrentSkipListMap<SakerPath, ContentHandleImpl>> entry : providerKeyPathDependencies
 						.entrySet()) {
 					RootFileProviderKey fpk = entry.getKey();
 					descobjout.writeObject(fpk);
-					descobjout.drainTo(descos);
+					descobjout.flush();
 
-					writeDependencies(entry.getValue(), descobjout, descos);
+					writeDependencies(entry.getValue(), descobjout);
 				}
 				descobjout.writeNull();
-				descobjout.drainTo(descos);
+				descobjout.flush();
 
-				//write the key value pairs one by one and drain them
-				descobjout.writeObject(taskResults);
-				descobjout.drainTo(descos);
+				//call .writeExternal directly, so not the whole object is buffered
+				//and the objects are flushed more often
+				//so the internal buffer doesn't grow unnecessarily large
+				taskResults.writeExternal(descobjout, true);
+				descobjout.flush();
 			}
 		} catch (Exception e) {
 			setDirty();
@@ -764,7 +767,7 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 		}
 	}
 
-	private static class PosixExpectedSerializedContents implements Externalizable {
+	private final static class PosixExpectedSerializedContents implements Externalizable {
 		private static final long serialVersionUID = 1L;
 
 		public ContentDescriptor userExpectedDiskContent;
@@ -798,7 +801,7 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 	}
 
 	private static void writeDependencies(ConcurrentSkipListMap<SakerPath, ContentHandleImpl> dependencies,
-			ContentWriterObjectOutput descobjout, OutputStream descos) throws IOException {
+			ContentWriterObjectOutput descobjout) throws IOException {
 		SakerPath relative = null;
 		for (Iterator<Entry<SakerPath, ContentHandleImpl>> it = dependencies.entrySet().iterator(); it.hasNext();) {
 			Entry<SakerPath, ContentHandleImpl> entry = it.next();
@@ -830,11 +833,11 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 				e.printStackTrace();
 			}
 			//this can throw, so that should be propagated to the caller
-			descobjout.drainTo(descos);
+			descobjout.flush();
 		}
 		//empty path last item marker
 		descobjout.writeObject(null);
-		descobjout.drainTo(descos);
+		descobjout.flush();
 	}
 
 	private void read(ExecutionPathConfiguration pathconfig) {
@@ -887,7 +890,8 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 					ConcurrentSkipListMap<SakerPath, ContentHandleImpl> coll = getContentHandleCollection(fpkey);
 					readDependencies(fpkey, fileprovider, coll, reader);
 				}
-				taskResults = (BuildTaskResultDatabase) reader.readObject();
+				taskResults = new BuildTaskResultDatabase();
+				taskResults.readExternal(reader);
 			}
 		} catch (NoSuchFileException | FileNotFoundException e) {
 		} catch (IOException | ClassNotFoundException e) {
@@ -1812,6 +1816,21 @@ public class ContentDatabaseImpl implements ContentDatabase, Closeable {
 				ImmutableUtils.asUnmodifiableArrayList("Allow", "Forbid"));
 		if (res != 0) {
 			throw new SecurityException("Write request forbidden on: " + path);
+		}
+	}
+
+	private static final class FlushingContentWriterObjectOutput extends ContentWriterObjectOutput {
+		private final OutputStream os;
+
+		private FlushingContentWriterObjectOutput(ClassLoaderResolver registry, OutputStream os) {
+			super(registry);
+			this.os = os;
+		}
+
+		@Override
+		public void flush() throws IOException {
+			super.flush();
+			drainTo(os);
 		}
 	}
 }

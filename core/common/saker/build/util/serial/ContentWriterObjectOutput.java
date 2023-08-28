@@ -1649,6 +1649,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	@Override
 	public void close() throws IOException {
+		//call flush (possibly subclassed) so data is drained
+		flush();
 	}
 
 	public void drainTo(OutputStream os) throws IOException {

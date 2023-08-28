@@ -142,11 +142,18 @@ public class BuildTaskResultDatabase implements Externalizable {
 
 	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
+		writeExternal(out, false);
+	}
+
+	public void writeExternal(ObjectOutput out, boolean flushperiodically) throws IOException {
 		Map<TaskIdentifier, TaskExecutionResult<?>> results = taskIdTaskResults;
 		out.writeInt(results.size());
 		for (Entry<TaskIdentifier, TaskExecutionResult<?>> entry : results.entrySet()) {
 			out.writeObject(entry.getKey());
 			out.writeObject(entry.getValue());
+			if (flushperiodically) {
+				out.flush();
+			}
 		}
 		SerialUtils.writeExternalMap(out, scriptInformationProviders);
 	}
