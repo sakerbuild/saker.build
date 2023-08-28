@@ -129,7 +129,7 @@ steps:
 - script: cmp build/saker.jar.create/saker.build.jar df_build/saker.jar.create/saker.build.jar
   condition: and(succeeded(), or( eq( variables['Agent.OS'], 'Linux' ), eq( variables['Agent.OS'], 'Darwin' ) ))
   displayName: 'Compare dogfood export outputs (Linux)'
-- script: comp /M build/saker.jar.create/saker.build.jar df_build/saker.jar.create/saker.build.jar
+- script: comp /M build\saker.jar.create\saker.build.jar df_build\saker.jar.create\saker.build.jar
   condition: and(succeeded(), eq( variables['Agent.OS'], 'Windows_NT' ))
   displayName: 'Compare dogfood export outputs (win)'
 
