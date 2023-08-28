@@ -34,6 +34,7 @@ import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.StringUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
+import saker.build.util.data.annotation.ValueType;
 
 /**
  * Represents a name that can be used to identify and locate tasks from external sources.
@@ -72,6 +73,7 @@ import saker.build.thirdparty.saker.util.io.SerialUtils;
  * 
  * @see BuildRepository#lookupTask(TaskName)
  */
+@ValueType
 public final class TaskName implements Comparable<TaskName>, Externalizable {
 	private static final long serialVersionUID = 1L;
 	private static final Pattern PATTERN_DASH_SPLIT = Pattern.compile("[-]+");
