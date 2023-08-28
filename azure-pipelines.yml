@@ -127,8 +127,15 @@ steps:
 - script: java -jar saker.build.jar -bd df_build -EUbuild.ci=true "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64);$(JAVA_HOME_10_X64);$(JAVA_HOME_11_X64);$(JAVA_HOME_12_X64);$(JAVA_HOME_13_X64);$(JAVA_HOME_14_X64);$(JAVA_HOME_15_X64);$(JAVA_HOME_16_X64)" exportall
   displayName: 'Dogfood export'
 - script: cmp build/saker.jar.create/saker.build.jar df_build/saker.jar.create/saker.build.jar
-  displayName: 'Compare dogfood export outputs'
+  condition: and(succeeded(), or( eq( variables['Agent.OS'], 'Linux' ), eq( variables['Agent.OS'], 'Darwin' ) ))
+  displayName: 'Compare dogfood export outputs (Linux)'
+- script: comp /M build/saker.jar.create/saker.build.jar df_build/saker.jar.create/saker.build.jar
+  condition: and(succeeded(), eq( variables['Agent.OS'], 'Windows_NT' ))
+  displayName: 'Compare dogfood export outputs (win)'
 
 - script: cat hs_err* 2>/dev/null || echo "No hs_err files."
-  condition: always()
-  displayName: 'Display JVM crash logs'
+  condition: or( eq( variables['Agent.OS'], 'Linux' ), eq( variables['Agent.OS'], 'Darwin' ) )
+  displayName: 'Display JVM crash logs (Linux)'
+- script: type hs_err* 2>nul || exit 0
+  condition: eq( variables['Agent.OS'], 'Windows_NT' )
+  displayName: 'Display JVM crash logs (Win)'
