@@ -4420,7 +4420,7 @@ public final class TaskExecutionManager {
 
 				runSpawnedTasks.put(taskid, new SpawnedResultTask(taskid));
 
-				offerTaskRunnable(() -> {
+				parallelRunnerStrategy(taskid, createTaskThreadName(factory)).execute(() -> {
 					TaskResultHolder<?> taskres = executeImpl(factory, taskid, executioncontext, null,
 							DEFAULT_EXECUTION_PARAMETERS, null).getTaskResult();
 					if (taskres instanceof TaskExecutionResult<?>) {
@@ -4429,7 +4429,7 @@ public final class TaskExecutionManager {
 					}
 					//throw an exception if the execution fails
 //					getOutputOrThrow(taskres);
-				}, taskid, createTaskThreadName(factory));
+				});
 				for (TaskExecutionThread t; (t = taskThreads.take()) != null;) {
 					while (true) {
 						try {
@@ -5021,7 +5021,16 @@ public final class TaskExecutionManager {
 	}
 
 	private Executor parallelRunnerStrategy(TaskIdentifier taskid, String name) {
-		return r -> offerTaskRunnable(r::run, taskid, name);
+		return r -> {
+			addRunningThreadCount(1);
+			offerTaskRunnable(() -> {
+				try {
+					r.run();
+				} finally {
+					removeRunningThreadCount(1);
+				}
+			}, taskid, name);
+		};
 	}
 
 	private <R> ManagerTaskFutureImpl<R> executeWithStrategyImpl(TaskFactory<R> factory, TaskIdentifier taskid,
@@ -5059,69 +5068,64 @@ public final class TaskExecutionManager {
 			TaskExecutionParameters parameters, SimpleTaskDirectoryPathContext currenttaskdirectorycontext,
 			TaskInvocationConfiguration capabilities, ManagerTaskFutureImpl<?> ancestorfuture,
 			SpawnedResultTask spawnedtask) {
-		addRunningThreadCount(1);
 		executionstrategy.execute(() -> {
-			try {
-				TaskExecutionResult<?> prevexecresult = getPreviousExecutionResult(taskid);
+			TaskExecutionResult<?> prevexecresult = getPreviousExecutionResult(taskid);
 
-				SimpleTaskDirectoryPathContext taskdircontext = getTaskDirectoryPathContext(context, parameters,
-						currenttaskdirectorycontext);
-				if (prevexecresult != null) {
-					TaskDependencies prevexecdependencies = prevexecresult.getDependencies();
-					//check the factory change before the invoker selection to avoid unnecessary computing some environment properties
-					boolean taskfactorychanged = !factory.equals(prevexecresult.getFactory());
-					Supplier<? extends TaskInvocationManager.SelectionResult> invokerselectionresult = invocationManager
-							.selectInvoker(taskid, capabilities,
-									taskfactorychanged ? null
-											: prevexecdependencies.getEnvironmentPropertyDependenciesWithQualifiers(),
-									null);
+			SimpleTaskDirectoryPathContext taskdircontext = getTaskDirectoryPathContext(context, parameters,
+					currenttaskdirectorycontext);
+			if (prevexecresult != null) {
+				TaskDependencies prevexecdependencies = prevexecresult.getDependencies();
+				//check the factory change before the invoker selection to avoid unnecessary computing some environment properties
+				boolean taskfactorychanged = !factory.equals(prevexecresult.getFactory());
+				Supplier<? extends TaskInvocationManager.SelectionResult> invokerselectionresult = invocationManager
+						.selectInvoker(taskid, capabilities,
+								taskfactorychanged ? null
+										: prevexecdependencies.getEnvironmentPropertyDependenciesWithQualifiers(),
+								null);
 
-					TaskIdDependencyCollector collector = new TaskIdDependencyCollector(taskid, future,
-							prevexecdependencies, taskdircontext, context);
-					DependencyDelta deltas;
-					if (Boolean.FALSE.equals(checkedHasAnyDeltas.get(taskid))) {
-						deltas = DependencyDelta.EMPTY_DELTA;
-					} else {
-						try {
-							deltas = collectDependencyDeltasImpl(prevexecresult, context, taskdircontext,
-									invokerselectionresult, taskfactorychanged, taskid, collector);
-							collector.finishDependencyCollection(deltas);
-						} catch (TaskExecutionDeadlockedException e) {
-							TaskExecutionDeadlockedException te = ExceptionAccessInternal
-									.createTaskExecutionDeadlockedException(taskid);
-							te.addSuppressed(e);
-							throw te;
-						} catch (TaskResultWaitingInterruptedException e) {
-							throw e;
-						} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError
-								| AssertionError | Exception e) {
-							throw new AssertionError("Failed to collect deltas for task: " + taskid, e);
-						}
-					}
-
-					if (deltas.isEmpty()) {
-						//no deltas for the task, nothing changed for it
-
-						@SuppressWarnings("unchecked")
-						TaskExecutionResult<R> prevexecres_r = (TaskExecutionResult<R>) prevexecresult;
-
-						this.buildTrace.taskUpToDate(prevexecresult, capabilities);
-
-						//TODO use the all transitive map
-						startUnchangedTaskSubTasks(prevexecres_r, context, currenttaskdirectorycontext, future,
-								collector.getAllTransitiveCreatedTaskIds().keySet(), parameters, spawnedtask);
-						return;
-					}
-					//there are some deltas, run the taks
-					executeTaskRunning(prevexecresult, taskid, context, future, factory, deltas, parameters,
-							capabilities, invokerselectionresult, taskdircontext, spawnedtask);
+				TaskIdDependencyCollector collector = new TaskIdDependencyCollector(taskid, future,
+						prevexecdependencies, taskdircontext, context);
+				DependencyDelta deltas;
+				if (Boolean.FALSE.equals(checkedHasAnyDeltas.get(taskid))) {
+					deltas = DependencyDelta.EMPTY_DELTA;
 				} else {
-					//no previous result is present, this is a new task
-					executeNewTaskRunning(taskid, context, future, factory, parameters, taskdircontext, capabilities,
-							spawnedtask);
+					try {
+						deltas = collectDependencyDeltasImpl(prevexecresult, context, taskdircontext,
+								invokerselectionresult, taskfactorychanged, taskid, collector);
+						collector.finishDependencyCollection(deltas);
+					} catch (TaskExecutionDeadlockedException e) {
+						TaskExecutionDeadlockedException te = ExceptionAccessInternal
+								.createTaskExecutionDeadlockedException(taskid);
+						te.addSuppressed(e);
+						throw te;
+					} catch (TaskResultWaitingInterruptedException e) {
+						throw e;
+					} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError
+							| AssertionError | Exception e) {
+						throw new AssertionError("Failed to collect deltas for task: " + taskid, e);
+					}
 				}
-			} finally {
-				removeRunningThreadCount(1);
+
+				if (deltas.isEmpty()) {
+					//no deltas for the task, nothing changed for it
+
+					@SuppressWarnings("unchecked")
+					TaskExecutionResult<R> prevexecres_r = (TaskExecutionResult<R>) prevexecresult;
+
+					this.buildTrace.taskUpToDate(prevexecresult, capabilities);
+
+					//TODO use the all transitive map
+					startUnchangedTaskSubTasks(prevexecres_r, context, currenttaskdirectorycontext, future,
+							collector.getAllTransitiveCreatedTaskIds().keySet(), parameters, spawnedtask);
+					return;
+				}
+				//there are some deltas, run the taks
+				executeTaskRunning(prevexecresult, taskid, context, future, factory, deltas, parameters, capabilities,
+						invokerselectionresult, taskdircontext, spawnedtask);
+			} else {
+				//no previous result is present, this is a new task
+				executeNewTaskRunning(taskid, context, future, factory, parameters, taskdircontext, capabilities,
+						spawnedtask);
 			}
 		});
 	}

@@ -64,11 +64,17 @@ public class SequentialChildTaskStarterTaskFactory implements TaskFactory<Void>,
 	public Void run(TaskContext context) {
 		for (Entry<? extends TaskIdentifier, ? extends TaskFactory<?>> entry : tasks) {
 			TaskIdentifier taskid = entry.getKey();
+			TaskFactory<?> taskfactory = entry.getValue();
 			System.out.println("SEQ START: " + context.getTaskId() + " - " + taskid);
-			Object result = context.getTaskUtilities().runTaskResult(taskid, entry.getValue());
+			Object result = runTask(context, taskid, taskfactory);
 			System.out.println("SEQ WAIT:  " + context.getTaskId() + " - " + taskid + " -> " + result);
 		}
 		return null;
+	}
+
+	protected Object runTask(TaskContext context, TaskIdentifier taskid, TaskFactory<?> taskfactory) {
+		//Note: keep this as runTaskResult by default
+		return context.getTaskUtilities().runTaskResult(taskid, taskfactory);
 	}
 
 	@Override
