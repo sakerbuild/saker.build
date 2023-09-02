@@ -4622,8 +4622,9 @@ public final class TaskExecutionManager {
 			}
 			WaitingThreadCounter nwtc = wtc.removeRunning(count);
 			if (ARFU_waitingThreadCounter.compareAndSet(this, wtc, nwtc)) {
-				if (nwtc.runningThreadCount == nwtc.waitingThreadCount) {
+				if (nwtc.runningThreadCount == nwtc.waitingThreadCount && nwtc.runningThreadCount > 0) {
 					//possible deadlock. unpark a waiter that should detect it
+					//  (only in case this was not the last running thread that was removed
 					for (ManagerTaskFutureImpl<?> future : taskIdFutures.values()) {
 						if (future.unparkOneWaitingThread(this)) {
 							//a thread was unparked. it should detect the deadlock if any
