@@ -1,0 +1,5 @@
+build(){
+	$var = test.first.task()
+	
+	print(test.second.task($var[str]))
+}

@@ -78,7 +78,7 @@ public class StringTaskIdentifier implements TaskIdentifier, Externalizable {
 
 	@Override
 	public String toString() {
-		return getClass().getSimpleName() + "[" + name + "]";
+		return name;
 	}
 
 }

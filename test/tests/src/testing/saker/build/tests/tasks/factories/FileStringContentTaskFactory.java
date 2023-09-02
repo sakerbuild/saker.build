@@ -28,7 +28,7 @@ import saker.build.task.TaskContext;
 import saker.build.task.TaskFactory;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 
-public class FileStringContentTaskFactory implements TaskFactory<String>, Externalizable {
+public class FileStringContentTaskFactory implements TaskFactory<String>, Task<String>, Externalizable {
 	private static final long serialVersionUID = 1L;
 
 	private SakerPath path;
@@ -46,6 +46,28 @@ public class FileStringContentTaskFactory implements TaskFactory<String>, Extern
 	}
 
 	@Override
+	public Task<String> createTask(ExecutionContext execcontext) {
+		return this;
+	}
+
+	@Override
+	public String run(TaskContext taskcontext) throws IOException {
+		taskcontext.getFileDeltas().getFileDeltas().forEach(d -> System.out.println("delta -> " + d));
+		SakerFile file = taskcontext.getTaskUtilities().resolveAtPath(path);
+		if (file == null) {
+			taskcontext.reportInputFileDependency(null, path, null);
+			return null;
+		}
+		taskcontext.reportInputFileDependency(null, path, file.getContentDescriptor());
+		System.out.println("FileStringContentTaskFactory.createTask(...).new Task() {...}.run() " + path);
+		String result = file.getContent();
+		if (trackUnchanged) {
+			taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
+		}
+		return result;
+	}
+
+	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
 		out.writeObject(path);
 		out.writeBoolean(trackUnchanged);
@@ -55,28 +77,6 @@ public class FileStringContentTaskFactory implements TaskFactory<String>, Extern
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 		path = (SakerPath) in.readObject();
 		trackUnchanged = in.readBoolean();
-	}
-
-	@Override
-	public Task<String> createTask(ExecutionContext execcontext) {
-		return new Task<String>() {
-			@Override
-			public String run(TaskContext taskcontext) throws IOException {
-				taskcontext.getFileDeltas().getFileDeltas().forEach(d -> System.out.println("delta -> " + d));
-				SakerFile file = taskcontext.getTaskUtilities().resolveAtPath(path);
-				if (file == null) {
-					taskcontext.reportInputFileDependency(null, path, null);
-					return null;
-				}
-				taskcontext.reportInputFileDependency(null, path, file.getContentDescriptor());
-				System.out.println("FileStringContentTaskFactory.createTask(...).new Task() {...}.run() " + path);
-				String result = file.getContent();
-				if (trackUnchanged) {
-					taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
-				}
-				return result;
-			}
-		};
 	}
 
 	@Override

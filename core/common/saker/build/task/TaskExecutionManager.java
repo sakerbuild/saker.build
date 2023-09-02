@@ -3931,6 +3931,8 @@ public final class TaskExecutionManager {
 				}
 			}
 			//check the condition
+			//(here we can ignore the exceptions from the condition evaluation
+			//as the handle hasn't been used anywhere. it can be reused by the caller if needed
 			if (condition.getAsBoolean()) {
 				//set the state directly, as the handle hadn't been used anywere so far
 				waiter.state = WaiterThreadHandle.STATE_FINISHED;
@@ -4004,7 +4006,15 @@ public final class TaskExecutionManager {
 					//we don't want to increase the waiting thread count before checking the condition, as that could
 					//cause a deadlock to be detected in other threads even if the condition is satisfied
 
-					if (condition.getAsBoolean()) {
+					boolean condval;
+					try {
+						condval = condition.getAsBoolean();
+					} catch (Throwable e) {
+						// always finish so the handle is not left in an inconsistent state
+						waiter.finish(execmanager, true);
+						throw e;
+					}
+					if (condval) {
 						waiter.finish(execmanager, true);
 						return;
 					}
@@ -4023,7 +4033,15 @@ public final class TaskExecutionManager {
 					//    just before retrieving the waiting thread count, then another thread notifies this and exists
 					//    and we get the WTC. this would cause us to forget to check the condition, and use a WTC 
 					//    without the condition check
-					if (condition.getAsBoolean()) {
+					boolean condval;
+					try {
+						condval = condition.getAsBoolean();
+					} catch (Throwable e) {
+						// always finish so the handle is not left in an inconsistent state
+						waiter.finish(execmanager, false);
+						throw e;
+					}
+					if (condval) {
 						waiter.finish(execmanager, false);
 						return;
 					}
@@ -4465,8 +4483,9 @@ public final class TaskExecutionManager {
 				throw texc;
 			}
 			if (TestFlag.ENABLED) {
-				if (!WAITING_THREAD_COUNTER_ZERO.equals(waitingThreadCounter)) {
-					throw new AssertionError(waitingThreadCounter);
+				WaitingThreadCounter wtc = waitingThreadCounter;
+				if (!WAITING_THREAD_COUNTER_ZERO.equals(wtc)) {
+					throw new AssertionError(wtc);
 				}
 			}
 		} finally {
@@ -5842,7 +5861,7 @@ public final class TaskExecutionManager {
 
 	}
 
-	private void collectDependencyDeltasImpl(DependencyDelta result, TaskExecutionResult<?> prevexecresult,
+	protected void collectDependencyDeltasImpl(DependencyDelta result, TaskExecutionResult<?> prevexecresult,
 			ExecutionContextImpl executioncontext, SimpleTaskDirectoryPathContext taskdircontext,
 			TaskIdDependencyCollector depcollector,
 			Supplier<? extends TaskInvocationManager.SelectionResult> guidedinvokerselectionsupplier,
@@ -6295,7 +6314,7 @@ public final class TaskExecutionManager {
 		}
 	}
 
-	private void collectFileDependencyDeltas(ExecutionContextImpl executioncontext, TaskDependencies dependencies,
+	protected void collectFileDependencyDeltas(ExecutionContextImpl executioncontext, TaskDependencies dependencies,
 			DependencyDelta result, SimpleTaskDirectoryContext directorycontext) {
 		Map<Object, FileDependencies> taggedfiledeps = dependencies.getTaggedFileDependencies();
 		if (taggedfiledeps.isEmpty()) {

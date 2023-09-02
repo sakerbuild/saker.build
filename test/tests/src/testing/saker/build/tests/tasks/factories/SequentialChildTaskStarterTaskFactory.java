@@ -32,7 +32,7 @@ import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 
-public class SequentialChildTaskStarterTaskFactory implements TaskFactory<Void>, Externalizable {
+public class SequentialChildTaskStarterTaskFactory implements TaskFactory<Void>, Task<Void>, Externalizable {
 	private static final long serialVersionUID = 1L;
 
 	private List<Map.Entry<TaskIdentifier, TaskFactory<?>>> tasks = new ArrayList<>();
@@ -57,15 +57,18 @@ public class SequentialChildTaskStarterTaskFactory implements TaskFactory<Void>,
 
 	@Override
 	public Task<Void> createTask(ExecutionContext context) {
-		return new Task<Void>() {
-			@Override
-			public Void run(TaskContext context) {
-				for (Entry<? extends TaskIdentifier, ? extends TaskFactory<?>> entry : tasks) {
-					context.getTaskUtilities().runTaskResult(entry.getKey(), entry.getValue());
-				}
-				return null;
-			}
-		};
+		return this;
+	}
+
+	@Override
+	public Void run(TaskContext context) {
+		for (Entry<? extends TaskIdentifier, ? extends TaskFactory<?>> entry : tasks) {
+			TaskIdentifier taskid = entry.getKey();
+			System.out.println("SEQ START: " + context.getTaskId() + " - " + taskid);
+			Object result = context.getTaskUtilities().runTaskResult(taskid, entry.getValue());
+			System.out.println("SEQ WAIT:  " + context.getTaskId() + " - " + taskid + " -> " + result);
+		}
+		return null;
 	}
 
 	@Override

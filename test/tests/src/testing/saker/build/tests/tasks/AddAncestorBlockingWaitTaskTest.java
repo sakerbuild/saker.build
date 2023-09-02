@@ -20,6 +20,7 @@ import java.io.IOException;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskFactory;
 import saker.build.task.TaskFuture;
+import saker.build.task.utils.StructuredTaskResult;
 import testing.saker.SakerTest;
 import testing.saker.build.flag.TestFlag;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
@@ -94,7 +95,7 @@ public class AddAncestorBlockingWaitTaskTest extends CollectingMetricEnvironment
 			orderer.enter(SECTION_PLUS_STARTER);
 			ChildTaskStarterTaskFactory childstarter = new ChildTaskStarterTaskFactory() {
 				@Override
-				public Void run(TaskContext context) throws Exception {
+				public StructuredTaskResult run(TaskContext context) throws Exception {
 					if (waitStrFinishInStarter) {
 						System.out.println("Wait result of str task before starting it...");
 						while (!((CollectingTestMetric) TestFlag.metric()).getRunTaskIdResults()

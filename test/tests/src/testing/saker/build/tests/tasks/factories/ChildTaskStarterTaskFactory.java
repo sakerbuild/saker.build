@@ -20,20 +20,28 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.NavigableMap;
+import java.util.TreeMap;
 
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.task.Task;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskFactory;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.task.utils.SimpleStructuredMapTaskResult;
+import saker.build.task.utils.SimpleStructuredObjectTaskResult;
+import saker.build.task.utils.StructuredTaskResult;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
+import testing.saker.build.tests.StringTaskIdentifier;
 
-public class ChildTaskStarterTaskFactory implements TaskFactory<Void>, Task<Void>, Externalizable {
+public class ChildTaskStarterTaskFactory
+		implements TaskFactory<StructuredTaskResult>, Task<StructuredTaskResult>, Externalizable {
 	private static final long serialVersionUID = 1L;
 
-	private Map<TaskIdentifier, TaskFactory<?>> namedChildTaskValues = new HashMap<>();
+	protected Map<TaskIdentifier, TaskFactory<?>> namedChildTaskValues = new LinkedHashMap<>();
 
 	public ChildTaskStarterTaskFactory() {
 	}
@@ -45,6 +53,10 @@ public class ChildTaskStarterTaskFactory implements TaskFactory<Void>, Task<Void
 	public ChildTaskStarterTaskFactory add(TaskIdentifier taskid, TaskFactory<?> factory) {
 		namedChildTaskValues.put(taskid, factory);
 		return this;
+	}
+
+	public ChildTaskStarterTaskFactory add(String taskidname, TaskFactory<?> factory) {
+		return add(new StringTaskIdentifier(taskidname), factory);
 	}
 
 	public ChildTaskStarterTaskFactory remove(TaskIdentifier taskid) {
@@ -63,16 +75,23 @@ public class ChildTaskStarterTaskFactory implements TaskFactory<Void>, Task<Void
 	}
 
 	@Override
-	public Task<Void> createTask(ExecutionContext context) {
+	public Task<StructuredTaskResult> createTask(ExecutionContext context) {
 		return this;
 	}
 
 	@Override
-	public Void run(TaskContext context) throws Exception {
+	public StructuredTaskResult run(TaskContext context) throws Exception {
+		NavigableMap<String, StructuredTaskResult> resultmap = new TreeMap<>();
 		for (Entry<? extends TaskIdentifier, ? extends TaskFactory<?>> entry : namedChildTaskValues.entrySet()) {
-			context.getTaskUtilities().startTaskFuture(entry.getKey(), entry.getValue());
+			TaskIdentifier taskid = entry.getKey();
+			startTask(context, taskid, entry.getValue());
+			resultmap.put(taskid.toString(), new SimpleStructuredObjectTaskResult(taskid));
 		}
-		return null;
+		return new SimpleStructuredMapTaskResult(resultmap);
+	}
+
+	protected void startTask(TaskContext context, TaskIdentifier taskid, TaskFactory<?> taskfactory) {
+		context.getTaskUtilities().startTaskFuture(taskid, taskfactory);
 	}
 
 	@Override
