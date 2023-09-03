@@ -1004,7 +1004,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			@SuppressWarnings("unchecked")
 			IOBiConsumer<Object, ContentWriterObjectOutput> writer = (IOBiConsumer<Object, ContentWriterObjectOutput>) entry
 					.getValue();
-			builtinValueWriters.put(entry.getKey(), new BuiltinValueWriterCache(writer));
+			Class<?> type = entry.getKey();
+			builtinValueWriters.put(type, isComparableCacheable(type) ? BuiltinValueWriterCache.createTree(writer)
+					: BuiltinValueWriterCache.createHash(writer));
 		}
 	}
 
@@ -1720,7 +1722,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			throws IOException {
 		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		Optional<Map<Object, Integer>> valtype = valueTypeInternMaps.computeIfAbsent(objclass,
-				objc -> objc.isAnnotationPresent(ValueType.class) ? Optional.of(new HashMap<>()) : Optional.empty());
+				ContentWriterObjectOutput::createValueTypeCacheMap);
 		Map<Object, Integer> valinternmap = valtype.orElse(null);
 
 		if (valinternmap != null) {
@@ -1781,6 +1783,16 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		if (valinternmap != null) {
 			valinternmap.putIfAbsent(obj, objidx);
 		}
+	}
+
+	private static Optional<Map<Object, Integer>> createValueTypeCacheMap(Class<?> objc) {
+		if (!objc.isAnnotationPresent(ValueType.class)) {
+			return Optional.empty();
+		}
+		if (isComparableCacheable(objc)) {
+			return Optional.of(new TreeMap<>());
+		}
+		return Optional.of(new HashMap<>());
 	}
 
 	private void writeArrayImplWithCommandImpl(Object obj, Class<? extends Object> objclass) throws IOException {
@@ -1899,6 +1911,16 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		}
 	}
 
+	private static boolean isComparableCacheable(Class<?> type) {
+		if (Comparable.class.isAssignableFrom(type)) {
+			//we don't do generic parameter inspection on the Comparable<T> inheritance because
+			//we expect the Comparable implementation to be mutually comparable, so that
+			//neither v1.compareTo(v2) nor v2.compareTo(v1) throw ClassCastExceptions for any two v1 and v2 values
+			return true;
+		}
+		return false;
+	}
+
 	private static final class InternedValue<T> {
 		protected final T value;
 		protected int index;
@@ -1962,10 +1984,20 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	private static final class BuiltinValueWriterCache {
 		IOBiConsumer<Object, ContentWriterObjectOutput> writer;
-		Map<Object, InternedValue<Object>> cache = new HashMap<>();
+		Map<Object, InternedValue<Object>> cache;
 
-		public BuiltinValueWriterCache(IOBiConsumer<Object, ContentWriterObjectOutput> writer) {
+		private BuiltinValueWriterCache(IOBiConsumer<Object, ContentWriterObjectOutput> writer,
+				Map<Object, InternedValue<Object>> cache) {
 			this.writer = writer;
+			this.cache = cache;
+		}
+
+		public static BuiltinValueWriterCache createHash(IOBiConsumer<Object, ContentWriterObjectOutput> writer) {
+			return new BuiltinValueWriterCache(writer, new HashMap<>());
+		}
+
+		public static BuiltinValueWriterCache createTree(IOBiConsumer<Object, ContentWriterObjectOutput> writer) {
+			return new BuiltinValueWriterCache(writer, new TreeMap<>());
 		}
 	}
 
