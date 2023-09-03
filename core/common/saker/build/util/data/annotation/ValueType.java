@@ -6,6 +6,8 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+import saker.apiextract.api.PublicApi;
+
 /**
  * Marker annotation for value based types.
  * <p>
@@ -24,5 +26,6 @@ import java.lang.annotation.Target;
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
+@PublicApi
 public @interface ValueType {
 }
