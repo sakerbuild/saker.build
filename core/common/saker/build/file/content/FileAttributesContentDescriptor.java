@@ -198,7 +198,7 @@ public final class FileAttributesContentDescriptor implements ContentDescriptor,
 		}
 		FileAttributesContentDescriptor ocd = (FileAttributesContentDescriptor) o;
 		return this.size != ocd.size || this.lastModifiedMillis != ocd.lastModifiedMillis
-				|| !this.providerKey.equals(ocd.providerKey) || !this.filePath.equals(ocd.filePath);
+				|| !Objects.equals(this.providerKey, ocd.providerKey) || !Objects.equals(this.filePath, ocd.filePath);
 	}
 
 	@Override
@@ -219,13 +219,7 @@ public final class FileAttributesContentDescriptor implements ContentDescriptor,
 
 	@Override
 	public int hashCode() {
-		final int prime = 31;
-		int result = 1;
-		result = prime * result + filePath.hashCode();
-		result = prime * result + (int) (lastModifiedMillis ^ (lastModifiedMillis >>> 32));
-		result = prime * result + providerKey.hashCode();
-		result = prime * result + (int) (size ^ (size >>> 32));
-		return result;
+		return Objects.hashCode(providerKey) * 31 + Objects.hashCode(filePath);
 	}
 
 	@Override
@@ -241,9 +235,9 @@ public final class FileAttributesContentDescriptor implements ContentDescriptor,
 			return false;
 		if (size != other.size)
 			return false;
-		if (!filePath.equals(other.filePath))
+		if (!Objects.equals(filePath, other.filePath))
 			return false;
-		if (!providerKey.equals(other.providerKey))
+		if (!Objects.equals(providerKey, other.providerKey))
 			return false;
 		return true;
 	}
