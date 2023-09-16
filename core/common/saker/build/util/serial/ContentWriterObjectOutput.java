@@ -1281,7 +1281,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	public void writeBytes(String s) throws IOException {
 		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		out.writeByte(C_BYTEARRAY);
-		writeInt(s.length() * 2);
+		writeRawVarInt(s.length() * 2);
 		out.writeBytes(s);
 	}
 
@@ -1641,7 +1641,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		}
 		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		out.writeByte(C_BYTEARRAY);
-		writeInt(len);
+		writeRawVarInt(len);
 		out.write(b, off, len);
 	}
 
@@ -1804,7 +1804,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		addSerializedObject(obj);
 		int len = Array.getLength(obj);
 		int lenpos = out.size();
-		out.writeInt(len);
+		writeRawVarInt(len);
 		int i = 0;
 		try {
 			@SuppressWarnings("unchecked")

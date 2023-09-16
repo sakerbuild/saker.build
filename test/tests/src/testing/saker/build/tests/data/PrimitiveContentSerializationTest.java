@@ -66,7 +66,16 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 
 		Object[] arrays = new Object[] { new byte[] { 1, 2, 3 }, new short[] { 1, 2, 3 }, new int[] { 1, 2, 3 },
 				new long[] { 1, 2, 3 }, new char[] { 1, 2, 3 }, new float[] { 1, 2, 3 }, new double[] { 1, 2, 3 },
-				new boolean[] { true, false }, };
+				new boolean[] { true, false }, new String[] { "a", "b", "123" }, };
+
+		byte[] bytedata = new byte[123];
+		byte[] bytedata2 = new byte[256 + 123];
+		byte[] bytedata3 = new byte[256 * 256 + 123];
+		byte[] bytedata4 = new byte[256 * 256 * 256 + 123];
+		random.nextBytes(bytedata);
+		random.nextBytes(bytedata2);
+		random.nextBytes(bytedata3);
+		random.nextBytes(bytedata4);
 
 		try (ContentWriterObjectOutput out = new ContentWriterObjectOutput(registry)) {
 			out.writeBoolean(true);
@@ -78,6 +87,7 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 				out.writeShort(v);
 				out.writeObject(v);
 			}
+			out.write(bytedata);
 
 			for (int v : ints) {
 				out.writeInt(v);
@@ -97,15 +107,26 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 				out.writeObject(v);
 			}
 
+			out.write(bytedata2);
 			for (Object arr : arrays) {
 				out.writeObject(arr);
 			}
+
+			out.write(bytedata3);
+			out.write(bytedata4);
+
+			out.writeObject("END");
 
 			out.drainTo((ByteSink) baos);
 		}
 		System.out.println("Size: " + baos.size());
 		try (ContentReaderObjectInput in = new ContentReaderObjectInput(registry,
 				new UnsyncByteArrayInputStream(baos.toByteArray()))) {
+			byte[] bytedataread = new byte[bytedata.length];
+			byte[] bytedataread2 = new byte[bytedata2.length];
+			byte[] bytedataread3 = new byte[bytedata3.length];
+			byte[] bytedataread4 = new byte[bytedata4.length];
+
 			assertTrue(in.readBoolean());
 			assertFalse(in.readBoolean());
 			assertEquals(true, in.readObject());
@@ -116,6 +137,9 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 				assertEquals(v, in.readObject());
 			}
 
+			in.readFully(bytedataread);
+			assertEquals(bytedata, bytedataread);
+
 			for (int v : ints) {
 				assertEquals(v, in.readInt());
 				assertEquals(v, in.readObject());
@@ -134,9 +158,19 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 				assertEquals(v, in.readObject());
 			}
 
+			in.readFully(bytedataread2);
+			assertEquals(bytedata2, bytedataread2);
+
 			for (Object arr : arrays) {
 				assertEquals(arr, in.readObject());
 			}
+
+			in.readFully(bytedataread3);
+			assertEquals(bytedata3, bytedataread3);
+			in.readFully(bytedataread4);
+			assertEquals(bytedata4, bytedataread4);
+
+			assertEquals("END", in.readObject());
 		}
 	}
 

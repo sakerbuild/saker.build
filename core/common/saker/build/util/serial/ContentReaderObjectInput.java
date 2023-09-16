@@ -721,7 +721,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 					return state.in.read();
 				}
 				case ContentWriterObjectOutput.C_BYTEARRAY: {
-					int rccount = readInt();
+					int rccount = readRawVarInt();
 					if (rccount <= 0) {
 						continue;
 					}
@@ -771,7 +771,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 					continue;
 				}
 				case ContentWriterObjectOutput.C_BYTEARRAY: {
-					state.byteContentRemaining = readInt();
+					state.byteContentRemaining = readRawVarInt();
 					if (state.byteContentRemaining > 0) {
 						int c = Math.min(state.byteContentRemaining, len);
 						int read = state.in.read(b, off, c);
@@ -1089,7 +1089,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 			}
 			return serializedobj.get();
 		}
-		int len = state.in.readInt();
+		int len = readRawVarInt();
 		checkInvalidLength(len);
 		if (cmd == ContentWriterObjectOutput.C_OBJECT_ARRAY_ERROR) {
 			FailedSerializedObject<Object> serializedobj = new FailedSerializedObject<>(
@@ -1579,7 +1579,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 					break;
 				}
 				case ContentWriterObjectOutput.C_BYTEARRAY: {
-					int len = readInt();
+					int len = readRawVarInt();
 					checkInvalidLength(len);
 					StreamUtils.skipStreamExactly(state.in, len);
 					break;
