@@ -57,18 +57,18 @@ public class ContentReaderObjectInput implements ObjectInput {
 					ContentWriterObjectOutput.C_UTF_PREFIXED, ContentWriterObjectOutput.C_UTF_PREFIXED_LOWBYTES, });
 
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_INT = ImmutableUtils.makeImmutableNavigableSet(
-			new Integer[] { ContentWriterObjectOutput.C_INT_4, ContentWriterObjectOutput.C_INT_1,
-					ContentWriterObjectOutput.C_INT_2, ContentWriterObjectOutput.C_INT_3,
+			new Integer[] { ContentWriterObjectOutput.C_INT_1, ContentWriterObjectOutput.C_INT_2,
+					ContentWriterObjectOutput.C_INT_3, ContentWriterObjectOutput.C_INT_4,
 					ContentWriterObjectOutput.C_INT_F_1, ContentWriterObjectOutput.C_INT_F_2,
 					ContentWriterObjectOutput.C_INT_F_3, ContentWriterObjectOutput.C_INT_ZERO,
 					ContentWriterObjectOutput.C_INT_NEGATIVE_ONE, ContentWriterObjectOutput.C_INT_ONE, });
 
-	private static final NavigableSet<Integer> EXPECTED_COMMANDS_LONG = ImmutableUtils
-			.makeImmutableNavigableSet(new Integer[] { ContentWriterObjectOutput.C_LONG_8,
-					ContentWriterObjectOutput.C_LONG_2, ContentWriterObjectOutput.C_LONG_4,
-					ContentWriterObjectOutput.C_LONG_6, ContentWriterObjectOutput.C_LONG_F_2,
-					ContentWriterObjectOutput.C_LONG_F_4, ContentWriterObjectOutput.C_LONG_F_6,
-					ContentWriterObjectOutput.C_LONG_ZERO, ContentWriterObjectOutput.C_LONG_NEGATIVE_ONE });
+	private static final NavigableSet<Integer> EXPECTED_COMMANDS_LONG = ImmutableUtils.makeImmutableNavigableSet(
+			new Integer[] { ContentWriterObjectOutput.C_LONG_2, ContentWriterObjectOutput.C_LONG_4,
+					ContentWriterObjectOutput.C_LONG_6, ContentWriterObjectOutput.C_LONG_8,
+					ContentWriterObjectOutput.C_LONG_F_2, ContentWriterObjectOutput.C_LONG_F_4,
+					ContentWriterObjectOutput.C_LONG_F_6, ContentWriterObjectOutput.C_LONG_ZERO,
+					ContentWriterObjectOutput.C_LONG_NEGATIVE_ONE, ContentWriterObjectOutput.C_LONG_ONE });
 
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_BYTE = ImmutableUtils.makeImmutableNavigableSet(
 			new Integer[] { ContentWriterObjectOutput.C_BYTE, ContentWriterObjectOutput.C_BYTEARRAY });
@@ -94,7 +94,22 @@ public class ContentReaderObjectInput implements ObjectInput {
 					ContentWriterObjectOutput.C_OBJECT_UTF_IDX_1, ContentWriterObjectOutput.C_OBJECT_UTF_IDX_2,
 					ContentWriterObjectOutput.C_OBJECT_UTF_IDX_3, ContentWriterObjectOutput.C_OBJECT_UTF_LOWBYTES,
 					ContentWriterObjectOutput.C_OBJECT_UTF_PREFIXED,
-					ContentWriterObjectOutput.C_OBJECT_UTF_PREFIXED_LOWBYTES, });
+					ContentWriterObjectOutput.C_OBJECT_UTF_PREFIXED_LOWBYTES,
+					ContentWriterObjectOutput.C_OBJECT_BOOLEAN_FALSE, ContentWriterObjectOutput.C_OBJECT_BOOLEAN_TRUE,
+					ContentWriterObjectOutput.C_OBJECT_FLOAT, ContentWriterObjectOutput.C_OBJECT_DOUBLE,
+					ContentWriterObjectOutput.C_OBJECT_BYTE, ContentWriterObjectOutput.C_OBJECT_CHAR,
+					ContentWriterObjectOutput.C_OBJECT_SHORT_1, ContentWriterObjectOutput.C_OBJECT_SHORT_2,
+					ContentWriterObjectOutput.C_OBJECT_INT_1, ContentWriterObjectOutput.C_OBJECT_INT_2,
+					ContentWriterObjectOutput.C_OBJECT_INT_3, ContentWriterObjectOutput.C_OBJECT_INT_4,
+					ContentWriterObjectOutput.C_OBJECT_INT_F_1, ContentWriterObjectOutput.C_OBJECT_INT_F_2,
+					ContentWriterObjectOutput.C_OBJECT_INT_F_3, ContentWriterObjectOutput.C_OBJECT_INT_ZERO,
+					ContentWriterObjectOutput.C_OBJECT_INT_NEGATIVE_ONE, ContentWriterObjectOutput.C_OBJECT_INT_ONE,
+					ContentWriterObjectOutput.C_OBJECT_LONG_2, ContentWriterObjectOutput.C_OBJECT_LONG_4,
+					ContentWriterObjectOutput.C_OBJECT_LONG_6, ContentWriterObjectOutput.C_OBJECT_LONG_8,
+					ContentWriterObjectOutput.C_OBJECT_LONG_F_2, ContentWriterObjectOutput.C_OBJECT_LONG_F_4,
+					ContentWriterObjectOutput.C_OBJECT_LONG_F_6, ContentWriterObjectOutput.C_OBJECT_LONG_ZERO,
+					ContentWriterObjectOutput.C_OBJECT_LONG_NEGATIVE_ONE,
+					ContentWriterObjectOutput.C_OBJECT_LONG_ONE, });
 	private static final NavigableSet<Integer> EXPECTED_COMMANDS_TYPE = ImmutableUtils
 			.makeImmutableNavigableSet(new Integer[] { ContentWriterObjectOutput.C_OBJECT_TYPE,
 					ContentWriterObjectOutput.C_OBJECT_REL_2, ContentWriterObjectOutput.C_OBJECT_REL_1,
@@ -464,7 +479,10 @@ public class ContentReaderObjectInput implements ObjectInput {
 				return 0L;
 			}
 			case ContentWriterObjectOutput.C_LONG_NEGATIVE_ONE: {
-				return -1;
+				return -1L;
+			}
+			case ContentWriterObjectOutput.C_LONG_ONE: {
+				return 1L;
 			}
 			default: {
 				throw new AssertionError(cmd);
@@ -870,6 +888,90 @@ public class ContentReaderObjectInput implements ObjectInput {
 			}
 			case ContentWriterObjectOutput.C_OBJECT_PROXY: {
 				return readExternalProxy();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_BOOLEAN_FALSE: {
+				return Boolean.FALSE;
+			}
+			case ContentWriterObjectOutput.C_OBJECT_BOOLEAN_TRUE: {
+				return Boolean.TRUE;
+			}
+			case ContentWriterObjectOutput.C_OBJECT_FLOAT: {
+				return state.in.readFloat();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_DOUBLE: {
+				return state.in.readDouble();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_BYTE: {
+				return state.in.readByte();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_CHAR: {
+				return state.in.readChar();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_SHORT_1: {
+				return (short) state.in.readUnsignedByte();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_SHORT_2: {
+				return state.in.readShort();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_INT_1: {
+				return readIntImpl1();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_INT_2: {
+				return readIntImpl2();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_INT_3: {
+				return readIntImpl3();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_INT_4: {
+				return readIntImpl();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_INT_F_1: {
+				return readIntImpl1() | 0xFFFF_FF00;
+			}
+			case ContentWriterObjectOutput.C_OBJECT_INT_F_2: {
+				return readIntImpl2() | 0xFFFF_0000;
+			}
+			case ContentWriterObjectOutput.C_OBJECT_INT_F_3: {
+				return readIntImpl3() | 0xFF00_0000;
+			}
+			case ContentWriterObjectOutput.C_OBJECT_INT_ZERO: {
+				return 0;
+			}
+			case ContentWriterObjectOutput.C_OBJECT_INT_ONE: {
+				return 1;
+			}
+			case ContentWriterObjectOutput.C_OBJECT_INT_NEGATIVE_ONE: {
+				return -1;
+			}
+			case ContentWriterObjectOutput.C_OBJECT_LONG_2: {
+				return readLongImpl2();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_LONG_4: {
+				return readLongImpl4();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_LONG_6: {
+				return readLongImpl6();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_LONG_8: {
+				return readLongImpl();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_LONG_F_2: {
+				return readLongImpl2() | 0xFFFFFFFF_FFFF0000L;
+			}
+			case ContentWriterObjectOutput.C_OBJECT_LONG_F_4: {
+				return readLongImplNegative4();
+			}
+			case ContentWriterObjectOutput.C_OBJECT_LONG_F_6: {
+				return readLongImpl6() | 0xFFFF0000_00000000L;
+			}
+			case ContentWriterObjectOutput.C_OBJECT_LONG_ZERO: {
+				return 0L;
+			}
+			case ContentWriterObjectOutput.C_OBJECT_LONG_NEGATIVE_ONE: {
+				return -1L;
+			}
+			case ContentWriterObjectOutput.C_OBJECT_LONG_ONE: {
+				return 1L;
 			}
 			default: {
 				throw new AssertionError(cmd);
@@ -1529,6 +1631,10 @@ public class ContentReaderObjectInput implements ObjectInput {
 					readExternalProxy();
 					break;
 				}
+				case ContentWriterObjectOutput.C_OBJECT_BOOLEAN_FALSE:
+				case ContentWriterObjectOutput.C_OBJECT_BOOLEAN_TRUE: {
+					break;
+				}
 				case ContentWriterObjectOutput.C_UTF: {
 					readUTFImpl();
 					break;
@@ -1574,7 +1680,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 				case ContentWriterObjectOutput.C_BOOLEAN_TRUE: {
 					break;
 				}
-				case ContentWriterObjectOutput.C_BYTE: {
+				case ContentWriterObjectOutput.C_BYTE:
+				case ContentWriterObjectOutput.C_OBJECT_BYTE: {
 					state.in.readByte();
 					break;
 				}
@@ -1584,7 +1691,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 					StreamUtils.skipStreamExactly(state.in, len);
 					break;
 				}
-				case ContentWriterObjectOutput.C_CHAR: {
+				case ContentWriterObjectOutput.C_CHAR:
+				case ContentWriterObjectOutput.C_OBJECT_CHAR: {
 					state.in.readChar();
 					break;
 				}
@@ -1594,66 +1702,91 @@ public class ContentReaderObjectInput implements ObjectInput {
 					StreamUtils.skipStreamExactly(state.in, charcount * 2);
 					break;
 				}
-				case ContentWriterObjectOutput.C_DOUBLE: {
+				case ContentWriterObjectOutput.C_DOUBLE:
+				case ContentWriterObjectOutput.C_OBJECT_DOUBLE: {
 					state.in.readDouble();
 					break;
 				}
-				case ContentWriterObjectOutput.C_FLOAT: {
+				case ContentWriterObjectOutput.C_FLOAT:
+				case ContentWriterObjectOutput.C_OBJECT_FLOAT: {
 					state.in.readFloat();
 					break;
 				}
 				case ContentWriterObjectOutput.C_INT_1:
-				case ContentWriterObjectOutput.C_INT_F_1: {
+				case ContentWriterObjectOutput.C_INT_F_1:
+				case ContentWriterObjectOutput.C_OBJECT_INT_1:
+				case ContentWriterObjectOutput.C_OBJECT_INT_F_1: {
 					readIntImpl1();
 					break;
 				}
 				case ContentWriterObjectOutput.C_INT_2:
-				case ContentWriterObjectOutput.C_INT_F_2: {
+				case ContentWriterObjectOutput.C_INT_F_2:
+				case ContentWriterObjectOutput.C_OBJECT_INT_2:
+				case ContentWriterObjectOutput.C_OBJECT_INT_F_2: {
 					readIntImpl2();
 					break;
 				}
 				case ContentWriterObjectOutput.C_INT_3:
-				case ContentWriterObjectOutput.C_INT_F_3: {
+				case ContentWriterObjectOutput.C_INT_F_3:
+				case ContentWriterObjectOutput.C_OBJECT_INT_3:
+				case ContentWriterObjectOutput.C_OBJECT_INT_F_3: {
 					readIntImpl3();
 					break;
 				}
-				case ContentWriterObjectOutput.C_INT_4: {
+				case ContentWriterObjectOutput.C_INT_4:
+				case ContentWriterObjectOutput.C_OBJECT_INT_4: {
 					readIntImpl();
 					break;
 				}
 				case ContentWriterObjectOutput.C_INT_ZERO:
 				case ContentWriterObjectOutput.C_INT_ONE:
-				case ContentWriterObjectOutput.C_INT_NEGATIVE_ONE: {
-					break;
-				}
-				case ContentWriterObjectOutput.C_LONG_8: {
-					readLongImpl();
+				case ContentWriterObjectOutput.C_INT_NEGATIVE_ONE:
+				case ContentWriterObjectOutput.C_OBJECT_INT_ZERO:
+				case ContentWriterObjectOutput.C_OBJECT_INT_ONE:
+				case ContentWriterObjectOutput.C_OBJECT_INT_NEGATIVE_ONE: {
 					break;
 				}
 				case ContentWriterObjectOutput.C_LONG_2:
-				case ContentWriterObjectOutput.C_LONG_F_2: {
+				case ContentWriterObjectOutput.C_LONG_F_2:
+				case ContentWriterObjectOutput.C_OBJECT_LONG_2:
+				case ContentWriterObjectOutput.C_OBJECT_LONG_F_2: {
 					readLongImpl2();
 					break;
 				}
 				case ContentWriterObjectOutput.C_LONG_4:
-				case ContentWriterObjectOutput.C_LONG_F_4: {
+				case ContentWriterObjectOutput.C_LONG_F_4:
+				case ContentWriterObjectOutput.C_OBJECT_LONG_4:
+				case ContentWriterObjectOutput.C_OBJECT_LONG_F_4: {
 					readLongImpl4();
 					break;
 				}
 				case ContentWriterObjectOutput.C_LONG_6:
-				case ContentWriterObjectOutput.C_LONG_F_6: {
+				case ContentWriterObjectOutput.C_LONG_F_6:
+				case ContentWriterObjectOutput.C_OBJECT_LONG_6:
+				case ContentWriterObjectOutput.C_OBJECT_LONG_F_6: {
 					readLongImpl6();
 					break;
 				}
+				case ContentWriterObjectOutput.C_LONG_8:
+				case ContentWriterObjectOutput.C_OBJECT_LONG_8: {
+					readLongImpl();
+					break;
+				}
 				case ContentWriterObjectOutput.C_LONG_ZERO:
-				case ContentWriterObjectOutput.C_LONG_NEGATIVE_ONE: {
+				case ContentWriterObjectOutput.C_LONG_NEGATIVE_ONE:
+				case ContentWriterObjectOutput.C_LONG_ONE:
+				case ContentWriterObjectOutput.C_OBJECT_LONG_ZERO:
+				case ContentWriterObjectOutput.C_OBJECT_LONG_NEGATIVE_ONE:
+				case ContentWriterObjectOutput.C_OBJECT_LONG_ONE: {
 					break;
 				}
-				case ContentWriterObjectOutput.C_SHORT_1: {
-					state.in.readByte();
+				case ContentWriterObjectOutput.C_SHORT_1:
+				case ContentWriterObjectOutput.C_OBJECT_SHORT_1: {
+					state.in.readUnsignedByte();
 					break;
 				}
-				case ContentWriterObjectOutput.C_SHORT_2: {
+				case ContentWriterObjectOutput.C_SHORT_2:
+				case ContentWriterObjectOutput.C_OBJECT_SHORT_2: {
 					state.in.readShort();
 					break;
 				}

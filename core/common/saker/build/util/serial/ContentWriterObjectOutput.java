@@ -74,52 +74,83 @@ import testing.saker.build.flag.TestFlag;
 
 public class ContentWriterObjectOutput implements ObjectOutput {
 	static final int C_BYTE = 1;
-	static final int C_CHAR = C_BYTE + 1;
+	static final int C_OBJECT_BYTE = C_BYTE + 1;
+
+	static final int C_CHAR = C_OBJECT_BYTE + 1;
+	static final int C_OBJECT_CHAR = C_CHAR + 1;
 
 	//The base <code>C_SHORT_N</code> value, to which the number of bytes can be added to get the command value.
 	//E.g.: C_SHORT_BASE + 2 == C_SHORT_2
-	static final int C_SHORT_BASE = C_CHAR;
-	static final int C_SHORT_1 = C_CHAR + 1;
-	static final int C_SHORT_2 = C_SHORT_1 + 1;
+	static final int C_SHORT_BASE = C_OBJECT_CHAR;
+	static final int C_SHORT_1 = C_SHORT_BASE + 1;
+	static final int C_SHORT_2 = C_SHORT_BASE + 2;
+	static final int C_OBJECT_SHORT_BASE = C_SHORT_2;
+	static final int C_OBJECT_SHORT_1 = C_OBJECT_SHORT_BASE + 1;
+	static final int C_OBJECT_SHORT_2 = C_OBJECT_SHORT_BASE + 2;
 
 	//The base <code>C_INT_N</code> value, to which the number of bytes can be added to get the command value.
 	//E.g.: C_INT_BASE + 2 == C_INT_2
-	static final int C_INT_BASE = C_SHORT_2;
+	static final int C_INT_BASE = C_OBJECT_SHORT_2;
 	static final int C_INT_1 = C_INT_BASE + 1;
 	static final int C_INT_2 = C_INT_BASE + 2;
 	static final int C_INT_3 = C_INT_BASE + 3;
 	static final int C_INT_4 = C_INT_BASE + 4;
-
-	static final int C_INT_F_1 = C_INT_4 + 1;
-	static final int C_INT_F_2 = C_INT_F_1 + 1;
-	static final int C_INT_F_3 = C_INT_F_2 + 1;
-
-	static final int C_INT_ZERO = C_INT_F_3 + 1;
-	static final int C_INT_NEGATIVE_ONE = C_INT_ZERO + 1;
-	static final int C_INT_ONE = C_INT_NEGATIVE_ONE + 1;
+	static final int C_INT_F_1 = C_INT_BASE + 5;
+	static final int C_INT_F_2 = C_INT_BASE + 6;
+	static final int C_INT_F_3 = C_INT_BASE + 7;
+	static final int C_INT_ZERO = C_INT_BASE + 8;
+	static final int C_INT_NEGATIVE_ONE = C_INT_BASE + 9;
+	static final int C_INT_ONE = C_INT_BASE + 10;
+	static final int C_OBJECT_INT_BASE = C_INT_ONE;
+	static final int C_OBJECT_INT_1 = C_OBJECT_INT_BASE + 1;
+	static final int C_OBJECT_INT_2 = C_OBJECT_INT_BASE + 2;
+	static final int C_OBJECT_INT_3 = C_OBJECT_INT_BASE + 3;
+	static final int C_OBJECT_INT_4 = C_OBJECT_INT_BASE + 4;
+	static final int C_OBJECT_INT_F_1 = C_OBJECT_INT_BASE + 5;
+	static final int C_OBJECT_INT_F_2 = C_OBJECT_INT_BASE + 6;
+	static final int C_OBJECT_INT_F_3 = C_OBJECT_INT_BASE + 7;
+	static final int C_OBJECT_INT_ZERO = C_OBJECT_INT_BASE + 8;
+	static final int C_OBJECT_INT_NEGATIVE_ONE = C_OBJECT_INT_BASE + 9;
+	static final int C_OBJECT_INT_ONE = C_OBJECT_INT_BASE + 10;
 
 	//The base <code>C_LONG_N</code> value, to which the number of EVEN bytes can be added to get the command value.
 	//E.g.: C_LONG_BASE + (4 / 2) == C_LONG_4
 	//      to write a long as 4 bytes
-	static final int C_LONG_BASE = C_INT_ONE;
+	static final int C_LONG_BASE = C_OBJECT_INT_ONE;
 	static final int C_LONG_2 = C_LONG_BASE + 1;
 	static final int C_LONG_4 = C_LONG_BASE + 2;
 	static final int C_LONG_6 = C_LONG_BASE + 3;
 	static final int C_LONG_8 = C_LONG_BASE + 4;
+	static final int C_LONG_F_2 = C_LONG_BASE + 5;
+	static final int C_LONG_F_4 = C_LONG_BASE + 6;
+	static final int C_LONG_F_6 = C_LONG_BASE + 7;
+	static final int C_LONG_ZERO = C_LONG_BASE + 8;
+	static final int C_LONG_NEGATIVE_ONE = C_LONG_BASE + 9;
+	static final int C_LONG_ONE = C_LONG_BASE + 10;
+	static final int C_OBJECT_LONG_BASE = C_LONG_ONE;
+	static final int C_OBJECT_LONG_2 = C_OBJECT_LONG_BASE + 1;
+	static final int C_OBJECT_LONG_4 = C_OBJECT_LONG_BASE + 2;
+	static final int C_OBJECT_LONG_6 = C_OBJECT_LONG_BASE + 3;
+	static final int C_OBJECT_LONG_8 = C_OBJECT_LONG_BASE + 4;
+	static final int C_OBJECT_LONG_F_2 = C_OBJECT_LONG_BASE + 5;
+	static final int C_OBJECT_LONG_F_4 = C_OBJECT_LONG_BASE + 6;
+	static final int C_OBJECT_LONG_F_6 = C_OBJECT_LONG_BASE + 7;
+	static final int C_OBJECT_LONG_ZERO = C_OBJECT_LONG_BASE + 8;
+	static final int C_OBJECT_LONG_NEGATIVE_ONE = C_OBJECT_LONG_BASE + 9;
+	static final int C_OBJECT_LONG_ONE = C_OBJECT_LONG_BASE + 10;
 
-	static final int C_LONG_F_2 = C_LONG_8 + 1;
-	static final int C_LONG_F_4 = C_LONG_F_2 + 1;
-	static final int C_LONG_F_6 = C_LONG_F_4 + 1;
-	static final int C_LONG_ZERO = C_LONG_F_6 + 1;
-	static final int C_LONG_NEGATIVE_ONE = C_LONG_ZERO + 1;
+	static final int C_FLOAT = C_OBJECT_LONG_ONE + 1;
+	static final int C_OBJECT_FLOAT = C_FLOAT + 1;
 
-	static final int C_FLOAT = C_LONG_NEGATIVE_ONE + 1;
-	static final int C_DOUBLE = C_FLOAT + 1;
+	static final int C_DOUBLE = C_OBJECT_FLOAT + 1;
+	static final int C_OBJECT_DOUBLE = C_DOUBLE + 1;
 
-	static final int C_BOOLEAN_TRUE = C_DOUBLE + 1;
+	static final int C_BOOLEAN_TRUE = C_OBJECT_DOUBLE + 1;
 	static final int C_BOOLEAN_FALSE = C_BOOLEAN_TRUE + 1;
+	static final int C_OBJECT_BOOLEAN_TRUE = C_BOOLEAN_FALSE + 1;
+	static final int C_OBJECT_BOOLEAN_FALSE = C_OBJECT_BOOLEAN_TRUE + 1;
 
-	static final int C_UTF = C_BOOLEAN_FALSE + 1;
+	static final int C_UTF = C_OBJECT_BOOLEAN_FALSE + 1;
 	//The base <code>C_UTF_IDX_N</code> value, to which the number of bytes can be added to get the command value.
 	//E.g.: C_UTF_IDX_BASE + 2 == C_UTF_IDX_2
 	static final int C_UTF_IDX_BASE = C_UTF;
@@ -127,9 +158,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	static final int C_UTF_IDX_2 = C_UTF_IDX_BASE + 2;
 	static final int C_UTF_IDX_3 = C_UTF_IDX_BASE + 3;
 	static final int C_UTF_IDX_4 = C_UTF_IDX_BASE + 4;
-	static final int C_UTF_LOWBYTES = C_UTF_IDX_4 + 1;
-	static final int C_UTF_PREFIXED = C_UTF_LOWBYTES + 1;
-	static final int C_UTF_PREFIXED_LOWBYTES = C_UTF_PREFIXED + 1;
+	static final int C_UTF_LOWBYTES = C_UTF_IDX_BASE + 5;
+	static final int C_UTF_PREFIXED = C_UTF_IDX_BASE + 6;
+	static final int C_UTF_PREFIXED_LOWBYTES = C_UTF_IDX_BASE + 7;
 
 	static final int C_BYTEARRAY = C_UTF_PREFIXED_LOWBYTES + 1;
 	static final int C_CHARS = C_BYTEARRAY + 1;
@@ -170,13 +201,13 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 	static final int C_OBJECT_UTF_IDX_2 = C_OBJECT_UTF_IDX_BASE + 2;
 	static final int C_OBJECT_UTF_IDX_3 = C_OBJECT_UTF_IDX_BASE + 3;
 	static final int C_OBJECT_UTF_IDX_4 = C_OBJECT_UTF_IDX_BASE + 4;
-	static final int C_OBJECT_UTF_LOWBYTES = C_OBJECT_UTF_IDX_4 + 1;
-	static final int C_OBJECT_UTF_PREFIXED = C_OBJECT_UTF_LOWBYTES + 1;
-	static final int C_OBJECT_UTF_PREFIXED_LOWBYTES = C_OBJECT_UTF_PREFIXED + 1;
+	static final int C_OBJECT_UTF_LOWBYTES = C_OBJECT_UTF_IDX_BASE + 5;
+	static final int C_OBJECT_UTF_PREFIXED = C_OBJECT_UTF_IDX_BASE + 6;
+	static final int C_OBJECT_UTF_PREFIXED_LOWBYTES = C_OBJECT_UTF_IDX_BASE + 7;
 
 	static final int C_OBJECT_PROXY = C_OBJECT_UTF_PREFIXED_LOWBYTES + 1;
 
-	static final int C_MAX_COMMAND_VALUE = 66;
+	static final int C_MAX_COMMAND_VALUE = 95;
 	static {
 		if (TestFlag.ENABLED) {
 			//check that the last command value equals to the max command value constants
@@ -199,26 +230,27 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			case C_SHORT_1:
 			case C_SHORT_2:
 				return "short";
-			case C_INT_4:
-			case C_INT_3:
-			case C_INT_2:
 			case C_INT_1:
-			case C_INT_F_3:
-			case C_INT_F_2:
+			case C_INT_2:
+			case C_INT_3:
+			case C_INT_4:
 			case C_INT_F_1:
+			case C_INT_F_2:
+			case C_INT_F_3:
 			case C_INT_ZERO:
-			case C_INT_ONE:
 			case C_INT_NEGATIVE_ONE:
+			case C_INT_ONE:
 				return "int";
-			case C_LONG_8:
 			case C_LONG_2:
 			case C_LONG_4:
 			case C_LONG_6:
+			case C_LONG_8:
 			case C_LONG_F_2:
 			case C_LONG_F_4:
 			case C_LONG_F_6:
 			case C_LONG_ZERO:
 			case C_LONG_NEGATIVE_ONE:
+			case C_LONG_ONE:
 				return "long";
 			case C_FLOAT:
 				return "float";
@@ -237,7 +269,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			case C_UTF_PREFIXED_LOWBYTES:
 				return "UTF";
 			case C_CHARS:
-				return "char";
+				return "chars";
 			case C_OBJECT_REL_2:
 			case C_OBJECT_REL_1:
 			case C_OBJECT_IDX_4:
@@ -277,6 +309,43 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				return "object (classloader)";
 			case C_OBJECT_PROXY:
 				return "object (proxy)";
+			case C_OBJECT_BOOLEAN_FALSE:
+				return "object (Boolean false)";
+			case C_OBJECT_BOOLEAN_TRUE:
+				return "object (Boolean true)";
+			case C_OBJECT_FLOAT:
+				return "object (Float)";
+			case C_OBJECT_DOUBLE:
+				return "object (Double)";
+			case C_OBJECT_BYTE:
+				return "object (Byte)";
+			case C_OBJECT_CHAR:
+				return "object (Character)";
+			case C_OBJECT_SHORT_1:
+			case C_OBJECT_SHORT_2:
+				return "object (Short)";
+			case C_OBJECT_INT_1:
+			case C_OBJECT_INT_2:
+			case C_OBJECT_INT_3:
+			case C_OBJECT_INT_4:
+			case C_OBJECT_INT_F_1:
+			case C_OBJECT_INT_F_2:
+			case C_OBJECT_INT_F_3:
+			case C_OBJECT_INT_ZERO:
+			case C_OBJECT_INT_NEGATIVE_ONE:
+			case C_OBJECT_INT_ONE:
+				return "object (Integer)";
+			case C_OBJECT_LONG_2:
+			case C_OBJECT_LONG_4:
+			case C_OBJECT_LONG_6:
+			case C_OBJECT_LONG_8:
+			case C_OBJECT_LONG_F_2:
+			case C_OBJECT_LONG_F_4:
+			case C_OBJECT_LONG_F_6:
+			case C_OBJECT_LONG_ZERO:
+			case C_OBJECT_LONG_NEGATIVE_ONE:
+			case C_OBJECT_LONG_ONE:
+				return "object (Long)";
 			default: {
 				return "<unknown>";
 			}
@@ -804,115 +873,6 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			}
 		});
 
-		VALUE_CLASS_WRITERS.put(Byte.class, (Byte v, ContentWriterObjectOutput writer) -> writer.out.writeByte(v));
-		VALUE_CLASS_READERS.put(Byte.class.getName(), reader -> {
-			try {
-				Byte res = reader.state.in.readByte();
-				reader.addSerializedObject(res);
-				return res;
-			} catch (Exception e) {
-				SerializedObject<Byte> serialobj = new SerializationProtocolFailedSerializedObject<>(
-						"Failed to read Byte.", e);
-				reader.addSerializedObject(serialobj);
-				return serialobj.get();
-			}
-		});
-		VALUE_CLASS_WRITERS.put(Short.class, (Short v, ContentWriterObjectOutput writer) -> writer.out.writeShort(v));
-		VALUE_CLASS_READERS.put(Short.class.getName(), reader -> {
-			try {
-				Short res = reader.state.in.readShort();
-				reader.addSerializedObject(res);
-				return res;
-			} catch (Exception e) {
-				SerializedObject<Short> serialobj = new SerializationProtocolFailedSerializedObject<>(
-						"Failed to read Short.", e);
-				reader.addSerializedObject(serialobj);
-				return serialobj.get();
-			}
-		});
-		VALUE_CLASS_WRITERS.put(Integer.class,
-				(Integer v, ContentWriterObjectOutput writer) -> writer.writeRawVarInt(v));
-		VALUE_CLASS_READERS.put(Integer.class.getName(), reader -> {
-			try {
-				Integer res = reader.readRawVarInt();
-				reader.addSerializedObject(res);
-				return res;
-			} catch (Exception e) {
-				SerializedObject<Integer> serialobj = new SerializationProtocolFailedSerializedObject<>(
-						"Failed to read Integer.", e);
-				reader.addSerializedObject(serialobj);
-				return serialobj.get();
-			}
-		});
-		VALUE_CLASS_WRITERS.put(Long.class, (Long v, ContentWriterObjectOutput writer) -> writer.out.writeLong(v));
-		VALUE_CLASS_READERS.put(Long.class.getName(), reader -> {
-			try {
-				Long res = reader.state.in.readLong();
-				reader.addSerializedObject(res);
-				return res;
-			} catch (Exception e) {
-				SerializedObject<Long> serialobj = new SerializationProtocolFailedSerializedObject<>(
-						"Failed to read Long.", e);
-				reader.addSerializedObject(serialobj);
-				return serialobj.get();
-			}
-		});
-		VALUE_CLASS_WRITERS.put(Float.class, (Float v, ContentWriterObjectOutput writer) -> writer.out.writeFloat(v));
-		VALUE_CLASS_READERS.put(Float.class.getName(), reader -> {
-			try {
-				Float res = reader.state.in.readFloat();
-				reader.addSerializedObject(res);
-				return res;
-			} catch (Exception e) {
-				SerializedObject<Float> serialobj = new SerializationProtocolFailedSerializedObject<>(
-						"Failed to read Float.", e);
-				reader.addSerializedObject(serialobj);
-				return serialobj.get();
-			}
-		});
-		VALUE_CLASS_WRITERS.put(Double.class,
-				(Double v, ContentWriterObjectOutput writer) -> writer.out.writeDouble(v));
-		VALUE_CLASS_READERS.put(Double.class.getName(), reader -> {
-			try {
-				Double res = reader.state.in.readDouble();
-				reader.addSerializedObject(res);
-				return res;
-			} catch (Exception e) {
-				SerializedObject<Double> serialobj = new SerializationProtocolFailedSerializedObject<>(
-						"Failed to read Double.", e);
-				reader.addSerializedObject(serialobj);
-				return serialobj.get();
-			}
-		});
-		VALUE_CLASS_WRITERS.put(Character.class,
-				(Character v, ContentWriterObjectOutput writer) -> writer.out.writeChar(v));
-		VALUE_CLASS_READERS.put(Character.class.getName(), reader -> {
-			try {
-				Character res = reader.state.in.readChar();
-				reader.addSerializedObject(res);
-				return res;
-			} catch (Exception e) {
-				SerializedObject<Character> serialobj = new SerializationProtocolFailedSerializedObject<>(
-						"Failed to read Character.", e);
-				reader.addSerializedObject(serialobj);
-				return serialobj.get();
-			}
-		});
-		VALUE_CLASS_WRITERS.put(Boolean.class,
-				(Boolean v, ContentWriterObjectOutput writer) -> writer.out.writeBoolean(v));
-		VALUE_CLASS_READERS.put(Boolean.class.getName(), reader -> {
-			try {
-				Boolean res = reader.state.in.readBoolean();
-				reader.addSerializedObject(res);
-				return res;
-			} catch (Exception e) {
-				SerializedObject<Boolean> serialobj = new SerializationProtocolFailedSerializedObject<>(
-						"Failed to read Boolean.", e);
-				reader.addSerializedObject(serialobj);
-				return serialobj.get();
-			}
-		});
-
 		VALUE_CLASS_WRITERS.put(SakerPath.class,
 				(SakerPath v, ContentWriterObjectOutput writer) -> writer.writeUTF(v.toString()));
 		VALUE_CLASS_READERS.put(SakerPath.class.getName(), reader -> {
@@ -981,11 +941,42 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				(BiConsumer<DataOutputUnsyncByteArrayOutputStream, boolean[]>) DataOutputUnsyncByteArrayOutputStream::write);
 	}
 
+	private static final Map<Class<?>, IOBiConsumer<ContentWriterObjectOutput, ?>> BASE_TYPED_WRITERS = new HashMap<>();
+	static {
+		BASE_TYPED_WRITERS.put(Class.class,
+				(ContentWriterObjectOutput out, Class<?> c) -> out.writeTypeWithCommandImpl(c));
+		for (Entry<Class<?>, IOBiConsumer<?, ContentWriterObjectOutput>> entry : SERIALIZABLE_CLASS_WRITERS
+				.entrySet()) {
+			@SuppressWarnings("unchecked")
+			IOBiConsumer<Object, ContentWriterObjectOutput> serwriter = (IOBiConsumer<Object, ContentWriterObjectOutput>) entry
+					.getValue();
+			BASE_TYPED_WRITERS.put(entry.getKey(),
+					(out, obj) -> out.writeCustomSerializableWithCommand(obj, serwriter));
+		}
+		BASE_TYPED_WRITERS.put(Byte.class,
+				(IOBiConsumer<ContentWriterObjectOutput, Byte>) ContentWriterObjectOutput::writeByteObject);
+		BASE_TYPED_WRITERS.put(Short.class,
+				(IOBiConsumer<ContentWriterObjectOutput, Short>) ContentWriterObjectOutput::writeShortObject);
+		BASE_TYPED_WRITERS.put(Integer.class,
+				(IOBiConsumer<ContentWriterObjectOutput, Integer>) ContentWriterObjectOutput::writeIntObject);
+		BASE_TYPED_WRITERS.put(Long.class,
+				(IOBiConsumer<ContentWriterObjectOutput, Long>) ContentWriterObjectOutput::writeLongObject);
+		BASE_TYPED_WRITERS.put(Boolean.class,
+				(IOBiConsumer<ContentWriterObjectOutput, Boolean>) ContentWriterObjectOutput::writeBooleanObject);
+		BASE_TYPED_WRITERS.put(Float.class,
+				(IOBiConsumer<ContentWriterObjectOutput, Float>) ContentWriterObjectOutput::writeFloatObject);
+		BASE_TYPED_WRITERS.put(Double.class,
+				(IOBiConsumer<ContentWriterObjectOutput, Double>) ContentWriterObjectOutput::writeDoubleObject);
+		BASE_TYPED_WRITERS.put(Character.class,
+				(IOBiConsumer<ContentWriterObjectOutput, Character>) ContentWriterObjectOutput::writeCharObject);
+	}
+
 	private final DirectWritableDataOutputUnsyncByteArrayOutputStream out = new DirectWritableDataOutputUnsyncByteArrayOutputStream(
 			1024 * 8);
 
 	private final IdentityHashMap<Object, Integer> objectIndices = new IdentityHashMap<>();
-	private final Map<Class<?>, BuiltinValueWriterCache> builtinValueWriters = new HashMap<>();
+	private final Map<Class<?>, IOBiConsumer<ContentWriterObjectOutput, ?>> typedWriters = new HashMap<>(
+			BASE_TYPED_WRITERS);
 	private final NavigableMap<String, InternedValue<String>> stringInternalizer = new TreeMap<>();
 
 	/**
@@ -1005,7 +996,7 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			IOBiConsumer<Object, ContentWriterObjectOutput> writer = (IOBiConsumer<Object, ContentWriterObjectOutput>) entry
 					.getValue();
 			Class<?> type = entry.getKey();
-			builtinValueWriters.put(type, isComparableCacheable(type) ? BuiltinValueWriterCache.createTree(writer)
+			typedWriters.put(type, isComparableCacheable(type) ? BuiltinValueWriterCache.createTree(writer)
 					: BuiltinValueWriterCache.createHash(writer));
 		}
 	}
@@ -1023,9 +1014,17 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		out.writeByte(v ? C_BOOLEAN_TRUE : C_BOOLEAN_FALSE);
 	}
 
+	protected void writeBooleanObject(Boolean b) throws IOException {
+		out.writeByte(b ? C_OBJECT_BOOLEAN_TRUE : C_OBJECT_BOOLEAN_FALSE);
+	}
+
 	@Override
 	public void writeByte(int v) throws IOException {
 		writeMultiBytes((byte) C_BYTE, (byte) v);
+	}
+
+	protected void writeByteObject(Byte v) throws IOException {
+		writeMultiBytes((byte) C_OBJECT_BYTE, v);
 	}
 
 	private void writeMultiBytes(byte b1, byte b2) {
@@ -1107,9 +1106,21 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		}
 	}
 
+	protected void writeShortObject(Short v) throws IOException {
+		if ((v & 0xFF00) == 0x0000) {
+			writeMultiBytes((byte) C_OBJECT_SHORT_1, v.byteValue());
+		} else {
+			writeByteShort((byte) C_OBJECT_SHORT_2, v.shortValue());
+		}
+	}
+
 	@Override
 	public void writeChar(int v) throws IOException {
 		writeByteShort((byte) C_CHAR, v);
+	}
+
+	protected void writeCharObject(Character v) throws IOException {
+		writeByteShort((byte) C_OBJECT_CHAR, v);
 	}
 
 	void writeRawVarInt(int v) throws IOException {
@@ -1140,6 +1151,14 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	@Override
 	public void writeInt(int v) throws IOException {
+		writeIntImpl(v, C_INT_BASE);
+	}
+
+	protected void writeIntObject(Integer v) throws IOException {
+		writeIntImpl(v, C_OBJECT_INT_BASE);
+	}
+
+	private void writeIntImpl(int v, final int commandbase) {
 		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		switch (v & 0xFFFF_0000) {
 			case 0x0000_0000: {
@@ -1149,22 +1168,22 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 						//starts with 0x0000_00xx
 						switch (v) {
 							case 0: {
-								out.writeByte(C_INT_ZERO);
+								out.writeByte(commandbase + 8);
 								break;
 							}
 							case 1: {
-								out.writeByte(C_INT_ONE);
+								out.writeByte(commandbase + 10);
 								break;
 							}
 							default: {
-								writeMultiBytes((byte) C_INT_1, (byte) v);
+								writeMultiBytes((byte) (commandbase + 1), (byte) v);
 								break;
 							}
 						}
 						break;
 					}
 					default: {
-						writeByteInt((byte) C_INT_4, v);
+						writeByteInt((byte) (commandbase + 4), v);
 						break;
 					}
 				}
@@ -1176,14 +1195,14 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 					case 0x0000FF00: {
 						//starts with 0xFFFF_FFxx
 						if (v == -1) {
-							out.writeByte(C_INT_NEGATIVE_ONE);
+							out.writeByte(commandbase + 9);
 						} else {
-							writeMultiBytes((byte) C_INT_F_1, (byte) v);
+							writeMultiBytes((byte) (commandbase + 5), (byte) v);
 						}
 						break;
 					}
 					default: {
-						writeByteShort((byte) C_INT_F_2, v);
+						writeByteShort((byte) (commandbase + 6), v);
 						break;
 					}
 				}
@@ -1193,17 +1212,17 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 				switch (v & 0xFF00_0000) {
 					case 0xFF00_0000: {
 						//starts with 0xFFxx_xxxx
-						writeByteTriInt((byte) C_INT_F_3, v);
+						writeByteTriInt((byte) (commandbase + 7), v);
 						break;
 					}
 					case 0x0000_0000: {
 						//starts with 0x00xx_xxxx
-						writeByteTriInt((byte) C_INT_3, v);
+						writeByteTriInt((byte) (commandbase + 3), v);
 						break;
 					}
 					default: {
 						//full int
-						writeByteInt((byte) C_INT_4, v);
+						writeByteInt((byte) (commandbase + 4), v);
 						break;
 					}
 				}
@@ -1214,6 +1233,14 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 	@Override
 	public void writeLong(long v) throws IOException {
+		writeLongImpl(v, C_LONG_BASE);
+	}
+
+	protected void writeLongObject(Long v) throws IOException {
+		writeLongImpl(v, C_OBJECT_LONG_BASE);
+	}
+
+	private void writeLongImpl(long v, final int commandbase) {
 		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		long top4 = v & 0xFFFFFFFF_00000000L;
 		if (top4 == 0x00000000_00000000L) {
@@ -1221,13 +1248,22 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			long bottop2 = v & 0x00000000_FFFF0000L;
 			if (bottop2 == 0x00000000_00000000L) {
 				//starts with 0x00000000_0000xxxx
-				if (v == 0) {
-					out.writeByte(C_LONG_ZERO);
-				} else {
-					writeByteShort((byte) C_LONG_2, v);
+				switch ((int) v) {
+					case 0: {
+						out.writeByte(commandbase + 8);
+						break;
+					}
+					case 1: {
+						out.writeByte(commandbase + 10);
+						break;
+					}
+					default: {
+						writeByteShort((byte) (commandbase + 1), v);
+						break;
+					}
 				}
 			} else {
-				out.writeByte(C_LONG_8);
+				out.writeByte(commandbase + 4);
 				out.writeLong(v);
 			}
 		} else if (top4 == 0xFFFFFFFF00000000L) {
@@ -1236,28 +1272,28 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			if (bottop2 == 0x00000000_FFFF0000L) {
 				//starts with 0xFFFFFFFF_FFFFxxxx
 				if (v == -1) {
-					out.writeByte(C_LONG_NEGATIVE_ONE);
+					out.writeByte(commandbase + 9);
 				} else {
-					writeByteShort((byte) C_LONG_F_2, v);
+					writeByteShort((byte) (commandbase + 5), v);
 				}
 			} else {
-				writeByteInt((byte) C_LONG_F_4, (int) v);
+				writeByteInt((byte) (commandbase + 6), (int) v);
 			}
 		} else {
 			long toptop2 = v & 0xFFFF0000_00000000L;
 			if (toptop2 == 0xFFFF0000_00000000L) {
 				//starts with 0xFFFFxxxx_xxxxxxxx
-				out.writeByte(C_LONG_F_6);
+				out.writeByte(commandbase + 7);
 				out.writeShort((short) (v >>> 32));
 				out.writeInt((int) v);
 			} else if (toptop2 == 0x00000000_00000000L) {
 				//starts with 0x0000xxxx_xxxxxxxx
-				out.writeByte(C_LONG_6);
+				out.writeByte(commandbase + 3);
 				out.writeShort((short) (v >>> 32));
 				out.writeInt((int) v);
 			} else {
 				//full long
-				out.writeByte(C_LONG_8);
+				out.writeByte(commandbase + 4);
 				out.writeLong(v);
 			}
 		}
@@ -1270,10 +1306,22 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		out.writeFloat(v);
 	}
 
+	protected void writeFloatObject(Float v) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
+		out.writeByte(C_OBJECT_FLOAT);
+		out.writeFloat(v);
+	}
+
 	@Override
 	public void writeDouble(double v) throws IOException {
 		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		out.writeByte(C_DOUBLE);
+		out.writeDouble(v);
+	}
+
+	protected void writeDoubleObject(Double v) throws IOException {
+		final DataOutputUnsyncByteArrayOutputStream out = this.out;
+		out.writeByte(C_OBJECT_DOUBLE);
 		out.writeDouble(v);
 	}
 
@@ -1552,36 +1600,15 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			return;
 		}
 		Class<? extends Object> objclass = obj.getClass();
-		BuiltinValueWriterCache objwritercache = builtinValueWriters.get(objclass);
-		if (objwritercache != null) {
-			InternedValueComputer<Object> writer = new InternedValueComputer<>(obj);
-			InternedValue<Object> internvalue = objwritercache.cache.computeIfAbsent(obj, writer);
-			if (writer.computed) {
-				//a newly added serialized object
-				try {
-					out.writeByte(C_OBJECT_VALUE);
-					writeUTF(objclass.getName());
-				} catch (Exception e) {
-					// remove the object from the internalized map, as we failed to proceed with writing the value
-					// (although this shouldn't fail, as we only write strings and primitives in this try-catch block.)
-					objwritercache.cache.remove(obj, internvalue);
-					throw e;
-				}
-				internvalue.index = addSerializedObject(obj);
-				objwritercache.writer.accept(obj, ContentWriterObjectOutput.this);
-				return;
-			}
-			//the value was already interned
-			writeIndexObjectCommandWithCommandBaseAndRelative(internvalue.index, C_OBJECT_IDX_BASE,
-					objectIndices.size());
+		@SuppressWarnings("unchecked")
+		IOBiConsumer<ContentWriterObjectOutput, Object> typedwriter = (IOBiConsumer<ContentWriterObjectOutput, Object>) typedWriters
+				.get(objclass);
+		if (typedwriter != null) {
+			typedwriter.accept(this, obj);
 			return;
 		}
 		if (objclass.isArray()) {
 			writeArrayImplWithCommandImpl(obj, objclass);
-			return;
-		}
-		if (objclass == Class.class) {
-			writeTypeWithCommandImpl((Class<?>) obj);
 			return;
 		}
 		if (ReflectUtils.isEnumOrEnumAnonymous(objclass)) {
@@ -1598,13 +1625,6 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		}
 		if (obj instanceof ClassLoader) {
 			writeClassLoaderWithCommandImpl((ClassLoader) obj);
-			return;
-		}
-		@SuppressWarnings("unchecked")
-		IOBiConsumer<Object, ContentWriterObjectOutput> serwriter = (IOBiConsumer<Object, ContentWriterObjectOutput>) SERIALIZABLE_CLASS_WRITERS
-				.get(objclass);
-		if (serwriter != null) {
-			writeCustomSerializableWithCommand(obj, objclass, serwriter);
 			return;
 		}
 		if (Proxy.isProxyClass(objclass)) {
@@ -1865,12 +1885,12 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		writeUTF(classLoaderResolverId);
 	}
 
-	private void writeCustomSerializableWithCommand(Object obj, Class<?> clazz,
+	private void writeCustomSerializableWithCommand(Object obj,
 			IOBiConsumer<Object, ContentWriterObjectOutput> serwriter) throws IOException {
 		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		int startsize = out.size();
 		out.writeByte(C_OBJECT_CUSTOM_SERIALIZABLE);
-		writeTypeWithCommandOrIdx(clazz);
+		writeTypeWithCommandOrIdx(obj.getClass());
 		addSerializedObject(obj);
 
 		int sizeintpos = out.size();
@@ -1982,9 +2002,9 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		}
 	}
 
-	private static final class BuiltinValueWriterCache {
-		IOBiConsumer<Object, ContentWriterObjectOutput> writer;
-		Map<Object, InternedValue<Object>> cache;
+	private static final class BuiltinValueWriterCache implements IOBiConsumer<ContentWriterObjectOutput, Object> {
+		private IOBiConsumer<Object, ContentWriterObjectOutput> writer;
+		private Map<Object, InternedValue<Object>> cache;
 
 		private BuiltinValueWriterCache(IOBiConsumer<Object, ContentWriterObjectOutput> writer,
 				Map<Object, InternedValue<Object>> cache) {
@@ -1998,6 +2018,31 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 
 		public static BuiltinValueWriterCache createTree(IOBiConsumer<Object, ContentWriterObjectOutput> writer) {
 			return new BuiltinValueWriterCache(writer, new TreeMap<>());
+		}
+
+		@Override
+		public void accept(ContentWriterObjectOutput out, Object obj) throws IOException {
+			InternedValueComputer<Object> computer = new InternedValueComputer<>(obj);
+			InternedValue<Object> internvalue = cache.computeIfAbsent(obj, computer);
+			if (computer.computed) {
+				//a newly added serialized object
+				try {
+					out.out.writeByte(C_OBJECT_VALUE);
+					out.writeUTF(obj.getClass().getName());
+				} catch (Exception e) {
+					// remove the object from the internalized map, as we failed to proceed with writing the value
+					// (although this shouldn't fail, as we only write strings and primitives in this try-catch block.)
+					cache.remove(obj, internvalue);
+					throw e;
+				}
+				internvalue.index = out.addSerializedObject(obj);
+				this.writer.accept(obj, out);
+				return;
+			}
+			//the value was already interned
+			out.writeIndexObjectCommandWithCommandBaseAndRelative(internvalue.index, C_OBJECT_IDX_BASE,
+					out.objectIndices.size());
+
 		}
 	}
 

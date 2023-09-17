@@ -106,8 +106,13 @@ public class ValueContentSerializationTest extends SakerTestCase {
 				new UnsyncByteArrayInputStream(baos.toByteArray()))) {
 			for (Object o : serials) {
 				Object read = in.readObject();
+				Object second = in.readObject();
 				assertEquals(o, read);
-				assertIdentityEquals(read, in.readObject());
+				//XXX this is commented out for now
+				//    as some value objects don't need to be cached
+				//    this could be improved in the future, so Floats, Doubles, Integers, etc... are cached during deserialization
+				//assertIdentityEquals(read, second);
+				assertEquals(o, second);
 			}
 		}
 	}

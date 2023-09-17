@@ -39,13 +39,23 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 		SingleClassLoaderResolver clresolver = new SingleClassLoaderResolver("cl", testclassloader);
 		registry.register("tcl", clresolver);
 
-		short[] shorts = new short[] { 0, 1, 2, -1, -10, 0xFF, (short) 0xFFFF, (short) 0xFF00, 0x00FF };
+		byte[] bytes = new byte[] { -1, 0, 1, 2, 127, Byte.MIN_VALUE, Byte.MAX_VALUE, };
+		short[] shorts = new short[] { 0, 1, 2, -1, -10, 0xFF, (short) 0xFFFF, (short) 0xFF00, 0x00FF, Short.MIN_VALUE,
+				Short.MAX_VALUE, };
 		int[] ints = new int[] { 0, 1, 2, -1, -10, 0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF, 0xFFFFFF00, 0xFFFFFF12,
-				0xFFFF1234, 0xFFFF0000, 0xFF000000, 0xFF123456 };
+				0xFFFF1234, 0xFFFF0000, 0xFF000000, 0xFF123456, Integer.MIN_VALUE, Integer.MAX_VALUE, };
 		long[] longs = new long[] { 0, 1, 2, -1, -10, 0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF, 0xFFFFFFFFFFL,
 				0xFFFFFFFFFFFFL, 0xFFFFFFFFFFFFFFL, 0xFFFFFFFFFFFFFFFFL, 0xFFFFFF00, 0xFFFFFF12, 0xFFFF1234, 0xFFFF0000,
 				0xFF000000, 0xFF123456, 0xFFFFFFFFFFFFFF00L, 0xFFFFFFFFFFFFFF12L, 0xFFFFFFFFFFFF1234L,
-				0xFFFFFFFFFFFF0000L, 0xFFFFFFFFFF000000L, 0xFFFFFFFFFF123456L, 0xffff2ae4f142bbceL };
+				0xFFFFFFFFFFFF0000L, 0xFFFFFFFFFF000000L, 0xFFFFFFFFFF123456L, 0xffff2ae4f142bbceL, Long.MIN_VALUE,
+				Long.MAX_VALUE };
+
+		float[] floats = new float[] { -1234f, -1f, -0f, 0f, 1.0f, 1234f, Float.MAX_VALUE, Float.MIN_VALUE,
+				Float.MIN_NORMAL, Float.NaN, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY, };
+		double[] doubles = new double[] { -1234d, -1d, -0d, 0d, 1.0d, 1234d, Double.MAX_VALUE, Double.MIN_VALUE,
+				Double.MIN_NORMAL, Double.NaN, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, };
+
+		char[] chars = new char[] { 0, 1, 1234, 0xABCD, 'a', 'b', '\0', Character.MIN_VALUE, Character.MAX_VALUE, };
 
 		int[] randints = new int[200_000 * 2];
 		long[] randlongs = new long[200_000 * 2];
@@ -83,6 +93,10 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 			out.writeObject(true);
 			out.writeObject(false);
 
+			for (byte v : bytes) {
+				out.writeByte(v);
+				out.writeObject(v);
+			}
 			for (short v : shorts) {
 				out.writeShort(v);
 				out.writeObject(v);
@@ -104,6 +118,20 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 			}
 			for (long v : randlongs) {
 				out.writeLong(v);
+				out.writeObject(v);
+			}
+
+			for (float v : floats) {
+				out.writeFloat(v);
+				out.writeObject(v);
+			}
+			for (double v : doubles) {
+				out.writeDouble(v);
+				out.writeObject(v);
+			}
+
+			for (char v : chars) {
+				out.writeChar(v);
 				out.writeObject(v);
 			}
 
@@ -132,6 +160,10 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 			assertEquals(true, in.readObject());
 			assertEquals(false, in.readObject());
 
+			for (byte v : bytes) {
+				assertEquals(v, in.readByte());
+				assertEquals(v, in.readObject());
+			}
 			for (short v : shorts) {
 				assertEquals(v, in.readShort());
 				assertEquals(v, in.readObject());
@@ -155,6 +187,18 @@ public class PrimitiveContentSerializationTest extends SakerTestCase {
 			}
 			for (long v : randlongs) {
 				assertEquals(v, in.readLong());
+				assertEquals(v, in.readObject());
+			}
+			for (float v : floats) {
+				assertEquals(v, in.readFloat());
+				assertEquals(v, in.readObject());
+			}
+			for (double v : doubles) {
+				assertEquals(v, in.readDouble());
+				assertEquals(v, in.readObject());
+			}
+			for (char v : chars) {
+				assertEquals(v, in.readChar());
 				assertEquals(v, in.readObject());
 			}
 
