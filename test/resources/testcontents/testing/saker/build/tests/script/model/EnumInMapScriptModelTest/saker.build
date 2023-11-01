@@ -1,0 +1,5 @@
+example.task(EnumParam1: {  })
+
+example.task(EnumParam1: { F })
+
+example.task(EnumParam1: F)

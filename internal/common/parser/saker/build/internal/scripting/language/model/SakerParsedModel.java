@@ -4538,7 +4538,10 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 
 				NavigableSet<String> presentmapkeys = getMapElementKeyLiterals(mapparent);
 				addMapKeyFieldProposals(result, null, rectypes, presentmapkeys, proposalfactory, collector);
-				addGenericExpressionProposals(derived, result, statementstack, rectypes,
+
+				//collect the generic expressions on the map key receiver types
+				Collection<? extends TypedModelInformation> keyrectypes = getMapKeyReceiverTypes(rectypes);
+				addGenericExpressionProposals(derived, result, statementstack, keyrectypes,
 						lit -> !presentmapkeys.contains(lit), proposalfactory, collector, analyzer, null);
 				break;
 			}
@@ -5321,10 +5324,29 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 		return phrase.length() > base.length() && StringUtils.startsWithIgnoreCase(phrase, base);
 	}
 
+	private static Collection<? extends TypedModelInformation> getMapKeyReceiverTypes(
+			Collection<? extends TypedModelInformation> mapreceivertypes) {
+		ArrayList<TypedModelInformation> result = new ArrayList<>();
+		for (TypedModelInformation enctype : mapreceivertypes) {
+			enctype = deCollectionizeTypeInfo(enctype);
+			TypeInformation tinfo = enctype.getTypeInformation();
+			if (tinfo == null) {
+				continue;
+			}
+			List<? extends TypeInformation> elemtypes = tinfo.getElementTypes();
+			if (elemtypes != null && elemtypes.size() == 2) {
+				TypeInformation idxtype = elemtypes.get(0);
+				if (idxtype != null) {
+					result.add(new TypedModelInformation(idxtype));
+				}
+			}
+		}
+		return result;
+	}
+
 	private static void addMapKeyFieldProposals(Collection<? super ScriptCompletionProposal> result, String base,
 			Collection<? extends TypedModelInformation> mapreceivertypes, NavigableSet<String> presentmapkeys,
 			ProposalFactory proposalfactory, ProposalCollector collector) {
-		addEnumProposals(collector, mapreceivertypes, base, proposalfactory);
 		for (TypedModelInformation enctype : mapreceivertypes) {
 			enctype = deCollectionizeTypeInfo(enctype);
 			TypeInformation tinfo = enctype.getTypeInformation();
