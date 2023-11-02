@@ -23,7 +23,7 @@ import testing.saker.SakerTest;
  * type if it was an enum.
  */
 @SakerTest
-public class EnumInMapScriptModelTest extends ScriptModelTestCase {
+public class EnumInMapProposalsScriptModelTest extends ScriptModelTestCase {
 
 	@Override
 	protected void runTest() throws Throwable {
@@ -35,12 +35,17 @@ public class EnumInMapScriptModelTest extends ScriptModelTestCase {
 
 		exhaustiveScriptAnalysis(model, filedata);
 
-		System.out.println("EnumInMapScriptModelTest.runTest() done exhaustive");
+		System.out.println("EnumInMapProposalsScriptModelTest.runTest() done exhaustive");
 
 		assertProposals(model, endIndexOf(filedata, "example.task(EnumParam1: F")).assertPresent("FIRST", "FOURTH",
 				"FIFTH");
 
-		System.out.println("EnumInMapScriptModelTest.runTest() check bug");
+		System.out.println("EnumInMapProposalsScriptModelTest.runTest() check ordered");
+		//enums should come before variables for these proposals
+		assertProposals(model, endIndexOf(filedata, "example.task(EnumParam1: )") - 1).assertPresentOrder("FIRST",
+				"$variable");
+
+		System.out.println("EnumInMapProposalsScriptModelTest.runTest() check bug");
 
 		// we're invoking proposal in a map (in the map_key specifically), don't list the enums from the EnumParam1 type 
 		assertProposals(model, endIndexOf(filedata, "example.task(EnumParam1: { ")).assertNotPresent("FIRST", "SECOND",

@@ -5686,10 +5686,11 @@ public class SakerParsedModel implements ScriptSyntaxModel {
 			}
 		}
 
-		addVariableProposals(derived, result, statementstack, proposalfactory);
-
 		addEnumProposals(collector, receivertypes, base, proposalfactory);
 		addExternalLiteralProposals(result, base, receivertypes, proposalfactory, collector, analyzer);
+
+		addVariableProposals(derived, result, statementstack, proposalfactory);
+
 		addTaskProposals(derived, base, proposalfactory, collector, analyzer);
 		collectPathProposals(result, base, getPathProposalSorterForReceiverTypes(receivertypes), proposalfactory);
 		addUserParameterProposals(result, base, receivertypes, proposalfactory, collector);
