@@ -49,10 +49,10 @@ steps:
   displayName: 'Download saker.build'
   condition: and(succeeded(), eq( variables['Agent.OS'], 'Windows_NT' ))
 
-- script: curl -s https://gist.githubusercontent.com/Sipkab/1505a8659af20003ae09295e99d3cba3/raw/azure_ubuntu_jdksetup_variables.sh -o /tmp/azure_ubuntu_jdksetup_variables.sh
-  displayName: 'Download JDK setup script'
-  condition: and(succeeded(), or( eq( variables['Agent.OS'], 'Linux' ), eq( variables['Agent.OS'], 'Darwin' ) ))
-- script: bash /tmp/azure_ubuntu_jdksetup_variables.sh $(J_JDKS)
+- script: |
+	set -e
+	curl -s https://gist.githubusercontent.com/Sipkab/1505a8659af20003ae09295e99d3cba3/raw/azure_ubuntu_jdksetup_variables.sh -o /tmp/azure_ubuntu_jdksetup_variables.sh
+	bash /tmp/azure_ubuntu_jdksetup_variables.sh $(J_JDKS)
   displayName: 'Setup JDKs'
   condition: and(succeeded(), or( eq( variables['Agent.OS'], 'Linux' ), eq( variables['Agent.OS'], 'Darwin' ) ))
 
@@ -119,6 +119,7 @@ steps:
     parallel: true
 
 - script: |
+	set -e
     cd test/cmdline-integration
     bash run-tests.sh ../../build/std.file.place/release/saker.build.jar
   displayName: 'Run command line integration tests'
@@ -133,9 +134,9 @@ steps:
   condition: and(succeeded(), eq( variables['Agent.OS'], 'Windows_NT' ))
   displayName: 'Compare dogfood export outputs (win)'
 
-- script: cat hs_err* 2>/dev/null || echo "No hs_err files."
+- script: cat hs_err*.log 2>/dev/null || echo "No hs_err files."
   condition: or( eq( variables['Agent.OS'], 'Linux' ), eq( variables['Agent.OS'], 'Darwin' ) )
   displayName: 'Display JVM crash logs (Linux)'
-- script: type hs_err* 2>nul || exit 0
+- script: type hs_err*.log 2>nul || exit 0
   condition: eq( variables['Agent.OS'], 'Windows_NT' )
   displayName: 'Display JVM crash logs (Win)'
