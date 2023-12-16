@@ -33,6 +33,7 @@ public class WildcardTest extends SakerTestCase {
 	public void runTest(Map<String, String> parameters) throws Throwable {
 		testIncludes();
 		testFinishable();
+		testReduce();
 
 		MemoryFileProvider files = new MemoryFileProvider(setOf("wd:", "bd:", "/"), UUID.randomUUID());
 
@@ -69,6 +70,14 @@ public class WildcardTest extends SakerTestCase {
 		assertEquals(WildcardPath.valueOf("/**").getFiles(files).keySet(), setOf(slash, sslashtxt));
 		assertEquals(WildcardPath.valueOf("/**/*").getFiles(files).keySet(), setOf(sslashtxt));
 
+		//no special handling on . and .., so they don't resolve to anything
+		assertEquals(WildcardPath.valueOf("").getFiles(files).keySet(), setOf());
+		assertEquals(WildcardPath.valueOf(".").getFiles(files).keySet(), setOf());
+		assertEquals(WildcardPath.valueOf("./.").getFiles(files).keySet(), setOf());
+		assertEquals(WildcardPath.valueOf("").getFiles(files, wd).keySet(), setOf(wd));
+		assertEquals(WildcardPath.valueOf(".").getFiles(files, wd).keySet(), setOf());
+		assertEquals(WildcardPath.valueOf("./.").getFiles(files, wd).keySet(), setOf());
+
 		assertEquals(WildcardPath.valueOf("**/*.txt").getFiles(files, wd).keySet(),
 				setOf(wdroottxt, wdfolderroottxt, wdsubfolderroottxt));
 		assertEquals(WildcardPath.valueOf("**/*folder*/**").getFiles(files, wd).keySet(),
@@ -83,7 +92,8 @@ public class WildcardTest extends SakerTestCase {
 		//trailing slash is ignored:
 		assertEquals(WildcardPath.valueOf("**/*folder/").getFiles(files, wd).keySet(), setOf(wdfolder, wdsubfolder));
 
-		assertEquals(WildcardPath.valueOf("").getFiles(files, wd).keySet(), setOf(wd));
+		assertEquals(WildcardPath.valueOf("**/folder").getFiles(files, wd).keySet(), setOf(wdfolder));
+		assertEquals(WildcardPath.valueOf("**/subfolder").getFiles(files, wd).keySet(), setOf(wdsubfolder));
 
 		MemoryFileProvider fp = new MemoryFileProvider(Collections.singleton("/"), UUID.randomUUID());
 		fp.putFile(SakerPath.valueOf("/file.txt"), ObjectUtils.EMPTY_BYTE_ARRAY);
@@ -100,6 +110,7 @@ public class WildcardTest extends SakerTestCase {
 				.hasRelativePath(WildcardPath.valueOf("/**/file*.txt").getFiles(fp, SakerPath.PATH_SLASH)));
 
 		assertEquals(WildcardPath.valueOf("").toString(), "");
+		assertEquals(WildcardPath.valueOf(".").toString(), ".");
 		assertEquals(WildcardPath.valueOf("/").toString(), "/");
 		assertEquals(WildcardPath.valueOf("/test").toString(), "/test");
 		assertEquals(WildcardPath.valueOf("/*").toString(), "/*");
@@ -205,5 +216,28 @@ public class WildcardTest extends SakerTestCase {
 		assertNotFinishable("/", "/");
 		assertNotFinishable("/", "c:/");
 		assertNotFinishable("/", "x");
+	}
+
+	private static void testReduce() throws AssertionError {
+		assertTrue(WildcardPath.valueOf("**").isRecursiveAllFilesPath());
+
+		assertNull(WildcardPath.valueOf("*").reduce().getFile());
+		assertEquals(WildcardPath.valueOf("*").reduce().getWildcard(), WildcardPath.valueOf("*"));
+		assertEquals(WildcardPath.valueOf("dir/*").reduce().getFile(), SakerPath.valueOf("dir"));
+		assertEquals(WildcardPath.valueOf("c:/dir/*").reduce().getFile(), SakerPath.valueOf("c:/dir"));
+		assertEquals(WildcardPath.valueOf("/dir/*").reduce().getFile(), SakerPath.valueOf("/dir"));
+
+		assertEquals(WildcardPath.valueOf("/dir/*/subdir/*.java").reduce().getFile(), SakerPath.valueOf("/dir"));
+		assertEquals(WildcardPath.valueOf("/dir/*/subdir/*.java").reduce().getWildcard(),
+				WildcardPath.valueOf("*/subdir/*.java"));
+
+		assertEquals(WildcardPath.valueOf("").reduce().getFile(), SakerPath.EMPTY);
+		assertEquals(WildcardPath.valueOf("").reduce().getWildcard(), null);
+
+		assertEquals(WildcardPath.valueOf(".").reduce().getFile(), null);
+		assertEquals(WildcardPath.valueOf(".").reduce().getWildcard(), WildcardPath.valueOf("."));
+
+		assertEquals(WildcardPath.valueOf("./.").reduce().getFile(), null);
+		assertEquals(WildcardPath.valueOf("./.").reduce().getWildcard(), WildcardPath.valueOf("./."));
 	}
 }

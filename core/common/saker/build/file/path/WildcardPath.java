@@ -111,6 +111,8 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 	 * Class holding information about the optimization performed in {@link WildcardPath#reduce()}.
 	 */
 	public static final class ReducedWildcardPath {
+		protected static final ReducedWildcardPath EMPTY = new ReducedWildcardPath(SakerPath.EMPTY, null);
+
 		protected final SakerPath file;
 		protected final WildcardPath wildcard;
 
@@ -494,6 +496,12 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 
 		@Override
 		public FileProviderListerAttributes resolve(FileProviderListerAttributes item, String name) {
+			if (!item.isDirectory()) {
+				//this is not a directory, can't have children
+				//return null even if the name is empty, "." or ".."
+				//TODO this should be tested for symbolic links (here and other places in these classes)
+				return null;
+			}
 			SakerPath rpath = item.path.resolve(name);
 
 			return getItem(rpath);
@@ -501,6 +509,11 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 
 		@Override
 		public Map<String, ? extends FileProviderListerAttributes> listChildItems(FileProviderListerAttributes item) {
+			if (!item.isDirectory()) {
+				//this is not a directory, can't have children
+				//TODO this should be tested for symbolic links (here and other places in these classes)
+				return Collections.emptyNavigableMap();
+			}
 			try {
 				SakerPath itempath = item.path;
 				SakerFileProvider fp = pathConfig.getFileProviderIfPresent(itempath);
@@ -525,6 +538,11 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 		@Override
 		public NavigableMap<SakerPath, ? extends FileProviderListerAttributes> listChildItemsRecursively(
 				FileProviderListerAttributes item) {
+			if (!item.isDirectory()) {
+				//this is not a directory, can't have children
+				//TODO this should be tested for symbolic links (here and other places in these classes)
+				return Collections.emptyNavigableMap();
+			}
 			try {
 				SakerPath itempath = item.path;
 				SakerFileProvider fp = pathConfig.getFileProviderIfPresent(itempath);
@@ -631,6 +649,12 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 
 		@Override
 		public FileProviderListerAttributes resolve(FileProviderListerAttributes item, String name) {
+			if (!item.isDirectory()) {
+				//this is not a directory, can't have children
+				//return null even if the name is empty, "." or ".."
+				//TODO this should be tested for symbolic links (here and other places in these classes)
+				return null;
+			}
 			try {
 				SakerPath rpath = item.path.resolve(name);
 
@@ -643,6 +667,11 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 		@Override
 		public NavigableMap<String, ? extends FileProviderListerAttributes> listChildItems(
 				FileProviderListerAttributes item) {
+			if (!item.isDirectory()) {
+				//this is not a directory, can't have children
+				//TODO this should be tested for symbolic links (here and other places in these classes)
+				return Collections.emptyNavigableMap();
+			}
 			try {
 				SakerPath itempath = item.path;
 				NavigableMap<String, ? extends FileEntry> entries = fp.getDirectoryEntries(itempath);
@@ -663,6 +692,11 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 		@Override
 		public NavigableMap<SakerPath, ? extends FileProviderListerAttributes> listChildItemsRecursively(
 				FileProviderListerAttributes item) {
+			if (!item.isDirectory()) {
+				//this is not a directory, can't have children
+				//TODO this should be tested for symbolic links (here and other places in these classes)
+				return Collections.emptyNavigableMap();
+			}
 			try {
 				SakerPath itempath = item.path;
 				NavigableMap<SakerPath, ? extends FileEntry> entries = fp.getDirectoryEntriesRecursively(itempath);
@@ -1211,12 +1245,18 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 	 * <li><code>dir/*.ext</code> will be reduced to <code>dir</code> and <code>*ext</code></li>
 	 * <li><code>dir/file.ext</code> will be reduced to <code>dir/file.ext</code> and <code>null</code></li>
 	 * <li><code>*.ext</code> will be reduced to <code>null</code> and <code>*ext</code></li>
+	 * <li><code></code> (empty string wildcard) will be reduced to empty path and <code>null</code></li>
+	 * <li><code>.</code> will be reduced to empty path and <code>null</code></li>
 	 * </ul>
 	 * 
 	 * @return The reduced wildcard path.
 	 */
 	public ReducedWildcardPath reduce() {
-		if (splits.length == 0 || isWildcardedPathPart(splits[0])) {
+		if (splits.length == 0) {
+			//empty wildcard path, no path parts
+			return ReducedWildcardPath.EMPTY;
+		}
+		if (isWildcardedPathPart(splits[0])) {
 			return new ReducedWildcardPath(null, this);
 		}
 		int i;
@@ -1228,7 +1268,12 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 		try {
 			if (i == splits.length) {
 				//no wildcard at all
-				return new ReducedWildcardPath(SakerPath.valueOf(toString()), null);
+				SakerPath file = SakerPath.valueOf(toString());
+				if (SakerPath.EMPTY.equals(file)) {
+					//in case the wildcard is "." or "" or something like that, return a reduced path
+					return ReducedWildcardPath.EMPTY;
+				}
+				return new ReducedWildcardPath(file, null);
 			}
 			String reldir = StringUtils.toStringJoin("/", new ArrayIterator<>(splits, 0, i));
 			SakerPath reldirpath = SakerPath.valueOf(reldir);
@@ -1380,6 +1425,10 @@ public final class WildcardPath implements Externalizable, Comparable<WildcardPa
 
 	private static boolean isWildcardedPathPart(String part) {
 		if (part.indexOf('*') >= 0) {
+			return true;
+		}
+		if (".".equals(part) || "..".equals(part)) {
+			//if the wildcard is . or .., then consider it wildcarded, as these path parts are not specially handled in wildcard processing
 			return true;
 		}
 		return false;

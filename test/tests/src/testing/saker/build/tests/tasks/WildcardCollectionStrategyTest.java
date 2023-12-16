@@ -147,6 +147,21 @@ public class WildcardCollectionStrategyTest extends CollectingMetricEnvironmentT
 
 		runTask("main", new CollectorTaskFactory(SakerPath.valueOf("dir"), WildcardPath.valueOf("x")));
 		assertEquals(getMetric().getRunTaskIdResults().get(strTaskId("main")), setOf());
+
+		//empty wildcard -> working directory
+		//. is not specially handled -> empty
+		runTask("main", new CollectorTaskFactory(null, WildcardPath.valueOf("")));
+		assertEquals(getMetric().getRunTaskIdResults().get(strTaskId("main")), setOf(PATH_WORKING_DIRECTORY));
+		runTask("main", new CollectorTaskFactory(null, WildcardPath.valueOf(".")));
+		assertEquals(getMetric().getRunTaskIdResults().get(strTaskId("main")), setOf());
+		runTask("main", new CollectorTaskFactory(null, WildcardPath.valueOf("./.")));
+		assertEquals(getMetric().getRunTaskIdResults().get(strTaskId("main")), setOf());
+
+		//all dirs and files under the working dir
+		runTask("main", new CollectorTaskFactory(null, WildcardPath.valueOf("*")));
+		assertEquals(getMetric().getRunTaskIdResults().get(strTaskId("main")), setOf(atxt, dirp));
+		runTask("main", new CollectorTaskFactory(null, WildcardPath.valueOf("wd:/*")));
+		assertEquals(getMetric().getRunTaskIdResults().get(strTaskId("main")), setOf(atxt, dirp));
 	}
 
 }
