@@ -245,7 +245,7 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 		}
 
 		TaskIdentifier resulttaskid = resultfac.createSubTaskIdentifier(thistaskid);
-		taskcontext.getTaskUtilities().startTaskFuture(resulttaskid, resultfac);
+		taskcontext.getTaskUtilities().startTask(resulttaskid, resultfac);
 		return new SakerTaskObjectSakerTaskResult(resulttaskid);
 	}
 
@@ -365,7 +365,7 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 		for (SakerTaskFactory stf : subTasks) {
 			stf = cloneHelper(replacer, stf);
 
-			taskcontext.getTaskUtilities().startTaskFuture(stf.createSubTaskIdentifier(thistaskid), stf);
+			taskcontext.getTaskUtilities().startTask(stf.createSubTaskIdentifier(thistaskid), stf);
 		}
 		if (resultFactory != null) {
 			SakerTaskFactory clonedresult = cloneHelper(replacer, resultFactory);
@@ -385,7 +385,7 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 		for (SakerTaskFactory stf : subTasks) {
 			stf = cloneHelper(replacer, stf);
 
-			taskcontext.getTaskUtilities().startTaskFuture(stf.createSubTaskIdentifier(thistaskid), stf);
+			taskcontext.getTaskUtilities().startTask(stf.createSubTaskIdentifier(thistaskid), stf);
 		}
 		if (resultFactory != null) {
 			SakerTaskFactory clonedresult = cloneHelper(replacer, resultFactory);
@@ -570,7 +570,7 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 		@Override
 		public void assign(TaskContext taskcontext, SakerScriptTaskIdentifier currenttaskid, TaskIdentifier value) {
 			SakerTaskFactory localfut = new SakerTaskResultLiteralTaskFactory(value);
-			taskcontext.getTaskUtilities().startTaskFuture(this.taskId, localfut);
+			taskcontext.getTaskUtilities().startTask(this.taskId, localfut);
 		}
 
 		@Override
@@ -702,10 +702,10 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 			if (init != null) {
 				init = cloneHelper(replacer, init);
 				TaskIdentifier inittaskid = init.createSubTaskIdentifier(thistaskid);
-				taskcontext.getTaskUtilities().startTaskFuture(inittaskid, init);
+				taskcontext.getTaskUtilities().startTask(inittaskid, init);
 				TaskIdentifier localvaluetaskid = localfactories.get(localname).valueTaskId;
 				SakerTaskFactory localfut = new SakerTaskResultLiteralTaskFactory(inittaskid);
-				taskcontext.getTaskUtilities().startTaskFuture(localvaluetaskid, localfut);
+				taskcontext.getTaskUtilities().startTask(localvaluetaskid, localfut);
 			}
 		}
 	}

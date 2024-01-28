@@ -178,7 +178,7 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 				if (!ObjectUtils.isNullOrEmpty(globalExpressions)) {
 					TaskIdentifier buildfiletaskid = new GlobalExpressionScopeRootTaskIdentifier(scriptpath);
 					for (SakerTaskFactory factory : globalExpressions) {
-						taskutils.startTaskFuture(new SakerScriptTaskIdentifier(buildfiletaskid, factory), factory);
+						taskutils.startTask(new SakerScriptTaskIdentifier(buildfiletaskid, factory), factory);
 					}
 				}
 
@@ -199,13 +199,13 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 							right = fac;
 						}
 						SakerScriptTaskIdentifier righttaskid = new SakerScriptTaskIdentifier(thistaskid, right);
-						taskutils.startTaskFuture(righttaskid, right);
+						taskutils.startTask(righttaskid, right);
 						AssignmentTaskFactory.startAssignmentTask(taskcontext, thistaskid, pname, righttaskid);
 					}
 				}
 				if (!factories.isEmpty()) {
 					for (SakerTaskFactory factory : factories) {
-						taskutils.startTaskFuture(new SakerScriptTaskIdentifier(thistaskid, factory), factory);
+						taskutils.startTask(new SakerScriptTaskIdentifier(thistaskid, factory), factory);
 					}
 				}
 				NavigableMap<String, TaskIdentifier> resulttaskids = new TreeMap<>();
@@ -222,7 +222,7 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 						//         this is not possible without unsyntaxing the result
 						UnsakerFutureTaskFactory unsyntaxer = new UnsakerFutureTaskFactory(outtaskid);
 						TaskIdentifier restaskid = new UnsakerTaskFactoryTaskIdentifier(unsyntaxer);
-						taskutils.startTaskFuture(restaskid, unsyntaxer);
+						taskutils.startTask(restaskid, unsyntaxer);
 						resulttaskids.put(outname, restaskid);
 					}
 				}

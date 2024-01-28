@@ -76,7 +76,7 @@ public class DereferenceTaskFactory extends SelfSakerTaskFactory {
 	public SakerTaskResult run(TaskContext taskcontext) {
 		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
 		TaskIdentifier nametaskid = subject.createSubTaskIdentifier(thistaskid);
-		taskcontext.getTaskUtilities().startTaskFuture(nametaskid, subject);
+		taskcontext.getTaskUtilities().startTask(nametaskid, subject);
 
 		DereferenceSakerTaskResult result = new DereferenceSakerTaskResult(thistaskid, nametaskid);
 		taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));

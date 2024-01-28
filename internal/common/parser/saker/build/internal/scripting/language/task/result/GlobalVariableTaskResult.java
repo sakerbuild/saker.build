@@ -120,8 +120,7 @@ public class GlobalVariableTaskResult implements SakerTaskResult, AssignableTask
 
 	@Override
 	public void assign(TaskContext taskcontext, SakerScriptTaskIdentifier currenttaskid, TaskIdentifier value) {
-		taskcontext.getTaskUtilities().startTaskFuture(variableTaskIdentifier,
-				new SakerTaskResultLiteralTaskFactory(value));
+		taskcontext.getTaskUtilities().startTask(variableTaskIdentifier, new SakerTaskResultLiteralTaskFactory(value));
 	}
 
 	@Override

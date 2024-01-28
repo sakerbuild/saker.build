@@ -46,7 +46,7 @@ public class AssignmentTaskFactory extends BinaryOperatorTaskFactory {
 		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
 		TaskIdentifier ltaskid = left.createSubTaskIdentifier(thistaskid);
 		TaskIdentifier rtaskid = right.createSubTaskIdentifier(thistaskid);
-		taskcontext.getTaskUtilities().startTaskFuture(rtaskid, right);
+		taskcontext.getTaskUtilities().startTask(rtaskid, right);
 
 		SakerTaskResult leftres = runForResult(taskcontext, ltaskid, left);
 		if (!(leftres instanceof AssignableTaskResult)) {
@@ -71,7 +71,7 @@ public class AssignmentTaskFactory extends BinaryOperatorTaskFactory {
 	public static TaskIdentifier startAssignmentTask(TaskContext taskcontext, TaskIdentifier roottaskid,
 			String variablename, TaskIdentifier sakertaskidvalue) {
 		TaskIdentifier assigntaskid = createAssignTaskIdentifier(roottaskid, variablename);
-		taskcontext.getTaskUtilities().startTaskFuture(assigntaskid, new SakerTaskResultLiteralTaskFactory(sakertaskidvalue));
+		taskcontext.getTaskUtilities().startTask(assigntaskid, new SakerTaskResultLiteralTaskFactory(sakertaskidvalue));
 		return assigntaskid;
 	}
 

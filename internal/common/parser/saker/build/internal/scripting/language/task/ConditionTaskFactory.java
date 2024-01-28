@@ -76,7 +76,7 @@ public class ConditionTaskFactory extends SelfSakerTaskFactory {
 		boolean branch = SakerScriptTaskUtils.getConditionValue(conditionval);
 		List<SakerTaskFactory> tasks = branch ? trueSubTasks : falseSubTasks;
 		for (SakerTaskFactory stf : tasks) {
-			taskcontext.getTaskUtilities().startTaskFuture(stf.createSubTaskIdentifier(currenttaskid), stf);
+			taskcontext.getTaskUtilities().startTask(stf.createSubTaskIdentifier(currenttaskid), stf);
 		}
 		NoSakerTaskResult result = new NoSakerTaskResult(currenttaskid);
 		taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));

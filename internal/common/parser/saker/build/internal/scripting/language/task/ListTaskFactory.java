@@ -65,7 +65,7 @@ public class ListTaskFactory extends SelfSakerTaskFactory {
 		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
 		for (SakerTaskFactory tf : elements) {
 			TaskIdentifier elementtaskid = tf.createSubTaskIdentifier(thistaskid);
-			taskcontext.getTaskUtilities().startTaskFuture(elementtaskid, tf);
+			taskcontext.getTaskUtilities().startTask(elementtaskid, tf);
 
 			elems.add(new SakerTaskObjectSakerTaskResult(elementtaskid));
 		}

@@ -76,7 +76,7 @@ public class MapTaskFactory extends SelfSakerTaskFactory {
 				valobjresult = new SimpleSakerTaskResult<>(((SakerLiteralTaskFactory) vtf).getValue());
 			} else {
 				TaskIdentifier valtaskid = vtf.createSubTaskIdentifier(thistaskid);
-				taskcontext.getTaskUtilities().startTaskFuture(valtaskid, vtf);
+				taskcontext.getTaskUtilities().startTask(valtaskid, vtf);
 				valobjresult = new SimpleStructuredObjectTaskResult(valtaskid);
 			}
 
@@ -85,7 +85,7 @@ public class MapTaskFactory extends SelfSakerTaskFactory {
 				keyobj = ((SakerLiteralTaskFactory) ktf).getValue();
 			} else {
 				TaskIdentifier keytaskid = ktf.createSubTaskIdentifier(thistaskid);
-				taskcontext.getTaskUtilities().startTaskFuture(keytaskid, ktf);
+				taskcontext.getTaskUtilities().startTask(keytaskid, ktf);
 
 				keyobj = StructuredTaskResult.getActualTaskResult(keytaskid, taskcontext);
 			}
@@ -101,7 +101,7 @@ public class MapTaskFactory extends SelfSakerTaskFactory {
 			SakerTaskFactory vtf = values.get(i);
 
 			TaskIdentifier valtaskid = vtf.createSubTaskIdentifier(thistaskid);
-			taskcontext.getTaskUtilities().startTaskFuture(valtaskid, vtf);
+			taskcontext.getTaskUtilities().startTask(valtaskid, vtf);
 			StructuredTaskResult valobjresult = new SimpleStructuredObjectTaskResult(valtaskid);
 
 			//optimize literal keys not to start a task unnecessarily
@@ -113,7 +113,7 @@ public class MapTaskFactory extends SelfSakerTaskFactory {
 				}
 			} else {
 				TaskIdentifier keytaskid = ktf.createSubTaskIdentifier(thistaskid);
-				taskcontext.getTaskUtilities().startTaskFuture(keytaskid, ktf);
+				taskcontext.getTaskUtilities().startTask(keytaskid, ktf);
 
 				Object present = keyvals.putIfAbsent(keytaskid, valobjresult);
 				if (present != null) {

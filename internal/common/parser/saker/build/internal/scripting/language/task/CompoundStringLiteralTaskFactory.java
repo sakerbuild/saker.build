@@ -62,7 +62,7 @@ public class CompoundStringLiteralTaskFactory extends SelfSakerTaskFactory {
 		List<TaskIdentifier> futureids = new ArrayList<>(components.size());
 		for (SakerTaskFactory tf : components) {
 			TaskIdentifier componenttaskid = tf.createSubTaskIdentifier(thistaskid);
-			taskcontext.getTaskUtilities().startTaskFuture(componenttaskid, tf);
+			taskcontext.getTaskUtilities().startTask(componenttaskid, tf);
 			futureids.add(componenttaskid);
 		}
 		CompoundStringLiteralSakerTaskResult result = new CompoundStringLiteralSakerTaskResult(futureids);

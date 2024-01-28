@@ -60,8 +60,8 @@ public class SubscriptTaskFactory extends SelfSakerTaskFactory {
 		TaskIdentifier indextaskid = index.createSubTaskIdentifier(thistaskid);
 		TaskIdentifier subjecttaskid = subject.createSubTaskIdentifier(thistaskid);
 
-		taskcontext.getTaskUtilities().startTaskFuture(indextaskid, index);
-		taskcontext.getTaskUtilities().startTaskFuture(subjecttaskid, subject);
+		taskcontext.getTaskUtilities().startTask(indextaskid, index);
+		taskcontext.getTaskUtilities().startTask(subjecttaskid, subject);
 		SubscriptSakerTaskResult result = new SubscriptSakerTaskResult(subjecttaskid, indextaskid);
 		taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
 		return result;

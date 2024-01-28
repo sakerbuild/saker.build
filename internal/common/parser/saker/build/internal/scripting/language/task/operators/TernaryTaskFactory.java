@@ -79,7 +79,7 @@ public class TernaryTaskFactory extends SelfSakerTaskFactory {
 			resulttf = falseTask;
 		}
 		TaskIdentifier resulttaskid = resulttf.createSubTaskIdentifier(currenttaskid);
-		taskcontext.getTaskUtilities().startTaskFuture(resulttaskid, resulttf);
+		taskcontext.getTaskUtilities().startTask(resulttaskid, resulttf);
 		SakerTaskResult result = new SakerTaskObjectSakerTaskResult(resulttaskid);
 		taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
 		return result;
