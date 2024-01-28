@@ -22,7 +22,6 @@ import java.io.ObjectOutput;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
@@ -31,6 +30,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 import saker.build.file.SakerFile;
+import saker.build.file.content.ContentDescriptor;
 import saker.build.file.path.SakerPath;
 import saker.build.internal.scripting.language.SakerScriptTargetConfigurationReader;
 import saker.build.internal.scripting.language.task.operators.AssignmentTaskFactory;
@@ -44,6 +44,7 @@ import saker.build.task.CommonTaskContentDescriptors;
 import saker.build.task.SimpleBuildTargetTaskResult;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskExecutionUtilities;
+import saker.build.task.TaskFactory;
 import saker.build.task.exception.TaskParameterException;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
@@ -119,60 +120,9 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 			public BuildTargetTaskResult run(TaskContext taskcontext) {
 				TaskIdentifier thistaskid = taskcontext.getTaskId();
 
-				ExecutionPathConfiguration pathconfig = taskcontext.getExecutionContext().getPathConfiguration();
-				Set<SakerPath> defaultsfiles = SakerScriptTargetConfigurationReader.getDefaultsFiles(parsingOptions,
-						pathconfig);
 				SakerPath scriptpath = parsingOptions.getScriptPath();
-				if (defaultsfiles == null) {
-					//the defaults file is automatic and optional
-					SakerPath defaultdefaultspath = pathconfig.getWorkingDirectory()
-							.tryResolve(SakerScriptTargetConfigurationReader.DEFAULT_DEFAULTS_BUILD_FILE_RELATIVE_PATH);
-					if (!scriptpath.equals(defaultdefaultspath)) {
-						SakerFile presentdefaultsfile = taskcontext.getTaskUtilities()
-								.resolveFileAtPath(defaultdefaultspath);
-						if (presentdefaultsfile == null) {
-							taskcontext.reportInputFileDependency(null, defaultdefaultspath,
-									CommonTaskContentDescriptors.IS_NOT_FILE);
-						} else {
-							taskcontext.reportInputFileDependency(null, defaultdefaultspath,
-									CommonTaskContentDescriptors.IS_FILE);
-							defaultsfiles = ImmutableUtils.singletonNavigableSet(defaultdefaultspath);
-						}
-					}
-				}
-				if (!ObjectUtils.isNullOrEmpty(defaultsfiles) && !defaultsfiles.contains(scriptpath)) {
-					Iterator<SakerPath> it = defaultsfiles.iterator();
-					SakerPath deffilepath = it.next();
-					Set<DefaultsLoaderTaskFactory> deftasks;
-					if (!it.hasNext()) {
-						//only a single defaults file
-						DefaultsLoaderTaskFactory defaultstask = new DefaultsLoaderTaskFactory(deffilepath);
 
-						taskcontext.startTask(defaultstask, defaultstask, null);
-						deftasks = ImmutableUtils.singletonSet(defaultstask);
-					} else {
-						deftasks = new HashSet<>();
-						while (true) {
-							DefaultsLoaderTaskFactory defaultstask = new DefaultsLoaderTaskFactory(deffilepath);
-							taskcontext.startTask(defaultstask, defaultstask, null);
-							deftasks.add(defaultstask);
-							if (!it.hasNext()) {
-								break;
-							}
-							deffilepath = it.next();
-						}
-					}
-					taskcontext.startTask(new ScriptPathTaskDefaultsLiteralTaskIdentifier(scriptpath),
-							new DefaultsAggregatorTaskFactory(deftasks), null);
-				} else {
-					//no defaults files
-					//OR
-					//THIS is a defaults file. don't parse the defaults files.
-
-					//need to start the defaults task anyway so users don't wait forever
-					taskcontext.startTask(new ScriptPathTaskDefaultsLiteralTaskIdentifier(scriptpath),
-							LiteralTaskFactory.INSTANCE_NULL, null);
-				}
+				handleDefaultsFiles(taskcontext, scriptpath);
 
 				TaskExecutionUtilities taskutils = taskcontext.getTaskUtilities();
 				if (!ObjectUtils.isNullOrEmpty(globalExpressions)) {
@@ -229,6 +179,47 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 				SimpleBuildTargetTaskResult result = new SimpleBuildTargetTaskResult(resulttaskids);
 				taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
 				return result;
+			}
+
+			private void handleDefaultsFiles(TaskContext taskcontext, SakerPath scriptpath) {
+				ExecutionPathConfiguration pathconfig = taskcontext.getExecutionContext().getPathConfiguration();
+				NavigableSet<SakerPath> defaultsfiles = SakerScriptTargetConfigurationReader
+						.getDefaultsFiles(parsingOptions, pathconfig);
+				if (defaultsfiles == null) {
+					//the defaults file is automatic and optional
+					SakerPath defaultdefaultspath = pathconfig.getWorkingDirectory()
+							.tryResolve(SakerScriptTargetConfigurationReader.DEFAULT_DEFAULTS_BUILD_FILE_RELATIVE_PATH);
+					if (!scriptpath.equals(defaultdefaultspath)) {
+						SakerFile presentdefaultsfile = taskcontext.getTaskUtilities()
+								.resolveFileAtPath(defaultdefaultspath);
+						ContentDescriptor dependencycd;
+						if (presentdefaultsfile == null) {
+							dependencycd = CommonTaskContentDescriptors.IS_NOT_FILE;
+						} else {
+							dependencycd = CommonTaskContentDescriptors.IS_FILE;
+							defaultsfiles = ImmutableUtils.singletonNavigableSet(defaultdefaultspath);
+						}
+						taskcontext.reportInputFileDependency(null, defaultdefaultspath, dependencycd);
+					}
+				}
+				TaskFactory<?> defaultstaskfactory;
+				if (!ObjectUtils.isNullOrEmpty(defaultsfiles) && !defaultsfiles.contains(scriptpath)) {
+					Set<DefaultsLoaderTaskFactory> deftasks = new HashSet<>();
+					for (SakerPath deffilepath : defaultsfiles) {
+						DefaultsLoaderTaskFactory defaultstask = new DefaultsLoaderTaskFactory(deffilepath);
+						deftasks.add(defaultstask);
+					}
+					defaultstaskfactory = new DefaultsAggregatorTaskFactory(deftasks);
+				} else {
+					//no defaults files
+					//OR
+					//THIS is a defaults file. in which case don't apply the defaults.
+
+					//need to start the defaults task anyway so users don't wait forever
+					defaultstaskfactory = LiteralTaskFactory.INSTANCE_NULL;
+				}
+				taskcontext.startTask(new ScriptPathTaskDefaultsLiteralTaskIdentifier(scriptpath), defaultstaskfactory,
+						null);
 			}
 
 			@Override

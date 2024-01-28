@@ -20,6 +20,7 @@ import saker.build.task.TaskContext;
 import saker.build.task.TaskExecutionParameters;
 import saker.build.task.TaskName;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.function.Functionals;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 
@@ -40,8 +41,12 @@ public class SakerScriptTaskDefaults implements Externalizable {
 
 	public static SakerScriptTaskDefaults createAndStartParameterTasks(TaskContext taskcontext,
 			SakerScriptTargetConfiguration sakertargetconfig, TaskIdentifier rootbuildid, SakerPath workingdirectory) {
-		SakerScriptTaskDefaults result = new SakerScriptTaskDefaults();
 		Set<? extends DefaultsDeclarationSakerTaskFactory> defaults = sakertargetconfig.getDefaultDeclarations();
+		if (ObjectUtils.isNullOrEmpty(defaults)) {
+			return EMPTY_INSTANCE;
+		}
+
+		SakerScriptTaskDefaults result = new SakerScriptTaskDefaults();
 		for (DefaultsDeclarationSakerTaskFactory def : defaults) {
 			NavigableMap<String, SakerTaskFactory> paramdefs = def.getParameterDefaults();
 			if (paramdefs.isEmpty()) {

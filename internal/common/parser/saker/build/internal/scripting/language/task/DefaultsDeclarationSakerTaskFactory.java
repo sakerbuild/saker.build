@@ -47,6 +47,12 @@ public class DefaultsDeclarationSakerTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
+	protected boolean isShort() {
+		// the task itself doesn't do anything, so it can be considered short
+		return true;
+	}
+
+	@Override
 	public SakerTaskFactory clone(Map<SakerTaskFactory, SakerTaskFactory> taskfactoryreplacements) {
 		return this;
 	}

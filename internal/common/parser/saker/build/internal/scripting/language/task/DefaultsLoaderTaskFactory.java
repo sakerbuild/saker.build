@@ -10,6 +10,7 @@ import java.util.Objects;
 import saker.build.file.SakerFile;
 import saker.build.file.path.SakerPath;
 import saker.build.internal.scripting.language.SakerScriptTargetConfiguration;
+import saker.build.internal.scripting.language.SakerScriptTargetConfigurationReader;
 import saker.build.internal.scripting.language.task.result.SakerScriptTaskDefaults;
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.TargetConfiguration;
@@ -57,7 +58,8 @@ public class DefaultsLoaderTaskFactory
 				defaultsfile);
 		if (!(targetconfig instanceof SakerScriptTargetConfiguration)) {
 			throw new InvalidBuildConfigurationException(
-					"Defaults file is configured with different scripting language than SakerScript.");
+					"Defaults file is configured with different scripting language than SakerScript: "
+							+ defaultsFilePath);
 		}
 		SakerScriptTargetConfiguration sakertargetconfig = (SakerScriptTargetConfiguration) targetconfig;
 		sakertargetconfig.validateDefaultsFile();
@@ -66,7 +68,8 @@ public class DefaultsLoaderTaskFactory
 		TaskExecutionParameters execparams = new TaskExecutionParameters();
 		execparams.setWorkingDirectory(this.defaultsFilePath.getParent());
 
-		BuildFileTargetTaskIdentifier rootbuildid = new BuildFileTargetTaskIdentifier("build", defaultsFilePath,
+		BuildFileTargetTaskIdentifier rootbuildid = new BuildFileTargetTaskIdentifier(
+				SakerScriptTargetConfigurationReader.DEFAULT_BUILD_TARGET_NAME, defaultsFilePath,
 				execparams.getWorkingDirectory(), null);
 		taskcontext.startTask(rootbuildid, expressions, execparams);
 

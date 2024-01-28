@@ -146,7 +146,16 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 	public SakerScriptTargetConfigurationReader() {
 	}
 
-	public static Set<SakerPath> getDefaultsFiles(ScriptParsingOptions parsingoptions,
+	/**
+	 * Gets the defaults file paths that are configured by the script options.
+	 * 
+	 * @param parsingoptions
+	 *            The options.
+	 * @param pathconfig
+	 *            The path config.
+	 * @return <code>null</code> if the script option is not set, otherwise the configured paths.
+	 */
+	public static NavigableSet<SakerPath> getDefaultsFiles(ScriptParsingOptions parsingoptions,
 			ExecutionPathConfiguration pathconfig) {
 		String opt = parsingoptions.getOptions().get(SCRIPT_OPTION_DEFAULTS_FILE);
 		if (opt == null) {
@@ -154,7 +163,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 		SakerPath pathconfigworkingdir = pathconfig == null ? null : pathconfig.getWorkingDirectory();
 		Iterator<? extends CharSequence> splitit = StringUtils.splitCharSequenceIterator(opt, ';');
-		Set<SakerPath> result = new TreeSet<>();
+		NavigableSet<SakerPath> result = new TreeSet<>();
 		while (splitit.hasNext()) {
 			CharSequence part = splitit.next();
 			if (part.length() == 0) {

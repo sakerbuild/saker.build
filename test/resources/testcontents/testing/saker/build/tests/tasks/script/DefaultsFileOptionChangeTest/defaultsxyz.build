@@ -1,0 +1,4 @@
+defaults(
+	example.echo
+	Input: xyz
+)
