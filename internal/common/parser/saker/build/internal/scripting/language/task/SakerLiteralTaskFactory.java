@@ -19,17 +19,26 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
+import saker.build.file.path.SakerPath;
+import saker.build.file.path.WildcardPath;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.internal.scripting.language.task.result.SimpleSakerTaskResult;
 import saker.build.task.TaskContext;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 
-public class SakerLiteralTaskFactory extends SelfSakerTaskFactory {
+public final class SakerLiteralTaskFactory extends SelfSakerTaskFactory {
 	private static final long serialVersionUID = 1L;
+
+	public static final SakerLiteralTaskFactory NULL_INSTANCE = new SakerLiteralTaskFactory((String) null);
+	public static final SakerLiteralTaskFactory TRUE_INSTANCE = new SakerLiteralTaskFactory(Boolean.TRUE);
+	public static final SakerLiteralTaskFactory FALSE_INSTANCE = new SakerLiteralTaskFactory(Boolean.FALSE);
 
 	protected Object value;
 
@@ -39,7 +48,80 @@ public class SakerLiteralTaskFactory extends SelfSakerTaskFactory {
 	public SakerLiteralTaskFactory() {
 	}
 
+	/**
+	 * Creates a new instance for the given object.
+	 * <p>
+	 * Note: only use this when it is known that the object is an actual literal constant, and not some other task
+	 * result.
+	 * 
+	 * @param value
+	 *            The object to enclose.
+	 */
 	public SakerLiteralTaskFactory(Object value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(String value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(Boolean value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(Character value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(Byte value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(Short value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(Integer value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(Long value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(Float value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(Double value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(BigDecimal value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(BigInteger value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(Number value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(SakerPath value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(UUID value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(Enum<?> value) {
+		this.value = value;
+	}
+
+	public SakerLiteralTaskFactory(WildcardPath value) {
 		this.value = value;
 	}
 

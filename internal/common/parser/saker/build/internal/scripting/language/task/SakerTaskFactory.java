@@ -113,6 +113,14 @@ public abstract class SakerTaskFactory implements TaskFactory<SakerTaskResult>, 
 		return taskcontext.getTaskUtilities().runTaskResult(taskid, taskfactory);
 	}
 
+	protected static Object runForResultObject(TaskContext taskcontext, TaskIdentifier taskid,
+			SakerTaskFactory taskfactory) {
+		if (taskfactory instanceof SakerLiteralTaskFactory) {
+			return ((SakerLiteralTaskFactory) taskfactory).getValue();
+		}
+		return taskcontext.getTaskUtilities().runTaskResult(taskid, taskfactory).toResult(taskcontext);
+	}
+
 	protected static TaskFuture<SakerTaskResult> startForFuture(TaskContext taskcontext, TaskIdentifier taskid,
 			SakerTaskFactory taskfactory) {
 		return taskcontext.getTaskUtilities().startTaskFuture(taskid, taskfactory);

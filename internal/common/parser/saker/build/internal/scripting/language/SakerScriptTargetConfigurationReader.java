@@ -113,10 +113,6 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 
 	public static final String DEFAULT_BUILD_TARGET_NAME = "build";
 
-	private static final SakerLiteralTaskFactory NULL_LITERAL_TASK_FACTORY_INSTANCE = new SakerLiteralTaskFactory(null);
-	private static final SakerLiteralTaskFactory TRUE_LITERAL_TASK_FACTORY_INSTANCE = new SakerLiteralTaskFactory(true);
-	private static final SakerLiteralTaskFactory FALSE_LITERAL_TASK_FACTORY_INSTANCE = new SakerLiteralTaskFactory(
-			false);
 	private static final SakerLiteralTaskFactory ZERO_LITERAL_TASK_FACTORY_INSTANCE = new SakerLiteralTaskFactory(0L);
 	private static final SakerLiteralTaskFactory NEGATE_STR_LITERAL_TASK_FACTORY_INSTANCE = new SakerLiteralTaskFactory(
 			"-");
@@ -1290,13 +1286,13 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 						case "literal": {
 							//this expression is a non quoted literal
 							if ("null".equalsIgnoreCase(litstr)) {
-								return NULL_LITERAL_TASK_FACTORY_INSTANCE;
+								return SakerLiteralTaskFactory.NULL_INSTANCE;
 							}
 							if ("true".equalsIgnoreCase(litstr)) {
-								return TRUE_LITERAL_TASK_FACTORY_INSTANCE;
+								return SakerLiteralTaskFactory.TRUE_INSTANCE;
 							}
 							if ("false".equalsIgnoreCase(litstr)) {
-								return FALSE_LITERAL_TASK_FACTORY_INSTANCE;
+								return SakerLiteralTaskFactory.FALSE_INSTANCE;
 							}
 							if (PATTERN_INTEGRAL.matcher(litstr).matches()) {
 								if (litstr.length() >= 19) {

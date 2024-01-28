@@ -33,6 +33,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import saker.build.file.path.SakerPath;
 import saker.build.file.path.WildcardPath;
@@ -158,12 +159,52 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 		return sb.toString();
 	}
 
-	private static final Set<Class<?>> UNIQUE_LITERAL_CLASSES = ObjectUtils.newHashSet(Boolean.class, Character.class,
-			Byte.class, Short.class, Integer.class, Long.class, Float.class, Double.class, String.class, UUID.class,
-			SakerPath.class, BigInteger.class, BigDecimal.class, WildcardPath.class);
+	private static final Map<Class<?>, Function<?, SakerLiteralTaskFactory>> UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS = new HashMap<>();
+	static {
+		UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS.put(Boolean.class,
+				(Function<Boolean, SakerLiteralTaskFactory>) SakerLiteralTaskFactory::new);
+		UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS.put(Character.class,
+				(Function<Character, SakerLiteralTaskFactory>) SakerLiteralTaskFactory::new);
+		UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS.put(Byte.class,
+				(Function<Byte, SakerLiteralTaskFactory>) SakerLiteralTaskFactory::new);
+		UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS.put(Short.class,
+				(Function<Short, SakerLiteralTaskFactory>) SakerLiteralTaskFactory::new);
+		UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS.put(Integer.class,
+				(Function<Integer, SakerLiteralTaskFactory>) SakerLiteralTaskFactory::new);
+		UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS.put(Long.class,
+				(Function<Long, SakerLiteralTaskFactory>) SakerLiteralTaskFactory::new);
+		UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS.put(Float.class,
+				(Function<Float, SakerLiteralTaskFactory>) SakerLiteralTaskFactory::new);
+		UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS.put(Double.class,
+				(Function<Double, SakerLiteralTaskFactory>) SakerLiteralTaskFactory::new);
+		UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS.put(String.class,
+				(Function<String, SakerLiteralTaskFactory>) SakerLiteralTaskFactory::new);
+		UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS.put(UUID.class,
+				(Function<UUID, SakerLiteralTaskFactory>) SakerLiteralTaskFactory::new);
+		UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS.put(SakerPath.class,
+				(Function<SakerPath, SakerLiteralTaskFactory>) SakerLiteralTaskFactory::new);
+		UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS.put(BigInteger.class,
+				(Function<BigInteger, SakerLiteralTaskFactory>) SakerLiteralTaskFactory::new);
+		UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS.put(BigDecimal.class,
+				(Function<BigDecimal, SakerLiteralTaskFactory>) SakerLiteralTaskFactory::new);
+		UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS.put(WildcardPath.class,
+				(Function<WildcardPath, SakerLiteralTaskFactory>) SakerLiteralTaskFactory::new);
+	}
 
-	private static boolean isUniqueLiteralClass(Class<?> clazz) {
-		return UNIQUE_LITERAL_CLASSES.contains(clazz) || Enum.class.isAssignableFrom(clazz);
+	private static SakerLiteralTaskFactory createUniqueLiteralClassFactory(Object obj) {
+		if (obj == null) {
+			return SakerLiteralTaskFactory.NULL_INSTANCE;
+		}
+		@SuppressWarnings("unchecked")
+		Function<Object, SakerLiteralTaskFactory> constr = (Function<Object, SakerLiteralTaskFactory>) UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS
+				.get(obj.getClass());
+		if (constr != null) {
+			return constr.apply(obj);
+		}
+		if (obj instanceof Enum) {
+			return new SakerLiteralTaskFactory((Enum<?>) obj);
+		}
+		return null;
 	}
 
 	@Override
@@ -287,18 +328,14 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 
 			@Override
 			public void accept(Object k, Object v) {
-				SakerTaskFactory keyfactory;
-				if (isUniqueLiteralClass(k.getClass())) {
-					keyfactory = new SakerLiteralTaskFactory(k);
-				} else {
+				SakerTaskFactory keyfactory = createUniqueLiteralClassFactory(k);
+				if (keyfactory == null) {
 					keyfactory = new NamedLiteralTaskFactory(
 							new MapEntryFieldTaskIdentifier(iterabletasktaskid, k, "key", iterableModificationStamp),
 							k);
 				}
-				SakerTaskFactory valuefactory;
-				if (isUniqueLiteralClass(v.getClass())) {
-					valuefactory = new SakerLiteralTaskFactory(v);
-				} else {
+				SakerTaskFactory valuefactory = createUniqueLiteralClassFactory(v);
+				if (valuefactory == null) {
 					valuefactory = new NamedLiteralTaskFactory(
 							new MapEntryFieldTaskIdentifier(iterabletasktaskid, k, "value", iterableModificationStamp),
 							v);
@@ -321,10 +358,8 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 
 			@Override
 			public void accept(Object o) {
-				SakerTaskFactory itemfactory;
-				if (isUniqueLiteralClass(o.getClass())) {
-					itemfactory = new SakerLiteralTaskFactory(o);
-				} else {
+				SakerTaskFactory itemfactory = createUniqueLiteralClassFactory(o);
+				if (itemfactory == null) {
 					itemfactory = new NamedLiteralTaskFactory(
 							new IterableIndexTaskIdentifier(iterabletasktaskid, idx, iterableModificationStamp), o);
 				}
