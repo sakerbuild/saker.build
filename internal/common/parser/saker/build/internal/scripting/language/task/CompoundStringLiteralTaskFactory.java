@@ -25,7 +25,6 @@ import java.util.Map;
 import saker.build.internal.scripting.language.task.result.CompoundStringLiteralSakerTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.task.TaskContext;
-import saker.build.task.TaskInvocationConfiguration;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
@@ -51,8 +50,8 @@ public class CompoundStringLiteralTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
-	public TaskInvocationConfiguration getInvocationConfiguration() {
-		return TaskInvocationConfiguration.INSTANCE_SHORT_TASK;
+	protected boolean isShort() {
+		return true;
 	}
 
 	@Override

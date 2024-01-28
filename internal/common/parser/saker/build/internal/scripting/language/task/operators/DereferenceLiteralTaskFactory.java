@@ -27,7 +27,6 @@ import saker.build.internal.scripting.language.task.SelfSakerTaskFactory;
 import saker.build.internal.scripting.language.task.result.DereferenceLiteralSakerTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.task.TaskContext;
-import saker.build.task.TaskInvocationConfiguration;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 
 public class DereferenceLiteralTaskFactory extends SelfSakerTaskFactory {
@@ -43,8 +42,8 @@ public class DereferenceLiteralTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
-	public TaskInvocationConfiguration getInvocationConfiguration() {
-		return TaskInvocationConfiguration.INSTANCE_SHORT_TASK;
+	protected boolean isShort() {
+		return true;
 	}
 
 	@Override

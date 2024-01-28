@@ -31,8 +31,10 @@ import java.util.TreeMap;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.internal.scripting.language.task.result.SimpleSakerTaskResult;
 import saker.build.task.TaskContext;
+import saker.build.task.TaskExecutionEnvironmentSelector;
 import saker.build.task.TaskFactory;
 import saker.build.task.TaskFuture;
+import saker.build.task.TaskInvocationConfiguration;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 
@@ -61,6 +63,36 @@ public abstract class SakerTaskFactory implements TaskFactory<SakerTaskResult>, 
 
 	public final void setScriptPositionKey(Object key) {
 		this.scriptPositionKey = key;
+	}
+
+	// only allow overriding the task invocation configuration using these function
+	// so it can be better managed/optimized by the subclasses
+	protected boolean isShort() {
+		return false;
+	}
+
+	@SuppressWarnings("deprecation")
+	@Override
+	public final Set<String> getCapabilities() {
+		return TaskFactory.super.getCapabilities();
+	}
+
+	@SuppressWarnings("deprecation")
+	@Override
+	public final TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
+		return TaskFactory.super.getExecutionEnvironmentSelector();
+	}
+
+	@SuppressWarnings("deprecation")
+	@Override
+	public final int getRequestedComputationTokenCount() {
+		return TaskFactory.super.getRequestedComputationTokenCount();
+	}
+
+	@Override
+	public final TaskInvocationConfiguration getInvocationConfiguration() {
+		return isShort() ? TaskInvocationConfiguration.INSTANCE_SHORT_TASK
+				: TaskInvocationConfiguration.INSTANCE_DEFAULTS;
 	}
 
 	@Override
