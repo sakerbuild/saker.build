@@ -49,6 +49,7 @@ import saker.build.scripting.ScriptParsingOptions;
 import saker.build.scripting.ScriptPosition;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskDependencyFuture;
+import saker.build.task.TaskExecutionUtilities;
 import saker.build.task.TaskFuture;
 import saker.build.task.TaskName;
 import saker.build.task.dependencies.TaskOutputChangeDetector;
@@ -492,28 +493,36 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 
 	@Override
 	public SakerTaskResult run(TaskContext taskcontext) throws Exception {
+		//first start the tasks for the qualifiers and parameters
+		//then get the results of the qualifiers to determine the task name
+		//the starting and retrieval needs to be two phased
+		//so the results of the qualifiers/parameters can be retrieved from the other expressions
+
 		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
-		TaskName targettaskname;
-		if (qualifierFactories.isEmpty()) {
-			targettaskname = TaskName.valueOf(taskName);
-		} else {
+		String[] qualifiers;
+		TaskFuture<?>[] qualifierfutures;
+		if (!qualifierFactories.isEmpty()) {
 			int qsize = qualifierFactories.size();
-			TaskFuture<?>[] qualifierfutures = new TaskFuture<?>[qsize];
+			qualifierfutures = new TaskFuture<?>[qsize];
+			qualifiers = new String[qsize];
+
 			int idx = 0;
+			TaskExecutionUtilities taskutils = taskcontext.getTaskUtilities();
 			for (SakerTaskFactory qtf : qualifierFactories) {
-				qualifierfutures[idx++] = taskcontext.getTaskUtilities()
-						.startTaskFuture(qtf.createSubTaskIdentifier(thistaskid), qtf);
+				if (qtf instanceof SakerLiteralTaskFactory) {
+					//literal constant qualifier, no need for staring it as a task
+					qualifiers[idx] = Objects.toString(((SakerLiteralTaskFactory) qtf).getValue());
+				} else {
+					qualifierfutures[idx] = taskutils.startTaskFuture(qtf.createSubTaskIdentifier(thistaskid), qtf);
+				}
+				++idx;
 			}
-			String[] qualifiers = new String[qsize];
-			for (int i = 0; i < qsize; i++) {
-				Object qres = ((SakerTaskResult) qualifierfutures[i].get()).toResult(taskcontext);
-				qualifiers[i] = Objects.toString(qres);
-			}
-			targettaskname = TaskName.valueOf(taskName, qualifiers);
+		} else {
+			qualifiers = ObjectUtils.EMPTY_STRING_ARRAY;
+			qualifierfutures = null;
 		}
 
-		NavigableMap<String, TaskIdentifier> parametertaskids = new TreeMap<>(
-				getDefaultParametersForTask(taskcontext, targettaskname));
+		NavigableMap<String, TaskIdentifier> parametertaskids = new TreeMap<>();
 		for (Entry<String, SakerTaskFactory> entry : parameters.entrySet()) {
 			SakerTaskFactory paramfactory = entry.getValue();
 			String paramname = entry.getKey();
@@ -521,6 +530,21 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 			taskcontext.startTask(paramtaskid, paramfactory, null);
 
 			parametertaskids.put(paramname, paramtaskid);
+		}
+
+		for (int i = 0; i < qualifiers.length; i++) {
+			if (qualifiers[i] != null) {
+				//constant qualifier, no need for tasks
+				continue;
+			}
+			Object qres = ((SakerTaskResult) qualifierfutures[i].get()).toResult(taskcontext);
+			qualifiers[i] = Objects.toString(qres);
+		}
+
+		TaskName targettaskname = TaskName.valueOf(taskName, qualifiers);
+		for (Entry<String, TaskIdentifier> defentry : getDefaultParametersForTask(taskcontext, targettaskname)
+				.entrySet()) {
+			parametertaskids.putIfAbsent(defentry.getKey(), defentry.getValue());
 		}
 
 		TaskIdentifier invokertaskid = TaskInvocationBootstrapperTaskFactory.runBootstrapping(taskcontext,

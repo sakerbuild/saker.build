@@ -1877,7 +1877,9 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 								break;
 							}
 							case "qualifier_inline_expression": {
-								qfactory = parseTaskExpressionConstantize(qstm, expressionParsingState);
+								Statement inlineexp = first.value.firstScope(STM_EXPRESSION_PLACEHOLDER)
+										.firstScope("expression");
+								qfactory = parseTaskExpressionConstantize(inlineexp, expressionParsingState);
 								break;
 							}
 							default: {

@@ -1,0 +1,13 @@
+build(
+	out v1 = my.task-v1()
+	out inline = my.task-{ inline }()
+	out recinline = my.task-{ my.task-inline() }()
+	
+	out multi = my.task-q1-q2()
+	
+	# to check that the tasks started in the parameter expression are retrivable
+	# from the qualifiers
+	out assigninparam = my.task-{ $paramvar }(parameter: $paramvar = assign)
+){
+	
+}
