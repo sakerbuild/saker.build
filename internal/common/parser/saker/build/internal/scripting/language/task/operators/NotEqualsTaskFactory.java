@@ -16,26 +16,19 @@
 package saker.build.internal.scripting.language.task.operators;
 
 import java.io.Externalizable;
-import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectOutput;
 import java.util.Map;
 
 import saker.build.internal.scripting.language.task.SakerLiteralTaskFactory;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
 import saker.build.internal.scripting.language.task.SakerTaskFactory;
-import saker.build.internal.scripting.language.task.SelfSakerTaskFactory;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.internal.scripting.language.task.result.SimpleSakerTaskResult;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskFuture;
 import saker.build.task.identifier.TaskIdentifier;
 
-public class NotEqualsTaskFactory extends SelfSakerTaskFactory {
+public class NotEqualsTaskFactory extends BinaryOperatorTaskFactory {
 	private static final long serialVersionUID = 1L;
-
-	private SakerTaskFactory left;
-	private SakerTaskFactory right;
 
 	/**
 	 * For {@link Externalizable}.
@@ -44,8 +37,7 @@ public class NotEqualsTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	public NotEqualsTaskFactory(SakerTaskFactory left, SakerTaskFactory right) {
-		this.left = left;
-		this.right = right;
+		super(left, right);
 	}
 
 	@Override
@@ -60,20 +52,6 @@ public class NotEqualsTaskFactory extends SelfSakerTaskFactory {
 		SakerTaskResult lefttaskres = leftfut.get();
 		SakerTaskResult righttaskres = rightfut.get();
 		return new SimpleSakerTaskResult<>(!EqualsTaskFactory.testEquality(taskcontext, lefttaskres, righttaskres));
-	}
-
-	@Override
-	public void writeExternal(ObjectOutput out) throws IOException {
-		super.writeExternal(out);
-		out.writeObject(left);
-		out.writeObject(right);
-	}
-
-	@Override
-	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-		super.readExternal(in);
-		left = (SakerTaskFactory) in.readObject();
-		right = (SakerTaskFactory) in.readObject();
 	}
 
 	@Override
@@ -96,39 +74,8 @@ public class NotEqualsTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
-	public int hashCode() {
-		final int prime = 31;
-		int result = 1;
-		result = prime * result + ((left == null) ? 0 : left.hashCode());
-		result = prime * result + ((right == null) ? 0 : right.hashCode());
-		return result;
-	}
-
-	@Override
-	public boolean equals(Object obj) {
-		if (this == obj)
-			return true;
-		if (obj == null)
-			return false;
-		if (getClass() != obj.getClass())
-			return false;
-		NotEqualsTaskFactory other = (NotEqualsTaskFactory) obj;
-		if (left == null) {
-			if (other.left != null)
-				return false;
-		} else if (!left.equals(other.left))
-			return false;
-		if (right == null) {
-			if (other.right != null)
-				return false;
-		} else if (!right.equals(other.right))
-			return false;
-		return true;
-	}
-
-	@Override
 	public String toString() {
-		return "(eq:(" + left + " == " + right + "))";
+		return "(neq:(" + left + " != " + right + "))";
 	}
 
 }
