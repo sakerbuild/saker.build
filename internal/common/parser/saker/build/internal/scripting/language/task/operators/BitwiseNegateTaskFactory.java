@@ -52,7 +52,7 @@ public class BitwiseNegateTaskFactory extends SelfSakerTaskFactory {
 	public SakerTaskResult run(TaskContext taskcontext) throws Exception {
 		TaskIdentifier subjecttaskid = subject
 				.createSubTaskIdentifier((SakerScriptTaskIdentifier) taskcontext.getTaskId());
-		Object subjectres = runForResult(taskcontext, subjecttaskid, subject).toResult(taskcontext);
+		Object subjectres = runForResultObject(taskcontext, subjecttaskid, subject);
 		if (subjectres == null) {
 			throw new OperandExecutionException("Failed to bitwise negate null.", subjecttaskid);
 		}

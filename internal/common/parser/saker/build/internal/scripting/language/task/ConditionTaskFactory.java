@@ -68,7 +68,7 @@ public class ConditionTaskFactory extends SelfSakerTaskFactory {
 
 		Object conditionval;
 		try {
-			conditionval = runForResult(taskcontext, conditiontaskid, conditionTask).toResult(taskcontext);
+			conditionval = runForResultObject(taskcontext, conditiontaskid, conditionTask);
 		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
 			throw new OperandExecutionException("Condition failed to evaluate.", e, conditiontaskid);
 		}

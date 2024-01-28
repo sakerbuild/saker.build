@@ -53,9 +53,9 @@ public class PrintTaskFactory extends SelfSakerTaskFactory {
 		//print "null" if the message is null
 		TaskIdentifier messagetaskid = messageTask
 				.createSubTaskIdentifier((SakerScriptTaskIdentifier) taskcontext.getTaskId());
-		Object taskresult = runForResult(taskcontext, messagetaskid, messageTask).toResult(taskcontext);
+		Object taskresult = runForResultObject(taskcontext, messagetaskid, messageTask);
 		String messagestr = Objects.toString(taskresult);
-		taskcontext.println(Objects.toString(messagestr));
+		taskcontext.println(messagestr);
 		return new NoSakerTaskResult(taskcontext.getTaskId());
 	}
 

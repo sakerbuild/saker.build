@@ -54,7 +54,7 @@ public class BoolNegateTaskFactory extends SelfSakerTaskFactory {
 		TaskIdentifier subtaskid = subject.createSubTaskIdentifier((SakerScriptTaskIdentifier) taskcontext.getTaskId());
 		Object subjectres;
 		try {
-			subjectres = runForResult(taskcontext, subtaskid, subject).toResult(taskcontext);
+			subjectres = runForResultObject(taskcontext, subtaskid, subject);
 		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
 			throw new OperandExecutionException("Operand failed to evaluate.", e, subtaskid);
 		}

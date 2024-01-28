@@ -64,8 +64,7 @@ public class AbortTaskFactory extends SelfSakerTaskFactory {
 			TaskIdentifier messageid = messageTask
 					.createSubTaskIdentifier((SakerScriptTaskIdentifier) taskcontext.getTaskId());
 			try {
-				messagestr = Objects.toString(runForResult(taskcontext, messageid, messageTask).toResult(taskcontext),
-						null);
+				messagestr = Objects.toString(runForResultObject(taskcontext, messageid, messageTask), null);
 			} catch (Exception e) {
 				suppress = new OperandExecutionException(
 						"Failed to evaluate " + TaskInvocationSakerTaskFactory.TASKNAME_ABORT + "() message.",
