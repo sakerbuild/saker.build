@@ -64,10 +64,16 @@ public class ListTaskFactory extends SelfSakerTaskFactory {
 		List<StructuredTaskResult> elems = new ArrayList<>(elements.size());
 		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
 		for (SakerTaskFactory tf : elements) {
-			TaskIdentifier elementtaskid = tf.createSubTaskIdentifier(thistaskid);
-			taskcontext.getTaskUtilities().startTask(elementtaskid, tf);
+			StructuredTaskResult elementobjresult;
+			if (tf instanceof SakerLiteralTaskFactory) {
+				elementobjresult = StructuredTaskResult.createLiteral(((SakerLiteralTaskFactory) tf).getValue());
+			} else {
+				TaskIdentifier elementtaskid = tf.createSubTaskIdentifier(thistaskid);
+				taskcontext.getTaskUtilities().startTask(elementtaskid, tf);
 
-			elems.add(new SakerTaskObjectSakerTaskResult(elementtaskid));
+				elementobjresult = new SakerTaskObjectSakerTaskResult(elementtaskid);
+			}
+			elems.add(elementobjresult);
 		}
 		SakerListTaskResult result = new SakerListTaskResult(elems);
 		taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));

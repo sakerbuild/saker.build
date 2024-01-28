@@ -100,16 +100,23 @@ public class MapTaskFactory extends SelfSakerTaskFactory {
 			SakerTaskFactory ktf = keys.get(i);
 			SakerTaskFactory vtf = values.get(i);
 
-			TaskIdentifier valtaskid = vtf.createSubTaskIdentifier(thistaskid);
-			taskcontext.getTaskUtilities().startTask(valtaskid, vtf);
-			StructuredTaskResult valobjresult = new SimpleStructuredObjectTaskResult(valtaskid);
+			StructuredTaskResult valobjresult;
+			//optimize literal values not to start a task unnecessarily
+			if (vtf instanceof SakerLiteralTaskFactory) {
+				Object valobj = ((SakerLiteralTaskFactory) vtf).getValue();
+				valobjresult = StructuredTaskResult.createLiteral(valobj);
+			} else {
+				TaskIdentifier valtaskid = vtf.createSubTaskIdentifier(thistaskid);
+				taskcontext.getTaskUtilities().startTask(valtaskid, vtf);
+				valobjresult = new SimpleStructuredObjectTaskResult(valtaskid);
+			}
 
 			//optimize literal keys not to start a task unnecessarily
 			if (ktf instanceof SakerLiteralTaskFactory) {
 				Object keyobj = ((SakerLiteralTaskFactory) ktf).getValue();
 				Object prev = elements.put(Objects.toString(keyobj, null), valobjresult);
 				if (prev != null) {
-					throw new OperandExecutionException("Map key present multiple times: " + keyobj, valtaskid);
+					throw new OperandExecutionException("Map key present multiple times: " + keyobj, thistaskid);
 				}
 			} else {
 				TaskIdentifier keytaskid = ktf.createSubTaskIdentifier(thistaskid);
