@@ -50,9 +50,9 @@ steps:
   condition: and(succeeded(), eq( variables['Agent.OS'], 'Windows_NT' ))
 
 - script: |
-	set -e
-	curl -s https://gist.githubusercontent.com/Sipkab/1505a8659af20003ae09295e99d3cba3/raw/azure_ubuntu_jdksetup_variables.sh -o /tmp/azure_ubuntu_jdksetup_variables.sh
-	bash /tmp/azure_ubuntu_jdksetup_variables.sh $(J_JDKS)
+    set -e
+    curl -s https://gist.githubusercontent.com/Sipkab/1505a8659af20003ae09295e99d3cba3/raw/azure_ubuntu_jdksetup_variables.sh -o /tmp/azure_ubuntu_jdksetup_variables.sh
+    bash /tmp/azure_ubuntu_jdksetup_variables.sh $(J_JDKS)
   displayName: 'Setup JDKs'
   condition: and(succeeded(), or( eq( variables['Agent.OS'], 'Linux' ), eq( variables['Agent.OS'], 'Darwin' ) ))
 
@@ -119,7 +119,7 @@ steps:
     parallel: true
 
 - script: |
-	set -e
+    set -e
     cd test/cmdline-integration
     bash run-tests.sh ../../build/std.file.place/release/saker.build.jar
   displayName: 'Run command line integration tests'
