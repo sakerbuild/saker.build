@@ -52,6 +52,11 @@ public class InvalidScriptDeclarationTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
+	protected boolean isShort() {
+		return true;
+	}
+
+	@Override
 	public SakerTaskFactory clone(Map<SakerTaskFactory, SakerTaskFactory> taskfactoryreplacements) {
 		return this;
 	}

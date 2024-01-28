@@ -86,6 +86,12 @@ public class TernaryTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
+	protected boolean isShort() {
+		// similarly to ConditionTaskFactory, only short if the condition is short, as we need to fully wait for that
+		return conditionTask instanceof SakerLiteralTaskFactory;
+	}
+
+	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
 		super.writeExternal(out);
 		out.writeObject(conditionTask);

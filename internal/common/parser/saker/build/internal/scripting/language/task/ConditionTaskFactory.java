@@ -84,6 +84,14 @@ public class ConditionTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
+	protected boolean isShort() {
+		// if the condition is a literal, the this task factory is short, because we only
+		// start the branch tasks
+		// if the condition is not a literal, then this task is not short, as we need to wait for it
+		return conditionTask instanceof SakerLiteralTaskFactory;
+	}
+
+	@Override
 	public SakerLiteralTaskFactory tryConstantize() {
 		return null;
 	}

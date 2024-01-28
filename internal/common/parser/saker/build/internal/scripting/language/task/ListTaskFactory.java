@@ -26,6 +26,7 @@ import java.util.Map;
 import saker.build.internal.scripting.language.task.result.SakerListTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskObjectSakerTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
+import saker.build.internal.scripting.language.task.result.SimpleSakerTaskResult;
 import saker.build.task.TaskContext;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.StructuredTaskResult;
@@ -65,7 +66,7 @@ public class ListTaskFactory extends SelfSakerTaskFactory {
 		for (SakerTaskFactory tf : elements) {
 			StructuredTaskResult elementobjresult;
 			if (tf instanceof SakerLiteralTaskFactory) {
-				elementobjresult = StructuredTaskResult.createLiteral(((SakerLiteralTaskFactory) tf).getValue());
+				elementobjresult = new SimpleSakerTaskResult<>(((SakerLiteralTaskFactory) tf).getValue());
 			} else {
 				TaskIdentifier elementtaskid = tf.createSubTaskIdentifier(thistaskid);
 				taskcontext.getTaskUtilities().startTask(elementtaskid, tf);
@@ -97,6 +98,7 @@ public class ListTaskFactory extends SelfSakerTaskFactory {
 
 	@Override
 	protected boolean isShort() {
+		//the task is short because we only start new tasks and don't wait for them
 		return true;
 	}
 

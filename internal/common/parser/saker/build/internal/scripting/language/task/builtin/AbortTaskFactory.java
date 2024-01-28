@@ -87,6 +87,12 @@ public class AbortTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
+	protected boolean isShort() {
+		// if the argument is a literal, then we can consider this task short
+		return messageTask instanceof SakerLiteralTaskFactory;
+	}
+
+	@Override
 	public SakerLiteralTaskFactory tryConstantize() {
 		return null;
 	}

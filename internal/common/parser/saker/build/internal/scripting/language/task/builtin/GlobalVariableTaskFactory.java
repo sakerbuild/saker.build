@@ -65,6 +65,12 @@ public class GlobalVariableTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
+	protected boolean isShort() {
+		// if the argument is a literal, then we can consider this task short
+		return nameFactory instanceof SakerLiteralTaskFactory;
+	}
+
+	@Override
 	public SakerTaskFactory clone(Map<SakerTaskFactory, SakerTaskFactory> taskfactoryreplacements) {
 		return new GlobalVariableTaskFactory(cloneHelper(taskfactoryreplacements, nameFactory));
 	}

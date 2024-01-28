@@ -82,6 +82,12 @@ public class PathTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
+	protected boolean isShort() {
+		// if the argument is a literal, then we can consider this task short
+		return pathTaskFactory instanceof SakerLiteralTaskFactory;
+	}
+
+	@Override
 	public SakerTaskFactory clone(Map<SakerTaskFactory, SakerTaskFactory> taskfactoryreplacements) {
 		return new PathTaskFactory(cloneHelper(taskfactoryreplacements, pathTaskFactory));
 	}

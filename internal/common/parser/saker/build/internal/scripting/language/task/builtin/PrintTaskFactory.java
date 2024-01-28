@@ -60,6 +60,12 @@ public class PrintTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	@Override
+	protected boolean isShort() {
+		// if the argument is a literal, then we can consider this task short
+		return messageTask instanceof SakerLiteralTaskFactory;
+	}
+
+	@Override
 	public SakerTaskFactory clone(Map<SakerTaskFactory, SakerTaskFactory> taskfactoryreplacements) {
 		return new PrintTaskFactory(cloneHelper(taskfactoryreplacements, messageTask));
 	}

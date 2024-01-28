@@ -104,7 +104,7 @@ public class MapTaskFactory extends SelfSakerTaskFactory {
 			//optimize literal values not to start a task unnecessarily
 			if (vtf instanceof SakerLiteralTaskFactory) {
 				Object valobj = ((SakerLiteralTaskFactory) vtf).getValue();
-				valobjresult = StructuredTaskResult.createLiteral(valobj);
+				valobjresult = new SimpleSakerTaskResult<>(valobj);
 			} else {
 				TaskIdentifier valtaskid = vtf.createSubTaskIdentifier(thistaskid);
 				taskcontext.getTaskUtilities().startTask(valtaskid, vtf);
@@ -140,6 +140,18 @@ public class MapTaskFactory extends SelfSakerTaskFactory {
 		SakerMapTaskResult result = new SakerMapTaskResult(elements);
 		taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
 		return result;
+	}
+
+	@Override
+	protected boolean isShort() {
+		// we wait for the actual key result objects, so we can only consider the map task factory as short
+		// if the keys are literals
+		for (SakerTaskFactory keytf : keys) {
+			if (!(keytf instanceof SakerLiteralTaskFactory)) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	@Override

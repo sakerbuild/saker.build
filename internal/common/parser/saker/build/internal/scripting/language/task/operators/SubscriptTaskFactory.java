@@ -50,6 +50,7 @@ public class SubscriptTaskFactory extends SelfSakerTaskFactory {
 
 	@Override
 	protected boolean isShort() {
+		//task is short because we don't wait for the subtask results
 		return true;
 	}
 
