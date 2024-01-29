@@ -5,10 +5,10 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
-import java.util.Objects;
 
 import saker.build.file.SakerFile;
 import saker.build.file.path.SakerPath;
+import saker.build.file.provider.SakerPathFiles;
 import saker.build.internal.scripting.language.SakerScriptTargetConfiguration;
 import saker.build.internal.scripting.language.SakerScriptTargetConfigurationReader;
 import saker.build.internal.scripting.language.task.result.SakerScriptTaskDefaults;
@@ -39,7 +39,8 @@ public class DefaultsLoaderTaskFactory
 	}
 
 	public DefaultsLoaderTaskFactory(SakerPath defaultsFilePath) {
-		Objects.requireNonNull(defaultsFilePath, "defaults file path");
+		//path should be absolute so only a single task can be started for a given path
+		SakerPathFiles.requireAbsolutePath(defaultsFilePath, "defaults file path");
 		this.defaultsFilePath = defaultsFilePath;
 	}
 
