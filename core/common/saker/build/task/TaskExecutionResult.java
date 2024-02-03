@@ -44,6 +44,8 @@ import saker.build.task.dependencies.CommonTaskOutputChangeDetector;
 import saker.build.task.dependencies.FileCollectionStrategy;
 import saker.build.task.dependencies.TaskOutputChangeDetector;
 import saker.build.task.event.TaskExecutionEvent;
+import saker.build.task.event.TaskExecutionEventKind;
+import saker.build.task.event.TaskIdTaskEvent;
 import saker.build.task.exception.IllegalTaskOperationException;
 import saker.build.task.exception.TaskIdentifierConflictException;
 import saker.build.task.identifier.TaskIdentifier;
@@ -537,7 +539,7 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 			SerialUtils.writeExternalMap(out, createdTaskIds);
 			SerialUtils.writeExternalMap(out, dependentTasks);
 
-			SerialUtils.writeExternalIterable(out, events);
+			writeTaskExecutionEvents(out, events);
 		}
 
 		@Override
@@ -561,7 +563,50 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 			createdTaskIds = SerialUtils.readExternalImmutableHashMap(in);
 			dependentTasks = SerialUtils.readExternalImmutableHashMap(in);
 
-			events = SerialUtils.readExternalIterable(in);
+			events = readTaskExecutionEvents(in);
+		}
+
+		private static void writeTaskExecutionEvents(ObjectOutput out, Iterable<? extends TaskExecutionEvent> events)
+				throws IOException {
+			//specialized serialization of TaskExecutionEvent instances
+			//to reduce the written object references
+			for (TaskExecutionEvent ev : events) {
+				switch (ev.getKind()) {
+					case FINISH_RETRIEVED_TASK:
+					case START_TASK:
+					case WAITED_TASK:
+						TaskIdTaskEvent tidev = (TaskIdTaskEvent) ev;
+						out.writeObject(tidev.getKind());
+						out.writeObject(tidev.getTaskId());
+						break;
+					default:
+						out.writeObject(ev);
+						break;
+
+				}
+			}
+			//closing null of the events objects
+			out.writeObject(null);
+		}
+
+		private static List<TaskExecutionEvent> readTaskExecutionEvents(ObjectInput in)
+				throws ClassNotFoundException, IOException {
+			List<TaskExecutionEvent> eventslist = new ArrayList<>();
+			while (true) {
+				Object o = in.readObject();
+				if (o == null) {
+					break;
+				}
+				TaskExecutionEvent ev;
+				if (o instanceof TaskExecutionEventKind) {
+					TaskIdentifier taskid = (TaskIdentifier) in.readObject();
+					ev = new TaskIdTaskEvent((TaskExecutionEventKind) o, taskid);
+				} else {
+					ev = (TaskExecutionEvent) o;
+				}
+				eventslist.add(ev);
+			}
+			return eventslist;
 		}
 	}
 

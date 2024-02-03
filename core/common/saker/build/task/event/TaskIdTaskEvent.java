@@ -22,7 +22,7 @@ import java.io.ObjectOutput;
 
 import saker.build.task.identifier.TaskIdentifier;
 
-public class TaskIdTaskEvent implements TaskExecutionEvent, Externalizable {
+public final class TaskIdTaskEvent implements TaskExecutionEvent, Externalizable {
 	private static final long serialVersionUID = 1L;
 
 	private TaskExecutionEventKind kind;
