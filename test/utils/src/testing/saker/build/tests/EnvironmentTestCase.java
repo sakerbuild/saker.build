@@ -231,11 +231,16 @@ public abstract class EnvironmentTestCase extends SakerTestCase {
 	}
 
 	private Path resolveClassNamedDirectory(Path basecontentdir) {
-		Path wdir = basecontentdir.resolve(this.getClass().getName()).toAbsolutePath();
+		String classname = this.getClass().getName();
+		return resolveClassNamedDirectory(basecontentdir, classname);
+	}
+
+	public static Path resolveClassNamedDirectory(Path basecontentdir, String classname) {
+		Path wdir = basecontentdir.resolve(classname).toAbsolutePath();
 		if (Files.isDirectory(wdir)) {
 			return wdir;
 		}
-		wdir = basecontentdir.resolve(this.getClass().getName().replace('.', '/')).toAbsolutePath();
+		wdir = basecontentdir.resolve(classname.replace('.', '/')).toAbsolutePath();
 		return wdir;
 	}
 
