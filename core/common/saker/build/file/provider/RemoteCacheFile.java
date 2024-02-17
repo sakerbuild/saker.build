@@ -875,7 +875,7 @@ public class RemoteCacheFile implements Closeable {
 				fullyPersistedRegionLocked(entry, path, size);
 			}
 		}
-		//else should not occurr
+		//else should not occur
 	}
 
 	private void fullyPersistedRegionLocked(ContentRegion entry, SakerPath path, long size) {

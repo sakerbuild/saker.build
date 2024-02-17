@@ -55,7 +55,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * {@linkplain Thread#setDaemon(boolean) daemon thread}.)
  * <p>
  * The flushing stream is started with a {@linkplain Thread#setPriority(int) low priority}, therefore longer delays can
- * occurr if the CPU is doing more important work.
+ * occur if the CPU is doing more important work.
  */
 public class AsyncOutputStream extends OutputStream implements ByteSink {
 	/**

@@ -34,7 +34,7 @@ import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
  * <p>
  * This interface mainly exists to make fine graining dependency application possible using {@link TaskResultResolver}
  * and when working with {@linkplain StructuredTaskResult structured task results}. <br>
- * Working with objects that have their values backed by task results may occurr when the build task executions are
+ * Working with objects that have their values backed by task results may occur when the build task executions are
  * already finished. In these cases, a {@link TaskResultResolver} instance can be used to retrieve task results for
  * given task identifiers. However, when working with the same data during task execution, the task dependencies may
  * need to be refined for proper incremental implementation. As the objects have a {@link TaskResultResolver} reference

@@ -6086,7 +6086,7 @@ public final class TaskExecutionManager {
 			//    possible scenario:
 			//    all of the tasks are in the initialized state, and are collecting the dependencies.
 			//    as all of them are pending, the condition is not satisfied
-			//    can a circular deadlock occurr in this case?
+			//    can a circular deadlock occur in this case?
 			WaiterThreadHandle threadhandle = new WaiterThreadHandle(
 					ManagerTaskFutureImpl.EVENT_MASK_ALL_STATES | ManagerTaskFutureImpl.EVENT_WAITING_FOR_TASK_CHANGED);
 			ManagerTaskFutureImpl.waitCondition(this, threadhandle, waitfutures, () -> {

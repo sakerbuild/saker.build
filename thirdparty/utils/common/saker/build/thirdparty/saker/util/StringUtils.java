@@ -680,7 +680,7 @@ public class StringUtils {
 	 * <p>
 	 * The returned iterator will iterate over the split parts that doesn't contain the given character.
 	 * <p>
-	 * If multiple split characters occurr after each other, the returned iterator will return empty sequences for the
+	 * If multiple split characters occur after each other, the returned iterator will return empty sequences for the
 	 * inner parts. If the character is at the start or end of the string, a preceeding and following empty sequence
 	 * will be returned.
 	 * 

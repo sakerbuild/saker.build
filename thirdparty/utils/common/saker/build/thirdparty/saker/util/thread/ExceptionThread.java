@@ -30,7 +30,7 @@ import saker.build.thirdparty.saker.util.function.ThrowingRunnable;
  * <p>
  * Subclasses can override {@link #runImpl()} instead of {@link #run()} to execute their work.
  * <p>
- * The class will catch all exceptions that occurr in its run method, and will rethrow any exceptions that are not safe
+ * The class will catch all exceptions that occur in its run method, and will rethrow any exceptions that are not safe
  * to recover from. Safely recoverable exceptions are: {@link StackOverflowError}, {@link OutOfMemoryError},
  * {@link LinkageError}, {@link ServiceConfigurationError}, {@link AssertionError}, {@link Exception}. Other
  * {@link Throwable Throwables} and {@link Error Errors} will be thrown from the {@link #run()} method of the thread.

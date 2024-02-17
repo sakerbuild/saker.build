@@ -243,7 +243,7 @@ final class BuiltinExternalScriptInformationProvider implements ExternalScriptIn
 							+ "The task takes a list of expressions as its argument, and will execute them in order. After a given expression "
 							+ "is evaluated, the next expression will be evaluated, and so on.\n"
 							+ "Note that this task DOES NOT guarantee that the expressions are evaluated in order. If the same "
-							+ "expressions are present outside of the arguments of this task, out-of-order execution may occurr."));
+							+ "expressions are present outside of the arguments of this task, out-of-order execution may occur."));
 
 			SimpleTaskParameterInformation tasksparam = new SimpleTaskParameterInformation(taskinfo, "Tasks");
 			tasksparam.setAliases(ImmutableUtils.singletonSet(""));

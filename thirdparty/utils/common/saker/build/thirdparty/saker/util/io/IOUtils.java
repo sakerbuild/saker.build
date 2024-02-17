@@ -65,7 +65,7 @@ import saker.build.thirdparty.saker.util.io.function.IOConsumer;
  * wrapped into an {@link IOException}, the laters will be added as suppressed exceptions to the first caught exception.
  * <p>
  * Methods that start with <code>close</code> will call {@link AutoCloseable#close()} on the argument object(s). The
- * closing will occurr for all argument objects, and any exception caught will be handled according to each method
+ * closing will occur for all argument objects, and any exception caught will be handled according to each method
  * documentation. Using this methods can be useful when multiple closeables need to be closed without having a nested
  * try-finally block in the caller method.
  * <p>

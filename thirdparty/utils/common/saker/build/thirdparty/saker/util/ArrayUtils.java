@@ -30,7 +30,7 @@ public class ArrayUtils {
 	/**
 	 * Invokes the argument action for every element in the specified array.
 	 * <p>
-	 * The action is invoked in the same order as the elements occurr in the array.
+	 * The action is invoked in the same order as the elements occur in the array.
 	 * 
 	 * @param array
 	 *            The array.

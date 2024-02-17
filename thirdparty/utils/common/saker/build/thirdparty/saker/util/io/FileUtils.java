@@ -597,8 +597,8 @@ public class FileUtils {
 	 * <p>
 	 * If the file cannot be opened for writing, the byte contents will still be checked for equality, and the method
 	 * will successfully return if the file contents equal. This is an useful scenario when a client tries to write to a
-	 * file that locked by another agent, but wants to handle gracefully is the file contents are the same. Often
-	 * occurrs when dynamic libraries are being exported and loaded by {@link ClassLoader ClassLoaders}.
+	 * file that locked by another agent, but wants to handle gracefully is the file contents are the same. Often occurs
+	 * when dynamic libraries are being exported and loaded by {@link ClassLoader ClassLoaders}.
 	 * <p>
 	 * If the file bytes mismatch, and the file cannot be opened for writing, the original write opening
 	 * {@link IOException} is thrown.

@@ -752,7 +752,7 @@ public class RMIVariables implements AutoCloseable {
 	 * It is recommended that clients use asynchronous invocation only for notification purposes, where it is
 	 * unnecessary to block the caller by waiting for the response. It is recommended to externally synchronize on some
 	 * state to ensure that the asynchronous invocation actually went through. It is also recommended to properly test
-	 * and debug any transfer errors that might occurr during invocations. In order to avoid transfer errors, it is
+	 * and debug any transfer errors that might occur during invocations. In order to avoid transfer errors, it is
 	 * recommended to only use <code>void</code> no-arg methods.
 	 * <p>
 	 * The method transfer properties will be determined based on the RMI connection configuration.
