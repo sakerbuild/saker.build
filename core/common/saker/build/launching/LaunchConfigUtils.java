@@ -123,7 +123,7 @@ public class LaunchConfigUtils {
 					} catch (NoSuchAlgorithmException | CertificateException | IOException e) {
 						//Keystore.load may throw IOException in case of incorrect password
 						fails = ArrayUtils.appended(fails,
-								new KeyStoreException("Failed to open " + kstype + " keystore: " + path, e));
+								new KeyStoreException("Failed to open " + kstype + " keystore: \"" + path + "\"", e));
 					}
 				}
 				if (performinfer) {
@@ -142,8 +142,8 @@ public class LaunchConfigUtils {
 							return ks;
 						} catch (NoSuchAlgorithmException | CertificateException | IOException e) {
 							//Keystore.load may throw IOException in case of incorrect password
-							fails = ArrayUtils.appended(fails, new KeyStoreException(
-									"Failed to open " + kstype + " keystore: " + path + " with password: " + pass, e));
+							fails = ArrayUtils.appended(fails, new KeyStoreException("Failed to open " + kstype
+									+ " keystore: " + path + " with password: \"" + pass + "\"", e));
 						}
 						int nextidx = fnwithoutext.indexOf('_', idx);
 						if (nextidx < 0) {
@@ -157,6 +157,23 @@ public class LaunchConfigUtils {
 						}
 						//don't include the _ in the password substring
 						idx = nextidx + 1;
+					}
+
+					//attempt to guess with the "changeit" apssword
+					//which is the same as the default password for the cacerts keystore
+					String pass = "changeit";
+					char[] passarray = pass.toCharArray();
+					try {
+						//seek back to start
+						fc.position(0);
+						ks.load(is, passarray);
+						inoutkeystorepass[0] = passarray;
+						return ks;
+					} catch (NoSuchAlgorithmException | CertificateException | IOException e) {
+						//Keystore.load may throw IOException in case of incorrect password
+						fails = ArrayUtils.appended(fails, new KeyStoreException(
+								"Failed to open " + kstype + " keystore: " + path + " with password: \"" + pass + "\"",
+								e));
 					}
 				}
 			}
