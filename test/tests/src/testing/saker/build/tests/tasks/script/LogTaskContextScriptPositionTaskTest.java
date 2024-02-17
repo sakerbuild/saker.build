@@ -90,19 +90,19 @@ public class LogTaskContextScriptPositionTaskTest extends CollectingMetricEnviro
 		out = new UnsyncByteArrayOutputStream();
 		parameters.setStandardOutput(out);
 		runScriptTask("build");
-		assertEquals(out.toString(), "[logger.task]saker.build:1:1-14: Warning: !message\n");
+		assertEquals(out.toString(), "[logger.task]saker.build:1:1-13: Warning: !message\n");
 
 		out = new UnsyncByteArrayOutputStream();
 		parameters.setStandardOutput(out);
 		runScriptTask("build");
-		assertEquals(out.toString(), "[logger.task]saker.build:1:1-14: Warning: !message\n");
+		assertEquals(out.toString(), "[logger.task]saker.build:1:1-13: Warning: !message\n");
 
 		files.putFile(PATH_WORKING_DIRECTORY.resolve("saker.build"),
 				"\n" + files.getAllBytes(PATH_WORKING_DIRECTORY.resolve("saker.build")));
 		out = new UnsyncByteArrayOutputStream();
 		parameters.setStandardOutput(out);
 		runScriptTask("build");
-		assertEquals(out.toString(), "[logger.task]saker.build:2:1-14: Warning: !message\n");
+		assertEquals(out.toString(), "[logger.task]saker.build:2:1-13: Warning: !message\n");
 	}
 
 }

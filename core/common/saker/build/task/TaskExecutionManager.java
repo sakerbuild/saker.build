@@ -4218,7 +4218,7 @@ public final class TaskExecutionManager {
 								sb.append(':');
 								sb.append(lineStart + 1);
 								sb.append('-');
-								sb.append(lineEnd + 1);
+								sb.append(lineEnd);
 							}
 						}
 						sb.append(": ");
