@@ -91,6 +91,12 @@ public class ScriptTraceTaskTest extends CollectingMetricEnvironmentTestCase {
 		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile, "aborter(abmsg: abortmsg)");
 		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile, "aborter(in abmsg) { abort($abmsg) }");
 		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile, "abort($abmsg)");
+		
+		res = runTask(() -> environment.runBuildTarget(mainbuildfile, "derefnull", parameters, project));
+		SakerLog.printFormatException(res.getPositionedExceptionView());
+		System.err.println();
+		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile, "$null");
+		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile, "print($null)");
 	}
 
 }

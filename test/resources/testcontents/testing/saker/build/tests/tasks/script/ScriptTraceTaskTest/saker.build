@@ -27,3 +27,7 @@ conflictassign {
 }
 includingabort { aborter(abmsg: abortmsg) }
 aborter(in abmsg) { abort($abmsg) }
+
+derefnull {
+    print($null)
+}
