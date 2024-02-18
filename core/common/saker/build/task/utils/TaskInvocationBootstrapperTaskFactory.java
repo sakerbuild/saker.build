@@ -138,9 +138,24 @@ public final class TaskInvocationBootstrapperTaskFactory
 	private static TaskIdentifier runBootstrappingImpl(TaskContext taskcontext, TaskName taskname,
 			NavigableMap<String, TaskIdentifier> parametersNameTaskIds, String repository,
 			TaskExecutionParameters taskexecutionparams) throws TaskNotFoundException {
-		TaskFactory<?> factory;
+		TaskFactory<?> factory = lookupTaskFactory(taskcontext, taskname, repository);
+		return startTaskInvocation(taskcontext, taskname, parametersNameTaskIds, taskexecutionparams, factory);
+	}
+
+	private static TaskIdentifier startTaskInvocation(TaskContext taskcontext, TaskName taskname,
+			NavigableMap<String, TaskIdentifier> parametersNameTaskIds, TaskExecutionParameters taskexecutionparams,
+			TaskFactory<?> factory) {
+		//XXX invoke a constructor that doesn't copy the param map
+		TaskInvocationRunnerTaskFactory<?> invokerfactory = new TaskInvocationRunnerTaskFactory<>(taskname, factory,
+				parametersNameTaskIds);
+		TaskIdentifier taskid = TaskInvocationRunnerTaskFactory.getTaskIdentifier(invokerfactory);
+		taskcontext.startTask(taskid, invokerfactory, taskexecutionparams);
+		return taskid;
+	}
+
+	private static TaskFactory<?> lookupTaskFactory(TaskContext taskcontext, TaskName taskname, String repository) {
 		try {
-			factory = taskcontext.getTaskUtilities()
+			return taskcontext.getTaskUtilities()
 					.getReportExecutionDependency(new TaskLookupExecutionProperty(taskname, repository));
 		} catch (PropertyComputationFailedException e) {
 			Throwable cause = e.getCause();
@@ -149,12 +164,6 @@ public final class TaskInvocationBootstrapperTaskFactory
 			}
 			throw new TaskNotFoundException(cause, taskname);
 		}
-		//XXX invoke a constructor that doesn't copy the param map
-		TaskInvocationRunnerTaskFactory<?> invokerfactory = new TaskInvocationRunnerTaskFactory<>(taskname, factory,
-				parametersNameTaskIds);
-		TaskIdentifier taskid = TaskInvocationRunnerTaskFactory.getTaskIdentifier(invokerfactory);
-		taskcontext.startTask(taskid, invokerfactory, taskexecutionparams);
-		return taskid;
 	}
 
 	@Override
