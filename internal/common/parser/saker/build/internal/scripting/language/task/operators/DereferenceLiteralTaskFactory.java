@@ -20,6 +20,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Map;
 
+import saker.build.internal.scripting.language.task.DirectComputableSakerTaskFactory;
 import saker.build.internal.scripting.language.task.SakerLiteralTaskFactory;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
 import saker.build.internal.scripting.language.task.SakerTaskFactory;
@@ -29,7 +30,8 @@ import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.task.TaskContext;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 
-public class DereferenceLiteralTaskFactory extends SelfSakerTaskFactory {
+public class DereferenceLiteralTaskFactory extends SelfSakerTaskFactory
+		implements DirectComputableSakerTaskFactory<SakerTaskResult> {
 	private static final long serialVersionUID = 1L;
 
 	private String variableName;
@@ -48,11 +50,20 @@ public class DereferenceLiteralTaskFactory extends SelfSakerTaskFactory {
 
 	@Override
 	public SakerTaskResult run(TaskContext taskcontext) throws Exception {
-		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
-		DereferenceLiteralSakerTaskResult result = new DereferenceLiteralSakerTaskResult(thistaskid.getRootIdentifier(),
-				variableName);
+		SakerTaskResult result = directComputeTaskResult(taskcontext);
 		taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
 		return result;
+	}
+
+	@Override
+	public SakerTaskResult directComputeTaskResult(TaskContext taskcontext) {
+		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
+		return new DereferenceLiteralSakerTaskResult(thistaskid.getRootIdentifier(), variableName);
+	}
+
+	@Override
+	public boolean isDirectComputable() {
+		return true;
 	}
 
 	@Override

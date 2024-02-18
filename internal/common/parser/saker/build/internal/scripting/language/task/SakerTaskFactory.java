@@ -29,7 +29,6 @@ import java.util.Set;
 import java.util.TreeMap;
 
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
-import saker.build.internal.scripting.language.task.result.SimpleSakerTaskResult;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskExecutionEnvironmentSelector;
 import saker.build.task.TaskFactory;
@@ -107,8 +106,10 @@ public abstract class SakerTaskFactory implements TaskFactory<SakerTaskResult>, 
 
 	protected static SakerTaskResult runForResult(TaskContext taskcontext, TaskIdentifier taskid,
 			SakerTaskFactory taskfactory) {
-		if (taskfactory instanceof SakerLiteralTaskFactory) {
-			return new SimpleSakerTaskResult<>(((SakerLiteralTaskFactory) taskfactory).getValue());
+		DirectComputableSakerTaskFactory<?> dcfactory = DirectComputableSakerTaskFactory
+				.getDirectComputable(taskfactory);
+		if (dcfactory != null) {
+			return dcfactory.directComputeTaskResult(taskcontext);
 		}
 		return taskcontext.getTaskUtilities().runTaskResult(taskid, taskfactory);
 	}
@@ -116,7 +117,13 @@ public abstract class SakerTaskFactory implements TaskFactory<SakerTaskResult>, 
 	protected static Object runForResultObject(TaskContext taskcontext, TaskIdentifier taskid,
 			SakerTaskFactory taskfactory) {
 		if (taskfactory instanceof SakerLiteralTaskFactory) {
+			//special case for literal task factory, so we don't wrap-unwrap it in a SakerTaskResult unnecessarily
 			return ((SakerLiteralTaskFactory) taskfactory).getValue();
+		}
+		DirectComputableSakerTaskFactory<?> dcfactory = DirectComputableSakerTaskFactory
+				.getDirectComputable(taskfactory);
+		if (dcfactory != null) {
+			return dcfactory.directComputeTaskResult(taskcontext).toResult(taskcontext);
 		}
 		return taskcontext.getTaskUtilities().runTaskResult(taskid, taskfactory).toResult(taskcontext);
 	}

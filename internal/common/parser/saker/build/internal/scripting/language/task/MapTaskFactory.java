@@ -72,8 +72,9 @@ public class MapTaskFactory extends SelfSakerTaskFactory {
 			SakerTaskFactory vtf = values.get(0);
 
 			StructuredTaskResult valobjresult;
-			if (vtf instanceof SakerLiteralTaskFactory) {
-				valobjresult = new SimpleSakerTaskResult<>(((SakerLiteralTaskFactory) vtf).getValue());
+			DirectComputableSakerTaskFactory<?> vdcfactory = DirectComputableSakerTaskFactory.getDirectComputable(vtf);
+			if (vdcfactory != null) {
+				valobjresult = vdcfactory.directComputeTaskResult(taskcontext);
 			} else {
 				TaskIdentifier valtaskid = vtf.createSubTaskIdentifier(thistaskid);
 				taskcontext.getTaskUtilities().startTask(valtaskid, vtf);
@@ -102,9 +103,9 @@ public class MapTaskFactory extends SelfSakerTaskFactory {
 
 			StructuredTaskResult valobjresult;
 			//optimize literal values not to start a task unnecessarily
-			if (vtf instanceof SakerLiteralTaskFactory) {
-				Object valobj = ((SakerLiteralTaskFactory) vtf).getValue();
-				valobjresult = new SimpleSakerTaskResult<>(valobj);
+			DirectComputableSakerTaskFactory<?> dcfactory = DirectComputableSakerTaskFactory.getDirectComputable(vtf);
+			if (dcfactory != null) {
+				valobjresult = dcfactory.directComputeTaskResult(taskcontext);
 			} else {
 				TaskIdentifier valtaskid = vtf.createSubTaskIdentifier(thistaskid);
 				taskcontext.getTaskUtilities().startTask(valtaskid, vtf);

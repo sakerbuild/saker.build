@@ -33,7 +33,8 @@ import saker.build.task.TaskContext;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 
-public final class SakerLiteralTaskFactory extends SelfSakerTaskFactory {
+public final class SakerLiteralTaskFactory extends SelfSakerTaskFactory
+		implements DirectComputableSakerTaskFactory<SakerTaskResult> {
 	private static final long serialVersionUID = 1L;
 
 	protected Object value;
@@ -132,9 +133,19 @@ public final class SakerLiteralTaskFactory extends SelfSakerTaskFactory {
 
 	@Override
 	public SakerTaskResult run(TaskContext taskcontext) {
-		SimpleSakerTaskResult<Object> result = new SimpleSakerTaskResult<>(value);
+		SakerTaskResult result = directComputeTaskResult(taskcontext);
 		taskcontext.reportSelfTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(result));
 		return result;
+	}
+
+	@Override
+	public SakerTaskResult directComputeTaskResult(TaskContext taskcontext) {
+		return new SimpleSakerTaskResult<>(value);
+	}
+
+	@Override
+	public boolean isDirectComputable() {
+		return true;
 	}
 
 	@Override
