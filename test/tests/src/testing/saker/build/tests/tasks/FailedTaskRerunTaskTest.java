@@ -27,7 +27,12 @@ public class FailedTaskRerunTaskTest extends CollectingMetricEnvironmentTestCase
 		private static final long serialVersionUID = 1L;
 	}
 
+	private static class AborterException extends RuntimeException {
+		private static final long serialVersionUID = 1L;
+	}
+
 	private static boolean shouldThrow = false;
+	private static boolean shouldAbort = false;
 
 	private static class FailerTaskFactory extends StringTaskFactory {
 		private static final long serialVersionUID = 1L;
@@ -45,16 +50,28 @@ public class FailedTaskRerunTaskTest extends CollectingMetricEnvironmentTestCase
 			if (shouldThrow) {
 				throw new FailerException();
 			}
+			if (shouldAbort) {
+				context.abortExecution(new AborterException());
+				return null;
+			}
 			return super.run(context);
 		}
 	}
 
 	@Override
 	protected void runTestImpl() throws Throwable {
+		//reset vars
+		shouldAbort = false;
+		shouldThrow = false;
+
 		runTask("main", new FailerTaskFactory("result"));
 		assertEquals(getMetric().getRunTaskIdResults().keySet(), strTaskIdSetOf("main"));
 
 		shouldThrow = true;
+		assertTaskException(FailerException.class, () -> runTask("main", new FailerTaskFactory("changed")));
+		assertEquals(getMetric().getRunTaskIdFactories().keySet(), strTaskIdSetOf("main"));
+
+		//try running again, it should be ran and fail again
 		assertTaskException(FailerException.class, () -> runTask("main", new FailerTaskFactory("changed")));
 		assertEquals(getMetric().getRunTaskIdFactories().keySet(), strTaskIdSetOf("main"));
 
@@ -65,6 +82,18 @@ public class FailedTaskRerunTaskTest extends CollectingMetricEnvironmentTestCase
 
 		runTask("main", new FailerTaskFactory("resultx"));
 		assertEquals(getMetric().getRunTaskIdResults().keySet(), strTaskIdSetOf("main"));
+
+		shouldAbort = true;
+		assertTaskException(AborterException.class, () -> runTask("main", new FailerTaskFactory("aborter")));
+		assertEquals(getMetric().getRunTaskIdFactories().keySet(), strTaskIdSetOf("main"));
+
+		//no re-run as it was due to abortion, and the task factory didn't change
+		assertTaskException(AborterException.class, () -> runTask("main", new FailerTaskFactory("aborter")));
+		assertEquals(getMetric().getRunTaskIdResults().keySet(), strTaskIdSetOf());
+
+		//rerun, because the task changed
+		assertTaskException(AborterException.class, () -> runTask("main", new FailerTaskFactory("aborter2")));
+		assertEquals(getMetric().getRunTaskIdFactories().keySet(), strTaskIdSetOf("main"));
 	}
 
 }

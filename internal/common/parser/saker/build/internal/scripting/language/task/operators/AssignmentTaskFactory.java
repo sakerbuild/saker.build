@@ -17,6 +17,7 @@ package saker.build.internal.scripting.language.task.operators;
 
 import java.util.Map;
 
+import saker.build.internal.scripting.language.exc.MultipleAssignmentExecutionException;
 import saker.build.internal.scripting.language.exc.OperandExecutionException;
 import saker.build.internal.scripting.language.exc.SakerScriptEvaluationException;
 import saker.build.internal.scripting.language.task.AssignableTaskResult;
@@ -29,6 +30,7 @@ import saker.build.internal.scripting.language.task.result.SakerTaskObjectSakerT
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
 import saker.build.task.TaskContext;
 import saker.build.task.exception.TaskExecutionFailedException;
+import saker.build.task.exception.TaskIdentifierConflictException;
 import saker.build.task.identifier.TaskIdentifier;
 
 public class AssignmentTaskFactory extends BinaryOperatorTaskFactory {
@@ -50,14 +52,22 @@ public class AssignmentTaskFactory extends BinaryOperatorTaskFactory {
 
 		SakerTaskResult leftres = runForResult(taskcontext, ltaskid, left);
 		if (!(leftres instanceof AssignableTaskResult)) {
-			throw new OperandExecutionException("Left operand is not assignable.", ltaskid);
+			taskcontext.abortExecution(new OperandExecutionException("Left operand is not assignable.", ltaskid));
+			return null;
 		}
 		AssignableTaskResult assignableresult = (AssignableTaskResult) leftres;
 		try {
 			assignableresult.assign(taskcontext, thistaskid, rtaskid);
+		} catch (TaskIdentifierConflictException e) {
+			// multiple assignment to the same variable
+			// Note: currently this exception is thrown instead of aborting
+			//       because we're not sure if the task gets called again incrementally
+			//       if the conflict is resolved
+			//       TODO add test for this and fix it if feasible
+			throw new MultipleAssignmentExecutionException(
+					"Multiple assignment to the same variable.", e, thistaskid);
 		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
-			taskcontext.abortExecution(
-					new OperandExecutionException("Failed to evaluate assignment operator", e, rtaskid));
+			taskcontext.abortExecution(new OperandExecutionException("Failed to evaluate assignment.", e, thistaskid));
 			return null;
 		}
 		return new SakerTaskObjectSakerTaskResult(rtaskid);
@@ -75,7 +85,7 @@ public class AssignmentTaskFactory extends BinaryOperatorTaskFactory {
 		return assigntaskid;
 	}
 
-	public static TaskIdentifier createAssignTaskIdentifier(TaskIdentifier roottaskid, String variablename) {
+	public static SakerAssignTaskIdentifier createAssignTaskIdentifier(TaskIdentifier roottaskid, String variablename) {
 		return new SakerAssignTaskIdentifier(roottaskid, variablename);
 	}
 

@@ -20,8 +20,10 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
 import saker.build.internal.scripting.language.exc.OperandExecutionException;
+import saker.build.internal.scripting.language.exc.SakerScriptEvaluationException;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
 import saker.build.task.TaskResultResolver;
+import saker.build.task.exception.TaskExecutionFailedException;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.StructuredTaskResult;
 
@@ -41,7 +43,12 @@ public class DereferenceSakerTaskResult extends AbstractDereferenceSakerTaskResu
 
 	@Override
 	protected String getVariableName(TaskResultResolver results) {
-		Object nameval = StructuredTaskResult.getActualTaskResult(variableTaskId, results);
+		Object nameval;
+		try {
+			nameval = StructuredTaskResult.getActualTaskResult(variableTaskId, results);
+		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
+			throw new OperandExecutionException("Failed to evaluate variable name", e, variableTaskId);
+		}
 		if (nameval == null) {
 			throw new OperandExecutionException("Variable name evaluated to null.", variableTaskId);
 		}

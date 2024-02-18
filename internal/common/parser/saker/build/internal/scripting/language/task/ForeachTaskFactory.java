@@ -193,7 +193,7 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 
 	private static SakerLiteralTaskFactory createUniqueLiteralClassFactory(Object obj) {
 		if (obj == null) {
-			return SakerLiteralTaskFactory.NULL_INSTANCE;
+			return new SakerLiteralTaskFactory((String) null);
 		}
 		@SuppressWarnings("unchecked")
 		Function<Object, SakerLiteralTaskFactory> constr = (Function<Object, SakerLiteralTaskFactory>) UNIQUE_LITERAL_CLASS_FACTORY_CONSTRUCTORS
@@ -662,6 +662,12 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 
 		public ForeachLocalVariableTaskFactory(LocalVariableTaskIdentifier valueTaskId) {
 			this.valueTaskId = valueTaskId;
+		}
+
+		@Override
+		protected boolean isShort() {
+			// just returning a result object, can be considered short
+			return true;
 		}
 
 		@Override

@@ -1,0 +1,29 @@
+notassigned(
+    out notassigned = $var
+) {
+}
+
+noresassign {
+    $print(out) = 123
+}
+
+abortassign {
+    $abort(abrt) = 123
+}
+simpleabort {
+    abort(simple)  ;
+}
+notassignassign {
+    $var = $nnassigned
+    print($var)
+}
+notassignable {
+    print(x) = 123
+}
+conflictassign {
+    $conflictvar = str1
+    $conflictvar = str2
+    print($conflictvar)
+}
+includingabort { aborter(abmsg: abortmsg) }
+aborter(in abmsg) { abort($abmsg) }

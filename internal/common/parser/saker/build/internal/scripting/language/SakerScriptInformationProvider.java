@@ -45,11 +45,13 @@ public class SakerScriptInformationProvider implements ScriptInformationProvider
 		this.targetNamePositions.put(targetname, position);
 	}
 
-	public void addPosition(SakerTaskFactory factory, ScriptPosition position) {
+	public void addPosition(String targetname, SakerTaskFactory factory, ScriptPosition position) {
+		replaceScriptKey(targetname, factory);
 		this.factoryPositions.put(factory.getScriptPositionKey(), position);
 	}
 
-	public void addPositionIfAbsent(SakerTaskFactory factory, ScriptPosition position) {
+	public void addPositionIfAbsent(String targetname, SakerTaskFactory factory, ScriptPosition position) {
+		replaceScriptKey(targetname, factory);
 		this.factoryPositions.putIfAbsent(factory.getScriptPositionKey(), position);
 	}
 
@@ -88,6 +90,91 @@ public class SakerScriptInformationProvider implements ScriptInformationProvider
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 		SerialUtils.readExternalMap(factoryPositions, in);
 		SerialUtils.readExternalMap(targetNamePositions, in);
+	}
+
+	private static void replaceScriptKey(String targetname, SakerTaskFactory factory) {
+		if (targetname == null) {
+			return;
+		}
+		Object currentposkey = factory.getScriptPositionKey();
+		if (currentposkey instanceof BuildTargetScriptPositionKey) {
+			String existingname = ((BuildTargetScriptPositionKey) currentposkey).targetName;
+			if (!Objects.equals(existingname, targetname)) {
+				throw new IllegalArgumentException("Trying to replace different target name: " + targetname
+						+ " with existing: " + existingname + " in " + factory);
+			}
+			return;
+		}
+		BuildTargetScriptPositionKey nkey = new BuildTargetScriptPositionKey(targetname, currentposkey);
+		factory.setScriptPositionKey(nkey);
+	}
+
+	private static class BuildTargetScriptPositionKey implements Externalizable {
+		private static final long serialVersionUID = 1L;
+
+		protected String targetName;
+		protected Object key;
+
+		/**
+		 * For {@link Externalizable}.
+		 */
+		public BuildTargetScriptPositionKey() {
+		}
+
+		public BuildTargetScriptPositionKey(String targetName, Object key) {
+			this.targetName = targetName;
+			this.key = key;
+		}
+
+		@Override
+		public void writeExternal(ObjectOutput out) throws IOException {
+			out.writeUTF(targetName);
+			out.writeObject(key);
+		}
+
+		@Override
+		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			targetName = in.readUTF();
+			key = in.readObject();
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((key == null) ? 0 : key.hashCode());
+			result = prime * result + ((targetName == null) ? 0 : targetName.hashCode());
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			BuildTargetScriptPositionKey other = (BuildTargetScriptPositionKey) obj;
+			if (key == null) {
+				if (other.key != null)
+					return false;
+			} else if (!key.equals(other.key))
+				return false;
+			if (targetName == null) {
+				if (other.targetName != null)
+					return false;
+			} else if (!targetName.equals(other.targetName))
+				return false;
+			return true;
+		}
+
+		@Override
+		public String toString() {
+			return getClass().getSimpleName() + "[" + (targetName != null ? "targetName=" + targetName + ", " : "")
+					+ (key != null ? "key=" + key : "") + "]";
+		}
+
 	}
 
 }

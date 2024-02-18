@@ -15,13 +15,17 @@
  */
 package testing.saker.build.tests.tasks.script;
 
+import java.io.IOException;
 import java.util.Objects;
 
 import saker.build.exception.ScriptPositionedExceptionView;
 import saker.build.exception.ScriptPositionedExceptionView.ScriptPositionStackTraceElement;
 import saker.build.file.path.SakerPath;
+import saker.build.file.provider.SakerFileProvider;
 import saker.build.runtime.execution.SakerLog;
 import saker.build.scripting.ScriptPosition;
+import saker.build.thirdparty.saker.util.StringUtils;
+import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.util.exc.ExceptionView;
 
 public class ScriptTestUtils {
@@ -29,11 +33,26 @@ public class ScriptTestUtils {
 		throw new UnsupportedOperationException();
 	}
 
+	public static void assertHasScriptTrace(SakerFileProvider fp, ExceptionView ev, SakerPath buildfilepath,
+			String highlight) throws IOException {
+		ByteArrayRegion bytes = fp.getAllBytes(buildfilepath);
+		String scriptdata = bytes.toString();
+		int[] lines = StringUtils.getLineIndexMap(scriptdata);
+		int pos = scriptdata.indexOf(highlight);
+		if (pos < 0) {
+			throw new IllegalArgumentException("Not found in script data: \"" + highlight + "\"");
+		}
+		int linePositionIndex = StringUtils.getLinePositionIndex(lines, pos);
+		int lineIndex = StringUtils.getLineIndex(lines, pos);
+		assertHasScriptTrace(ev, buildfilepath, 1 + lineIndex, 1 + linePositionIndex, highlight.length());
+	}
+
 	//1 based indexes!
 	public static void assertHasScriptTrace(ExceptionView ev, SakerPath buildfilepath, int line, int lineposition,
 			int length) {
 		if (!hasScriptTrace(ev, buildfilepath, line, lineposition, length)) {
 			SakerLog.printFormatException(ev);
+			System.err.println(); // new line visual separator
 			throw new AssertionError("Script trace element not found: " + buildfilepath + " - " + line + ":"
 					+ lineposition + "-" + length);
 		}

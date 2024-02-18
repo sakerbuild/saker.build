@@ -94,7 +94,7 @@ public interface TaskResultDependencyHandle {
 	/**
 	 * Clones the dependency handle, returning a clean one.
 	 * <p>
-	 * The returned dependency handle is semantically the same as if it was newly retrieved the same method as
+	 * The returned dependency handle is semantically the same as if it was newly retrieved from the same method as
 	 * <code>this</code> handle.
 	 * 
 	 * @return The cloned dependency handle.

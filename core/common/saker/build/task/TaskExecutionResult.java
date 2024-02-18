@@ -481,7 +481,7 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		public void addCreatedTask(TaskIdentifier taskid, TaskFactory<?> factory,
 				TaskExecutionParameters taskparameters) {
 			CreatedTaskDependency added = new CreatedTaskDependency(factory, taskparameters);
-			CreatedTaskDependency prev = createdTaskIds.put(taskid, added);
+			CreatedTaskDependency prev = createdTaskIds.putIfAbsent(taskid, added);
 			if (prev != null) {
 				if (!Objects.equals(prev, added)) {
 					throw new TaskIdentifierConflictException(

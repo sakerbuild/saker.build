@@ -36,6 +36,14 @@ public class SakerAssignTaskIdentifier implements TaskIdentifier, Externalizable
 		this.variableName = variablename;
 	}
 
+	public TaskIdentifier getRootIdentifier() {
+		return rootIdentifier;
+	}
+
+	public String getVariableName() {
+		return variableName;
+	}
+
 	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
 		out.writeObject(rootIdentifier);

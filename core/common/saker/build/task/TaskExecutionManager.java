@@ -4745,7 +4745,7 @@ public final class TaskExecutionManager {
 		//anyway, call the equals on the starting task factory as we know that that is never null.
 		if (!factoryforstartingtask.equals(factoryfromfuture)) {
 			throw new TaskIdentifierConflictException(
-					"Different factories: " + factoryfromfuture + " and " + factoryforstartingtask, taskid);
+					"Different task factories: " + factoryfromfuture + " and " + factoryforstartingtask, taskid);
 		}
 	}
 

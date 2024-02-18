@@ -36,10 +36,6 @@ import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 public final class SakerLiteralTaskFactory extends SelfSakerTaskFactory {
 	private static final long serialVersionUID = 1L;
 
-	public static final SakerLiteralTaskFactory NULL_INSTANCE = new SakerLiteralTaskFactory((String) null);
-	public static final SakerLiteralTaskFactory TRUE_INSTANCE = new SakerLiteralTaskFactory(Boolean.TRUE);
-	public static final SakerLiteralTaskFactory FALSE_INSTANCE = new SakerLiteralTaskFactory(Boolean.FALSE);
-
 	protected Object value;
 
 	/**

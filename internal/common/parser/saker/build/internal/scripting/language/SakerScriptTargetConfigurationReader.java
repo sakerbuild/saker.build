@@ -15,10 +15,7 @@
  */
 package saker.build.internal.scripting.language;
 
-import java.io.Externalizable;
 import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectOutput;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -112,14 +109,6 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 	private static final String STM_EXPRESSION_PLACEHOLDER = "expression_placeholder";
 
 	public static final String DEFAULT_BUILD_TARGET_NAME = "build";
-
-	private static final SakerLiteralTaskFactory ZERO_LITERAL_TASK_FACTORY_INSTANCE = new SakerLiteralTaskFactory(0L);
-	private static final SakerLiteralTaskFactory NEGATE_STR_LITERAL_TASK_FACTORY_INSTANCE = new SakerLiteralTaskFactory(
-			"-");
-	private static final SakerLiteralTaskFactory BITWISE_NEGATE_STR_LITERAL_TASK_FACTORY_INSTANCE = new SakerLiteralTaskFactory(
-			"~");
-	private static final SakerLiteralTaskFactory BOOL_NEGATE_STR_LITERAL_TASK_FACTORY_INSTANCE = new SakerLiteralTaskFactory(
-			"!");
 
 	public static final String STATEMENT_WHITESPACE = "WHITESPACE";
 
@@ -379,83 +368,6 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 			result.add(name);
 		}
 		return result;
-	}
-
-	private static class BuildTargetScriptPositionKey implements Externalizable {
-		private static final long serialVersionUID = 1L;
-
-		private String targetName;
-		private Object key;
-
-		/**
-		 * For {@link Externalizable}.
-		 */
-		public BuildTargetScriptPositionKey() {
-		}
-
-		public BuildTargetScriptPositionKey(String targetName, Object key) {
-			this.targetName = targetName;
-			this.key = key;
-		}
-
-		public static void replaceScriptKey(String targetname, SakerTaskFactory factory) {
-			if (targetname == null) {
-				return;
-			}
-			BuildTargetScriptPositionKey nkey = new BuildTargetScriptPositionKey(targetname,
-					factory.getScriptPositionKey());
-			factory.setScriptPositionKey(nkey);
-		}
-
-		@Override
-		public void writeExternal(ObjectOutput out) throws IOException {
-			out.writeUTF(targetName);
-			out.writeObject(key);
-		}
-
-		@Override
-		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-			targetName = in.readUTF();
-			key = in.readObject();
-		}
-
-		@Override
-		public int hashCode() {
-			final int prime = 31;
-			int result = 1;
-			result = prime * result + ((key == null) ? 0 : key.hashCode());
-			result = prime * result + ((targetName == null) ? 0 : targetName.hashCode());
-			return result;
-		}
-
-		@Override
-		public boolean equals(Object obj) {
-			if (this == obj)
-				return true;
-			if (obj == null)
-				return false;
-			if (getClass() != obj.getClass())
-				return false;
-			BuildTargetScriptPositionKey other = (BuildTargetScriptPositionKey) obj;
-			if (key == null) {
-				if (other.key != null)
-					return false;
-			} else if (!key.equals(other.key))
-				return false;
-			if (targetName == null) {
-				if (other.targetName != null)
-					return false;
-			} else if (!targetName.equals(other.targetName))
-				return false;
-			return true;
-		}
-
-		@Override
-		public String toString() {
-			return getClass().getSimpleName() + "[" + (targetName != null ? "targetName=" + targetName + ", " : "")
-					+ (key != null ? "key=" + key : "") + "]";
-		}
-
 	}
 
 	private static List<Statement> scopeToTaskSteps(Statement stm) {
@@ -1261,8 +1173,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 					throw new AssertionError("Unknown step type: " + stm.getName());
 				}
 			}
-			BuildTargetScriptPositionKey.replaceScriptKey(parsingstate.targetName, result);
-			positionLocator.addPosition(result, createScriptPosition(posstm));
+			positionLocator.addPosition(parsingstate.targetName, result, createScriptPosition(posstm));
 			return result;
 		}
 
@@ -1294,14 +1205,15 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 					switch (content.getName()) {
 						case "literal": {
 							//this expression is a non quoted literal
+							//create new instances of the literal task factories so the script positions are properly stored
 							if ("null".equalsIgnoreCase(litstr)) {
-								return SakerLiteralTaskFactory.NULL_INSTANCE;
+								return new SakerLiteralTaskFactory((String) null);
 							}
 							if ("true".equalsIgnoreCase(litstr)) {
-								return SakerLiteralTaskFactory.TRUE_INSTANCE;
+								return new SakerLiteralTaskFactory(true);
 							}
 							if ("false".equalsIgnoreCase(litstr)) {
-								return SakerLiteralTaskFactory.FALSE_INSTANCE;
+								return new SakerLiteralTaskFactory(false);
 							}
 							if (PATTERN_INTEGRAL.matcher(litstr).matches()) {
 								if (litstr.length() >= 19) {
@@ -1314,7 +1226,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 								return new SakerLiteralTaskFactory(Long.parseLong(litstr));
 							}
 							if ("0".equals(litstr)) {
-								return ZERO_LITERAL_TASK_FACTORY_INSTANCE;
+								return new SakerLiteralTaskFactory(0L);
 							}
 							Matcher hexamatcher = PATTERN_HEXA.matcher(litstr);
 							if (hexamatcher.matches()) {
@@ -1390,16 +1302,18 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		private SakerTaskFactory evaluateFlattenedStatements(List<? extends FlattenedToken> statements,
 				ExpressionParsingState parsingstate, int flags) {
 			SakerTaskFactory result = evaluateFlattenedStatementsImpl(statements, parsingstate, flags);
-			positionLocator.addPositionIfAbsent(result, createScriptPosition(statements.get(0).getBoundaryStatement(),
-					statements.get(statements.size() - 1).getBoundaryStatement()));
+			positionLocator.addPositionIfAbsent(parsingstate.targetName, result,
+					createScriptPosition(statements.get(0).getBoundaryStatement(),
+							statements.get(statements.size() - 1).getBoundaryStatement()));
 			return result;
 		}
 
 		private SakerTaskFactory evaluateFlattenedStatements(List<? extends FlattenedToken> statements,
 				FlattenedStatementFactoryVisitor visitor) {
 			SakerTaskFactory result = visitFlattenedStatements(statements, visitor);
-			positionLocator.addPositionIfAbsent(result, createScriptPosition(statements.get(0).getBoundaryStatement(),
-					statements.get(statements.size() - 1).getBoundaryStatement()));
+			positionLocator.addPositionIfAbsent(visitor.expressionParsingState.targetName, result,
+					createScriptPosition(statements.get(0).getBoundaryStatement(),
+							statements.get(statements.size() - 1).getBoundaryStatement()));
 			return result;
 		}
 
@@ -1453,7 +1367,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 					result = parsed;
 				}
 			}
-			positionLocator.addPositionIfAbsent(result, scriptpos);
+			positionLocator.addPositionIfAbsent(parsingstate.targetName, result, scriptpos);
 			return result;
 		}
 
@@ -1627,7 +1541,8 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 									} else {
 										outparamfactory = outderef;
 									}
-									positionLocator.addPosition(outparamfactory, outparamstmpos);
+									positionLocator.addPosition(parsingstate.targetName, outparamfactory,
+											outparamstmpos);
 									if (factory.hasResultTaskWithName(pname)) {
 										buildtargetfactory = new InvalidBuildTargetDeclarationTaskFactory(
 												"Multiple output parameters defined with the same name: " + pname);
@@ -1671,7 +1586,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 		}
 
 		private final class FlattenedStatementFactoryVisitor implements FlattenedStatementVisitor<SakerTaskFactory> {
-			private final ExpressionParsingState expressionParsingState;
+			protected final ExpressionParsingState expressionParsingState;
 			protected boolean defaultsTaskAllowed;
 
 			public FlattenedStatementFactoryVisitor(ExpressionParsingState expressionParsingState) {
@@ -2009,7 +1924,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 						}
 						if (unarysubexp instanceof CompoundStringLiteralTaskFactory) {
 							return prependCompoundLiteralFactory((CompoundStringLiteralTaskFactory) unarysubexp,
-									NEGATE_STR_LITERAL_TASK_FACTORY_INSTANCE);
+									new SakerLiteralTaskFactory("-"));
 						}
 						return new UnaryMinusTaskFactory(unarysubexp);
 					}
@@ -2029,7 +1944,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 						}
 						if (unarysubexp instanceof CompoundStringLiteralTaskFactory) {
 							return prependCompoundLiteralFactory((CompoundStringLiteralTaskFactory) unarysubexp,
-									BITWISE_NEGATE_STR_LITERAL_TASK_FACTORY_INSTANCE);
+									new SakerLiteralTaskFactory("~"));
 						}
 						return new BitwiseNegateTaskFactory(unarysubexp);
 					}
@@ -2045,7 +1960,7 @@ public class SakerScriptTargetConfigurationReader implements TargetConfiguration
 						}
 						if (unarysubexp instanceof CompoundStringLiteralTaskFactory) {
 							return prependCompoundLiteralFactory((CompoundStringLiteralTaskFactory) unarysubexp,
-									BOOL_NEGATE_STR_LITERAL_TASK_FACTORY_INSTANCE);
+									new SakerLiteralTaskFactory("!"));
 						}
 						return new BoolNegateTaskFactory(unarysubexp);
 					}

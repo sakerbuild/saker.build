@@ -19,14 +19,18 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
+import saker.build.internal.scripting.language.exc.OperandExecutionException;
+import saker.build.internal.scripting.language.exc.SakerScriptEvaluationException;
 import saker.build.internal.scripting.language.exc.UnassignedVariableExecutionException;
 import saker.build.internal.scripting.language.task.AssignableTaskResult;
+import saker.build.internal.scripting.language.task.SakerAssignTaskIdentifier;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
 import saker.build.internal.scripting.language.task.operators.AssignmentTaskFactory;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskResultDependencyHandle;
 import saker.build.task.TaskResultResolver;
 import saker.build.task.exception.TaskExecutionDeadlockedException;
+import saker.build.task.exception.TaskExecutionFailedException;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.ComposedStructuredTaskResult;
 import saker.build.task.utils.SimpleStructuredObjectTaskResult;
@@ -47,40 +51,75 @@ public abstract class AbstractDereferenceSakerTaskResult
 
 	@Override
 	public Object toResult(TaskResultResolver results) {
-		return getVariableTaskResult(results).toResult(results);
+		SakerAssignTaskIdentifier assigntaskid = getVariableAssignTaskId(results);
+		SakerTaskResult vartaskres = getVariableTaskResult(results, assigntaskid);
+		try {
+			return vartaskres.toResult(results);
+		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
+			throw new OperandExecutionException("Failed to evaluate $" + assigntaskid.getVariableName() + " variable.",
+					e, assigntaskid);
+		} catch (TaskExecutionDeadlockedException e) {
+			throw new UnassignedVariableExecutionException(
+					"Failed to evaluate $" + assigntaskid.getVariableName() + " variable. (execution deadlocked)",
+					assigntaskid);
+		}
 	}
 
 	@Override
 	public Object get(TaskResultResolver results) {
-		return getVariableTaskResult(results).get(results);
+		SakerAssignTaskIdentifier assigntaskid = getVariableAssignTaskId(results);
+		SakerTaskResult vartaskres = getVariableTaskResult(results, assigntaskid);
+		try {
+			return vartaskres.get(results);
+		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
+			throw new OperandExecutionException("Failed to evaluate $" + assigntaskid.getVariableName() + " variable.",
+					e, assigntaskid);
+		} catch (TaskExecutionDeadlockedException e) {
+			throw new UnassignedVariableExecutionException(
+					"Failed to evaluate $" + assigntaskid.getVariableName() + " variable. (execution deadlocked)",
+					assigntaskid);
+		}
 	}
 
 	@Override
 	public TaskResultDependencyHandle getDependencyHandle(TaskResultResolver results,
 			TaskResultDependencyHandle handleforthis) {
-		String varname = getVariableName(results);
-		TaskIdentifier assigntaskid = AssignmentTaskFactory.createAssignTaskIdentifier(ownerRootTaskId, varname);
+		SakerAssignTaskIdentifier assigntaskid = getVariableAssignTaskId(results);
 
 		try {
 			TaskResultDependencyHandle dephandle = results.getTaskResultDependencyHandle(assigntaskid);
 			SakerTaskResult result = (SakerTaskResult) dephandle.get();
 			return result.getDependencyHandle(results, dephandle);
+		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
+			throw new OperandExecutionException("Failed to evaluate $" + assigntaskid.getVariableName() + " variable.",
+					e, assigntaskid);
 		} catch (TaskExecutionDeadlockedException e) {
 			throw new UnassignedVariableExecutionException(
-					"Variable $" + varname + " was not assigned. (execution deadlocked)", assigntaskid);
+					"Variable $" + assigntaskid.getVariableName() + " was not assigned. (execution deadlocked)",
+					assigntaskid);
 		}
 	}
 
 	@Override
 	public TaskResultDependencyHandle toResultDependencyHandle(TaskResultResolver results) throws NullPointerException {
-		return getVariableTaskResult(results).toResultDependencyHandle(results);
+		SakerAssignTaskIdentifier assigntaskid = getVariableAssignTaskId(results);
+		SakerTaskResult vartaskres = getVariableTaskResult(results, assigntaskid);
+		try {
+			return vartaskres.toResultDependencyHandle(results);
+		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
+			throw new OperandExecutionException("Failed to evaluate $" + assigntaskid.getVariableName() + " variable.",
+					e, assigntaskid);
+		} catch (TaskExecutionDeadlockedException e) {
+			throw new UnassignedVariableExecutionException(
+					"Failed to evaluate $" + assigntaskid.getVariableName() + " variable. (execution deadlocked)",
+					assigntaskid);
+		}
 	}
 
 	@Override
 	public StructuredTaskResult getIntermediateTaskResult(TaskResultResolver results)
 			throws NullPointerException, RuntimeException {
-		String varname = getVariableName(results);
-		TaskIdentifier assigntaskid = AssignmentTaskFactory.createAssignTaskIdentifier(ownerRootTaskId, varname);
+		SakerAssignTaskIdentifier assigntaskid = getVariableAssignTaskId(results);
 		return new SimpleStructuredObjectTaskResult(assigntaskid);
 	}
 
@@ -90,15 +129,23 @@ public abstract class AbstractDereferenceSakerTaskResult
 		AssignmentTaskFactory.startAssignmentTask(taskcontext, currenttaskid.getRootIdentifier(), variablename, value);
 	}
 
-	private SakerTaskResult getVariableTaskResult(TaskResultResolver results) {
-		String varname = getVariableName(results);
-		TaskIdentifier assigntaskid = AssignmentTaskFactory.createAssignTaskIdentifier(ownerRootTaskId, varname);
+	private static SakerTaskResult getVariableTaskResult(TaskResultResolver results,
+			SakerAssignTaskIdentifier assigntaskid) {
 		try {
 			return (SakerTaskResult) results.getTaskResult(assigntaskid);
+		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
+			throw new OperandExecutionException("Failed to evaluate $" + assigntaskid.getVariableName() + " variable.",
+					e, assigntaskid);
 		} catch (TaskExecutionDeadlockedException e) {
 			throw new UnassignedVariableExecutionException(
-					"Variable $" + varname + " was not assigned. (execution deadlocked)", assigntaskid);
+					"Variable $" + assigntaskid.getVariableName() + " was not assigned. (execution deadlocked)",
+					assigntaskid);
 		}
+	}
+
+	private SakerAssignTaskIdentifier getVariableAssignTaskId(TaskResultResolver results) {
+		String varname = getVariableName(results);
+		return AssignmentTaskFactory.createAssignTaskIdentifier(ownerRootTaskId, varname);
 	}
 
 	@Override
