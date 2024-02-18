@@ -38,10 +38,6 @@ public final class SimpleSakerTaskResult<R> implements SakerTaskResult {
 		this.value = value;
 	}
 
-	public R getValue() {
-		return value;
-	}
-
 	@Override
 	public Object get(TaskResultResolver results) {
 		return value;

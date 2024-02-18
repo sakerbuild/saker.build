@@ -426,13 +426,17 @@ public class SubscriptSakerTaskResult implements SakerTaskResult, ComposedStruct
 			return null;
 		}
 		//XXX cache
-		try {
-			//getSomeField()
-			Method result = clazz.getMethod("get" + name);
-			if (!Modifier.isStatic(result.getModifiers())) {
-				return result;
+		if ("TaskIdentifier".equals(name) && StructuredObjectTaskResult.class.isAssignableFrom(clazz)) {
+			// do not attempt to get the getter for the StructuredObjectTaskResult.getTaskIdentifier method
+		} else {
+			try {
+				//getSomeField()
+				Method result = clazz.getMethod("get" + name);
+				if (!Modifier.isStatic(result.getModifiers())) {
+					return result;
+				}
+			} catch (NoSuchMethodException | SecurityException e) {
 			}
-		} catch (NoSuchMethodException | SecurityException e) {
 		}
 		try {
 			//get_SomeField()

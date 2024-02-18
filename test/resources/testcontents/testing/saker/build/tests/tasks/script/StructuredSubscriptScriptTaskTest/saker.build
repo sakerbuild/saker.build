@@ -1,0 +1,11 @@
+static(svar) = {
+	TaskIdentifier: 123
+}
+global(gvar) = {
+	TaskIdentifier: 456
+}
+object_task_identifier(
+	out outsvar = static(svar)[TaskIdentifier]
+	out outgvar = global(gvar)[TaskIdentifier]
+) {
+}
