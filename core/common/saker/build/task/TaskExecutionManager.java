@@ -147,6 +147,7 @@ import saker.build.task.exception.TaskStandardIOLockIllegalStateException;
 import saker.build.task.exception.TaskThreadManipulationException;
 import saker.build.task.identifier.BuildFileTargetTaskIdentifier;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.task.utils.SupplierTaskResultDependencyHandle;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMIWrap;
 import saker.build.thirdparty.saker.rmi.exception.RMIRuntimeException;
 import saker.build.thirdparty.saker.rmi.io.RMIObjectInput;
@@ -280,6 +281,17 @@ public final class TaskExecutionManager {
 				throw new IllegalArgumentException("Task was not run with id: " + taskid);
 			}
 			return res.getResult();
+		}
+
+		@Override
+		public TaskResultDependencyHandle getTaskResultDependencyHandle(TaskIdentifier taskid)
+				throws NullPointerException, IllegalArgumentException {
+			Objects.requireNonNull(taskid, "task identifier");
+			SpawnedResultTask res = spawnedTasks.get(taskid);
+			if (res == null) {
+				throw new IllegalArgumentException("Task was not run with id: " + taskid);
+			}
+			return new SupplierTaskResultDependencyHandle(res::getResult);
 		}
 
 		@Override

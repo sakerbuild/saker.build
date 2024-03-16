@@ -13,18 +13,22 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-package saker.build.task;
+package saker.build.task.utils;
 
-public class RetrievedTaskResultDependencyHandle implements TaskResultDependencyHandle, Cloneable {
-	private final Object result;
+import java.util.function.Supplier;
 
-	public RetrievedTaskResultDependencyHandle(Object result) {
-		this.result = result;
+import saker.build.task.TaskResultDependencyHandle;
+
+public final class SupplierTaskResultDependencyHandle implements TaskResultDependencyHandle, Cloneable {
+	private final Supplier<?> supplier;
+
+	public SupplierTaskResultDependencyHandle(Supplier<?> supplier) {
+		this.supplier = supplier;
 	}
 
 	@Override
 	public Object get() throws RuntimeException {
-		return result;
+		return supplier.get();
 	}
 
 	@Override
@@ -38,7 +42,7 @@ public class RetrievedTaskResultDependencyHandle implements TaskResultDependency
 
 	@Override
 	public String toString() {
-		return getClass().getSimpleName() + "[" + (result != null ? "result=" + result : "") + "]";
+		return getClass().getSimpleName() + "[" + supplier + "]";
 	}
 
 }

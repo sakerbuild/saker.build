@@ -23,6 +23,7 @@ import java.io.ObjectOutput;
 import saker.build.task.TaskResultDependencyHandle;
 import saker.build.task.TaskResultResolver;
 import saker.build.task.utils.StructuredTaskResult;
+import saker.build.task.utils.SupplierTaskResultDependencyHandle;
 
 public interface SakerTaskResult extends Externalizable, StructuredTaskResult {
 	public static final long serialVersionUID = 1L;
@@ -42,7 +43,7 @@ public interface SakerTaskResult extends Externalizable, StructuredTaskResult {
 	 */
 	public default TaskResultDependencyHandle getDependencyHandle(TaskResultResolver results,
 			TaskResultDependencyHandle handleforthis) {
-		return TaskResultDependencyHandle.create(get(results));
+		return new SupplierTaskResultDependencyHandle(() -> get(results));
 	}
 
 	@Override

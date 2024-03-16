@@ -18,6 +18,7 @@ package saker.build.task;
 import saker.build.task.exception.TaskExecutionException;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.StructuredTaskResult;
+import saker.build.task.utils.SupplierTaskResultDependencyHandle;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 
 /**
@@ -67,6 +68,6 @@ public interface TaskResultResolver {
 	 */
 	public default TaskResultDependencyHandle getTaskResultDependencyHandle(@RMISerialize TaskIdentifier taskid)
 			throws NullPointerException, IllegalArgumentException {
-		return TaskResultDependencyHandle.create(getTaskResult(taskid));
+		return new SupplierTaskResultDependencyHandle(() -> getTaskResult(taskid));
 	}
 }

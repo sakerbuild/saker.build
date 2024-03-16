@@ -18,6 +18,7 @@ package saker.build.task;
 import saker.build.task.dependencies.CommonTaskOutputChangeDetector;
 import saker.build.task.dependencies.TaskOutputChangeDetector;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.task.utils.RetrievedTaskResultDependencyHandle;
 import saker.build.task.utils.StructuredTaskResult;
 import saker.build.thirdparty.saker.rmi.annot.transfer.RMISerialize;
 

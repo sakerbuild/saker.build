@@ -16,6 +16,7 @@
 package saker.build.task.utils;
 
 import saker.apiextract.api.PublicApi;
+import saker.build.task.TaskResultDependencyHandle;
 import saker.build.task.TaskResultResolver;
 
 /**
@@ -53,4 +54,23 @@ public interface ComposedStructuredTaskResult extends StructuredTaskResult {
 	 */
 	public StructuredTaskResult getIntermediateTaskResult(TaskResultResolver results)
 			throws NullPointerException, RuntimeException;
+
+	/**
+	 * Gets a task result dependency handle to the {@linkplain #getIntermediateTaskResult(TaskResultResolver)
+	 * intermediate task result}.
+	 * <p>
+	 * This function works similarly to {@link #toResultDependencyHandle(TaskResultResolver)}, but it is associated with
+	 * the object returned by {@link #getIntermediateTaskResult(TaskResultResolver)}.
+	 * 
+	 * @param results
+	 *            The results to resolve the task identifiers agains.
+	 * @return The result dependency handle to the intermediate result.
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @since saker.build 0.8.21
+	 */
+	public default TaskResultDependencyHandle toIntermediateTaskResultDependencyHandle(TaskResultResolver results)
+			throws NullPointerException {
+		return new SupplierTaskResultDependencyHandle(() -> getIntermediateTaskResult(results));
+	}
 }

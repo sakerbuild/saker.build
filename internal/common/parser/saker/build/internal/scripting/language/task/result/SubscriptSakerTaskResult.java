@@ -360,19 +360,13 @@ public class SubscriptSakerTaskResult implements SakerTaskResult, ComposedStruct
 				if (subjectvalue instanceof StructuredObjectTaskResult) {
 					subjectdephandle = results.getTaskResultDependencyHandle(
 							((StructuredObjectTaskResult) subjectvalue).getTaskIdentifier());
-					subjectvalue = subjectdephandle.get();
 				} else if (subjectvalue instanceof ComposedStructuredTaskResult) {
-					//subject dependency handle is no longer available, because we can only get
-					// the dependency handle associated with the toResult return value (via toResultDependencyHandle)
-					// and we don't want that as we use the dependency handle to add change detectors on the intermediate
-					// results to improve incrementality
-					// (we may get any kind of object back here)
-					subjectdephandle = null;
-					subjectvalue = ((ComposedStructuredTaskResult) subjectvalue).getIntermediateTaskResult(results);
+					subjectdephandle = ((ComposedStructuredTaskResult) subjectvalue)
+							.toIntermediateTaskResultDependencyHandle(results);
 				} else {
 					subjectdephandle = ((StructuredTaskResult) subjectvalue).toResultDependencyHandle(results);
-					subjectvalue = subjectdephandle.get();
 				}
+				subjectvalue = subjectdephandle.get();
 			} else {
 				addAlwaysChangeDetector(subjectdephandle);
 				//failed to subscript, cannot continue

@@ -117,7 +117,7 @@ public interface StructuredTaskResult {
 	 */
 	public default TaskResultDependencyHandle toResultDependencyHandle(TaskResultResolver results)
 			throws NullPointerException {
-		return TaskResultDependencyHandle.create(toResult(results));
+		return new SupplierTaskResultDependencyHandle(() -> toResult(results));
 	}
 
 	/**
