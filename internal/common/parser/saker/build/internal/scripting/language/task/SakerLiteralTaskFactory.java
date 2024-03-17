@@ -140,6 +140,9 @@ public final class SakerLiteralTaskFactory extends SelfSakerTaskFactory
 
 	@Override
 	public SakerTaskResult directComputeTaskResult(TaskContext taskcontext) {
+		if (value instanceof SakerTaskResult) {
+			return (SakerTaskResult) value;
+		}
 		return new SimpleSakerTaskResult<>(value);
 	}
 

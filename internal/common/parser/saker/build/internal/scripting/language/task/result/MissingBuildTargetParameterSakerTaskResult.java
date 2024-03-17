@@ -20,45 +20,48 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
-import saker.build.internal.scripting.language.exc.OperandExecutionException;
 import saker.build.task.TaskResultResolver;
+import saker.build.task.exception.MissingRequiredParameterException;
 import saker.build.task.identifier.TaskIdentifier;
 
-public class NoSakerTaskResult implements SakerTaskResult {
+public final class MissingBuildTargetParameterSakerTaskResult extends NoSakerTaskResult {
 	private static final long serialVersionUID = 1L;
 
-	protected TaskIdentifier taskId;
+	private String parameterName;
 
 	/**
 	 * For {@link Externalizable}.
 	 */
-	public NoSakerTaskResult() {
+	public MissingBuildTargetParameterSakerTaskResult() {
 	}
 
-	public NoSakerTaskResult(TaskIdentifier taskid) {
-		this.taskId = taskid;
+	public MissingBuildTargetParameterSakerTaskResult(TaskIdentifier taskid, String parameterName) {
+		super(taskid);
+		this.parameterName = parameterName;
 	}
 
 	@Override
 	public Object toResult(TaskResultResolver results) {
-		throw new OperandExecutionException("Task produced no results.", taskId);
+		throw new MissingRequiredParameterException("Build target parameter is missing: " + parameterName, taskId);
 	}
 
 	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
-		out.writeObject(taskId);
+		super.writeExternal(out);
+		out.writeObject(parameterName);
 	}
 
 	@Override
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-		taskId = (TaskIdentifier) in.readObject();
+		super.readExternal(in);
+		parameterName = (String) in.readObject();
 	}
 
 	@Override
 	public int hashCode() {
 		final int prime = 31;
-		int result = 1;
-		result = prime * result + ((taskId == null) ? 0 : taskId.hashCode());
+		int result = super.hashCode();
+		result = prime * result + ((parameterName == null) ? 0 : parameterName.hashCode());
 		return result;
 	}
 
@@ -66,22 +69,22 @@ public class NoSakerTaskResult implements SakerTaskResult {
 	public boolean equals(Object obj) {
 		if (this == obj)
 			return true;
-		if (obj == null)
+		if (!super.equals(obj))
 			return false;
 		if (getClass() != obj.getClass())
 			return false;
-		NoSakerTaskResult other = (NoSakerTaskResult) obj;
-		if (taskId == null) {
-			if (other.taskId != null)
+		MissingBuildTargetParameterSakerTaskResult other = (MissingBuildTargetParameterSakerTaskResult) obj;
+		if (parameterName == null) {
+			if (other.parameterName != null)
 				return false;
-		} else if (!taskId.equals(other.taskId))
+		} else if (!parameterName.equals(other.parameterName))
 			return false;
 		return true;
 	}
 
 	@Override
 	public String toString() {
-		return getClass().getSimpleName() + "[" + taskId + "]";
+		return getClass().getSimpleName() + "[" + parameterName + "]";
 	}
 
 }

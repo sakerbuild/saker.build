@@ -18,7 +18,6 @@ package testing.saker.build.tests.tasks.script;
 import saker.build.file.path.SakerPath;
 import saker.build.runtime.environment.BuildTaskExecutionResult;
 import saker.build.runtime.execution.SakerLog;
-import saker.build.runtime.execution.SakerLog.CommonExceptionFormat;
 import saker.build.util.exc.ExceptionView;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
@@ -106,7 +105,6 @@ public class ScriptTraceTaskTest extends CollectingMetricEnvironmentTestCase {
 		res = runTask(() -> environment.runBuildTarget(mainbuildfile, "staticnoassign", parameters, project));
 		SakerLog.printFormatException(res.getPositionedExceptionView());
 		System.err.println();
-
 		assertTrue(containsException(res.getExceptionView(),
 				"saker.build.internal.scripting.language.exc.UnassignedVariableExecutionException"));
 		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile,
@@ -115,11 +113,16 @@ public class ScriptTraceTaskTest extends CollectingMetricEnvironmentTestCase {
 		res = runTask(() -> environment.runBuildTarget(mainbuildfile, "globalnoassign", parameters, project));
 		SakerLog.printFormatException(res.getPositionedExceptionView());
 		System.err.println();
-
 		assertTrue(containsException(res.getExceptionView(),
 				"saker.build.internal.scripting.language.exc.UnassignedVariableExecutionException"));
 		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile,
 				"print(global(gnoassigned))");
+
+		res = runTask(() -> environment.runBuildTarget(mainbuildfile, "missinginparam", parameters, project));
+		SakerLog.printFormatException(res.getPositionedExceptionView());
+		System.err.println();
+		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile,
+				"print($missinparam)");
 	}
 
 	private static boolean containsException(ExceptionView ev, String classname) {

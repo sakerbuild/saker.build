@@ -18,7 +18,7 @@ package testing.saker.build.tests.tasks.script;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 
-import saker.build.task.exception.TaskParameterException;
+import saker.build.task.exception.MissingRequiredParameterException;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
 
@@ -36,8 +36,9 @@ public class LiteralBuildTargetParameterTaskTest extends CollectingMetricEnviron
 		assertEquals(getMetric().getRunTaskIdFactories().keySet(), setOf());
 		assertEquals(taskresults.getTargetTaskResult("outConcat"), "mandVal+defval");
 
-		//get an exception in case the required param is missing
-		assertTaskException(TaskParameterException.class, () -> runScriptTask("build"));
+		//get an exception in case we try to get the task result that incorpoprates a missing input parameter
+		assertTaskException(MissingRequiredParameterException.class,
+				() -> runScriptTask("build").getTargetTaskResult("outConcat"));
 
 		btparams.put("mandatoryParam", "changedVal");
 		taskresults = runScriptTask("build", DEFAULT_BUILD_FILE_PATH, btparams);

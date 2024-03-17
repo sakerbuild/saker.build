@@ -38,3 +38,9 @@ staticnoassign {
 globalnoassign {
 	print(global(gnoassigned))
 }
+
+missinginparam(
+	in missinparam
+) {
+	print($missinparam)
+}

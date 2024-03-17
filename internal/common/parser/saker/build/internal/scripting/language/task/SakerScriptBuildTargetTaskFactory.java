@@ -34,6 +34,7 @@ import saker.build.file.content.ContentDescriptor;
 import saker.build.file.path.SakerPath;
 import saker.build.internal.scripting.language.SakerScriptTargetConfigurationReader;
 import saker.build.internal.scripting.language.task.operators.AssignmentTaskFactory;
+import saker.build.internal.scripting.language.task.result.MissingBuildTargetParameterSakerTaskResult;
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.params.ExecutionPathConfiguration;
 import saker.build.scripting.ScriptParsingOptions;
@@ -136,17 +137,17 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 					for (Entry<String, SakerTaskFactory> entry : targetParameters.entrySet()) {
 						String pname = entry.getKey();
 						TaskIdentifier foundparam = taskTargetParameters.get(pname);
-						SakerTaskFactory right;
+						final SakerTaskFactory right;
 						if (foundparam != null) {
 							right = new SakeringFutureTaskFactory(foundparam);
 						} else {
 							SakerTaskFactory fac = entry.getValue();
-							if (fac == null) {
-								//XXX throw a more specific exception
-								throw new TaskParameterException(
-										"Build target input parameter: " + pname + " is missing.", thistaskid);
+							if (fac != null) {
+								right = fac;
+							} else {
+								right = new SakerLiteralTaskFactory(
+										new MissingBuildTargetParameterSakerTaskResult(thistaskid, pname));
 							}
-							right = fac;
 						}
 						SakerScriptTaskIdentifier righttaskid = new SakerScriptTaskIdentifier(thistaskid, right);
 						taskutils.startTask(righttaskid, right);

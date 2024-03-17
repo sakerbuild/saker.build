@@ -1,0 +1,12 @@
+build(
+	out result
+) {
+	$result = paramed(usedparam: 123)[outusedparam]
+}
+paramed(
+	in usedparam,
+	in unusedparam,
+	out outusedparam = $usedparam * 2
+) {
+	print($usedparam)
+}
