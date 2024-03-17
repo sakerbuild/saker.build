@@ -54,6 +54,7 @@ import saker.build.task.TaskFuture;
 import saker.build.task.TaskName;
 import saker.build.task.dependencies.TaskOutputChangeDetector;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.task.utils.StructuredTaskResult;
 import saker.build.task.utils.TaskInvocationBootstrapperTaskFactory;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
@@ -500,10 +501,15 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 
 		SakerScriptTaskIdentifier thistaskid = (SakerScriptTaskIdentifier) taskcontext.getTaskId();
 		String[] qualifiers;
-		TaskFuture<?>[] qualifierfutures;
+		TaskFuture<? extends StructuredTaskResult>[] qualifierfutures;
 		if (!qualifierFactories.isEmpty()) {
 			int qsize = qualifierFactories.size();
-			qualifierfutures = new TaskFuture<?>[qsize];
+
+			//separate ware for suppressing unchecked warning
+			@SuppressWarnings({ "unchecked" })
+			TaskFuture<? extends StructuredTaskResult>[] rawqualifierfutures = (TaskFuture<? extends StructuredTaskResult>[]) new TaskFuture<?>[qsize];
+
+			qualifierfutures = rawqualifierfutures;
 			qualifiers = new String[qsize];
 
 			int idx = 0;
@@ -537,7 +543,7 @@ public class TaskInvocationSakerTaskFactory extends SelfSakerTaskFactory {
 				//constant qualifier, no need for tasks
 				continue;
 			}
-			Object qres = ((SakerTaskResult) qualifierfutures[i].get()).toResult(taskcontext);
+			Object qres = qualifierfutures[i].get().toResult(taskcontext);
 			qualifiers[i] = Objects.toString(qres);
 		}
 

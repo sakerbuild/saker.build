@@ -53,7 +53,7 @@ public abstract class AbstractDereferenceSakerTaskResult
 	@Override
 	public Object toResult(TaskResultResolver results) {
 		SakerAssignTaskIdentifier assigntaskid = getVariableAssignTaskId(results);
-		SakerTaskResult vartaskres = getVariableTaskResult(results, assigntaskid);
+		StructuredTaskResult vartaskres = getVariableTaskResult(results, assigntaskid);
 		try {
 			return vartaskres.toResult(results);
 		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
@@ -70,7 +70,7 @@ public abstract class AbstractDereferenceSakerTaskResult
 	public TaskResultDependencyHandle toResultDependencyHandle(TaskResultResolver results) throws NullPointerException {
 		return new SupplierForwardingTaskResultDependencyHandle(() -> {
 			SakerAssignTaskIdentifier assigntaskid = getVariableAssignTaskId(results);
-			SakerTaskResult vartaskres = getVariableTaskResult(results, assigntaskid);
+			StructuredTaskResult vartaskres = getVariableTaskResult(results, assigntaskid);
 			try {
 				return vartaskres.toResultDependencyHandle(results);
 			} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
@@ -104,10 +104,10 @@ public abstract class AbstractDereferenceSakerTaskResult
 		AssignmentTaskFactory.startAssignmentTask(taskcontext, currenttaskid.getRootIdentifier(), variablename, value);
 	}
 
-	private static SakerTaskResult getVariableTaskResult(TaskResultResolver results,
+	private static StructuredTaskResult getVariableTaskResult(TaskResultResolver results,
 			SakerAssignTaskIdentifier assigntaskid) {
 		try {
-			return (SakerTaskResult) results.getTaskResult(assigntaskid);
+			return (StructuredTaskResult) results.getTaskResult(assigntaskid);
 		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
 			throw new OperandExecutionException("Failed to evaluate $" + assigntaskid.getVariableName() + " variable.",
 					e, assigntaskid);
