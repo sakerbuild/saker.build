@@ -19,7 +19,6 @@ import java.util.List;
 
 import saker.build.internal.scripting.language.FlattenedStatementVisitor;
 import saker.build.internal.scripting.language.SakerScriptTargetConfigurationReader.FlattenedToken;
-import sipka.syntax.parser.model.statement.Statement;
 
 public class DereferenceLiteralDeterminingFlattenedStatementVisitor implements FlattenedStatementVisitor<String> {
 	public static final DereferenceLiteralDeterminingFlattenedStatementVisitor INSTANCE = new DereferenceLiteralDeterminingFlattenedStatementVisitor();

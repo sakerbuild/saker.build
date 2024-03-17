@@ -79,11 +79,14 @@ public interface TaskResultDependencyHandle {
 	 * Implementations that don't support this method must silently ignore it. If they don't support it, and task
 	 * dependencies make sense in the associated context, then a dependency equivalent to
 	 * {@link CommonTaskOutputChangeDetector#ALWAYS} must be installed.
+	 * <p>
+	 * Implementations may require that {@link #get()} is called before setting the task output change detector and may
+	 * throw {@link IllegalStateException} in case this requirement is violated.
 	 * 
 	 * @param outputchangedetector
 	 *            The output change detector.
 	 * @throws IllegalStateException
-	 *             If the method is called at an inaproppriate time.
+	 *             If the method is called at an inaproppriate time. (E.g. the task is not yet finished)
 	 * @throws NullPointerException
 	 *             If the change detector is <code>null</code>.
 	 */

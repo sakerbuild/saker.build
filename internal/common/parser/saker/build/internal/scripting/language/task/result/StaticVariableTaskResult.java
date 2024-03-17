@@ -26,7 +26,6 @@ import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
 import saker.build.internal.scripting.language.task.SakerTaskResultLiteralTaskFactory;
 import saker.build.internal.scripting.language.task.StaticScriptVariableTaskIdentifier;
 import saker.build.task.TaskContext;
-import saker.build.task.TaskResultDependencyHandle;
 import saker.build.task.TaskResultResolver;
 import saker.build.task.exception.TaskExecutionDeadlockedException;
 import saker.build.task.identifier.TaskIdentifier;
@@ -53,43 +52,15 @@ public class StaticVariableTaskResult implements SakerTaskResult, AssignableTask
 	}
 
 	@Override
-	public Object toResult(TaskResultResolver results) {
-		Object vartaskresult;
+	public Object toResult(TaskResultResolver results) throws NullPointerException, RuntimeException {
 		try {
-			vartaskresult = results.getTaskResult(variableTaskIdentifier);
+			return StructuredObjectTaskResult.super.toResult(results);
 		} catch (TaskExecutionDeadlockedException e) {
-			throw unassignedDeadlockedExc();
+			throw new UnassignedVariableExecutionException(
+					"Variable static(" + variableTaskIdentifier.getVariableName() + ") in "
+							+ variableTaskIdentifier.getScriptPath() + " was not assigned. (execution deadlocked)",
+					variableTaskIdentifier);
 		}
-		return ((SakerTaskResult) vartaskresult).toResult(results);
-	}
-
-	@Override
-	public Object get(TaskResultResolver results) {
-		Object vartaskresult;
-		try {
-			vartaskresult = results.getTaskResult(variableTaskIdentifier);
-		} catch (TaskExecutionDeadlockedException e) {
-			throw unassignedDeadlockedExc();
-		}
-		return ((SakerTaskResult) vartaskresult).get(results);
-	}
-
-	@Override
-	public TaskResultDependencyHandle getDependencyHandle(TaskResultResolver results,
-			TaskResultDependencyHandle handleforthis) {
-		TaskResultDependencyHandle dephandle = results.getTaskResultDependencyHandle(variableTaskIdentifier);
-		Object vartaskresult;
-		try {
-			vartaskresult = dephandle.get();
-		} catch (TaskExecutionDeadlockedException e) {
-			throw unassignedDeadlockedExc();
-		}
-		TaskResultDependencyHandle reshandle = ((SakerTaskResult) vartaskresult).getDependencyHandle(results,
-				dephandle);
-		if (reshandle == dephandle) {
-			return reshandle.clone();
-		}
-		return reshandle;
 	}
 
 	@Override
@@ -130,13 +101,6 @@ public class StaticVariableTaskResult implements SakerTaskResult, AssignableTask
 		} else if (!variableTaskIdentifier.equals(other.variableTaskIdentifier))
 			return false;
 		return true;
-	}
-
-	private UnassignedVariableExecutionException unassignedDeadlockedExc() {
-		return new UnassignedVariableExecutionException(
-				"Variable static(" + variableTaskIdentifier.getVariableName() + ") in "
-						+ variableTaskIdentifier.getScriptPath() + " was not assigned. (execution deadlocked)",
-				variableTaskIdentifier);
 	}
 
 }

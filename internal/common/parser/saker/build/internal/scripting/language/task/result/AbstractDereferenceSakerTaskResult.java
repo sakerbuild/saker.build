@@ -35,6 +35,7 @@ import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.ComposedStructuredTaskResult;
 import saker.build.task.utils.SimpleStructuredObjectTaskResult;
 import saker.build.task.utils.StructuredTaskResult;
+import saker.build.task.utils.SupplierForwardingTaskResultDependencyHandle;
 
 public abstract class AbstractDereferenceSakerTaskResult
 		implements SakerTaskResult, AssignableTaskResult, ComposedStructuredTaskResult {
@@ -66,54 +67,21 @@ public abstract class AbstractDereferenceSakerTaskResult
 	}
 
 	@Override
-	public Object get(TaskResultResolver results) {
-		SakerAssignTaskIdentifier assigntaskid = getVariableAssignTaskId(results);
-		SakerTaskResult vartaskres = getVariableTaskResult(results, assigntaskid);
-		try {
-			return vartaskres.get(results);
-		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
-			throw new OperandExecutionException("Failed to evaluate $" + assigntaskid.getVariableName() + " variable.",
-					e, assigntaskid);
-		} catch (TaskExecutionDeadlockedException e) {
-			throw new UnassignedVariableExecutionException(
-					"Failed to evaluate $" + assigntaskid.getVariableName() + " variable. (execution deadlocked)",
-					assigntaskid);
-		}
-	}
-
-	@Override
-	public TaskResultDependencyHandle getDependencyHandle(TaskResultResolver results,
-			TaskResultDependencyHandle handleforthis) {
-		SakerAssignTaskIdentifier assigntaskid = getVariableAssignTaskId(results);
-
-		try {
-			TaskResultDependencyHandle dephandle = results.getTaskResultDependencyHandle(assigntaskid);
-			SakerTaskResult result = (SakerTaskResult) dephandle.get();
-			return result.getDependencyHandle(results, dephandle);
-		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
-			throw new OperandExecutionException("Failed to evaluate $" + assigntaskid.getVariableName() + " variable.",
-					e, assigntaskid);
-		} catch (TaskExecutionDeadlockedException e) {
-			throw new UnassignedVariableExecutionException(
-					"Variable $" + assigntaskid.getVariableName() + " was not assigned. (execution deadlocked)",
-					assigntaskid);
-		}
-	}
-
-	@Override
 	public TaskResultDependencyHandle toResultDependencyHandle(TaskResultResolver results) throws NullPointerException {
-		SakerAssignTaskIdentifier assigntaskid = getVariableAssignTaskId(results);
-		SakerTaskResult vartaskres = getVariableTaskResult(results, assigntaskid);
-		try {
-			return vartaskres.toResultDependencyHandle(results);
-		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
-			throw new OperandExecutionException("Failed to evaluate $" + assigntaskid.getVariableName() + " variable.",
-					e, assigntaskid);
-		} catch (TaskExecutionDeadlockedException e) {
-			throw new UnassignedVariableExecutionException(
-					"Failed to evaluate $" + assigntaskid.getVariableName() + " variable. (execution deadlocked)",
-					assigntaskid);
-		}
+		return new SupplierForwardingTaskResultDependencyHandle(() -> {
+			SakerAssignTaskIdentifier assigntaskid = getVariableAssignTaskId(results);
+			SakerTaskResult vartaskres = getVariableTaskResult(results, assigntaskid);
+			try {
+				return vartaskres.toResultDependencyHandle(results);
+			} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
+				throw new OperandExecutionException(
+						"Failed to evaluate $" + assigntaskid.getVariableName() + " variable.", e, assigntaskid);
+			} catch (TaskExecutionDeadlockedException e) {
+				throw new UnassignedVariableExecutionException(
+						"Failed to evaluate $" + assigntaskid.getVariableName() + " variable. (execution deadlocked)",
+						assigntaskid);
+			}
+		});
 	}
 
 	@Override
@@ -121,6 +89,13 @@ public abstract class AbstractDereferenceSakerTaskResult
 			throws NullPointerException, RuntimeException {
 		SakerAssignTaskIdentifier assigntaskid = getVariableAssignTaskId(results);
 		return new SimpleStructuredObjectTaskResult(assigntaskid);
+	}
+
+	@Override
+	public TaskResultDependencyHandle toIntermediateTaskResultDependencyHandle(TaskResultResolver results)
+			throws NullPointerException {
+		return new SupplierForwardingTaskResultDependencyHandle(
+				() -> TaskResultDependencyHandle.create(getIntermediateTaskResult(results)));
 	}
 
 	@Override
@@ -184,4 +159,5 @@ public abstract class AbstractDereferenceSakerTaskResult
 	}
 
 	protected abstract String getVariableName(TaskResultResolver results);
+
 }

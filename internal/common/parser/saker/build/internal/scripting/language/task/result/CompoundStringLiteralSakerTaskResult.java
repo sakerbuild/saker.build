@@ -38,11 +38,6 @@ public class CompoundStringLiteralSakerTaskResult implements SakerTaskResult {
 	}
 
 	@Override
-	public Object get(TaskResultResolver results) {
-		return this;
-	}
-
-	@Override
 	public Object toResult(TaskResultResolver results) {
 		StringBuilder result = new StringBuilder();
 		for (TaskIdentifier taskid : tasks) {

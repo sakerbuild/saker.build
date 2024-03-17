@@ -40,11 +40,6 @@ public final class NoSakerTaskResult implements SakerTaskResult {
 	}
 
 	@Override
-	public Object get(TaskResultResolver results) {
-		throw new OperandExecutionException("Task produced no results.", taskid);
-	}
-
-	@Override
 	public Object toResult(TaskResultResolver results) {
 		throw new OperandExecutionException("Task produced no results.", taskid);
 	}

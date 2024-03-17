@@ -1,6 +1,7 @@
 notassigned(
     out notassigned = $var
 ) {
+	print($notassigned)
 }
 
 noresassign {
@@ -30,4 +31,10 @@ aborter(in abmsg) { abort($abmsg) }
 
 derefnull {
     print($null)
+}
+staticnoassign {
+	print(static(snoassigned))
+}
+globalnoassign {
+	print(global(gnoassigned))
 }

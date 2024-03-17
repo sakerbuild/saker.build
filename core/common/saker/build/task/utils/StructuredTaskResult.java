@@ -197,8 +197,8 @@ public interface StructuredTaskResult {
 	 * instance of {@link StructuredTaskResult}, then the {@link #toResultDependencyHandle(TaskResultResolver)} method
 	 * is used to retrieve the result.
 	 * <p>
-	 * The method installs a dependency for the task result of the associated task that signals a change if the
-	 * {@link StructuredTaskResult} nature of the result changes.
+	 * The returned handle will installs a dependency for the task result of the associated task (with the argument task
+	 * id) that signals a change if the {@link StructuredTaskResult} nature of the result changes.
 	 * 
 	 * @param taskid
 	 *            The task identifier to get the task result of.
@@ -213,17 +213,166 @@ public interface StructuredTaskResult {
 		Objects.requireNonNull(taskid, "task identifier");
 		Objects.requireNonNull(results, "task result resolver");
 		TaskResultDependencyHandle handle = results.getTaskResultDependencyHandle(taskid);
-		Object obj = handle.get();
-		if (obj instanceof StructuredTaskResult) {
-			//NOTE: we don't set CommonTaskOutputChangeDetector.isInstanceOf(StructuredTaskResult.class)
-			//  but instead we set the equality change detector as changes in the structured result needs to be noticed
-			handle.setTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(obj));
-			return ((StructuredTaskResult) obj).toResultDependencyHandle(results);
+		return new SupplierForwardingTaskResultDependencyHandle(() -> {
+			Object obj = handle.get();
+			if (obj instanceof StructuredTaskResult) {
+				//NOTE: we don't set CommonTaskOutputChangeDetector.isInstanceOf(StructuredTaskResult.class)
+				//  but instead we set the equality change detector as changes in the structured result needs to be noticed
+				handle.setTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(obj));
+				return ((StructuredTaskResult) obj).toResultDependencyHandle(results);
+			}
+			handle.setTaskOutputChangeDetector(
+					CommonTaskOutputChangeDetector.notInstanceOf(StructuredTaskResult.class));
+			//clone the handle so any get() calls on the returned handle will install a dependency, and the one we've set
+			//here doesn't break it
+			return handle.clone();
+		});
+	}
+
+	/**
+	 * Resolves the intermediate task results of the argument if it's an instance of
+	 * {@link ComposedStructuredTaskResult} or {@link StructuredObjectTaskResult}.
+	 * <p>
+	 * The function will check if the argument is a composed structured task result, and if so, it will resolve the
+	 * intermediate task results until it's no longer a composed task result.
+	 * <p>
+	 * The function will also set appropriate task output change detectors for the retrieved task results.
+	 * <p>
+	 * If the argument is <code>null</code>, or not a composed structured task result, it is simply returned.
+	 * 
+	 * @param value
+	 *            The object to resolve.
+	 * @param results
+	 *            The task result resolver to retrieve the results from.
+	 * @return The final resolved object.
+	 * @throws NullPointerException
+	 *             If <code>results</code> is <code>null</code> while attempting resolution.
+	 * @see ComposedStructuredTaskResult#getIntermediateTaskResult(TaskResultResolver)
+	 * @see StructuredObjectTaskResult#getTaskIdentifier()
+	 * @since saker.build 0.8.21
+	 */
+	public static Object resolveComposition(Object value, TaskResultResolver results) throws NullPointerException {
+		TaskResultDependencyHandle handle = null;
+		while (true) {
+			if (value instanceof ComposedStructuredTaskResult) {
+				if (handle != null) {
+					handle.setTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(value));
+				}
+
+				ComposedStructuredTaskResult composed = (ComposedStructuredTaskResult) value;
+				handle = composed.toIntermediateTaskResultDependencyHandle(results);
+				value = handle.get();
+				continue;
+			}
+			if (handle != null) {
+				handle.setTaskOutputChangeDetector(
+						CommonTaskOutputChangeDetector.notInstanceOf(ComposedStructuredTaskResult.class));
+			}
+
+			if (value instanceof StructuredObjectTaskResult) {
+				if (handle != null) {
+					handle.setTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(value));
+				}
+
+				StructuredObjectTaskResult objres = (StructuredObjectTaskResult) value;
+				handle = results.getTaskResultDependencyHandle(objres.getTaskIdentifier());
+				Object obj = handle.get();
+				value = obj;
+				continue;
+			}
+			if (handle != null) {
+				handle.setTaskOutputChangeDetector(
+						CommonTaskOutputChangeDetector.notInstanceOf(StructuredObjectTaskResult.class));
+			}
+			return value;
 		}
-		handle.setTaskOutputChangeDetector(CommonTaskOutputChangeDetector.notInstanceOf(StructuredTaskResult.class));
-		//clone the handle so any get() calls on the returned handle will install a dependency, and the one we've set
-		//here doesn't break it
-		return handle.clone();
+	}
+
+	/**
+	 * Resolves the intermediate task results of the argument dependency handle if it refers to an instance of
+	 * {@link ComposedStructuredTaskResult} or {@link StructuredObjectTaskResult}.
+	 * <p>
+	 * The function will retrieve the result of the argument handle and will check if it's a composed structured task
+	 * result. In that case it will apply an appropriate task output change detector and continue resolving the
+	 * intermediate results.
+	 * <p>
+	 * The returned handle will refer to an object that is not a composed structured task result.
+	 * <p>
+	 * If the given handle doesn't refer to a composed task result, then it's simply returned.
+	 * {@link CommonTaskOutputChangeDetector#notInstanceOf(Class) notInstanceOf} output change detector is also applied
+	 * in this case.
+	 * 
+	 * @param handle
+	 *            The handle to the task result to resolve.
+	 * @param results
+	 *            The task result resolver to retrieve the results from.
+	 * @return The final resolved handle that doesn't refer to a composed structured task result..
+	 * @throws NullPointerException
+	 *             If <code>handle</code> is <code>null</code>, or if <code>results</code> is <code>null</code> while
+	 *             attempting resolution.
+	 * @see ComposedStructuredTaskResult#toIntermediateTaskResultDependencyHandle(TaskResultResolver)
+	 * @see StructuredObjectTaskResult#getTaskIdentifier()
+	 * @since saker.build 0.8.21
+	 */
+	public static TaskResultDependencyHandle resolveCompositionTaskResultDependencyHandle(
+			TaskResultDependencyHandle handle, TaskResultResolver results) throws NullPointerException {
+		Objects.requireNonNull(handle, "handle");
+		Object value = handle.get();
+		TaskResultDependencyHandle newhandle = handle;
+
+		while (true) {
+			if (value instanceof ComposedStructuredTaskResult) {
+				newhandle.setTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(value));
+
+				ComposedStructuredTaskResult composed = (ComposedStructuredTaskResult) value;
+				newhandle = composed.toIntermediateTaskResultDependencyHandle(results);
+				value = newhandle.get();
+				continue;
+			}
+			newhandle.setTaskOutputChangeDetector(
+					CommonTaskOutputChangeDetector.notInstanceOf(ComposedStructuredTaskResult.class));
+
+			if (value instanceof StructuredObjectTaskResult) {
+				newhandle.setTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(value));
+
+				StructuredObjectTaskResult objres = (StructuredObjectTaskResult) value;
+				newhandle = results.getTaskResultDependencyHandle(objres.getTaskIdentifier());
+				Object obj = newhandle.get();
+				value = obj;
+				continue;
+			}
+			newhandle.setTaskOutputChangeDetector(
+					CommonTaskOutputChangeDetector.notInstanceOf(StructuredObjectTaskResult.class));
+			if (newhandle != handle) {
+				//if we actually retrieve some results, then clone the handle
+				return newhandle.clone();
+			}
+			return newhandle;
+		}
+	}
+
+	/**
+	 * Resolves the intermediate task results of the argument future handle if it refers to an instance of
+	 * {@link ComposedStructuredTaskResult} or {@link StructuredObjectTaskResult}.
+	 * <p>
+	 * The function works the same way as
+	 * {@link #resolveCompositionTaskResultDependencyHandle(TaskResultDependencyHandle, TaskResultResolver)}, after
+	 * wrapping the argument future into a {@link TaskResultDependencyHandle}.
+	 * 
+	 * @param future
+	 *            The future to uncompose.
+	 * @return The final resolved handle that doesn't refer to a composed structured task result..
+	 * @throws NullPointerException
+	 *             If the argument is <code>null</code>.
+	 * @see ComposedStructuredTaskResult#toIntermediateTaskResultDependencyHandle(TaskResultResolver)
+	 * @see StructuredObjectTaskResult#getTaskIdentifier()
+	 * @since saker.build 0.8.21
+	 */
+	public static TaskResultDependencyHandle resolveCompositionTaskDependencyFuture(TaskDependencyFuture<?> future)
+			throws NullPointerException {
+		Objects.requireNonNull(future, "future");
+		return resolveCompositionTaskResultDependencyHandle(new FutureWrapperTaskResultDependencyHandle(future),
+				future.getTaskContext());
 	}
 
 	/**

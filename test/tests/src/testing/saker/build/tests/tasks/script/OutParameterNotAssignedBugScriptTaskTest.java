@@ -15,7 +15,6 @@
  */
 package testing.saker.build.tests.tasks.script;
 
-import saker.build.task.exception.TaskExecutionFailedException;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
 
@@ -24,13 +23,16 @@ public class OutParameterNotAssignedBugScriptTaskTest extends CollectingMetricEn
 
 	@Override
 	protected void runTestImpl() throws Throwable {
-		files.putFile(PATH_WORKING_DIRECTORY.resolve("saker.build"), "build(\nout x\n) { }");
+		files.putFile(PATH_WORKING_DIRECTORY.resolve("saker.build"), "build(\nout x\nout y\n) { $y = 4; }");
 
-		assertTaskException(TaskExecutionFailedException.class, () -> runScriptTask("build"));
+		CombinedTargetTaskResult res = runScriptTask("build");
+		//variable was not assigned, so the task result is not found
+		assertException(IllegalArgumentException.class, () -> res.getTargetTaskResult("x"));
+		assertEquals(res.getTargetTaskResult("y"), 4L);
 
 		System.out.println("OutParameterNotAssignedBugScriptTaskTest.runTestImpl() RUN 2");
 
-		files.putFile(PATH_WORKING_DIRECTORY.resolve("saker.build"), "build(\nout x\n) {\n $x = 3\n }");
+		files.putFile(PATH_WORKING_DIRECTORY.resolve("saker.build"), "build(\nout x\n) {\n $x = 3;\n }");
 		runScriptTask("build");
 	}
 

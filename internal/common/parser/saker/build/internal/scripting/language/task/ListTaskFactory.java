@@ -26,7 +26,6 @@ import java.util.Map;
 import saker.build.internal.scripting.language.task.result.SakerListTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskObjectSakerTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
-import saker.build.internal.scripting.language.task.result.SimpleSakerTaskResult;
 import saker.build.task.TaskContext;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.StructuredTaskResult;

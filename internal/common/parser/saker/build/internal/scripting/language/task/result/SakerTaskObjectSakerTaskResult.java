@@ -50,21 +50,9 @@ public class SakerTaskObjectSakerTaskResult implements SakerTaskResult, Structur
 	}
 
 	@Override
-	public Object get(TaskResultResolver results) {
-		return getSakerResult(results).get(results);
-	}
-
-	@Override
-	public Object toResult(TaskResultResolver results) {
-		return getSakerResult(results).toResult(results);
-	}
-
-	@Override
-	public TaskResultDependencyHandle getDependencyHandle(TaskResultResolver results,
-			TaskResultDependencyHandle handleforthis) {
+	public Object toResult(TaskResultResolver results) throws NullPointerException, RuntimeException {
 		try {
-			TaskResultDependencyHandle dephandle = results.getTaskResultDependencyHandle(sakerTaskId);
-			return ((SakerTaskResult) dephandle.get()).getDependencyHandle(results, dephandle);
+			return StructuredObjectTaskResult.super.toResult(results);
 		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
 			throw new OperandExecutionException("Failed to retrieve task result.", e, sakerTaskId);
 		}
@@ -73,14 +61,6 @@ public class SakerTaskObjectSakerTaskResult implements SakerTaskResult, Structur
 	@Override
 	public TaskResultDependencyHandle toResultDependencyHandle(TaskResultResolver results) throws NullPointerException {
 		return StructuredTaskResult.getActualTaskResultDependencyHandle(sakerTaskId, results);
-	}
-
-	private SakerTaskResult getSakerResult(TaskResultResolver results) {
-		try {
-			return (SakerTaskResult) results.getTaskResult(sakerTaskId);
-		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
-			throw new OperandExecutionException("Failed to retrieve task result.", e, sakerTaskId);
-		}
 	}
 
 	@Override

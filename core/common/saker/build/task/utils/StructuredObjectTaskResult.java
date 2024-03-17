@@ -44,7 +44,7 @@ public interface StructuredObjectTaskResult extends StructuredTaskResult {
 	}
 
 	@Override
-	default TaskResultDependencyHandle toResultDependencyHandle(TaskResultResolver results)
+	public default TaskResultDependencyHandle toResultDependencyHandle(TaskResultResolver results)
 			throws NullPointerException {
 		return StructuredTaskResult.getActualTaskResultDependencyHandle(getTaskIdentifier(), results);
 	}

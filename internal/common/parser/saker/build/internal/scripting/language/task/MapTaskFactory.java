@@ -31,7 +31,6 @@ import saker.build.internal.scripting.language.exc.OperandExecutionException;
 import saker.build.internal.scripting.language.task.result.MapEntrySingletonMapTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerMapTaskResult;
 import saker.build.internal.scripting.language.task.result.SakerTaskResult;
-import saker.build.internal.scripting.language.task.result.SimpleSakerTaskResult;
 import saker.build.task.TaskContext;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.SimpleStructuredObjectTaskResult;

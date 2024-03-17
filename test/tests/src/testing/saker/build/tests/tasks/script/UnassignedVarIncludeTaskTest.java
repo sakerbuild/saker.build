@@ -15,7 +15,6 @@
  */
 package testing.saker.build.tests.tasks.script;
 
-import saker.build.task.exception.TaskExecutionFailedException;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
 
@@ -28,7 +27,8 @@ public class UnassignedVarIncludeTaskTest extends CollectingMetricEnvironmentTes
 		res = runScriptTask("build");
 		assertEquals(res.getTargetTaskResult("second"), 18L);
 
-		assertTaskException(TaskExecutionFailedException.class, () -> runScriptTask("unassignedoutput"));
+		res = runScriptTask("unassignedoutput");
+		assertEquals(res.getTargetTaskResult("second"), 123L);
 	}
 
 }

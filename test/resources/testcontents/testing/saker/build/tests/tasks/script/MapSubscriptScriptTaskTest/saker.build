@@ -34,6 +34,7 @@ nokeyunused(
 		Key1: 1
 	}
 	$nokeyout = $map[NoKey]
+	print($nokeyout)
 }
 
 nokeyout(
@@ -44,4 +45,5 @@ nokeyout(
 		Key2: path(),
 	}
 	$output = $map[NoKey]
+	print($output)
 }

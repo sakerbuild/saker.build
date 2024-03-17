@@ -11,7 +11,6 @@ import java.util.Objects;
 import java.util.function.BiConsumer;
 
 import saker.build.internal.scripting.language.task.MapEntryStringKeySingletonImmutableMap;
-import saker.build.task.TaskResultDependencyHandle;
 import saker.build.task.TaskResultResolver;
 import saker.build.task.utils.StructuredMapTaskResult;
 import saker.build.task.utils.StructuredTaskResult;
@@ -35,17 +34,6 @@ public class MapEntrySingletonMapTaskResult
 	public MapEntrySingletonMapTaskResult(Object key, StructuredTaskResult valueResult) {
 		this.key = key;
 		this.valueResult = valueResult;
-	}
-
-	@Override
-	public Object get(TaskResultResolver results) {
-		return this;
-	}
-
-	@Override
-	public TaskResultDependencyHandle getDependencyHandle(TaskResultResolver results,
-			TaskResultDependencyHandle handleforthis) {
-		return handleforthis;
 	}
 
 	@Override

@@ -141,7 +141,7 @@ public class AddTaskFactory extends BinaryOperatorTaskFactory {
 			TaskFuture<SakerTaskResult> future, String operandname) {
 		Object result;
 		try {
-			result = future.get().get(taskcontext);
+			result = StructuredTaskResult.resolveCompositionTaskDependencyFuture(future.asDependencyFuture()).get();
 		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
 			throw new OperandExecutionException(operandname + " operand failed to evaluate.", e, taskid);
 		}

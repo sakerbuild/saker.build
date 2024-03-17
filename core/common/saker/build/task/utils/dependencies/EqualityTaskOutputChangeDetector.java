@@ -95,7 +95,7 @@ public class EqualityTaskOutputChangeDetector implements TaskOutputChangeDetecto
 
 	@Override
 	public String toString() {
-		return getClass().getSimpleName() + "[" + (object != null ? "object=" + object : "") + "]";
+		return getClass().getSimpleName() + "[" + object + "]";
 	}
 
 }

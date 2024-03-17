@@ -25,15 +25,11 @@ import saker.build.internal.scripting.language.task.AssignableTaskResult;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
 import saker.build.internal.scripting.language.task.SakerTaskResultLiteralTaskFactory;
 import saker.build.task.TaskContext;
-import saker.build.task.TaskResultDependencyHandle;
 import saker.build.task.TaskResultResolver;
-import saker.build.task.dependencies.CommonTaskOutputChangeDetector;
 import saker.build.task.exception.TaskExecutionDeadlockedException;
 import saker.build.task.identifier.GlobalValueTaskIdentifier;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.StructuredObjectTaskResult;
-import saker.build.task.utils.StructuredTaskResult;
-import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 import saker.build.util.data.annotation.ValueType;
 
 @ValueType
@@ -58,54 +54,13 @@ public class GlobalVariableTaskResult implements SakerTaskResult, AssignableTask
 	}
 
 	@Override
-	public Object toResult(TaskResultResolver results) {
-		Object vartaskresult;
+	public Object toResult(TaskResultResolver results) throws NullPointerException, RuntimeException {
 		try {
-			vartaskresult = results.getTaskResult(variableTaskIdentifier);
+			return StructuredObjectTaskResult.super.toResult(results);
 		} catch (TaskExecutionDeadlockedException e) {
-			throw unassignedDeadlockedExc();
+			throw new UnassignedVariableExecutionException("Variable global(" + variableTaskIdentifier.getVariableName()
+					+ ") was not assigned. (execution deadlocked)", variableTaskIdentifier);
 		}
-		if (vartaskresult instanceof StructuredTaskResult) {
-			return ((StructuredTaskResult) vartaskresult).toResult(results);
-		}
-		return vartaskresult;
-	}
-
-	@Override
-	public Object get(TaskResultResolver results) {
-		Object result;
-		try {
-			result = results.getTaskResult(variableTaskIdentifier);
-		} catch (TaskExecutionDeadlockedException e) {
-			throw unassignedDeadlockedExc();
-		}
-		if (result instanceof SakerTaskResult) {
-			return ((SakerTaskResult) result).get(results);
-		}
-		return result;
-	}
-
-	@Override
-	public TaskResultDependencyHandle getDependencyHandle(TaskResultResolver results,
-			TaskResultDependencyHandle handleforthis) {
-		TaskResultDependencyHandle dephandle = results.getTaskResultDependencyHandle(variableTaskIdentifier);
-		Object handleval;
-		try {
-			handleval = dephandle.get();
-		} catch (TaskExecutionDeadlockedException e) {
-			throw unassignedDeadlockedExc();
-		}
-		if (handleval instanceof SakerTaskResult) {
-			dephandle.setTaskOutputChangeDetector(new EqualityTaskOutputChangeDetector(handleval));
-			TaskResultDependencyHandle resulthandle = ((SakerTaskResult) handleval).getDependencyHandle(results,
-					dephandle);
-			if (resulthandle == dephandle) {
-				return resulthandle.clone();
-			}
-			return resulthandle;
-		}
-		dephandle.setTaskOutputChangeDetector(CommonTaskOutputChangeDetector.notInstanceOf(SakerTaskResult.class));
-		return dephandle.clone();
 	}
 
 	@Override
@@ -154,8 +109,4 @@ public class GlobalVariableTaskResult implements SakerTaskResult, AssignableTask
 				+ (variableTaskIdentifier != null ? "variableTaskIdentifier=" + variableTaskIdentifier : "") + "]";
 	}
 
-	private UnassignedVariableExecutionException unassignedDeadlockedExc() {
-		return new UnassignedVariableExecutionException("Variable global(" + variableTaskIdentifier.getVariableName()
-				+ ") was not assigned. (execution deadlocked)", variableTaskIdentifier);
-	}
 }

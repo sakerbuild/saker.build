@@ -65,7 +65,7 @@ public abstract class BinaryNumberOperatorTaskFactory extends BinaryOperatorTask
 			TaskFuture<SakerTaskResult> future, String operandname) {
 		Object result;
 		try {
-			result = future.get().get(taskcontext);
+			result = future.get().toResult(taskcontext);
 		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
 			throw new OperandExecutionException(operandname + " operand failed to evaluate.", e, taskid);
 		}

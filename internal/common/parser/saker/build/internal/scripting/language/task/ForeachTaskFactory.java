@@ -51,9 +51,12 @@ import saker.build.task.TaskResultDependencyHandle;
 import saker.build.task.TaskResultResolver;
 import saker.build.task.exception.TaskExecutionFailedException;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.task.utils.ComposedStructuredTaskResult;
+import saker.build.task.utils.SimpleStructuredObjectTaskResult;
 import saker.build.task.utils.StructuredListTaskResult;
 import saker.build.task.utils.StructuredMapTaskResult;
 import saker.build.task.utils.StructuredTaskResult;
+import saker.build.task.utils.SupplierForwardingTaskResultDependencyHandle;
 import saker.build.task.utils.dependencies.EqualityTaskOutputChangeDetector;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -245,7 +248,7 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 		Object iterableobject;
 		try {
 			SakerTaskResult iterablesakerresult = runForResult(taskcontext, iterabletasktaskid, iterableTask);
-			iterableobject = iterablesakerresult.get(taskcontext);
+			iterableobject = StructuredTaskResult.resolveComposition(iterablesakerresult, taskcontext);
 		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
 			throw new OperandExecutionException("Iterable failed to evaluate.", e, iterabletasktaskid);
 		}
@@ -574,7 +577,7 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 	}
 
 	private static class ForeachLocalVariableTaskResult
-			implements SakerTaskResult, AssignableTaskResult, Externalizable {
+			implements SakerTaskResult, AssignableTaskResult, ComposedStructuredTaskResult, Externalizable {
 		private static final long serialVersionUID = 1L;
 
 		protected LocalVariableTaskIdentifier taskId;
@@ -584,11 +587,6 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 
 		public ForeachLocalVariableTaskResult(LocalVariableTaskIdentifier futuretaskid) {
 			this.taskId = futuretaskid;
-		}
-
-		@Override
-		public Object get(TaskResultResolver results) {
-			return ((SakerTaskResult) results.getTaskResult(taskId)).get(results);
 		}
 
 		@Override
@@ -606,6 +604,19 @@ public class ForeachTaskFactory extends SelfSakerTaskFactory {
 		public void assign(TaskContext taskcontext, SakerScriptTaskIdentifier currenttaskid, TaskIdentifier value) {
 			SakerTaskFactory localfut = new SakerTaskResultLiteralTaskFactory(value);
 			taskcontext.getTaskUtilities().startTask(this.taskId, localfut);
+		}
+
+		@Override
+		public StructuredTaskResult getIntermediateTaskResult(TaskResultResolver results)
+				throws NullPointerException, RuntimeException {
+			return new SimpleStructuredObjectTaskResult(taskId);
+		}
+
+		@Override
+		public TaskResultDependencyHandle toIntermediateTaskResultDependencyHandle(TaskResultResolver results)
+				throws NullPointerException {
+			return new SupplierForwardingTaskResultDependencyHandle(
+					() -> TaskResultDependencyHandle.create(getIntermediateTaskResult(results)));
 		}
 
 		@Override

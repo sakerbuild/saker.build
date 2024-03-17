@@ -27,8 +27,8 @@ import saker.build.task.Task;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskDependencyFuture;
 import saker.build.task.TaskFactory;
-import saker.build.task.dependencies.TaskOutputChangeDetector;
 import saker.build.task.identifier.TaskIdentifier;
+import saker.build.task.utils.dependencies.StringValueTaskOutputChangeDetector;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.tasks.factories.SequentialChildTaskStarterTaskFactory;
@@ -36,60 +36,6 @@ import testing.saker.build.tests.tasks.factories.StringTaskFactory;
 
 @SakerTest
 public class TaskDependencyCacheableTaskTest extends CacheableTaskTestCase {
-
-	private static class StringValueOutputChangeDetector implements TaskOutputChangeDetector, Externalizable {
-		private static final long serialVersionUID = 1L;
-
-		private String expected;
-
-		public StringValueOutputChangeDetector() {
-		}
-
-		public StringValueOutputChangeDetector(String expected) {
-			this.expected = expected;
-		}
-
-		@Override
-		public boolean isChanged(Object taskoutput) {
-			return !Objects.equals(expected, Objects.toString(taskoutput, null));
-		}
-
-		@Override
-		public void writeExternal(ObjectOutput out) throws IOException {
-			out.writeObject(expected);
-		}
-
-		@Override
-		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-			expected = (String) in.readObject();
-		}
-
-		@Override
-		public int hashCode() {
-			final int prime = 31;
-			int result = 1;
-			result = prime * result + ((expected == null) ? 0 : expected.hashCode());
-			return result;
-		}
-
-		@Override
-		public boolean equals(Object obj) {
-			if (this == obj)
-				return true;
-			if (obj == null)
-				return false;
-			if (getClass() != obj.getClass())
-				return false;
-			StringValueOutputChangeDetector other = (StringValueOutputChangeDetector) obj;
-			if (expected == null) {
-				if (other.expected != null)
-					return false;
-			} else if (!expected.equals(other.expected))
-				return false;
-			return true;
-		}
-
-	}
 
 	private static class DependingTaskFactory implements TaskFactory<String>, Task<String>, Externalizable {
 		private static final long serialVersionUID = 1L;
@@ -113,7 +59,7 @@ public class TaskDependencyCacheableTaskTest extends CacheableTaskTestCase {
 		public String run(TaskContext taskcontext) throws Exception {
 			TaskDependencyFuture<?> future = taskcontext.getTaskDependencyFuture(dependTaskId);
 			String result = Objects.toString(future.getFinished(), null);
-			future.setTaskOutputChangeDetector(new StringValueOutputChangeDetector(result));
+			future.setTaskOutputChangeDetector(new StringValueTaskOutputChangeDetector(result));
 			return result;
 		}
 

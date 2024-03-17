@@ -164,16 +164,7 @@ public class SakerScriptBuildTargetTaskFactory implements BuildTargetTaskFactory
 						TaskIdentifier outtaskid = AssignmentTaskFactory.createAssignTaskIdentifier(thistaskid,
 								outname);
 
-						//XXX as composed structured task results have been introduced, we might not need to unsaker the results
-						// we need to unsaker the result, so the most appropriate data type gets returned
-						//    in case of a variable dereference, the value of that variable is returned
-						//    if the dereference result was returned then the receiving script would interpret that as a structured result
-						//         but if the real value is a list, then it should be interpreted as a structured list.
-						//         this is not possible without unsyntaxing the result
-						UnsakerFutureTaskFactory unsyntaxer = new UnsakerFutureTaskFactory(outtaskid);
-						TaskIdentifier restaskid = new UnsakerTaskFactoryTaskIdentifier(unsyntaxer);
-						taskutils.startTask(restaskid, unsyntaxer);
-						resulttaskids.put(outname, restaskid);
+						resulttaskids.put(outname, outtaskid);
 					}
 				}
 				SimpleBuildTargetTaskResult result = new SimpleBuildTargetTaskResult(resulttaskids);

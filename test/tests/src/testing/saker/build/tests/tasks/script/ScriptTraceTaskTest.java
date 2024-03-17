@@ -18,6 +18,8 @@ package testing.saker.build.tests.tasks.script;
 import saker.build.file.path.SakerPath;
 import saker.build.runtime.environment.BuildTaskExecutionResult;
 import saker.build.runtime.execution.SakerLog;
+import saker.build.runtime.execution.SakerLog.CommonExceptionFormat;
+import saker.build.util.exc.ExceptionView;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.CollectingMetricEnvironmentTestCase;
 
@@ -87,16 +89,53 @@ public class ScriptTraceTaskTest extends CollectingMetricEnvironmentTestCase {
 		res = runTask(() -> environment.runBuildTarget(mainbuildfile, "includingabort", parameters, project));
 		SakerLog.printFormatException(res.getPositionedExceptionView());
 		System.err.println();
-		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile, "includingabort { aborter(abmsg: abortmsg) }");
-		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile, "aborter(abmsg: abortmsg)");
-		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile, "aborter(in abmsg) { abort($abmsg) }");
+		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile,
+				"includingabort { aborter(abmsg: abortmsg) }");
+		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile,
+				"aborter(abmsg: abortmsg)");
+		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile,
+				"aborter(in abmsg) { abort($abmsg) }");
 		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile, "abort($abmsg)");
-		
+
 		res = runTask(() -> environment.runBuildTarget(mainbuildfile, "derefnull", parameters, project));
 		SakerLog.printFormatException(res.getPositionedExceptionView());
 		System.err.println();
 		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile, "$null");
 		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile, "print($null)");
+
+		res = runTask(() -> environment.runBuildTarget(mainbuildfile, "staticnoassign", parameters, project));
+		SakerLog.printFormatException(res.getPositionedExceptionView());
+		System.err.println();
+
+		assertTrue(containsException(res.getExceptionView(),
+				"saker.build.internal.scripting.language.exc.UnassignedVariableExecutionException"));
+		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile,
+				"print(static(snoassigned))");
+
+		res = runTask(() -> environment.runBuildTarget(mainbuildfile, "globalnoassign", parameters, project));
+		SakerLog.printFormatException(res.getPositionedExceptionView());
+		System.err.println();
+
+		assertTrue(containsException(res.getExceptionView(),
+				"saker.build.internal.scripting.language.exc.UnassignedVariableExecutionException"));
+		ScriptTestUtils.assertHasScriptTrace(files, res.getPositionedExceptionView(), mainbuildfile,
+				"print(global(gnoassigned))");
+	}
+
+	private static boolean containsException(ExceptionView ev, String classname) {
+		if (classname.equals(ev.getExceptionClassName())) {
+			return true;
+		}
+		ExceptionView cause = ev.getCause();
+		if (cause != null && containsException(cause, classname)) {
+			return true;
+		}
+		for (ExceptionView s : ev.getSuppressed()) {
+			if (containsException(s, classname)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 }

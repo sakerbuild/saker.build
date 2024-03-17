@@ -92,19 +92,6 @@ public class SubscriptSakerTaskResult implements SakerTaskResult, ComposedStruct
 	}
 
 	@Override
-	public Object get(TaskResultResolver results) {
-		return calculateResult(results, Functionals.identityFunction(), Functionals.identityFunction(),
-				results::getTaskResult);
-	}
-
-	@Override
-	public TaskResultDependencyHandle getDependencyHandle(TaskResultResolver results,
-			TaskResultDependencyHandle handleforthis) {
-		return calculateResult(results, TaskResultDependencyHandle::create, TaskResultDependencyHandle::create,
-				results::getTaskResultDependencyHandle);
-	}
-
-	@Override
 	public StructuredTaskResult getIntermediateTaskResult(TaskResultResolver results)
 			throws NullPointerException, RuntimeException {
 		return calculateResult(results, Functionals.identityFunction(), SimpleSakerTaskResult::new,
@@ -341,16 +328,6 @@ public class SubscriptSakerTaskResult implements SakerTaskResult, ComposedStruct
 				if (!getcauses.isEmpty()) {
 					addAlwaysChangeDetector(subjectdephandle);
 					break;
-				}
-			}
-			if (subjectvalue instanceof SakerTaskResult) {
-				TaskResultDependencyHandle ndephandle = ((SakerTaskResult) subjectvalue).getDependencyHandle(results,
-						subjectdephandle);
-				Object nval = ndephandle.get();
-				if (nval != subjectvalue) {
-					subjectvalue = nval;
-					subjectdephandle = ndephandle;
-					continue;
 				}
 			}
 			if (subjectvalue instanceof StructuredTaskResult) {

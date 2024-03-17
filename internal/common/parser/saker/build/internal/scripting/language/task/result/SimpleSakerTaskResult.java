@@ -39,11 +39,6 @@ public final class SimpleSakerTaskResult<R> implements SakerTaskResult {
 	}
 
 	@Override
-	public Object get(TaskResultResolver results) {
-		return value;
-	}
-
-	@Override
 	public Object toResult(TaskResultResolver results) {
 		if (value instanceof StructuredTaskResult) {
 			return ((StructuredTaskResult) value).toResult(results);
@@ -57,15 +52,6 @@ public final class SimpleSakerTaskResult<R> implements SakerTaskResult {
 			return ((StructuredTaskResult) value).toResultDependencyHandle(results);
 		}
 		return SakerTaskResult.super.toResultDependencyHandle(results);
-	}
-
-	@Override
-	public TaskResultDependencyHandle getDependencyHandle(TaskResultResolver results,
-			TaskResultDependencyHandle handleforthis) {
-		if (value instanceof StructuredTaskResult) {
-			return ((StructuredTaskResult) value).toResultDependencyHandle(results);
-		}
-		return handleforthis;
 	}
 
 	@Override

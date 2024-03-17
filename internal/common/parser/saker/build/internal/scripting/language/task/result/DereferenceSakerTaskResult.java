@@ -22,10 +22,12 @@ import java.io.ObjectOutput;
 import saker.build.internal.scripting.language.exc.OperandExecutionException;
 import saker.build.internal.scripting.language.exc.SakerScriptEvaluationException;
 import saker.build.internal.scripting.language.task.SakerScriptTaskIdentifier;
+import saker.build.task.TaskResultDependencyHandle;
 import saker.build.task.TaskResultResolver;
 import saker.build.task.exception.TaskExecutionFailedException;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.task.utils.StructuredTaskResult;
+import saker.build.task.utils.dependencies.StringValueTaskOutputChangeDetector;
 
 public class DereferenceSakerTaskResult extends AbstractDereferenceSakerTaskResult {
 	private static final long serialVersionUID = 1L;
@@ -43,16 +45,20 @@ public class DereferenceSakerTaskResult extends AbstractDereferenceSakerTaskResu
 
 	@Override
 	protected String getVariableName(TaskResultResolver results) {
+		TaskResultDependencyHandle handle;
 		Object nameval;
 		try {
-			nameval = StructuredTaskResult.getActualTaskResult(variableTaskId, results);
+			handle = StructuredTaskResult.getActualTaskResultDependencyHandle(variableTaskId, results);
+			nameval = handle.get();
 		} catch (TaskExecutionFailedException | SakerScriptEvaluationException e) {
 			throw new OperandExecutionException("Failed to evaluate variable name", e, variableTaskId);
 		}
 		if (nameval == null) {
 			throw new OperandExecutionException("Variable name evaluated to null.", variableTaskId);
 		}
-		return nameval.toString();
+		String result = nameval.toString();
+		handle.setTaskOutputChangeDetector(new StringValueTaskOutputChangeDetector(result));
+		return result;
 	}
 
 	@Override
