@@ -1611,8 +1611,8 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 			writeArrayImplWithCommandImpl(obj, objclass);
 			return;
 		}
-		if (ReflectUtils.isEnumOrEnumAnonymous(objclass)) {
-			writeEnumWithCommandImpl(obj, objclass);
+		if (obj instanceof Enum) {
+			writeEnumWithCommandImpl((Enum<?>) obj);
 			return;
 		}
 		if (obj instanceof Externalizable) {
@@ -1725,17 +1725,14 @@ public class ContentWriterObjectOutput implements ObjectOutput {
 		return idx;
 	}
 
-	private void writeEnumWithCommandImpl(Object obj, Class<? extends Object> objclass) throws IOException {
-		if (objclass.isAnonymousClass()) {
-			objclass = objclass.getSuperclass();
-		}
+	private void writeEnumWithCommandImpl(Enum<?> e) throws IOException {
+		final Class<?> objclass = e.getDeclaringClass();
 
 		final DataOutputUnsyncByteArrayOutputStream out = this.out;
 		out.writeByte(C_OBJECT_ENUM);
 		writeTypeWithCommandOrIdx(objclass);
-		Enum<?> e = (Enum<?>) obj;
 		out.writeStringLengthChars(e.name());
-		addSerializedObject(obj);
+		addSerializedObject(e);
 	}
 
 	private void writeExternalizableWithCommandImpl(Externalizable obj, Class<? extends Object> objclass)
