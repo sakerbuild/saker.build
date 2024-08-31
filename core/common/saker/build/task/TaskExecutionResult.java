@@ -292,6 +292,30 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 			return new ReportedTaskDependency(dependencies, outputChangeDetector);
 		}
 
+		protected static void writeExternalTo(ObjectOutput out, ReportedTaskDependency dep) throws IOException {
+			if (dep.isFinishedRetrieval()) {
+				out.writeObject(Boolean.TRUE);
+			}
+			out.writeObject(dep.dependencies);
+			out.writeObject(dep.outputChangeDetector);
+		}
+
+		protected static ReportedTaskDependency readExternalFrom(ObjectInput in)
+				throws ClassNotFoundException, IOException {
+			Object o = in.readObject();
+			boolean finishedRetrieval;
+			TaskDependencies dependencies;
+			if (Boolean.TRUE.equals(o)) {
+				finishedRetrieval = true;
+				dependencies = (TaskDependencies) in.readObject();
+			} else {
+				finishedRetrieval = false;
+				dependencies = (TaskDependencies) o;
+			}
+			TaskOutputChangeDetector outputchangedetector = readOutputChangeDetector(in);
+			return ReportedTaskDependency.create(dependencies, outputchangedetector, finishedRetrieval);
+		}
+
 		public TaskDependencies getDependencies() {
 			return dependencies;
 		}
@@ -351,16 +375,22 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		@Override
 		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 			dependencies = (TaskDependencies) in.readObject();
+			outputChangeDetector = readOutputChangeDetector(in);
+		}
+
+		private static TaskOutputChangeDetector readOutputChangeDetector(ObjectInput in) {
+			TaskOutputChangeDetector outputchangedetector;
 			try {
-				outputChangeDetector = (TaskOutputChangeDetector) in.readObject();
+				outputchangedetector = (TaskOutputChangeDetector) in.readObject();
 			} catch (IOException | ClassNotFoundException e) {
 				if (TestFlag.ENABLED) {
-					System.err.println(getClass().getSimpleName() + " readExternal: " + e);
+					System.err.println(ReportedTaskDependency.class.getSimpleName() + " readExternal: " + e);
 				}
 				InternalBuildTraceImpl.serializationException(e);
 				//if we fail to load the output change detector, then always assume it as changed
-				outputChangeDetector = CommonTaskOutputChangeDetector.ALWAYS;
+				outputchangedetector = CommonTaskOutputChangeDetector.ALWAYS;
 			}
+			return outputchangedetector;
 		}
 
 		private static class FinishedRetrievalReportedTaskDependency extends ReportedTaskDependency {
@@ -559,8 +589,8 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 			SerialUtils.writeExternalMap(out, environmentPropertyQualifierDependencies);
 			SerialUtils.writeExternalMap(out, executionPropertyDependencies);
 
-			SerialUtils.writeExternalMap(out, createdTaskIds);
-			SerialUtils.writeExternalMap(out, dependentTasks);
+			writeCreatedTaskIds(out, createdTaskIds);
+			writeDependentTasks(out, dependentTasks);
 
 			writeTaskExecutionEvents(out, events);
 		}
@@ -583,10 +613,33 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 			environmentPropertyQualifierDependencies = SerialUtils.readExternalImmutableHashMap(in);
 			executionPropertyDependencies = SerialUtils.readExternalImmutableHashMap(in);
 
-			createdTaskIds = SerialUtils.readExternalImmutableHashMap(in);
-			dependentTasks = SerialUtils.readExternalImmutableHashMap(in);
+			createdTaskIds = readCreatedTaskIds(in);
+			dependentTasks = readDependentTasks(in);
 
 			events = readTaskExecutionEvents(in);
+		}
+
+		private static void writeDependentTasks(ObjectOutput out,
+				Map<TaskIdentifier, ReportedTaskDependency> dependenttasks) throws IOException {
+			SerialUtils.writeExternalMap(out, dependenttasks, ObjectOutput::writeObject,
+					ReportedTaskDependency::writeExternalTo);
+		}
+
+		private static Map<TaskIdentifier, ReportedTaskDependency> readDependentTasks(ObjectInput in)
+				throws IOException, ClassNotFoundException {
+			return ImmutableUtils.unmodifiableMap(SerialUtils.readExternalMap(new HashMap<>(), in,
+					SerialUtils::readExternalObject, ReportedTaskDependency::readExternalFrom));
+		}
+
+		private static void writeCreatedTaskIds(ObjectOutput out,
+				Map<TaskIdentifier, CreatedTaskDependency> createdtaskids) throws IOException {
+			SerialUtils.writeExternalValueExternalizableMap(out, createdtaskids);
+		}
+
+		private static Map<TaskIdentifier, CreatedTaskDependency> readCreatedTaskIds(ObjectInput in)
+				throws IOException, ClassNotFoundException {
+			return ImmutableUtils.unmodifiableMap(
+					SerialUtils.readExternalValueExternalizableMap(new HashMap<>(), in, CreatedTaskDependency::new));
 		}
 
 		private static void writeTaskExecutionEvents(ObjectOutput out, Iterable<? extends TaskExecutionEvent> events)
