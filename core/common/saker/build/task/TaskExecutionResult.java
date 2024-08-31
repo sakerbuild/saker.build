@@ -272,7 +272,6 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 
 		protected TaskDependencies dependencies;
 		protected volatile TaskOutputChangeDetector outputChangeDetector;
-		protected boolean finishedRetrieval;
 
 		/**
 		 * For {@link Externalizable}.
@@ -280,11 +279,17 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		public ReportedTaskDependency() {
 		}
 
-		public ReportedTaskDependency(TaskDependencies dependencies, TaskOutputChangeDetector outputChangeDetector,
-				boolean finishedRetrieval) {
+		protected ReportedTaskDependency(TaskDependencies dependencies, TaskOutputChangeDetector outputChangeDetector) {
 			this.dependencies = dependencies;
 			this.outputChangeDetector = outputChangeDetector;
-			this.finishedRetrieval = finishedRetrieval;
+		}
+
+		public static ReportedTaskDependency create(TaskDependencies dependencies,
+				TaskOutputChangeDetector outputChangeDetector, boolean finishedRetrieval) {
+			if (finishedRetrieval) {
+				return new FinishedRetrievalReportedTaskDependency(dependencies, outputChangeDetector);
+			}
+			return new ReportedTaskDependency(dependencies, outputChangeDetector);
 		}
 
 		public TaskDependencies getDependencies() {
@@ -296,7 +301,7 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		}
 
 		public boolean isFinishedRetrieval() {
-			return finishedRetrieval;
+			return false;
 		}
 
 		public void addOutputChangeDetector(TaskOutputChangeDetector outputChangeDetector) {
@@ -341,7 +346,6 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		public void writeExternal(ObjectOutput out) throws IOException {
 			out.writeObject(dependencies);
 			out.writeObject(outputChangeDetector);
-			out.writeBoolean(finishedRetrieval);
 		}
 
 		@Override
@@ -357,7 +361,26 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 				//if we fail to load the output change detector, then always assume it as changed
 				outputChangeDetector = CommonTaskOutputChangeDetector.ALWAYS;
 			}
-			finishedRetrieval = in.readBoolean();
+		}
+
+		private static class FinishedRetrievalReportedTaskDependency extends ReportedTaskDependency {
+			private static final long serialVersionUID = 1L;
+
+			/**
+			 * For {@link Externalizable}.
+			 */
+			public FinishedRetrievalReportedTaskDependency() {
+			}
+
+			public FinishedRetrievalReportedTaskDependency(TaskDependencies dependencies,
+					TaskOutputChangeDetector outputChangeDetector) {
+				super(dependencies, outputChangeDetector);
+			}
+
+			@Override
+			public boolean isFinishedRetrieval() {
+				return true;
+			}
 		}
 	}
 
@@ -502,7 +525,7 @@ public class TaskExecutionResult<R> implements TaskResultHolder<R>, Externalizab
 		public boolean addTaskDependency(TaskIdentifier taskid, TaskDependencies taskdeps, boolean finishedretrieval,
 				TaskOutputChangeDetector outputchangedetector) {
 			ReportedTaskDependency prev = dependentTasks.putIfAbsent(taskid,
-					new ReportedTaskDependency(taskdeps, outputchangedetector, finishedretrieval));
+					ReportedTaskDependency.create(taskdeps, outputchangedetector, finishedretrieval));
 			if (prev != null) {
 				if (prev.dependencies != taskdeps) {
 					throw new TaskIdentifierConflictException(
