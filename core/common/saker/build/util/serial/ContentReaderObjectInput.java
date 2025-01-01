@@ -24,7 +24,6 @@ import java.io.InputStream;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
 import java.lang.reflect.Array;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
@@ -282,7 +281,6 @@ public class ContentReaderObjectInput implements ObjectInput {
 	// the result objects 
 	private final List<Object> serializedObjects = new ArrayList<>();
 	private final List<Object> serializedStrings = new ArrayList<>();
-	private final Map<Class<?>, Constructor<? extends Externalizable>> externalizableConstructors = new HashMap<>();
 
 	private final ClassLoaderResolver registry;
 
@@ -840,7 +838,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 				return readExternalizableImpl(cmd);
 			}
 			case ContentWriterObjectOutput.C_OBJECT_TYPE: {
-				return readTypeImpl();
+				return readTypeImpl().get();
 			}
 			case ContentWriterObjectOutput.C_OBJECT_SERIALIZABLE_ERROR:
 			case ContentWriterObjectOutput.C_OBJECT_SERIALIZABLE: {
@@ -1026,7 +1024,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 		this.serializedStrings.add(obj);
 	}
 
-	Class<?> readTypeWithCommand() throws IOException, ClassNotFoundException {
+	SerializedTypeObject<?> readTypeWithCommand() throws IOException, ClassNotFoundException {
 		int cmd = state.expectCommands(EXPECTED_COMMANDS_TYPE);
 		switch (cmd) {
 			case ContentWriterObjectOutput.C_OBJECT_TYPE: {
@@ -1098,7 +1096,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 		Class<?>[] interfaces = new Class<?>[itfslen];
 		for (int i = 0; i < itfslen; i++) {
 			try {
-				interfaces[i] = readTypeWithCommand();
+				interfaces[i] = readTypeWithCommand().get();
 			} catch (Exception e) {
 				failexc = ArrayUtils.appended(failexc, e);
 			}
@@ -1155,11 +1153,12 @@ public class ContentReaderObjectInput implements ObjectInput {
 		return registry.getClassLoaderForIdentifier(classLoaderResolverId);
 	}
 
-	private Class<?> readTypeImpl() throws ClassNotFoundException, IOException {
+	private SerializedTypeObject<?> readTypeImpl() throws ClassNotFoundException, IOException {
 		try {
 			Class<?> result = readExternalClass();
-			addSerializedObject(result);
-			return result;
+			SerializedTypeObject<?> typeobj = new SerializedTypeObject<>(result);
+			addSerializedObject(typeobj);
+			return typeobj;
 		} catch (ClassNotFoundException e) {
 			FailedSerializedObject<?> serializedobj = new FailedSerializedObject<>(
 					() -> new ClassNotFoundException("Class not found.", e));
@@ -1168,18 +1167,50 @@ public class ContentReaderObjectInput implements ObjectInput {
 		}
 	}
 
-	private Class<?> getTypeIdxImpl(int idx) throws IOException, ClassNotFoundException {
-		return (Class<?>) getObjectIdxImpl(idx);
+	private SerializedTypeObject<?> getTypeIdxImpl(int idx) throws IOException, ClassNotFoundException {
+		Object serobj;
+		try {
+			serobj = serializedObjects.get(idx);
+		} catch (IndexOutOfBoundsException e) {
+			throw new SerializationProtocolException("Referenced type object not found at index: " + idx
+					+ " (current size: " + serializedObjects.size() + ")", e);
+		}
+		if (serobj instanceof SerializedTypeObject<?>) {
+			return (SerializedTypeObject<?>) serobj;
+		}
+		if (serobj instanceof SerializedObject<?>) {
+			// this .get() call should actually throw an appropriate exception
+			((SerializedObject<?>) serobj).get();
+		}
+		throw new SerializationProtocolException("Failed to resolve serialized type at index: " + idx
+				+ " (current size: " + serializedObjects.size() + ")");
 	}
 
-	private Class<?> getRelativeTypeIdxImpl(int relidx) throws IOException, ClassNotFoundException {
-		return (Class<?>) getRelativeObjectIdxImpl(relidx);
+	private SerializedTypeObject<?> getRelativeTypeIdxImpl(int relidx) throws IOException, ClassNotFoundException {
+		final int size = serializedObjects.size();
+		Object serobj;
+		try {
+			serobj = serializedObjects.get(size - relidx);
+		} catch (IndexOutOfBoundsException e) {
+			throw new SerializationProtocolException(
+					"Referenced type object not found at relative index: " + relidx + " (current size: " + size + ")",
+					e);
+		}
+		if (serobj instanceof SerializedTypeObject<?>) {
+			return (SerializedTypeObject<?>) serobj;
+		}
+		if (serobj instanceof SerializedObject<?>) {
+			// this .get() call should actually throw an appropriate exception
+			((SerializedObject<?>) serobj).get();
+		}
+		throw new SerializationProtocolException(
+				"Failed to resolve serialized type at relative index: " + relidx + " (current size: " + size + ")");
 	}
 
 	private Object readArrayImpl(int cmd) throws IOException, ClassNotFoundException {
 		Class<?> arrayclass;
 		try {
-			arrayclass = readTypeWithCommand();
+			arrayclass = readTypeWithCommand().get();
 		} catch (Exception e) {
 			int len = state.in.readInt();
 			checkInvalidLength(len);
@@ -1236,7 +1267,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 	private Enum<?> readEnumImpl() throws IOException, ClassNotFoundException {
 		Class type;
 		try {
-			type = readTypeWithCommand();
+			type = readTypeWithCommand().get();
 		} catch (ClassNotFoundException e) {
 			//read the name nonetheless not to distrupt the protocol
 			String name = DataInputUnsyncByteArrayInputStream.readStringLengthChars(state.in);
@@ -1260,7 +1291,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 	}
 
 	private Object readCustomSerializableObjectImpl(int cmd) throws IOException, ClassNotFoundException {
-		Class<?> type = readTypeWithCommand();
+		SerializedTypeObject<?> typeobj = readTypeWithCommand();
 		int len = state.in.readInt();
 		checkInvalidLength(len);
 
@@ -1275,11 +1306,10 @@ public class ContentReaderObjectInput implements ObjectInput {
 				addSerializedObject(serializedobj);
 				return serializedobj.get();
 			}
-			ObjectReaderFunction<ContentReaderObjectInput, Object> reader = ContentWriterObjectOutput.SERIALIZABLE_CLASS_READERS
-					.get(type);
+			ObjectReaderFunction<ContentReaderObjectInput, Object> reader = typeobj.getCustomSerializableReader();
 			if (reader == null) {
 				SerializedObject<Object> serializedobj = new SerializationProtocolFailedSerializedObject<>(
-						"No object reader found for class: " + type);
+						"No object reader found for class: " + typeobj.get().getName());
 				addSerializedObject(serializedobj);
 				return serializedobj.get();
 			}
@@ -1287,12 +1317,12 @@ public class ContentReaderObjectInput implements ObjectInput {
 			Object result = reader.apply(this);
 			if (limitis.getRemainingLimit() > 0) {
 				//the contents were not fully read by the readExternal function
-				if (warnedNotFullyReadClasses.add(type)) {
+				if (warnedNotFullyReadClasses.add((Class<?>) typeobj.get())) {
 					if (TestFlag.ENABLED) {
-						TestFlag.metric().serializationWarning(type.getName());
+						TestFlag.metric().serializationWarning(typeobj.get().getName());
 					}
 					InternalBuildTraceImpl.serializationWarningMessage(
-							"Failed to fully read all serialized data from stream: " + type.getName());
+							"Failed to fully read all serialized data from stream: " + typeobj.get().getName());
 				}
 			}
 			return result;
@@ -1387,12 +1417,13 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 	private Object getRelativeObjectIdxImpl(int relidx)
 			throws SerializationProtocolException, IOException, ClassNotFoundException {
+		final int size = serializedObjects.size();
 		Object serobj;
 		try {
-			serobj = serializedObjects.get(serializedObjects.size() - relidx);
+			serobj = serializedObjects.get(size - relidx);
 		} catch (IndexOutOfBoundsException e) {
-			throw new SerializationProtocolException("Referenced object not found at relative index: " + relidx
-					+ " (current size: " + serializedObjects.size() + ")", e);
+			throw new SerializationProtocolException(
+					"Referenced object not found at relative index: " + relidx + " (current size: " + size + ")", e);
 		}
 		if (serobj instanceof SerializedObject<?>) {
 			return ((SerializedObject<?>) serobj).get();
@@ -1424,7 +1455,7 @@ public class ContentReaderObjectInput implements ObjectInput {
 	}
 
 	private Externalizable readExternalizableImpl(int cmd) throws IOException, ClassNotFoundException {
-		Class<?> type;
+		SerializedTypeObject<?> type;
 		try {
 			type = readTypeWithCommand();
 		} catch (ClassNotFoundException e) {
@@ -1439,7 +1470,8 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 		if (cmd == ContentWriterObjectOutput.C_OBJECT_EXTERNALIZABLE_ERROR) {
 			FailedSerializedObject<Externalizable> serializedobj = new FailedSerializedObject<>(
-					() -> new ObjectWriteException("Failed to write Externalizable object. (" + type.getName() + ")"));
+					() -> new ObjectWriteException(
+							"Failed to write Externalizable object. (" + type.get().getName() + ")"));
 			addSerializedObject(serializedobj);
 			preReadExternalizableHeaderFailure(len);
 			return serializedobj.get();
@@ -1447,12 +1479,13 @@ public class ContentReaderObjectInput implements ObjectInput {
 
 		Externalizable instance;
 		try {
-			instance = getExternalizableConstructor(type).newInstance();
+			instance = type.newExternalizableInstance();
 		} catch (ReflectiveOperationException | IllegalArgumentException | SecurityException | ClassCastException e) {
 			addSerializedObject(new FailedSerializedObject<>(() -> new SerializationReflectionException(
-					"Failed to instantiate Externalizable: " + type.getName(), e)));
+					"Failed to instantiate Externalizable: " + type.get().getName(), e)));
 			preReadExternalizableHeaderFailure(len);
-			throw new SerializationReflectionException("Failed to instantiate Externalizable: " + type.getName(), e);
+			throw new SerializationReflectionException("Failed to instantiate Externalizable: " + type.get().getName(),
+					e);
 		}
 
 		int serobjidx = addSerializedObject(instance);
@@ -1465,17 +1498,19 @@ public class ContentReaderObjectInput implements ObjectInput {
 			instance.readExternal(this);
 			if (limitis.getRemainingLimit() > 0) {
 				//the contents were not fully read by the readExternal function
-				if (warnedNotFullyReadClasses.add(type)) {
+				if (warnedNotFullyReadClasses.add(type.get())) {
 					if (TestFlag.ENABLED) {
-						TestFlag.metric().serializationWarning(type.getName());
+						TestFlag.metric().serializationWarning(type.get().getName());
 					}
 					InternalBuildTraceImpl.serializationWarningMessage(
-							"Externalizable failed to fully read all serialized data from stream: " + type.getName());
+							"Externalizable failed to fully read all serialized data from stream: "
+									+ type.get().getName());
 				}
 			}
 		} catch (Exception e) {
 			FailedSerializedObject<Externalizable> serializedobj = new FailedSerializedObject<>(
-					() -> new ObjectReadException("Failed to read Externalizable object. (" + type.getName() + ")", e));
+					() -> new ObjectReadException(
+							"Failed to read Externalizable object. (" + type.get().getName() + ")", e));
 			setSerializedObject(serobjidx, serializedobj);
 			return serializedobj.get();
 		} finally {
@@ -1486,31 +1521,6 @@ public class ContentReaderObjectInput implements ObjectInput {
 			}
 		}
 		return instance;
-	}
-
-	//document exception to avoid IDE warning
-	/**
-	 * @throws NoSuchMethodException
-	 *             If the constructor was not found.
-	 * @throws SecurityException
-	 *             In case of security exception
-	 */
-	private Constructor<? extends Externalizable> getExternalizableConstructor(Class<?> type)
-			throws NoSuchMethodException, SecurityException {
-		Constructor<? extends Externalizable> constructor = externalizableConstructors.computeIfAbsent(type, t -> {
-			try {
-				@SuppressWarnings("unchecked")
-				Constructor<? extends Externalizable> con = (Constructor<? extends Externalizable>) t
-						.getDeclaredConstructor();
-				//set accessible just in case1
-				con.setAccessible(true);
-				return con;
-			} catch (NoSuchMethodException | SecurityException e) {
-				//sneakily throw, excepion declared in enclosing method
-				throw ObjectUtils.sneakyThrow(e);
-			}
-		});
-		return constructor;
 	}
 
 	private void preReadExternalizableHeaderFailure(int len) {

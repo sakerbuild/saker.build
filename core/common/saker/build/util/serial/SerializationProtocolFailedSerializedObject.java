@@ -17,9 +17,9 @@ package saker.build.util.serial;
 
 import java.io.IOException;
 
-class SerializationProtocolFailedSerializedObject<E> implements SerializedObject<E> {
-	private String message;
-	private Throwable cause;
+final class SerializationProtocolFailedSerializedObject<E> implements SerializedObject<E> {
+	private final String message;
+	private final Throwable cause;
 
 	public SerializationProtocolFailedSerializedObject(String message, Throwable cause) {
 		this.message = message;
@@ -27,11 +27,14 @@ class SerializationProtocolFailedSerializedObject<E> implements SerializedObject
 	}
 
 	public SerializationProtocolFailedSerializedObject(String message) {
-		this.message = message;
+		this(message, null);
 	}
 
 	@Override
 	public E get() throws IOException, ClassNotFoundException {
+		if (cause == null) {
+			throw new SerializationProtocolException(message);
+		}
 		throw new SerializationProtocolException(message, cause);
 	}
 }

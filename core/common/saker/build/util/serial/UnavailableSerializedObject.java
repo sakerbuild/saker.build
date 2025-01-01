@@ -17,7 +17,7 @@ package saker.build.util.serial;
 
 import java.io.IOException;
 
-class UnavailableSerializedObject<T> implements SerializedObject<T> {
+final class UnavailableSerializedObject<T> implements SerializedObject<T> {
 	public static final UnavailableSerializedObject<?> INSTANCE = new UnavailableSerializedObject<>();
 
 	@SuppressWarnings("unchecked")
